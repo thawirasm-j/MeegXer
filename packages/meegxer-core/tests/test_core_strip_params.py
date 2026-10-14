@@ -39,3 +39,20 @@ def test_strip_params_round_trip() -> None:
 def test_strip_params_are_checked(names: list[str]) -> None:
     with pytest.raises(GraphError):
         Graph.from_dict(pipeline(strip_params=names), Registry.from_entry_points())
+
+
+def test_memory_probe_keeps_a_bounded_history() -> None:
+    from meegxer.core.probes import MemoryProbe
+
+    src = SyntheticSource({"duration": 10.0, "n_channels": 2, "sfreq": 100.0})
+    probe = MemoryProbe({"keep_seconds": 2.0})
+    while (block := src.read(30)) is not None:
+        probe.tap(block)
+    kept = probe.signal()
+    assert 200 <= kept.n_samples < 230
+    assert kept.stop_index == 1000  # the newest data is kept
+    everything = MemoryProbe({"keep_seconds": 0.0})
+    src = SyntheticSource({"duration": 10.0, "n_channels": 2, "sfreq": 100.0})
+    while (block := src.read(30)) is not None:
+        everything.tap(block)
+    assert everything.signal().n_samples == 1000
