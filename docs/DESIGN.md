@@ -177,7 +177,9 @@ CLAP native plugins, installers.
 
 ## 8. Settled questions
 
-- **Python floor:** 3.14 (Ubuntu 26.04 LTS system Python). Workspace tool: uv.
+- **Python floor:** 3.13 (Debian 13 / Raspberry Pi OS Trixie system Python); primary
+  development on 3.14 (Ubuntu 26.04 LTS). Revisit when SPEC 0 drops 3.13 (~Oct 2027).
+  Workspace tool: uv.
 - **License:** this repository is GPL-3.0 (`LICENSE`).
 - **Online calibration UX:** one-shot calibration at session start for v1; periodic
   refits later.

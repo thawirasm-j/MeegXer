@@ -49,7 +49,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 
 ## Stack
 
-- Python first for everything; floor is Python 3.14 (Ubuntu 26.04 LTS system Python).
+- Python first for everything; floor is Python 3.13 (develop on 3.14;
+  CI tests 3.13 + 3.14; revisit the floor when SPEC 0 drops 3.13, ~Oct 2027).
   Monorepo managed as a uv workspace. Only the core is a candidate for a later Rust rewrite,
   behind the same protocol.
 - Core: numpy, pylsl, pyzmq (JSON-RPC control and display both over ZeroMQ). Built-ins: MNE, SciPy, mne-icalabel, asrpy/meegkit,

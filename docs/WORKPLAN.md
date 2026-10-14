@@ -44,9 +44,9 @@ M4 and M5 can run in parallel after M3. M6 offline work can start right after M2
   `meegxer.gui`, `meegxer.runtime`; `meegxer.sterile` must not import `meegxer.runtime`.
 - **Sterile packaging check:** CI builds the sterile wheel set and asserts no
   `meegxer.runtime`/docker module is present (rule 10).
-- uv workspace at the root; `requires-python = ">=3.14"` in every package.
-- CI matrix: Linux + Windows, Python 3.14.
-- Early smoke job: install every third-party dependency on 3.14 (see risks).
+- uv workspace at the root; `requires-python = ">=3.13"` in every package.
+- CI matrix: Linux + Windows × Python 3.13, 3.14 (develop on 3.14).
+- Early smoke job: install every third-party dependency on 3.13 and 3.14 (see risks).
 
 **Exit:** `pytest` green on an empty core; import-linter and sterile-packaging checks
 fail on a deliberately bad import.
@@ -186,14 +186,15 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | Docker Desktop latency/IPC overhead on Windows | M4 | Measure early with a passthrough plugin; ZeroMQ upgrade path |
 | LSL discovery across container boundary | M4 | Host-only LSL (already in design) |
 | Contract churn after many nodes exist | M1–M2 | Freeze contract at M1 exit; version the spec |
-| Python 3.14 wheels missing for a dependency (e.g. pylsl, numba, onnxruntime for mne-icalabel, PySide6 on ARM64) | M0, M6 | Dependency smoke job in M0; pin known-good versions; flag blockers early |
+| Python 3.14 wheels missing for a dependency (e.g. pylsl, numba, onnxruntime for mne-icalabel, PySide6 on ARM64) | M0, M6 | Dependency smoke job in M0; 3.13 floor as fallback; pin known-good versions |
+| Scientific stack drops 3.13 under SPEC 0 (~Oct 2027) | ongoing | Bump floor to 3.14 then |
 | GPL-3.0 scope for externally distributed plugins | M4 | Repo is GPL-3.0; plugin licensing not yet prescribed, revisit before bundling any plugin |
 
 ## Decision log
 
 | # | Decision | Outcome | Affects |
 |---|---|---|---|
-| 1 | Python floor | 3.14 (Ubuntu 26.04 LTS) | M0 |
+| 1 | Python floor | 3.13 floor, develop on 3.14 | M0 |
 | 2 | Workspace tool | uv | M0 |
 | 3 | Internal dtype; node state | float64 core / float32 wire; serializable state | M1 |
 | 4 | Control/display transports | ZeroMQ for both (REQ/REP, PUB/SUB) | M3 |
