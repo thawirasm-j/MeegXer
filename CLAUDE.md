@@ -65,6 +65,15 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - The streaming stability acceptance test (`docs/DESIGN.md` §6.2) intentionally runs at
   the batch size (64 ch / 1 kHz) as headroom over the online target.
 
+## Commands
+
+- `uv sync --all-packages`, then `uv run pytest`, `uv run ruff check .`,
+  `uv run ruff format --check .`, `uv run mypy`, `uv run lint-imports`.
+- `uv run python tools/check_sterile.py`: sterile wheels contain no runtime (rule 10).
+- `python tools/smoke_deps.py --python 3.14`: planned third-party deps install/import.
+- Architecture rules 1 and 10 are import-linter contracts in the root `pyproject.toml`;
+  `tests/test_architecture.py` proves each contract catches a violation.
+
 ## Working style
 
 - When fixing bugs: diagnose the precise root cause first, apply the smallest fix,

@@ -1,0 +1,20 @@
+[project]
+name = "meegxer-core"
+version = "0.0.0"
+description = "Headless engine: graph, schedulers, plugin spec, I/O and control API (no GUI)."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+dependencies = [
+    "numpy>=2.1",
+    "pylsl>=1.16",
+    "pyzmq>=26",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "meegxer.core"

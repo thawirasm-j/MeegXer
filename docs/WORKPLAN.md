@@ -35,6 +35,9 @@ M4 and M5 can run in parallel after M3. M6 offline work can start right after M2
 
 **Goal:** an empty-but-real monorepo where the architecture rules are checked by CI.
 
+**Status:** done locally (Linux, 3.13 + 3.14); GitHub Actions unverified until first PR run.
+Linux CI needs `libegl1 libgl1 libxkbcommon0` for Qt/pyqtgraph imports.
+
 - Layout: `packages/meegxer-{core,sterile,runtime,gui,cli}/`, each with its own
   `pyproject.toml` and `src/meegxer/<subpkg>/` (namespace package `meegxer`).
 - `spec/` at repo root: JSON Schemas + protocol docs (language-neutral, rule 11),

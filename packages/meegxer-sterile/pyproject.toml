@@ -1,0 +1,24 @@
+[project]
+name = "meegxer-sterile"
+version = "0.0.0"
+description = "Audited built-in processing nodes (filters, re-referencing, ASR, ICA/ICLabel, features)."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+dependencies = [
+    "meegxer-core",
+    "numpy>=2.1",
+    "scipy>=1.14.1",
+    "mne>=1.8",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "meegxer.sterile"
+
+[tool.uv.sources]
+meegxer-core = { workspace = true }

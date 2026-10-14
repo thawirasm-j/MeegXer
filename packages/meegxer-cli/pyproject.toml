@@ -1,0 +1,27 @@
+[project]
+name = "meegxer-cli"
+version = "0.0.0"
+description = "Command-line interface: headless runs, batch jobs, Pi deployment."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+dependencies = [
+    "meegxer-core",
+    "meegxer-sterile",
+    "typer>=0.12",
+]
+
+[project.scripts]
+meegxer = "meegxer.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "meegxer.cli"
+
+[tool.uv.sources]
+meegxer-core = { workspace = true }
+meegxer-sterile = { workspace = true }
