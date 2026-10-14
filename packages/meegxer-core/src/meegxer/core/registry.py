@@ -8,6 +8,10 @@ Packages register node classes under their manifest name, e.g. in pyproject.toml
 The core never imports another meegxer package directly; whatever is installed is
 what is available. That keeps the sterile build free of the plugin runtime
 (CLAUDE.md rule 10) without the core knowing about it.
+
+Packages whose node classes are only known at run time (the plugin runtime builds
+one class per installed plugin image) register a provider instead: a callable in
+the ``meegxer.node_providers`` group that returns node classes.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from meegxer.core.node import Probe, Processor, Sink, Source
 type NodeClass = type[Source] | type[Processor] | type[Probe] | type[Sink]
 
 ENTRY_POINT_GROUP = "meegxer.nodes"
+PROVIDER_GROUP = "meegxer.node_providers"
 
 
 class UnknownNodeError(LookupError):
@@ -39,6 +44,9 @@ class Registry:
         registry = cls()
         for ep in entry_points(group=ENTRY_POINT_GROUP):
             registry._add_entry_point(ep)
+        for ep in entry_points(group=PROVIDER_GROUP):
+            for node_cls in ep.load()():
+                registry.add(node_cls)
         return registry
 
     def _add_entry_point(self, ep: EntryPoint) -> None:

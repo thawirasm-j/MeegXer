@@ -20,8 +20,8 @@ define it.
     (hidden in the UI's friendly mode).
   - `control-api.md`: JSON-RPC 2.0 methods between the daemon and clients.
   - `display-protocol.md`: decimated min/max envelope frames on the display stream.
-- **Planned:**
-  - `plugin-protocol.md`: framed stdin/stdout protocol for containerized plugins.
-    Milestone M4.
+  - `plugin-protocol.md` (`meegxer.plugin/0.1`): framed stdin/stdout protocol for
+    containerized plugins (handshake, fit, load_model, transform, shutdown, errors),
+    with host-owned model and state.
 
-Still 0.x: expect breaking changes until the M4 plugin protocol lands.
+Still 0.x: expect breaking changes until v1.

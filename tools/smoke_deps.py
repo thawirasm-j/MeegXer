@@ -28,7 +28,7 @@ DEPENDENCIES: list[tuple[str, str, bool]] = [
     ("PySide6", "PySide6.QtCore", True),
     ("pyqtgraph", "pyqtgraph", True),
     ("typer", "typer", True),
-    ("docker", "docker", True),
+    ("docker", "docker", False),
     ("jsonschema", "jsonschema", True),
     ("mne-bids", "mne_bids", True),
     ("eeglabio", "eeglabio", True),

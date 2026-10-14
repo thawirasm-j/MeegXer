@@ -152,6 +152,15 @@ dropped/duplicated samples; a scripted client can tune params live.
 
 **Goal:** containerized external nodes behaving like built-ins.
 
+**Status:** implemented. `spec/plugin-protocol.md` (`meegxer.plugin/0.1`);
+`meegxer.runtime` (wire format, worker lifecycle with timeouts/restarts, adapter,
+plugin index + node provider, conformance suite, `meegxer-plugin` CLI); Python SDK
+(`sdk/python/meegxer_plugin.py`, numpy only) and Octave SDK (`sdk/octave/`); reference
+plugins `examples.average_reference` (Python) and `examples.octave_iir_bandpass`
+(Octave), both conformant inside the Docker sandbox. The reference Octave image does
+not include EEGLAB yet (the IIR filter does not need it); a pinned-EEGLAB base image is
+a follow-up.
+
 - `spec/plugin-protocol.md` + schemas: framing (header + float32 ch×samples),
   handshake (manifest, spec version), fit/transform/param messages, error and
   shutdown semantics. Semver'd (rule 11).
@@ -246,3 +255,6 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | 15 | Bad channels | `SignalInfo.bads`; average reference `exclude`/`exclude_bads` options | M2 |
 | 16 | Calibration across restarts | Keep fitted models by default; drop explicitly (`clear_calibration`) | M3 |
 | 17 | Uncalibrated nodes | Block by default; per-node opt-in to pass through, marked `bypassed` (checkbox in M5) | M3, M5 |
+| 18 | Plugin state ownership | Host owns model and state; workers are restartable; models loaded once by hash | M4 |
+| 19 | Container engine access | Docker/Podman CLI (no Docker SDK dependency); locked-down `run` flags | M4 |
+| 20 | Unsandboxed plugins | Development and tests only, behind `MEEGXER_ALLOW_UNSANDBOXED=1` | M4 |

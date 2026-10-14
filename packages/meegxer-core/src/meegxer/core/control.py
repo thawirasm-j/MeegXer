@@ -124,6 +124,8 @@ class Daemon:
             raise RuntimeError("stop the running pipeline before loading another")
         graph = Graph.from_dict(pipeline, self.registry)
         RealtimeScheduler(graph)  # validates: no offline-only nodes
+        if self._graph is not None:
+            self._close_processors(self._graph)
         self._pipeline, self._graph, self._scheduler = graph.to_dict(), graph, None
         return self._pipeline
 
@@ -142,6 +144,7 @@ class Daemon:
             self._graph = Graph.from_dict(self.get_pipeline() or {}, self.registry)
             if old is not None:
                 self._carry_models(old, self._graph)
+                self._close_processors(old)
         assert self._graph is not None
         self._scheduler = RealtimeScheduler(self._graph, display=self.display)
         self._scheduler.start()
@@ -164,6 +167,12 @@ class Daemon:
                 and previous.manifest.version == node.impl.manifest.version
             ):
                 node.impl.model = previous.model
+
+    @staticmethod
+    def _close_processors(graph: Graph) -> None:
+        for node in graph.nodes:
+            if isinstance(node.impl, Stage):
+                node.impl.processor.close()
 
     def stop(self) -> dict[str, Any]:
         if self._scheduler is not None:
@@ -273,6 +282,8 @@ class Daemon:
     def close(self) -> None:
         if self._scheduler is not None:
             self._scheduler.stop()
+        if self._graph is not None:
+            self._close_processors(self._graph)
         self._socket.close(linger=0)
         self.display.close()
 

@@ -136,10 +136,20 @@ transform(block, model, state, params)        -> block_out, state, events
 - Feature-domain probes: overlay PSDs across probes.
 
 ### 3.5 External plugins
-- Run in Docker/Podman: `docker run -i --network none`, read-only mounts.
-- Transport: framed binary over stdin/stdout (small header + float32 channels×samples);
-  ZeroMQ is the upgrade path. No shared memory across the container boundary.
-- Persistent worker per plugin (Octave + EEGLAB loaded once).
+- Run in Docker/Podman: `docker run -i --network none --read-only --cap-drop ALL`
+  (no network, devices or writable filesystem except a small `/tmp`); data arrives on
+  stdin only. Protocol: `spec/plugin-protocol.md`.
+- Transport: framed binary over stdin/stdout (JSON header + typed arrays; signal as
+  float32); ZeroMQ is the upgrade path. No shared memory across the container boundary.
+- Persistent worker per plugin node (Octave + EEGLAB loaded once). The host owns model
+  and state: every `transform` carries the state and gets the new state back, models
+  are loaded into the worker once by content hash. A crashed or hung worker is killed
+  and relaunched with bounded backoff and continues exactly where it stopped.
+- Plugins appear as ordinary Processor nodes (an adapter class built from the
+  handshake manifest), discovered through `meegxer-plugin add IMAGE` and a node-provider
+  entry point that exists only when `meegxer-runtime` is installed.
+- Unsandboxed local processes are allowed only for plugin development and tests
+  (`MEEGXER_ALLOW_UNSANDBOXED=1`).
 - Plugins emit Events only; they never access devices or networks.
 - Base images: Octave with pinned EEGLAB; slim Python with pinned MNE. Multi-arch
   (amd64 + arm64) eventually.
