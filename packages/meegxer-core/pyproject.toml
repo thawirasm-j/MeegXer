@@ -30,6 +30,11 @@ dependencies = [
 "meegxer.core.set_writer" = "meegxer.core.sinks:SetSink"
 "meegxer.core.edf_writer" = "meegxer.core.sinks:EdfSink"
 "meegxer.core.feature_tsv" = "meegxer.core.sinks:FeatureTsvSink"
+"meegxer.core.lsl_in" = "meegxer.core.lsl:LslSource"
+"meegxer.core.lsl_out" = "meegxer.core.lsl:LslSink"
+
+[project.scripts]
+meegxer-daemon = "meegxer.core.daemon:main"
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]

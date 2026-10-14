@@ -76,6 +76,16 @@ turn knobs, and see the effect live — on a streaming amp or on a recorded data
   node's input names an earlier node. Nodes are discovered through the
   `meegxer.nodes` entry-point group, so the core never imports sterile or runtime code.
 - **Units:** signals are in volts (SI, as in MNE) throughout the core.
+- **Real-time scheduling is block-major:** each loop pulls what the source has ready
+  and pushes it through the graph; parameter changes and calibration requests are
+  queued and applied by the scheduler thread between blocks. Recorded and synthetic
+  sources are paced to their sampling rate (about 10 ms chunks) and re-stamped on the
+  LSL clock. A block overruns when its processing takes longer than its duration;
+  latency is the sink-side LSL clock minus the timestamp of the block's last sample.
+- **Online calibration:** a stage that needs fitting passes nothing downstream until
+  `calibrate(node, seconds)` has buffered its input and fitted it.
+- **Specs:** control API in `spec/control-api.md`, display stream in
+  `spec/display-protocol.md`.
 
 ### 3.3 Processor contract
 ```

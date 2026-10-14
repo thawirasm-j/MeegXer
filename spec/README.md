@@ -18,8 +18,9 @@ define it.
     `live_params` (parameters that change without resetting streaming state),
     `availability` (online | offline | both) and the per-parameter `advanced` flag
     (hidden in the UI's friendly mode).
+  - `control-api.md`: JSON-RPC 2.0 methods between the daemon and clients.
+  - `display-protocol.md`: decimated min/max envelope frames on the display stream.
 - **Planned:**
-  - `control-api.md`: JSON-RPC methods between core and clients. Milestone M3.
   - `plugin-protocol.md`: framed stdin/stdout protocol for containerized plugins.
     Milestone M4.
 

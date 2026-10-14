@@ -26,6 +26,7 @@ dev = [
     "meegxer-gui",
     "meegxer-cli",
     "pytest>=8.3",
+    "pytest-timeout>=2.3",
     "ruff>=0.8",
     "mypy>=1.13",
     "import-linter>=2.1",
@@ -60,12 +61,13 @@ mypy_path = [
 files = ["packages/*/src", "packages/*/tests", "tests", "tools"]
 
 [[tool.mypy.overrides]]
-module = ["mne", "mne.*", "mne_bids", "mne_bids.*"]
+module = ["mne", "mne.*", "mne_bids", "mne_bids.*", "pylsl", "pylsl.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "tests"]
 addopts = ["--import-mode=importlib", "-ra"]
+timeout = 120
 
 # Architecture rules from CLAUDE.md, enforced on every CI run (lint-imports).
 [tool.importlinter]

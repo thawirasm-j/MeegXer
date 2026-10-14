@@ -25,6 +25,14 @@ uv run meegxer nodes            # installed nodes
 uv run meegxer run pipeline.json --input sub-01.set --output sub-01_clean.set
 ```
 
+Run live in the headless daemon and control it (see `spec/control-api.md`):
+
+```bash
+uv run meegxer daemon --pipeline live.json --start   # terminal 1
+uv run meegxer status                                # terminal 2
+uv run meegxer set hp low=0.5
+```
+
 | Package | Role |
 |---|---|
 | `packages/meegxer-core` | headless engine (no GUI) |

@@ -14,6 +14,7 @@ instead of -3 dB.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import ClassVar, Literal, cast
 
 import numpy as np
@@ -53,6 +54,40 @@ def _check_band(name: str, freq: float, sfreq: float) -> float:
     return freq
 
 
+@lru_cache(maxsize=256)
+def _butter_sos(
+    kind: str, order: int, low: float, high: float, sfreq: float
+) -> SosArray:
+    """Designs are pure functions of the parameters, so they are memoised; the
+    real-time scheduler would otherwise redesign the filter on every block."""
+    btype = cast(Literal["highpass", "lowpass", "bandpass", "bandstop"], kind)
+    cutoff: float | list[float]
+    if kind == "highpass":
+        cutoff = _check_band("low", low, sfreq)
+    elif kind == "lowpass":
+        cutoff = _check_band("high", high, sfreq)
+    else:
+        cutoff = [_check_band("low", low, sfreq), _check_band("high", high, sfreq)]
+        if low >= high:
+            raise ValueError(f"low ({low} Hz) must be below high ({high} Hz)")
+    sos: SosArray = signal.butter(order, cutoff, btype=btype, fs=sfreq, output="sos")
+    return sos
+
+
+@lru_cache(maxsize=256)
+def _notch_sos(freq: float, quality: float, harmonics: int, sfreq: float) -> SosArray:
+    base = _check_band("freq", freq, sfreq)
+    sections = []
+    for k in range(1, harmonics + 1):
+        f = base * k
+        if f >= sfreq / 2:
+            break
+        b, a = signal.iirnotch(f, quality, fs=sfreq)
+        sections.append(signal.tf2sos(b, a))
+    sos: SosArray = np.vstack(sections)
+    return sos
+
+
 class IIRFilter(Processor):
     """Butterworth high-pass, low-pass, band-pass or band-stop."""
 
@@ -75,22 +110,14 @@ class IIRFilter(Processor):
 
     @staticmethod
     def design(params: Params, sfreq: float) -> SosArray:
-        kind = cast(
-            Literal["highpass", "lowpass", "bandpass", "bandstop"], str(params["kind"])
+        sos = _butter_sos(
+            str(params["kind"]),
+            int(params["order"]),
+            float(params["low"]),
+            float(params["high"]),
+            sfreq,
         )
-        order = int(params["order"])
-        low, high = float(params["low"]), float(params["high"])
-        cutoff: float | list[float]
-        if kind == "highpass":
-            cutoff = _check_band("low", low, sfreq)
-        elif kind == "lowpass":
-            cutoff = _check_band("high", high, sfreq)
-        else:
-            cutoff = [_check_band("low", low, sfreq), _check_band("high", high, sfreq)]
-            if low >= high:
-                raise ValueError(f"low ({low} Hz) must be below high ({high} Hz)")
-        sos: SosArray = signal.butter(order, cutoff, btype=kind, fs=sfreq, output="sos")
-        return sos
+        return sos.copy()  # callers may not mutate the memoised design
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
@@ -119,16 +146,12 @@ class NotchFilter(Processor):
 
     @staticmethod
     def design(params: Params, sfreq: float) -> SosArray:
-        base = _check_band("freq", float(params["freq"]), sfreq)
-        sections = []
-        for k in range(1, int(params["harmonics"]) + 1):
-            f = base * k
-            if f >= sfreq / 2:
-                break
-            b, a = signal.iirnotch(f, float(params["quality"]), fs=sfreq)
-            sections.append(signal.tf2sos(b, a))
-        sos: SosArray = np.vstack(sections)
-        return sos
+        return _notch_sos(
+            float(params["freq"]),
+            float(params["quality"]),
+            int(params["harmonics"]),
+            sfreq,
+        )
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
