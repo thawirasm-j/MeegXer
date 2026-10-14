@@ -15,10 +15,14 @@ One multipart message per probe per frame (about 30 frames per second):
    ```json
    {"protocol": "meegxer.display/0.1", "probe": "main", "seq": 41,
     "ch_labels": ["Fz", "Cz"], "sfreq": 500.0,
-    "start_bin": 1200, "bin_size": 2, "n_bins": 8}
+    "start_bin": 1200, "bin_size": 2, "n_bins": 8, "bypassed": []}
    ```
 3. **Payload:** little-endian float32 array of shape `(2, n_channels, n_bins)`,
    C order. Row 0 is the minimum and row 1 the maximum of each bin, in volts.
+
+`bypassed` lists nodes upstream of the probe that passed this data through
+unprocessed because they were not calibrated yet (only nodes set to pass through;
+by default such nodes block instead). A viewer should mark these frames.
 
 ## Alignment
 

@@ -176,6 +176,8 @@ build still contains no runtime code.
   `advanced` params) and an advanced mode.
 - Probe viewer: Main solid, comparisons faded; overlay and difference modes; PSD view.
 - Per-stage status badges, CPU/latency/overrun meters.
+- Per-node "pass through while uncalibrated" checkbox, a clear-calibration action, and
+  a visible mark on probe views showing `bypassed` data.
 
 **Exit:** a user can build Synthetic → HP → Probe → Notch → Probe, see the 50 Hz
 line disappear in difference mode, and kill the GUI without interrupting processing.
@@ -242,3 +244,5 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | 13 | Offline filtering | Zero-phase (forward-backward) nodes; every node declares `availability` | M2 |
 | 14 | Friendly/advanced UI | Per-parameter `advanced` flag; friendly mode uses defaults | M2, M5 |
 | 15 | Bad channels | `SignalInfo.bads`; average reference `exclude`/`exclude_bads` options | M2 |
+| 16 | Calibration across restarts | Keep fitted models by default; drop explicitly (`clear_calibration`) | M3 |
+| 17 | Uncalibrated nodes | Block by default; per-node opt-in to pass through, marked `bypassed` (checkbox in M5) | M3, M5 |

@@ -1,4 +1,4 @@
-# MeegXer control API (0.2.0, unstable)
+# MeegXer control API (0.2.1, unstable)
 
 JSON-RPC 2.0 over a ZeroMQ REQ/REP socket (CLAUDE.md rule 3). The daemon binds
 `tcp://127.0.0.1:5555` by default. Every request is one JSON object; every reply is
@@ -20,11 +20,13 @@ bind it to a non-local interface only on a trusted network.
 | `list_nodes` | – | installed node manifests: `name, version, role, type, availability, requires_fit, description, live_params, inputs, outputs, params[]` (each param: `name, type, default, min, max, choices, unit, description, advanced`) |
 | `load_pipeline` | `pipeline` (see `pipeline.schema.json`) | the normalised pipeline. Refused while running, or if any node is offline-only |
 | `get_pipeline` | – | current pipeline, including live parameter changes |
-| `start` | – | status. A restart builds fresh sources and sinks from the current pipeline |
+| `start` | – | status. A restart builds fresh sources and sinks from the current pipeline and keeps fitted models (drop them with `clear_calibration`) |
 | `stop` | – | status |
 | `status` | – | see below |
 | `set_params` | `node`, `params` | the node's full parameter set after the change. Processors only while running. Parameters in the node's `live_params` keep streaming state; others restart it |
-| `calibrate` | `node`, `seconds` | status. Buffers `seconds` of the node's input, fits, then the node runs. Until then nothing passes that node |
+| `calibrate` | `node`, `seconds` | status. Buffers `seconds` of the node's input, fits, then the node runs |
+| `clear_calibration` | `node` (optional) | `{cleared, status}`: drops the fitted model of one node, or of every node when `node` is omitted |
+| `set_pass_uncalibrated` | `node`, `enabled` | status. Per-node opt-in: while the node has no valid model, pass data through unprocessed (marked as bypassed) instead of blocking |
 | `shutdown` | – | `"bye"`; the daemon exits |
 
 ## Status
@@ -44,7 +46,11 @@ bind it to a non-local interface only on a trusted network.
 ```
 
 - Node `status`: `ready`, `uncalibrated`, `calibrating`, `needs-refit` (processors), or
-  `stopped` before the first start.
+  `stopped` before the first start. Nodes that need calibration also report
+  `pass_uncalibrated`, and, while stopped, `calibrated` (whether a model is kept).
+- Without a valid model a node blocks: nothing passes it (default, rule 7). With
+  `pass_uncalibrated` the data passes unprocessed and every downstream block lists the
+  node in `bypassed`; display frames carry the same list.
 - `overruns`: blocks whose processing took longer than their duration.
 - `latency`: clock at the sinks minus the LSL timestamp of the block's last sample.
 - `source_*`: present when the source stream carries a `SAMPLE_INDEX` channel.

@@ -83,7 +83,12 @@ turn knobs, and see the effect live — on a streaming amp or on a recorded data
   LSL clock. A block overruns when its processing takes longer than its duration;
   latency is the sink-side LSL clock minus the timestamp of the block's last sample.
 - **Online calibration:** a stage that needs fitting passes nothing downstream until
-  `calibrate(node, seconds)` has buffered its input and fitted it.
+  `calibrate(node, seconds)` has buffered its input and fitted it. Per node, a user can
+  instead opt in to passing data through unprocessed while there is no valid model;
+  such data carries a `bypassed` mark (blocks and display frames) downstream.
+- **Fitted models are kept** across pipeline restarts and dropped only explicitly
+  (`clear_calibration`). Kept models are still checked: an upstream or source change
+  makes them needs-refit, and a channel or rate mismatch is refused.
 - **Specs:** control API in `spec/control-api.md`, display stream in
   `spec/display-protocol.md`.
 

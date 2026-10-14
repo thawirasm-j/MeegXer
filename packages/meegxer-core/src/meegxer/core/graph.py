@@ -145,9 +145,19 @@ class Graph:
             node_cls = registry.get(entry["node"])
             params = entry.get("params", {})
             impl: NodeImpl
+            passthrough = bool(entry.get("pass_uncalibrated", False))
             if issubclass(node_cls, Processor):
-                impl = Stage(node_cls(), params)
+                try:
+                    impl = Stage(node_cls(), params, pass_uncalibrated=passthrough)
+                except ValueError as exc:
+                    raise GraphError(
+                        f"{entry.get('id', entry['node'])}: {exc}"
+                    ) from exc
             else:
+                if passthrough:
+                    raise GraphError(
+                        f"{entry['node']}: pass_uncalibrated applies to processors only"
+                    )
                 impl = node_cls(params)
             graph.add(impl, id=entry.get("id"), input=entry.get("input"))
         return graph
@@ -166,6 +176,11 @@ class Graph:
                     "node": n.manifest.name,
                     "params": _params_of(n.impl),
                     **({"input": n.input} if n.input is not None else {}),
+                    **(
+                        {"pass_uncalibrated": True}
+                        if isinstance(n.impl, Stage) and n.impl.pass_uncalibrated
+                        else {}
+                    ),
                 }
                 for n in self._nodes.values()
             ],

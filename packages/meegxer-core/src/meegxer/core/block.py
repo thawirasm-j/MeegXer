@@ -108,12 +108,15 @@ class Block:
 
     ``sample_index`` is the absolute index of the first sample; ``timestamp`` is the
     LSL time of that sample. Per-sample times are ``timestamp + k / sfreq``.
+    ``bypassed`` lists the nodes that passed this data through unprocessed because
+    they had no valid model yet (only when that node was set to pass through).
     """
 
     data: FloatArray
     info: SignalInfo
     sample_index: int
     timestamp: float
+    bypassed: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         data = _readonly(self.data, ndim_min=2)
@@ -159,6 +162,7 @@ class Block:
             info=self.info,
             sample_index=start,
             timestamp=self.timestamp + offset / self.info.sfreq,
+            bypassed=self.bypassed,
         )
 
     def pick(self, labels: Sequence[str]) -> Block:
@@ -166,7 +170,9 @@ class Block:
         idx = match_channels(self.info.ch_labels, labels)
         bads = tuple(label for label in labels if label in self.info.bads)
         info = SignalInfo(tuple(labels), self.info.sfreq, self.info.stream_id, bads)
-        return Block(self.data[idx], info, self.sample_index, self.timestamp)
+        return Block(
+            self.data[idx], info, self.sample_index, self.timestamp, self.bypassed
+        )
 
 
 def concat_blocks(blocks: Sequence[Block]) -> Block:
@@ -186,7 +192,8 @@ def concat_blocks(blocks: Sequence[Block]) -> Block:
                 f"duplicated samples [{nxt.sample_index}, {prev.stop_index})"
             )
     data = np.concatenate([b.data for b in blocks], axis=1)
-    return Block(data, first.info, first.sample_index, first.timestamp)
+    bypassed = tuple(dict.fromkeys(n for b in blocks for n in b.bypassed))
+    return Block(data, first.info, first.sample_index, first.timestamp, bypassed)
 
 
 def align_blocks(reference: Block, other: Block) -> tuple[Block, Block]:

@@ -84,6 +84,7 @@ class DisplayFrame:
     ch_labels: tuple[str, ...]
     sfreq: float
     envelope: Envelope
+    bypassed: tuple[str, ...] = ()  # nodes this data passed through unprocessed
 
 
 def encode_frame(frame: DisplayFrame) -> list[bytes]:
@@ -97,6 +98,7 @@ def encode_frame(frame: DisplayFrame) -> list[bytes]:
         "start_bin": env.start_bin,
         "bin_size": env.bin_size,
         "n_bins": env.n_bins,
+        "bypassed": list(frame.bypassed),
     }
     payload = np.stack([env.mins, env.maxs]).astype("<f4").tobytes()
     return [frame.probe.encode(), json.dumps(header).encode(), payload]
@@ -118,7 +120,12 @@ def decode_frame(parts: Sequence[bytes]) -> DisplayFrame:
         arr[1].astype(np.float64),
     )
     return DisplayFrame(
-        header["probe"], header["seq"], tuple(header["ch_labels"]), header["sfreq"], env
+        header["probe"],
+        header["seq"],
+        tuple(header["ch_labels"]),
+        header["sfreq"],
+        env,
+        tuple(header.get("bypassed", ())),
     )
 
 

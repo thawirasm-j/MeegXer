@@ -11,7 +11,7 @@ define it.
     `type` (stream | analysis), typed `inputs`/`outputs`, `params` (float, int, bool,
     enum, string with defaults and bounds), `latency_samples`, `requires_fit`, and
     `image` for external plugins. The core ships an identical copy for validation.
-  - `pipeline.schema.json` (0.2.0): a processing graph as an ordered node list;
+  - `pipeline.schema.json` (0.2.1: per-node `pass_uncalibrated`): a processing graph as an ordered node list;
     each node's `input` names an earlier node (acyclic by construction) and defaults
     to the nearest earlier source or processor, so a plain list is a linear chain.
   - 0.2.0 also added manifest `role` (source | processor | probe | sink),
