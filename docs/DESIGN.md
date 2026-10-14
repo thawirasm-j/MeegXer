@@ -136,7 +136,7 @@ same node interface plugins use so both remain possible.
 2. Engine: DAG core with linear chain view, fit/transform + calibration, sample-index
    alignment, real-time and batch schedulers.
 3. Sterile built-ins: spectral filters, spatial filters, referencing, ASR,
-   ICA → ICLabel → wICA; features: PSD, band power, Hilbert, connectivity, complexity.
+   ICA → ICLabel; features: PSD, band power, Hilbert, connectivity, complexity.
 4. External plugin runtime + two reference plugins (Octave/EEGLAB stateful IIR
    bandpass; MNE notch or re-ref).
 5. GUI: drag-and-drop chain, probes (overlay + difference), auto-generated parameter
@@ -175,11 +175,20 @@ CLAP native plugins, installers.
 4. **Mini-PC / Raspberry Pi:** headless engine on device, optional remote GUI over a
    local connection; verify liblsl/pylsl and PySide6 on ARM64; multi-arch images; ARM CI runner.
 
-## 8. Open questions
+## 8. Settled questions
 
-- Online calibration UX: fixed calibration at session start only, or periodic refits?
-- Should v1 feature outputs feed downstream nodes (classifier, LSL feature stream) or
-  be visualization/export only?
-- wICA: existing reference implementation to treat as ground truth, or write and
-  validate against a published version?
-- Python version floor, license, latency target number.
+- **Python floor:** 3.13 (Debian 13 / Raspberry Pi OS Trixie system Python); primary
+  development on 3.14 (Ubuntu 26.04 LTS). Revisit when SPEC 0 drops 3.13 (~Oct 2027).
+  Workspace tool: uv.
+- **License:** this repository is GPL-3.0 (`LICENSE`).
+- **Online calibration UX:** one-shot calibration at session start for v1; periodic
+  refits later.
+- **Feature outputs in v1:** Features → Sink (view, export, LSL feature stream) only;
+  Features → Processor (e.g. classifiers) later.
+- **wICA:** dropped from v1 (non-standard method); may return as a plugin.
+- **Latency target:** < 150 ms end-to-end for monitoring; closed-loop BCI target set
+  when that roadmap item starts.
+- **Data and state:** float64 inside the core, float32 on the plugin wire; node state
+  must be serializable.
+- **Transports:** JSON-RPC control and display frames both over ZeroMQ (REQ/REP and
+  PUB/SUB); shared memory for same-machine display later.

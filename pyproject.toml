@@ -1,0 +1,100 @@
+# Virtual workspace root: not a package itself. Members live in packages/.
+# Sterile build = core + sterile + gui + cli; meegxer-runtime is never part of it.
+[project]
+name = "meegxer-workspace"
+version = "0.0.0"
+requires-python = ">=3.13"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+meegxer-core = { workspace = true }
+meegxer-sterile = { workspace = true }
+meegxer-runtime = { workspace = true }
+meegxer-gui = { workspace = true }
+meegxer-cli = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "meegxer-core",
+    "meegxer-sterile",
+    "meegxer-runtime",
+    "meegxer-gui",
+    "meegxer-cli",
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "import-linter>=2.1",
+    "pre-commit>=4.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+extend-exclude = [".smoke-venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "NPY", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["meegxer"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = [
+    "packages/meegxer-core/src",
+    "packages/meegxer-sterile/src",
+    "packages/meegxer-runtime/src",
+    "packages/meegxer-gui/src",
+    "packages/meegxer-cli/src",
+]
+files = ["packages/*/src", "packages/*/tests", "tests", "tools"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages", "tests"]
+addopts = ["--import-mode=importlib", "-ra"]
+
+# Architecture rules from CLAUDE.md, enforced on every CI run (lint-imports).
+[tool.importlinter]
+root_packages = [
+    "meegxer.core",
+    "meegxer.sterile",
+    "meegxer.runtime",
+    "meegxer.gui",
+    "meegxer.cli",
+]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Rule 1: core is headless (no GUI toolkit, no GUI or runtime package)"
+type = "forbidden"
+source_modules = ["meegxer.core"]
+forbidden_modules = [
+    "meegxer.gui",
+    "meegxer.runtime",
+    "meegxer.sterile",
+    "meegxer.cli",
+    "PySide6",
+    "PyQt5",
+    "PyQt6",
+    "pyqtgraph",
+]
+
+[[tool.importlinter.contracts]]
+name = "Rule 10: sterile-build packages never import the plugin runtime or Docker"
+type = "forbidden"
+source_modules = ["meegxer.core", "meegxer.sterile", "meegxer.gui", "meegxer.cli"]
+forbidden_modules = ["meegxer.runtime", "docker"]
+
+[[tool.importlinter.contracts]]
+name = "Built-ins stay headless (no GUI toolkit in sterile nodes)"
+type = "forbidden"
+source_modules = ["meegxer.sterile"]
+forbidden_modules = ["meegxer.gui", "meegxer.cli", "PySide6", "PyQt5", "PyQt6", "pyqtgraph"]

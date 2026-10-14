@@ -1,0 +1,27 @@
+# Hooks run the tool versions pinned in uv.lock (single source of truth).
+# Install once with: uv run pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format
+        language: system
+        types: [python]
+      - id: mypy
+        name: mypy
+        entry: uv run --frozen mypy
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: lint-imports
+        name: architecture contracts (import-linter)
+        entry: uv run --frozen lint-imports
+        language: system
+        pass_filenames: false
+        types: [python]

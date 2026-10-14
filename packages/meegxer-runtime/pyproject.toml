@@ -1,0 +1,22 @@
+[project]
+name = "meegxer-runtime"
+version = "0.0.0"
+description = "Containerized plugin runtime and SDKs (research builds only, never in the sterile build)."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+dependencies = [
+    "meegxer-core",
+    "docker>=7.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "meegxer.runtime"
+
+[tool.uv.sources]
+meegxer-core = { workspace = true }

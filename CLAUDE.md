@@ -5,7 +5,7 @@ Voicemeeter/VST-style live and offline EEG pipelines, with built-in audited
 processing nodes and containerized research plugins (Octave/EEGLAB or MNE-Python).
 
 Status: pre-MVP. Full design and rationale: `docs/DESIGN.md` — read it before
-making architectural changes.
+making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
 
 ## Architecture rules (do not break these)
 
@@ -21,8 +21,9 @@ making architectural changes.
    single chain with probe taps. A node editor comes later on the same model.
 6. **Typed ports:** Signal (time series), Features (windowed), Events (markers/commands).
    **Node roles:** Source, Processor, Probe, Sink.
-7. **Fit/transform contract** for every processor: `fit(calibration) -> model`,
-   `transform(block, model, state) -> block, state`. Upstream changes mark downstream
+7. **Fit/transform contract** for every processor: `fit(calibration, params) -> model`,
+   `transform(block, model, state, params) -> block, state, events` (events may be
+   empty; full manifest in `docs/DESIGN.md` §3.3). Upstream changes mark downstream
    models "needs refit"; never silently reuse a stale model.
 8. **Align by sample index, match channels by label.** Every block carries a sample
    index and LSL timestamp. Probes overlay by index, never by arrival time.
@@ -39,7 +40,7 @@ making architectural changes.
 | Package | Contents |
 |---|---|
 | `meegxer-core` | engine, graph, schedulers, plugin spec, I/O, control API (no GUI) |
-| `meegxer-sterile` | audited built-ins: filters, re-ref, ASR, ICA/ICLabel/wICA, features, action sinks |
+| `meegxer-sterile` | audited built-ins: filters, re-ref, ASR, ICA/ICLabel, features, action sinks |
 | `meegxer-runtime` | Docker plugin runtime + Python/Octave SDKs (research builds only) |
 | `meegxer-gui` | PySide6 + pyqtgraph client |
 | `meegxer-cli` | headless runs, batch jobs, Pi deployment |
@@ -48,9 +49,11 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 
 ## Stack
 
-- Python first for everything. Only the core is a candidate for a later Rust rewrite,
+- Python first for everything; floor is Python 3.13 (develop on 3.14;
+  CI tests 3.13 + 3.14; revisit the floor when SPEC 0 drops 3.13, ~Oct 2027).
+  Monorepo managed as a uv workspace. Only the core is a candidate for a later Rust rewrite,
   behind the same protocol.
-- Core: numpy, pylsl, pyzmq. Built-ins: MNE, SciPy, mne-icalabel, asrpy/meegkit,
+- Core: numpy, pylsl, pyzmq (JSON-RPC control and display both over ZeroMQ). Built-ins: MNE, SciPy, mne-icalabel, asrpy/meegkit,
   mne-connectivity, antropy. GUI: PySide6, pyqtgraph. CLI: Typer or Click.
 - I/O: BIDS (mne-bids), EDF/BDF, EEGLAB .set in; .set (eeglabio), EDF, BIDS-derivatives out.
 - Performance escalation order: vectorize (preallocated ring buffers, no per-sample
@@ -59,6 +62,17 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 ## Benchmarks
 
 - Online: 16 ch / 500 Hz. Offline/batch: 64 ch / 1 kHz.
+- The streaming stability acceptance test (`docs/DESIGN.md` §6.2) intentionally runs at
+  the batch size (64 ch / 1 kHz) as headroom over the online target.
+
+## Commands
+
+- `uv sync --all-packages`, then `uv run pytest`, `uv run ruff check .`,
+  `uv run ruff format --check .`, `uv run mypy`, `uv run lint-imports`.
+- `uv run python tools/check_sterile.py`: sterile wheels contain no runtime (rule 10).
+- `python tools/smoke_deps.py --python 3.14`: planned third-party deps install/import.
+- Architecture rules 1 and 10 are import-linter contracts in the root `pyproject.toml`;
+  `tests/test_architecture.py` proves each contract catches a violation.
 
 ## Working style
 
