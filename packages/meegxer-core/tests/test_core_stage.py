@@ -31,7 +31,7 @@ def manifest(
 ) -> Manifest:
     return Manifest.from_dict(
         {
-            "spec_version": "0.1.0",
+            "spec_version": "0.2.0",
             "name": f"test.{name}",
             "version": "0.1.0",
             "type": "stream" if output == "signal" else "analysis",
@@ -274,3 +274,33 @@ def test_fit_on_processor_without_fit_is_refused() -> None:
         stage.fit(signal(5), SOURCE_FP)
     with pytest.raises(RuntimeError):
         stage.begin_calibration()
+
+
+class LiveSmooth(Smooth):
+    manifest: ClassVar[Manifest] = Manifest.from_dict(
+        {
+            "spec_version": "0.2.0",
+            "name": "test.live_smooth",
+            "version": "0.1.0",
+            "type": "stream",
+            "inputs": [{"name": "in", "type": "signal"}],
+            "outputs": [{"name": "out", "type": "signal"}],
+            "params": [
+                {"name": "alpha", "type": "float", "default": 0.1},
+                {"name": "mode", "type": "string", "default": "a"},
+            ],
+            "live_params": ["alpha"],
+        }
+    )
+
+
+def test_live_params_keep_state() -> None:
+    stage = Stage(LiveSmooth())
+    stage.transform(signal(10), SOURCE_FP)
+    kept = stage.state
+    stage.set_params(alpha=0.5)
+    assert stage.state is kept  # live parameter: state carries over
+    stage.set_params(alpha=0.5)
+    assert stage.state is kept  # no change at all
+    stage.set_params(alpha=0.2, mode="b")
+    assert stage.state is None  # a non-live parameter changed

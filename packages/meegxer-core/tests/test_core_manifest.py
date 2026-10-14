@@ -11,7 +11,7 @@ from meegxer.core.ports import PortType
 REPO = Path(__file__).resolve().parents[3]
 
 VALID: dict[str, Any] = {
-    "spec_version": "0.1.0",
+    "spec_version": "0.2.0",
     "name": "meegxer.sterile.iir_bandpass",
     "version": "1.0.0",
     "type": "stream",
@@ -149,3 +149,38 @@ def test_resolve_params_defaults_and_overrides() -> None:
 def test_resolve_params_rejects_bad_values(overrides: dict[str, object]) -> None:
     with pytest.raises(ParamError):
         Manifest.from_dict(VALID).resolve_params(overrides)
+
+
+def role_manifest(role: str, inputs: int, outputs: int, **extra: Any) -> dict[str, Any]:
+    return with_changes(
+        role=role,
+        inputs=[{"name": f"i{k}", "type": "signal"} for k in range(inputs)],
+        outputs=[{"name": f"o{k}", "type": "signal"} for k in range(outputs)],
+        **extra,
+    )
+
+
+@pytest.mark.parametrize(
+    ("role", "inputs", "outputs"),
+    [("source", 0, 1), ("processor", 1, 1), ("probe", 1, 0), ("sink", 1, 0)],
+)
+def test_roles_with_valid_ports(role: str, inputs: int, outputs: int) -> None:
+    assert Manifest.from_dict(role_manifest(role, inputs, outputs)).role == role
+
+
+@pytest.mark.parametrize(
+    ("role", "inputs", "outputs"),
+    [("source", 1, 1), ("source", 0, 0), ("processor", 0, 1), ("probe", 1, 1),
+     ("sink", 0, 0), ("probe", 2, 0)],
+)  # fmt: skip
+def test_roles_with_invalid_ports(role: str, inputs: int, outputs: int) -> None:
+    with pytest.raises(ManifestError):
+        Manifest.from_dict(role_manifest(role, inputs, outputs))
+
+
+def test_live_params_must_exist_and_fit_only_for_processors() -> None:
+    assert Manifest.from_dict(with_changes(live_params=["low"])).live_params == {"low"}
+    with pytest.raises(ManifestError, match="live_params"):
+        Manifest.from_dict(with_changes(live_params=["nope"]))
+    with pytest.raises(ManifestError, match="fitting"):
+        Manifest.from_dict(role_manifest("sink", 1, 0, requires_fit=True))

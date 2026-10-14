@@ -7,10 +7,15 @@ define it.
 - **Versioning:** semver, recorded in `VERSION`, independent of package versions.
   `0.x` means unstable: any minor bump may break compatibility.
 - **Contents:**
-  - `manifest.schema.json` (0.1.0): node manifest: identity (`name`, `version`),
+  - `manifest.schema.json` (0.2.0): node manifest: identity (`name`, `version`),
     `type` (stream | analysis), typed `inputs`/`outputs`, `params` (float, int, bool,
     enum, string with defaults and bounds), `latency_samples`, `requires_fit`, and
     `image` for external plugins. The core ships an identical copy for validation.
+  - `pipeline.schema.json` (0.2.0): a processing graph as an ordered node list;
+    each node's `input` names an earlier node (acyclic by construction) and defaults
+    to the nearest earlier source or processor, so a plain list is a linear chain.
+  - 0.2.0 also added manifest `role` (source | processor | probe | sink) and
+    `live_params` (parameters that change without resetting streaming state).
 - **Planned:**
   - `control-api.md`: JSON-RPC methods between core and clients. Milestone M3.
   - `plugin-protocol.md`: framed stdin/stdout protocol for containerized plugins.

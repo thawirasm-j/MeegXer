@@ -85,6 +85,13 @@ status propagation, manifest validation.
 
 **Goal:** first end-to-end pipeline, offline.
 
+**Status:** implemented. `meegxer.core`: graph + pipeline format, entry-point registry,
+node-major batch scheduler, per-node cache (memory/directory), synthetic/file/BIDS
+sources, memory probe, .set/EDF/feature-TSV sinks, `conformance` (test 1 harness).
+`meegxer.sterile`: IIR filter, notch, re-reference (test 1 passes for all three).
+CLI: `meegxer run`, `meegxer nodes`. Spec 0.2.0 (manifest `role`, `live_params`;
+`pipeline.schema.json`).
+
 - Graph (DAG) with topological execution; linear-chain builder on top (rule 5).
 - Batch scheduler: whole recording, optionally fed block-wise to prove the contract.
 - Sources: synthetic generator (pink noise + alpha bursts + 50 Hz + SSVEP sine),

@@ -2,15 +2,22 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/thawirasm-j/MeegXer/spec/manifest.schema.json",
   "title": "MeegXer node manifest",
-  "description": "Declares a processing node: identity, ports, parameters and fit requirements. Spec version 0.1.0 (unstable).",
+  "description": "Declares a node: identity, role, ports, parameters and fit requirements. Spec version 0.2.0 (unstable).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["spec_version", "name", "version", "type", "inputs", "outputs"],
+  "required": [
+    "spec_version",
+    "name",
+    "version",
+    "type",
+    "inputs",
+    "outputs"
+  ],
   "properties": {
     "spec_version": {
       "description": "Version of this specification the manifest targets.",
       "type": "string",
-      "pattern": "^0\\.1\\.[0-9]+$"
+      "pattern": "^0\\.2\\.[0-9]+$"
     },
     "name": {
       "description": "Globally unique node identifier, lowercase and dotted.",
@@ -23,18 +30,51 @@
       "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
     },
     "type": {
-      "description": "stream: block in, block out at the same rate. analysis: windowed input to Features/Events at a lower rate.",
-      "enum": ["stream", "analysis"]
+      "description": "stream: block in, block out at the same rate. analysis: windowed input to Features/Events at a lower rate. Sources, probes and sinks use stream.",
+      "enum": [
+        "stream",
+        "analysis"
+      ]
     },
-    "description": {"type": "string"},
+    "role": {
+      "description": "Node role (CLAUDE.md rule 6).",
+      "enum": [
+        "source",
+        "processor",
+        "probe",
+        "sink"
+      ],
+      "default": "processor"
+    },
+    "description": {
+      "type": "string"
+    },
     "image": {
       "description": "Container image reference. Present only for external plugins.",
       "type": "string",
       "minLength": 1
     },
-    "inputs": {"type": "array", "items": {"$ref": "#/$defs/port"}, "minItems": 1},
-    "outputs": {"type": "array", "items": {"$ref": "#/$defs/port"}, "minItems": 1},
-    "params": {"type": "array", "items": {"$ref": "#/$defs/param"}, "default": []},
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/port"
+      },
+      "minItems": 0
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/port"
+      },
+      "minItems": 0
+    },
+    "params": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/param"
+      },
+      "default": []
+    },
     "latency_samples": {
       "description": "Group delay the node adds, in samples.",
       "type": "integer",
@@ -45,75 +85,146 @@
       "description": "True if transform needs a model produced by fit on calibration data.",
       "type": "boolean",
       "default": false
+    },
+    "live_params": {
+      "description": "Parameters that may change while streaming without resetting the node's state.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "default": []
     }
   },
   "$defs": {
     "port": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "type"],
+      "required": [
+        "name",
+        "type"
+      ],
       "properties": {
-        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
-        "type": {"enum": ["signal", "features", "events"]}
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "type": {
+          "enum": [
+            "signal",
+            "features",
+            "events"
+          ]
+        }
       }
     },
     "param": {
       "type": "object",
-      "required": ["name", "type", "default"],
+      "required": [
+        "name",
+        "type",
+        "default"
+      ],
       "properties": {
-        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
-        "description": {"type": "string"},
-        "unit": {"type": "string"}
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        }
       },
       "oneOf": [
         {
           "properties": {
-            "type": {"const": "float"},
-            "default": {"type": "number"},
-            "min": {"type": "number"},
-            "max": {"type": "number"},
-            "name": true, "description": true, "unit": true
+            "type": {
+              "const": "float"
+            },
+            "default": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "name": true,
+            "description": true,
+            "unit": true
           },
           "additionalProperties": false
         },
         {
           "properties": {
-            "type": {"const": "int"},
-            "default": {"type": "integer"},
-            "min": {"type": "integer"},
-            "max": {"type": "integer"},
-            "name": true, "description": true, "unit": true
+            "type": {
+              "const": "int"
+            },
+            "default": {
+              "type": "integer"
+            },
+            "min": {
+              "type": "integer"
+            },
+            "max": {
+              "type": "integer"
+            },
+            "name": true,
+            "description": true,
+            "unit": true
           },
           "additionalProperties": false
         },
         {
           "properties": {
-            "type": {"const": "bool"},
-            "default": {"type": "boolean"},
-            "name": true, "description": true
+            "type": {
+              "const": "bool"
+            },
+            "default": {
+              "type": "boolean"
+            },
+            "name": true,
+            "description": true
           },
           "additionalProperties": false
         },
         {
           "properties": {
-            "type": {"const": "enum"},
-            "default": {"type": "string"},
+            "type": {
+              "const": "enum"
+            },
+            "default": {
+              "type": "string"
+            },
             "choices": {
               "type": "array",
-              "items": {"type": "string"},
+              "items": {
+                "type": "string"
+              },
               "minItems": 1,
               "uniqueItems": true
             },
-            "name": true, "description": true
+            "name": true,
+            "description": true
           },
-          "required": ["choices"],
+          "required": [
+            "choices"
+          ],
           "additionalProperties": false
         },
         {
           "properties": {
-            "type": {"const": "string"},
-            "default": {"type": "string"},
-            "name": true, "description": true
+            "type": {
+              "const": "string"
+            },
+            "default": {
+              "type": "string"
+            },
+            "name": true,
+            "description": true
           },
           "additionalProperties": false
         }

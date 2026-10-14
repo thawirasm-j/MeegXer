@@ -17,6 +17,11 @@ dependencies = [
     "mne>=1.8",
 ]
 
+[project.entry-points."meegxer.nodes"]
+"meegxer.sterile.iir_filter" = "meegxer.sterile.filters:IIRFilter"
+"meegxer.sterile.notch" = "meegxer.sterile.filters:NotchFilter"
+"meegxer.sterile.rereference" = "meegxer.sterile.reference:Rereference"
+
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]
 build-backend = "uv_build"
