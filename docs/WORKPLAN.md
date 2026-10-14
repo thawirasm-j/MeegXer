@@ -159,7 +159,11 @@ plugin index + node provider, conformance suite, `meegxer-plugin` CLI); Python S
 plugins `examples.average_reference` (Python) and `examples.octave_iir_bandpass`
 (Octave), both conformant inside the Docker sandbox. The reference Octave image does
 not include EEGLAB yet (the IIR filter does not need it); a pinned-EEGLAB base image is
-a follow-up.
+a follow-up. Exit run (acceptance tests 2 and 3 with both reference plugins in the live
+chain, Docker, 64 ch / 1 kHz, 30 min): 0 gaps and 0 duplicates, 460 overruns in 163k
+blocks (0.28%, steady rate), daemon latency p95 8.9 ms, end-to-end p95 18.5 ms
+(max 632 ms). Mean plugin cost per block: 1.2 ms (Python), 3.2 ms (Octave). Report:
+`docs/results/m4-stability-30min-two-plugins.json`.
 
 - `spec/plugin-protocol.md` + schemas: framing (header + float32 ch×samples),
   handshake (manifest, spec version), fit/transform/param messages, error and
