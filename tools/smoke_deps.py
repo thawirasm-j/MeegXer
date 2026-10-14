@@ -29,7 +29,7 @@ DEPENDENCIES: list[tuple[str, str, bool]] = [
     ("pyqtgraph", "pyqtgraph", True),
     ("typer", "typer", True),
     ("docker", "docker", True),
-    ("jsonschema", "jsonschema", False),
+    ("jsonschema", "jsonschema", True),
     ("mne-bids", "mne_bids", False),
     ("eeglabio", "eeglabio", False),
     ("mne-icalabel", "mne_icalabel", False),

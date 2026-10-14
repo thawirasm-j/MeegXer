@@ -1,0 +1,281 @@
+"""Data blocks that flow between nodes, plus label and sample-index helpers.
+
+Every block is aligned by absolute sample index and carries the LSL timestamp of
+its first sample (CLAUDE.md rule 8). Channels are matched by label, never by
+position. Block arrays are read-only views: a processor must return new data
+rather than modify its input, because probes may hold the same block.
+"""
+
+from __future__ import annotations
+
+import itertools
+import math
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from types import MappingProxyType
+
+import numpy as np
+import numpy.typing as npt
+
+FloatArray = npt.NDArray[np.float64]
+IndexArray = npt.NDArray[np.intp]
+type JSONValue = (
+    str | int | float | bool | list[JSONValue] | dict[str, JSONValue] | None
+)
+
+
+class ChannelMismatchError(ValueError):
+    """Channel labels are missing, duplicated, or differ between blocks."""
+
+
+class SampleGapError(ValueError):
+    """Blocks are not contiguous: samples are missing between them."""
+
+
+class SampleOverlapError(ValueError):
+    """Blocks are not contiguous: samples are duplicated between them."""
+
+
+def _readonly(array: npt.ArrayLike, ndim_min: int) -> FloatArray:
+    data = np.asarray(array, dtype=np.float64)
+    if data.ndim < ndim_min:
+        raise ValueError(f"expected at least {ndim_min} dimension(s), got {data.ndim}")
+    view = data.view()
+    view.flags.writeable = False
+    return view
+
+
+def _check_index(name: str, value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int | np.integer):
+        raise TypeError(f"{name} must be an integer, got {type(value).__name__}")
+    if value < 0:
+        raise ValueError(f"{name} must be >= 0, got {value}")
+    return int(value)
+
+
+@dataclass(frozen=True, slots=True)
+class SignalInfo:
+    """Static description of a Signal stream."""
+
+    ch_labels: tuple[str, ...]
+    sfreq: float
+    stream_id: str = ""
+
+    def __post_init__(self) -> None:
+        labels = tuple(self.ch_labels)
+        object.__setattr__(self, "ch_labels", labels)
+        if not labels:
+            raise ChannelMismatchError("a signal needs at least one channel")
+        if any(not isinstance(label, str) or not label for label in labels):
+            raise ChannelMismatchError("channel labels must be non-empty strings")
+        duplicates = sorted({label for label in labels if labels.count(label) > 1})
+        if duplicates:
+            raise ChannelMismatchError(f"duplicate channel labels: {duplicates}")
+        if not math.isfinite(self.sfreq) or self.sfreq <= 0:
+            raise ValueError(f"sfreq must be positive and finite, got {self.sfreq}")
+
+    @property
+    def n_channels(self) -> int:
+        return len(self.ch_labels)
+
+
+def match_channels(available: Sequence[str], wanted: Sequence[str]) -> IndexArray:
+    """Return indices into ``available`` for each label in ``wanted``, in order."""
+    position = {label: i for i, label in enumerate(available)}
+    if len(position) != len(available):
+        raise ChannelMismatchError("available channel labels are not unique")
+    if len(set(wanted)) != len(wanted):
+        raise ChannelMismatchError("requested channel labels are not unique")
+    missing = [label for label in wanted if label not in position]
+    if missing:
+        raise ChannelMismatchError(f"channels not found: {missing}")
+    return np.array([position[label] for label in wanted], dtype=np.intp)
+
+
+@dataclass(frozen=True, eq=False, slots=True)
+class Block:
+    """A chunk of a Signal stream: ``data`` is (n_channels, n_samples), float64.
+
+    ``sample_index`` is the absolute index of the first sample; ``timestamp`` is the
+    LSL time of that sample. Per-sample times are ``timestamp + k / sfreq``.
+    """
+
+    data: FloatArray
+    info: SignalInfo
+    sample_index: int
+    timestamp: float
+
+    def __post_init__(self) -> None:
+        data = _readonly(self.data, ndim_min=2)
+        if data.ndim != 2:
+            raise ValueError(f"signal data must be 2-D, got shape {data.shape}")
+        if data.shape[0] != self.info.n_channels:
+            raise ChannelMismatchError(
+                f"data has {data.shape[0]} rows but info has "
+                f"{self.info.n_channels} channel labels"
+            )
+        if not math.isfinite(self.timestamp):
+            raise ValueError("timestamp must be finite")
+        object.__setattr__(self, "data", data)
+        object.__setattr__(
+            self, "sample_index", _check_index("sample_index", self.sample_index)
+        )
+
+    @property
+    def n_samples(self) -> int:
+        return int(self.data.shape[1])
+
+    @property
+    def stop_index(self) -> int:
+        """Absolute index one past the last sample."""
+        return self.sample_index + self.n_samples
+
+    def sample_indices(self) -> npt.NDArray[np.int64]:
+        return np.arange(self.sample_index, self.stop_index, dtype=np.int64)
+
+    def timestamps(self) -> FloatArray:
+        return self.timestamp + np.arange(self.n_samples) / self.info.sfreq
+
+    def slice(self, start: int, stop: int) -> Block:
+        """Return samples ``[start, stop)`` by absolute sample index."""
+        if not self.sample_index <= start <= stop <= self.stop_index:
+            raise IndexError(
+                f"[{start}, {stop}) is outside block [{self.sample_index}, "
+                f"{self.stop_index})"
+            )
+        offset = start - self.sample_index
+        return Block(
+            data=self.data[:, offset : offset + stop - start],
+            info=self.info,
+            sample_index=start,
+            timestamp=self.timestamp + offset / self.info.sfreq,
+        )
+
+    def pick(self, labels: Sequence[str]) -> Block:
+        """Return the given channels, in the given order."""
+        idx = match_channels(self.info.ch_labels, labels)
+        info = SignalInfo(tuple(labels), self.info.sfreq, self.info.stream_id)
+        return Block(self.data[idx], info, self.sample_index, self.timestamp)
+
+
+def concat_blocks(blocks: Sequence[Block]) -> Block:
+    """Join contiguous blocks of one stream; gaps and overlaps raise."""
+    if not blocks:
+        raise ValueError("no blocks to concatenate")
+    first = blocks[0]
+    for prev, nxt in itertools.pairwise(blocks):
+        if nxt.info != first.info:
+            raise ChannelMismatchError("blocks come from streams with different info")
+        if nxt.sample_index > prev.stop_index:
+            raise SampleGapError(
+                f"missing samples [{prev.stop_index}, {nxt.sample_index})"
+            )
+        if nxt.sample_index < prev.stop_index:
+            raise SampleOverlapError(
+                f"duplicated samples [{nxt.sample_index}, {prev.stop_index})"
+            )
+    data = np.concatenate([b.data for b in blocks], axis=1)
+    return Block(data, first.info, first.sample_index, first.timestamp)
+
+
+def align_blocks(reference: Block, other: Block) -> tuple[Block, Block]:
+    """Overlay two blocks by sample index and channel label.
+
+    Returns both blocks cut to their common sample range and to the channels they
+    share, in ``reference`` order. Used by probes to compare taps.
+    """
+    if reference.info.sfreq != other.info.sfreq:
+        raise ValueError("cannot align blocks with different sampling rates")
+    start = max(reference.sample_index, other.sample_index)
+    stop = min(reference.stop_index, other.stop_index)
+    if start >= stop:
+        raise IndexError("blocks share no samples")
+    other_labels = set(other.info.ch_labels)
+    common = [label for label in reference.info.ch_labels if label in other_labels]
+    if not common:
+        raise ChannelMismatchError("blocks share no channel labels")
+    return (
+        reference.slice(start, stop).pick(common),
+        other.slice(start, stop).pick(common),
+    )
+
+
+type Coordinate = tuple[str, ...] | tuple[float, ...]
+
+
+@dataclass(frozen=True, eq=False, slots=True)
+class FeatureBlock:
+    """Windowed features, e.g. PSD (channel x frequency) or band power.
+
+    ``dims`` names each axis of ``data``; ``coords`` optionally labels the entries
+    of a dimension (``coords["channel"]`` must hold channel labels). ``window`` is
+    the source sample range ``[start, stop)`` the features were computed from.
+    """
+
+    data: FloatArray
+    dims: tuple[str, ...]
+    window: tuple[int, int]
+    timestamp: float
+    coords: Mapping[str, Coordinate] = field(default_factory=dict)
+    stream_id: str = ""
+
+    def __post_init__(self) -> None:
+        data = _readonly(self.data, ndim_min=1)
+        dims = tuple(self.dims)
+        if len(dims) != data.ndim or len(set(dims)) != len(dims):
+            raise ValueError(f"dims {dims} must name each of {data.ndim} axes once")
+        for dim, values in self.coords.items():
+            if dim not in dims:
+                raise ValueError(f"coordinate for unknown dimension {dim!r}")
+            if len(values) != data.shape[dims.index(dim)]:
+                raise ValueError(f"coordinate {dim!r} length does not match data")
+        start, stop = self.window
+        _check_index("window start", start)
+        if stop < start:
+            raise ValueError("window stop must be >= start")
+        object.__setattr__(self, "data", data)
+        object.__setattr__(self, "dims", dims)
+        coords = {k: tuple(v) for k, v in self.coords.items()}
+        object.__setattr__(self, "coords", MappingProxyType(coords))
+
+
+@dataclass(frozen=True, slots=True)
+class Event:
+    """A marker or command at an absolute sample index."""
+
+    sample_index: int
+    label: str
+    duration: int = 0
+    payload: Mapping[str, JSONValue] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _check_index("sample_index", self.sample_index)
+        _check_index("duration", self.duration)
+        if not self.label:
+            raise ValueError("event label must be non-empty")
+        object.__setattr__(self, "payload", MappingProxyType(dict(self.payload)))
+
+
+@dataclass(frozen=True, slots=True)
+class EventBlock:
+    """Events of one stream covering samples ``[start_index, stop_index)``.
+
+    The covered range is explicit so a consumer can tell "no events here" apart
+    from "not yet seen".
+    """
+
+    events: tuple[Event, ...]
+    start_index: int
+    stop_index: int
+    stream_id: str = ""
+
+    def __post_init__(self) -> None:
+        events = tuple(sorted(self.events, key=lambda e: e.sample_index))
+        _check_index("start_index", self.start_index)
+        if self.stop_index < self.start_index:
+            raise ValueError("stop_index must be >= start_index")
+        start, stop = self.start_index, self.stop_index
+        outside = [e for e in events if not start <= e.sample_index < stop]
+        if outside:
+            raise IndexError(f"{len(outside)} event(s) fall outside the covered range")
+        object.__setattr__(self, "events", events)

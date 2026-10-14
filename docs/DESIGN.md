@@ -71,12 +71,19 @@ turn knobs, and see the effect live — on a streaming amp or on a recorded data
 
 ### 3.3 Processor contract
 ```
-manifest:  name, version, type (stream | analysis), image (external only),
-           params [{name, type, min, max, default, unit}],
+manifest:  spec_version, name, version, type (stream | analysis), image (external only),
+           inputs/outputs [{name, type: signal | features | events}],
+           params [{name, type, min, max, default, unit, choices}],
            latency_samples, requires_fit (bool)
 fit(calibration_data | dataset, params)       -> model
 transform(block, model, state, params)        -> block_out, state, events
 ```
+- Schema: `spec/manifest.schema.json`. `state` is `None` on the first block of a
+  stream and after a parameter change or refit; the processor initialises it then.
+  Model and state must be serializable (arrays, scalars, strings, lists, dicts).
+- Staleness is derived from fingerprints (node identity, params, upstream
+  fingerprint and model content), so a model fitted under different upstream
+  conditions reports needs-refit and refuses to run.
 - **Stream processors:** block in → block out at the same rate (filters with carried
   state, re-ref, ASR apply, ICA apply).
 - **Analysis processors:** windowed input → Features/Events at a lower rate (PSD,

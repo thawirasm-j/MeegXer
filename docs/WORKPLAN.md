@@ -58,6 +58,9 @@ fail on a deliberately bad import.
 
 **Goal:** the data model and node interface everything else builds on.
 
+**Status:** implemented in `meegxer.core` (block, ports, serialization, manifest,
+node, stage, ringbuffer); spec 0.1.0. Source/Probe/Sink ABCs are provisional until M2.
+
 - `Block`: `data (n_ch × n_samp)`, `sfreq`, `ch_labels`, `sample_index` (int64, first
   sample), `lsl_timestamps` (or first-timestamp + sfreq), `stream_id`.
 - `FeatureBlock`, `EventBlock` (sample-indexed markers/commands with payload).
