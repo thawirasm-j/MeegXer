@@ -183,14 +183,22 @@ build still contains no runtime code.
 
 **Goal:** the "mixer" experience, as a pure client of M3's APIs.
 
-- PySide6 + pyqtgraph client connecting via control + display channels only.
-- Linear drag-and-drop chain; insert-anywhere probes.
-- Auto-generated parameter controls from manifests, with a friendly mode (hides
-  `advanced` params) and an advanced mode.
-- Probe viewer: Main solid, comparisons faded; overlay and difference modes; PSD view.
-- Per-stage status badges, CPU/latency/overrun meters.
+- PySide6 + pyqtgraph client connecting via control + display channels only
+  (layout and behaviour: `docs/DESIGN.md` §3.7).
+- Horizontal chain of strips: + Add strip (end and gaps), drag to reorder,
+  insert-anywhere probe taps. Strips show name, status LED and parameters: crucial
+  (`primary`) ones in friendly mode, up to 3 user-picked ones in advanced mode.
+- Auto-generated parameter controls from manifests in the inspector, with a friendly
+  mode (hides `advanced` params) and an advanced mode.
+- Mode set by the Input strip (LSL = live, file/BIDS = offline); incompatible strips
+  reddish and blocking; adaptable band-pass (`phase`: auto/causal/zero).
+- Signal view: single trace area, channel selector (all by default), colour wheel
+  channel colours, Main thick / comparisons faded; overlay, difference and spectrum
+  modes; stacked traces in a separate window.
+- Per-stage status LEDs, CPU/latency/overrun meters.
 - Per-node "pass through while uncalibrated" checkbox, a clear-calibration action, and
   a visible mark on probe views showing `bypassed` data.
+- Themes from colour tokens; dark (default) and light.
 
 **Exit:** a user can build Synthetic → HP → Probe → Notch → Probe, see the 50 Hz
 line disappear in difference mode, and kill the GUI without interrupting processing.
@@ -262,3 +270,8 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | 18 | Plugin state ownership | Host owns model and state; workers are restartable; models loaded once by hash | M4 |
 | 19 | Container engine access | Docker/Podman CLI (no Docker SDK dependency); locked-down `run` flags | M4 |
 | 20 | Unsandboxed plugins | Development and tests only, behind `MEEGXER_ALLOW_UNSANDBOXED=1` | M4 |
+| 21 | GUI chain layout | Horizontal strips, one per graph node (reused by the later node editor) | M5 |
+| 22 | Strip parameters | Friendly: crucial params (manifest `primary`); advanced: up to 3 user-picked, saved in the pipeline | M5 |
+| 23 | Live/offline in the GUI | Set by the Input strip; incompatible strips reddish and blocking; only the band-pass adapts (`phase` auto) | M5 |
+| 24 | Signal view and colours | Single trace area (all channels by default) + stacked window; colour wheel on the scalp (4 anchors, white at Cz) | M5 |
+| 25 | Themes | Colour-token themes; dark default, light included | M5 |

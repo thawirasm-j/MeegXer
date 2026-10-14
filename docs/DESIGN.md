@@ -162,6 +162,47 @@ transform(block, model, state, params)        -> block_out, state, events
   serial (pyserial), OSC/MIDI. Trusted host-side only; user maps Events → actions.
   Safety: arm/disarm toggle, confidence thresholds, dwell time.
 
+### 3.7 GUI (v1)
+The GUI is a client of the daemon (control API + display stream); closing or crashing
+it never interrupts processing.
+
+- **Layout:** top bar (transport, friendly/advanced toggle, CPU/latency/overrun
+  meters, theme); signal view; a horizontal chain of strips; inspector and log below.
+- **Strips:** one strip per graph node, left to right (the later node editor reuses
+  strips as its nodes). A strip shows its name, a status LED (uncalibrated,
+  calibrating, ready, needs-refit, bypassed) and parameters:
+  - friendly mode: the node's crucial parameters (manifest `primary`; if none, the
+    first non-advanced parameter);
+  - advanced mode: up to 3 parameters the user picks per strip, saved in the
+    pipeline file. The inspector always shows every parameter.
+  - **+ Add strip** at the end of the chain and in each gap; strips drag to before or
+    after any other strip. Probe taps sit between strips.
+- **Mode comes from the Input strip:** an LSL source means live, a file or BIDS source
+  means offline. The transport follows (Start/Stop live, Run/Export offline).
+  Compatibility is strict: a strip whose availability does not fit the mode turns
+  reddish ("Offline only" / "Live only") and the pipeline will not start. The one
+  adaptable node is the band-pass filter (which also covers high- and low-pass): its
+  `phase` parameter is `auto` (causal live, zero-phase offline), `causal` or `zero`;
+  `auto` is resolved to the existing causal or zero-phase node when the pipeline is
+  loaded, so each variant keeps one implementation (rule 4). The notch stays strict.
+- **Signal view:** a single trace area with a channel selector (all channels by
+  default, i.e. butterfly; one or several selectable). The Main probe is drawn thick,
+  comparison probes thin and faded; overlay, difference and spectrum modes; bypassed
+  data hatched. A button opens stacked traces (EEGLAB-scroll style) in a separate
+  window that follows the same probes.
+- **Channel colours (colour wheel on the scalp):** electrodes are projected
+  azimuthally from Cz. Hue follows the angle, blended between four anchors
+  (front red, right gold, occipital blue, left green); saturation follows distance
+  from Cz (white at the vertex, full at the circumference). Blending is in OKLCH so
+  steps look even. Bipolar channels (`A-B` labels) take the mix of both electrodes'
+  colours; non-EEG or unknown channels are neutral grey, dashed. Positions come from
+  the recording when it has them, otherwise from a standard 10-05 table shipped with
+  the GUI (no MNE import in the GUI).
+- **Themes:** colour tokens (surfaces, text, accent, status colours, the four channel
+  anchors and the vertex colour) drive both the Qt stylesheet and the plots. Dark
+  (default) and light ship first; in the light theme the vertex colour is a mid grey
+  so Cz stays visible. A theme is a small file, so more can be added.
+
 ## 4. Packages and languages
 
 | Package | Language now | Later |
