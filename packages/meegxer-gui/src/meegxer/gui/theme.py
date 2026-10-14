@@ -84,6 +84,8 @@ QPushButton:checked, QToolButton:checked {{ background: {t.accent}; color: {t.su
 QPushButton:disabled, QToolButton:disabled {{ color: {t.text_muted}; }}
 QPushButton#primary {{ background: {t.accent}; color: {t.surface};
     border-color: {t.accent}; font-weight: 600; }}
+QPushButton#primary:disabled {{ background: {t.surface_alt}; color: {t.text_muted};
+    border-color: {t.border}; }}
 QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{ background: {t.surface_alt};
     border: 1px solid {t.border}; border-radius: 4px; padding: 2px 6px; }}
 QComboBox QAbstractItemView {{ background: {t.surface}; border: 1px solid {t.border};
