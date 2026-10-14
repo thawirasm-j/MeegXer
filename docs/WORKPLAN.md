@@ -93,7 +93,10 @@ status propagation, manifest validation.
   notch, common-average / custom re-reference.
 - Probe node (non-modifying tap, stores aligned copies).
 - Sinks: .set (eeglabio), EDF, feature TSV.
-- Per-node cache keyed by hash(input, node version, params).
+- Per-node cache keyed by hash(input, node version, params); reuse the M1 stage
+  fingerprints.
+- Opt-in for processors to keep streaming state across a parameter change when it
+  stays valid (e.g. gain), so live knob turns don't reset filters. Default stays reset.
 - **Acceptance test 1 harness:** for every stateful node, block-wise output with
   random block sizes == one-pass causal output (float tolerance), no boundary
   artifacts. This harness is reused for every later node and every plugin.
@@ -179,6 +182,9 @@ line disappear in difference mode, and kill the GUI without interrupting process
 - BIDS-derivatives output layout with provenance.
 - **Acceptance test 4:** save → reload on a second machine → identical output file.
 - **Acceptance test 5:** full suite on Linux and Windows (Docker Desktop / WSL2).
+- Publish to PyPI: the five `meegxer-*` packages plus a `meegxer` meta-package whose
+  `meegxer[full]` extra installs everything (proposed: bare `meegxer` = sterile set,
+  `[full]` adds `meegxer-runtime`). Names to be reserved by the owner first.
 - v1 tag once tests 1–6 are green.
 
 ---
@@ -208,3 +214,7 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | 5 | Latency target; calibration UX | < 150 ms monitoring; one-shot calibration | M3 |
 | 6 | License | GPL-3.0 for this repo | all |
 | 7 | wICA; Features downstream | wICA dropped (non-standard); Features → Sink only | M6 |
+| 8 | Param change vs streaming state | Reset by default; opt-in carry-over in M2 | M2 |
+| 9 | Manifest additions | Typed `inputs`/`outputs`, `spec_version`, enum `choices` | M1 |
+| 10 | Initial streaming state | `state` is `None` on first block; no `initial_state()` | M1 |
+| 11 | Distribution | Five `meegxer-*` names + `meegxer[full]` meta-package | M7 |
