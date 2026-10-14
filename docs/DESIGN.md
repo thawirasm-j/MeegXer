@@ -191,17 +191,18 @@ it never interrupts processing.
   data hatched. A button opens stacked traces (EEGLAB-scroll style) in a separate
   window that follows the same probes.
 - **Channel colours (colour wheel on the scalp):** electrodes are projected
-  azimuthally from Cz. Hue follows the angle, blended between four anchors
-  (front red, right gold, occipital blue, left green); saturation follows distance
-  from Cz (white at the vertex, full at the circumference). Blending is in OKLCH so
-  steps look even. Bipolar channels (`A-B` labels) take the mix of both electrodes'
+  azimuthally from Cz. Hue follows the angle around a perceptually uniform OKLCH
+  wheel (front magenta-red, right orange, back green, left blue; left and right stay
+  distinct for red-green colour-blind viewers) at constant lightness; chroma follows
+  distance from Cz, so the vertex is neutral: white in the dark theme, near-black in
+  the light theme, full colour at the circumference. Bipolar channels (`A-B` labels) take the mix of both electrodes'
   colours; non-EEG or unknown channels are neutral grey, dashed. Positions come from
   the recording when it has them, otherwise from a standard 10-05 table shipped with
   the GUI (no MNE import in the GUI).
-- **Themes:** colour tokens (surfaces, text, accent, status colours, the four channel
-  anchors and the vertex colour) drive both the Qt stylesheet and the plots. Dark
-  (default) and light ship first; in the light theme the vertex colour is a mid grey
-  so Cz stays visible. A theme is a small file, so more can be added.
+- **Themes:** colour tokens (surfaces, text, accent, status colours, and the channel
+  wheel's lightness, chroma and vertex lightness) drive both the Qt stylesheet and
+  the plots. Dark (default) and light ship first. A theme is a small file, so more
+  can be added.
 
 ## 4. Packages and languages
 

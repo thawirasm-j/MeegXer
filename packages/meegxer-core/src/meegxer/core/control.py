@@ -63,6 +63,7 @@ def manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
                 "unit": p.unit,
                 "description": p.description,
                 "advanced": p.advanced,
+                "primary": p.primary,
             }
             for p in manifest.params
         ],
@@ -104,6 +105,7 @@ class Daemon:
             "calibrate": self.calibrate,
             "clear_calibration": self.clear_calibration,
             "set_pass_uncalibrated": self.set_pass_uncalibrated,
+            "set_strip_params": self.set_strip_params,
             "shutdown": self.shutdown,
         }
 
@@ -228,6 +230,15 @@ class Daemon:
         scheduler = self._scheduler or RealtimeScheduler(self._graph)
         scheduler.set_pass_uncalibrated(node, bool(enabled))
         return self.status()
+
+    def set_strip_params(self, node: str, params: list[str]) -> dict[str, Any]:
+        """Display only: which parameters the node's strip shows in advanced mode."""
+        if self._graph is None:
+            raise RuntimeError("no pipeline loaded")
+        if node not in self._graph:
+            raise RuntimeError(f"unknown node {node!r}")
+        self._graph.set_strip_params(node, params)
+        return self._graph.to_dict()
 
     def shutdown(self) -> str:
         self._stop.set()

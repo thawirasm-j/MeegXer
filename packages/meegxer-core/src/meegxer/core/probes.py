@@ -21,7 +21,9 @@ class MemoryProbe(Probe):
             "role": "probe",
             "inputs": [{"name": "in", "type": "signal"}],
             "outputs": [],
-            "params": [{"name": "label", "type": "string", "default": ""}],
+            "params": [
+                {"name": "label", "type": "string", "default": "", "primary": True}
+            ],
         }
     )
 

@@ -30,7 +30,7 @@ def _sink_manifest(name: str, input_type: str) -> Manifest:
             "inputs": [{"name": "in", "type": input_type}],
             "outputs": [],
             "params": [
-                {"name": "path", "type": "string", "default": ""},
+                {"name": "path", "type": "string", "default": "", "primary": True},
                 {"name": "overwrite", "type": "bool", "default": False},
             ],
         }

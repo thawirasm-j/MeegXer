@@ -62,9 +62,10 @@ class SyntheticSource(Source):
         "meegxer.core.synthetic",
         [
             {"name": "n_channels", "type": "int", "default": 16, "min": 1,
-             "max": 256, "description": "10-20 labels first, then E21, E22, ..."},
+             "max": 256, "primary": True,
+             "description": "10-20 labels first, then E21, E22, ..."},
             {"name": "sfreq", "type": "float", "default": 500.0, "min": 1.0,
-             "unit": "Hz"},
+             "unit": "Hz", "primary": True},
             {"name": "duration", "type": "float", "default": 60.0, "min": 0.0,
              "unit": "s", "description": "0 streams forever"},
             {"name": "seed", "type": "int", "default": 0, "min": 0, "advanced": True},
@@ -226,7 +227,7 @@ class FileSource(_RawSource):
 
     manifest: ClassVar[Manifest] = _source_manifest(
         "meegxer.core.file",
-        [{"name": "path", "type": "string", "default": ""}],
+        [{"name": "path", "type": "string", "default": "", "primary": True}],
     )
 
     _COMPANIONS: ClassVar[dict[str, tuple[str, ...]]] = {
@@ -259,8 +260,8 @@ class BidsSource(_RawSource):
         "meegxer.core.bids",
         [
             {"name": "root", "type": "string", "default": ""},
-            {"name": "subject", "type": "string", "default": ""},
-            {"name": "task", "type": "string", "default": ""},
+            {"name": "subject", "type": "string", "default": "", "primary": True},
+            {"name": "task", "type": "string", "default": "", "primary": True},
             {"name": "session", "type": "string", "default": ""},
             {"name": "run", "type": "string", "default": ""},
             {"name": "datatype", "type": "string", "default": "eeg"},

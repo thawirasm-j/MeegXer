@@ -1,4 +1,4 @@
-# MeegXer control API (0.2.1, unstable)
+# MeegXer control API (0.2.2, unstable)
 
 JSON-RPC 2.0 over a ZeroMQ REQ/REP socket (CLAUDE.md rule 3). The daemon binds
 `tcp://127.0.0.1:5555` by default. Every request is one JSON object; every reply is
@@ -17,8 +17,8 @@ bind it to a non-local interface only on a trusted network.
 | Method | Params | Result |
 |---|---|---|
 | `ping` | – | `{version, spec_version, display}`: `display` is the display endpoint |
-| `list_nodes` | – | installed node manifests: `name, version, role, type, availability, requires_fit, description, live_params, inputs, outputs, params[]` (each param: `name, type, default, min, max, choices, unit, description, advanced`) |
-| `load_pipeline` | `pipeline` (see `pipeline.schema.json`) | the normalised pipeline. Refused while running, or if any node is offline-only |
+| `list_nodes` | – | installed node manifests: `name, version, role, type, availability, requires_fit, description, live_params, inputs, outputs, params[]` (each param: `name, type, default, min, max, choices, unit, description, advanced, primary`) |
+| `load_pipeline` | `pipeline` (see `pipeline.schema.json`) | the normalised pipeline. Refused while running, or if any node cannot run live (offline-only, or a band-pass with `phase` `zero`) |
 | `get_pipeline` | – | current pipeline, including live parameter changes |
 | `start` | – | status. A restart builds fresh sources and sinks from the current pipeline and keeps fitted models (drop them with `clear_calibration`) |
 | `stop` | – | status |
@@ -27,6 +27,7 @@ bind it to a non-local interface only on a trusted network.
 | `calibrate` | `node`, `seconds` | status. Buffers `seconds` of the node's input, fits, then the node runs |
 | `clear_calibration` | `node` (optional) | `{cleared, status}`: drops the fitted model of one node, or of every node when `node` is omitted |
 | `set_pass_uncalibrated` | `node`, `enabled` | status. Per-node opt-in: while the node has no valid model, pass data through unprocessed (marked as bypassed) instead of blocking |
+| `set_strip_params` | `node`, `params` (up to 3 names) | the pipeline. Display only: which parameters the node's strip shows in the UI's advanced mode |
 | `shutdown` | – | `"bye"`; the daemon exits |
 
 ## Status

@@ -273,5 +273,5 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | 21 | GUI chain layout | Horizontal strips, one per graph node (reused by the later node editor) | M5 |
 | 22 | Strip parameters | Friendly: crucial params (manifest `primary`); advanced: up to 3 user-picked, saved in the pipeline | M5 |
 | 23 | Live/offline in the GUI | Set by the Input strip; incompatible strips reddish and blocking; only the band-pass adapts (`phase` auto) | M5 |
-| 24 | Signal view and colours | Single trace area (all channels by default) + stacked window; colour wheel on the scalp (4 anchors, white at Cz) | M5 |
+| 24 | Signal view and colours | Single trace area (all channels by default) + stacked window; uniform OKLCH colour wheel on the scalp (neutral at Cz: white dark theme, near-black light theme) | M5 |
 | 25 | Themes | Colour-token themes; dark default, light included | M5 |

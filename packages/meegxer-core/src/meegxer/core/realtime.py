@@ -149,6 +149,12 @@ class RealtimeScheduler:
         offline = [n.id for n in graph.nodes if not n.manifest.runs_online]
         if offline:
             raise GraphError(f"offline-only nodes cannot run in real time: {offline}")
+        for node in graph.nodes:
+            if isinstance(node.impl, Stage):
+                try:
+                    node.impl.processor.for_mode(node.impl.params, "online")
+                except ValueError as exc:
+                    raise GraphError(f"{node.id}: {exc}") from exc
         self.graph = graph
         self.max_block = max_block
         self.idle_sleep = idle_sleep
@@ -223,6 +229,11 @@ class RealtimeScheduler:
             if not isinstance(node.impl, Stage):
                 raise GraphError(f"{node_id!r} is a {node.role.value}; only processor "
                                  "parameters can change while running")  # fmt: skip
+            new = node.impl.manifest.resolve_params({**node.impl.params, **params})
+            try:
+                node.impl.processor.for_mode(new, "online")
+            except ValueError as exc:
+                raise GraphError(f"{node_id}: {exc}") from exc
             node.impl.set_params(**params)
             self._calibration.pop(node_id, None)
             self._refresh_fingerprints()
