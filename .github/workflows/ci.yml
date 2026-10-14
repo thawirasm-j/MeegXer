@@ -45,6 +45,26 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv run --no-project --python 3.14 python tools/check_sterile.py
 
+  plugins:
+    name: Reference plugins in the container sandbox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - name: Build reference plugin images
+        working-directory: packages/meegxer-runtime
+        run: |
+          docker build -f plugins/average_reference/Dockerfile -t meegxer/example-average-reference:0.1.0 .
+          docker build -f plugins/octave_iir_bandpass/Dockerfile -t meegxer/example-octave-iir-bandpass:0.1.0 .
+      - run: uv sync --locked --all-packages --python 3.14
+      - name: Conformance (protocol, acceptance test 1, restart) inside Docker
+        run: |
+          uv run --frozen meegxer-plugin check meegxer/example-average-reference:0.1.0
+          uv run --frozen meegxer-plugin check meegxer/example-octave-iir-bandpass:0.1.0
+      - run: uv run --frozen pytest packages/meegxer-runtime -k sandbox
+        env:
+          MEEGXER_TEST_IMAGES: meegxer/example-average-reference:0.1.0,meegxer/example-octave-iir-bandpass:0.1.0
+
   deps-smoke:
     name: Dependency smoke (${{ matrix.os }}, py${{ matrix.python }})
     runs-on: ${{ matrix.os }}

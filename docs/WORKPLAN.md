@@ -152,6 +152,19 @@ dropped/duplicated samples; a scripted client can tune params live.
 
 **Goal:** containerized external nodes behaving like built-ins.
 
+**Status:** implemented. `spec/plugin-protocol.md` (`meegxer.plugin/0.1`);
+`meegxer.runtime` (wire format, worker lifecycle with timeouts/restarts, adapter,
+plugin index + node provider, conformance suite, `meegxer-plugin` CLI); Python SDK
+(`sdk/python/meegxer_plugin.py`, numpy only) and Octave SDK (`sdk/octave/`); reference
+plugins `examples.average_reference` (Python) and `examples.octave_iir_bandpass`
+(Octave), both conformant inside the Docker sandbox. The reference Octave image does
+not include EEGLAB yet (the IIR filter does not need it); a pinned-EEGLAB base image is
+a follow-up. Exit run (acceptance tests 2 and 3 with both reference plugins in the live
+chain, Docker, 64 ch / 1 kHz, 30 min): 0 gaps and 0 duplicates, 460 overruns in 163k
+blocks (0.28%, steady rate), daemon latency p95 8.9 ms, end-to-end p95 18.5 ms
+(max 632 ms). Mean plugin cost per block: 1.2 ms (Python), 3.2 ms (Octave). Report:
+`docs/results/m4-stability-30min-two-plugins.json`.
+
 - `spec/plugin-protocol.md` + schemas: framing (header + float32 ch×samples),
   handshake (manifest, spec version), fit/transform/param messages, error and
   shutdown semantics. Semver'd (rule 11).
@@ -176,6 +189,8 @@ build still contains no runtime code.
   `advanced` params) and an advanced mode.
 - Probe viewer: Main solid, comparisons faded; overlay and difference modes; PSD view.
 - Per-stage status badges, CPU/latency/overrun meters.
+- Per-node "pass through while uncalibrated" checkbox, a clear-calibration action, and
+  a visible mark on probe views showing `bypassed` data.
 
 **Exit:** a user can build Synthetic → HP → Probe → Notch → Probe, see the 50 Hz
 line disappear in difference mode, and kill the GUI without interrupting processing.
@@ -242,3 +257,8 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | 13 | Offline filtering | Zero-phase (forward-backward) nodes; every node declares `availability` | M2 |
 | 14 | Friendly/advanced UI | Per-parameter `advanced` flag; friendly mode uses defaults | M2, M5 |
 | 15 | Bad channels | `SignalInfo.bads`; average reference `exclude`/`exclude_bads` options | M2 |
+| 16 | Calibration across restarts | Keep fitted models by default; drop explicitly (`clear_calibration`) | M3 |
+| 17 | Uncalibrated nodes | Block by default; per-node opt-in to pass through, marked `bypassed` (checkbox in M5) | M3, M5 |
+| 18 | Plugin state ownership | Host owns model and state; workers are restartable; models loaded once by hash | M4 |
+| 19 | Container engine access | Docker/Podman CLI (no Docker SDK dependency); locked-down `run` flags | M4 |
+| 20 | Unsandboxed plugins | Development and tests only, behind `MEEGXER_ALLOW_UNSANDBOXED=1` | M4 |

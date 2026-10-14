@@ -224,6 +224,33 @@ def calibrate(
     typer.echo(f"calibrating {node} for {seconds} s")
 
 
+@app.command("clear-calibration")
+def clear_calibration(
+    node: Annotated[
+        str | None, typer.Argument(help="Node to clear; all nodes if omitted.")
+    ] = None,
+    control: ControlOpt = _DEFAULT_CONTROL,
+) -> None:
+    """Drop fitted models (they are kept across restarts otherwise)."""
+    params = {"node": node} if node else {}
+    result = _call(control, "clear_calibration", **params)
+    assert isinstance(result, dict)
+    typer.echo(f"cleared: {', '.join(result['cleared']) or '-'}")
+
+
+@app.command()
+def passthrough(
+    node: str,
+    enabled: Annotated[
+        bool, typer.Option("--on/--off", help="Pass data through while uncalibrated.")
+    ],
+    control: ControlOpt = _DEFAULT_CONTROL,
+) -> None:
+    """Per node: pass data through unprocessed while it has no valid model."""
+    _call(control, "set_pass_uncalibrated", node=node, enabled=enabled)
+    typer.echo(f"{node}: pass through while uncalibrated = {enabled}")
+
+
 @app.command()
 def shutdown(control: ControlOpt = _DEFAULT_CONTROL) -> None:
     """Stop the daemon process."""

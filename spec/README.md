@@ -11,7 +11,7 @@ define it.
     `type` (stream | analysis), typed `inputs`/`outputs`, `params` (float, int, bool,
     enum, string with defaults and bounds), `latency_samples`, `requires_fit`, and
     `image` for external plugins. The core ships an identical copy for validation.
-  - `pipeline.schema.json` (0.2.0): a processing graph as an ordered node list;
+  - `pipeline.schema.json` (0.2.1: per-node `pass_uncalibrated`): a processing graph as an ordered node list;
     each node's `input` names an earlier node (acyclic by construction) and defaults
     to the nearest earlier source or processor, so a plain list is a linear chain.
   - 0.2.0 also added manifest `role` (source | processor | probe | sink),
@@ -20,8 +20,8 @@ define it.
     (hidden in the UI's friendly mode).
   - `control-api.md`: JSON-RPC 2.0 methods between the daemon and clients.
   - `display-protocol.md`: decimated min/max envelope frames on the display stream.
-- **Planned:**
-  - `plugin-protocol.md`: framed stdin/stdout protocol for containerized plugins.
-    Milestone M4.
+  - `plugin-protocol.md` (`meegxer.plugin/0.1`): framed stdin/stdout protocol for
+    containerized plugins (handshake, fit, load_model, transform, shutdown, errors),
+    with host-owned model and state.
 
-Still 0.x: expect breaking changes until the M4 plugin protocol lands.
+Still 0.x: expect breaking changes until v1.

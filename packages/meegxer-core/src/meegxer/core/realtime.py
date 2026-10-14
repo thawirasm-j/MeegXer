@@ -18,6 +18,7 @@ seconds of the stage's input, fits, and from then on the stage runs.
 
 from __future__ import annotations
 
+import dataclasses
 import queue
 import threading
 import time
@@ -242,6 +243,34 @@ class RealtimeScheduler:
 
         self.submit(apply).result(timeout=10)
 
+    def set_pass_uncalibrated(self, node_id: str, enabled: bool) -> None:
+        def apply() -> None:
+            node = self.graph[node_id]
+            if not isinstance(node.impl, Stage):
+                raise GraphError(f"{node_id!r} is not a processor")
+            node.impl.set_pass_uncalibrated(enabled)
+
+        self.submit(apply).result(timeout=10)
+
+    def clear_calibration(self, node_id: str | None = None) -> list[str]:
+        """Drop fitted models explicitly (all nodes, or one). Returns the ids."""
+
+        def apply() -> list[str]:
+            nodes = [self.graph[node_id]] if node_id else self.graph.nodes
+            cleared = []
+            for node in nodes:
+                if isinstance(node.impl, Stage) and node.impl.manifest.requires_fit:
+                    node.impl.clear_model()
+                    self._calibration.pop(node.id, None)
+                    cleared.append(node.id)
+            if node_id and not cleared:
+                raise GraphError(f"{node_id!r} does not need calibration")
+            self._refresh_fingerprints()
+            return cleared
+
+        result: list[str] = self.submit(apply).result(timeout=10)
+        return result
+
     def status(self) -> dict[str, Any]:
         with self._lock:
             return dict(self._snapshot)
@@ -360,15 +389,26 @@ class RealtimeScheduler:
                 del self._calibration[node.id]
                 stage.fit(concat_blocks(blocks), input_fp)
                 self._refresh_fingerprints()
-            return None
+            return self._without_model(node, block)
         if stage.status(input_fp) is not StageStatus.READY:
-            return None  # never run on a missing or stale model (rule 7)
+            return self._without_model(node, block)
         try:
             result = stage.transform(block, input_fp)
         except StaleModelError:
-            return None
+            return self._without_model(node, block)
         self.metrics.events += len(result.events)
         return result.block if isinstance(result.block, Block) else None
+
+    @staticmethod
+    def _without_model(node: GraphNode, block: Block) -> Block | None:
+        """No valid model: block (default, rule 7) or, if the node opted in, pass
+        the data through unprocessed and mark it as bypassed by this node."""
+        stage = node.impl
+        assert isinstance(stage, Stage)
+        if not stage.pass_uncalibrated:
+            return None
+        marked = tuple(dict.fromkeys((*block.bypassed, node.id)))
+        return dataclasses.replace(block, bypassed=marked)
 
     # -- display --------------------------------------------------------------------
 
@@ -381,7 +421,7 @@ class RealtimeScheduler:
             decimator = self._decimators[node.id] = Decimator(bin_size)
         envelope = decimator.feed(block)
         if envelope is not None:
-            self._pending.setdefault(node.id, []).append((block.info, envelope))
+            self._pending.setdefault(node.id, []).append((block, envelope))
 
     def _maybe_flush_display(self, force: bool = False) -> None:
         if self.display is None:
@@ -393,7 +433,8 @@ class RealtimeScheduler:
         for probe_id, items in self._pending.items():
             if not items:
                 continue
-            info = items[-1][0]
+            info = items[-1][0].info
+            bypassed = items[-1][0].bypassed
             groups: list[list[Envelope]] = []
             for _, env in items:  # merge only bins that follow each other
                 last = groups[-1][-1] if groups else None
@@ -411,7 +452,9 @@ class RealtimeScheduler:
                 seq = self._seq.get(probe_id, 0)
                 self._seq[probe_id] = seq + 1
                 self.display.publish(
-                    DisplayFrame(probe_id, seq, info.ch_labels, info.sfreq, merged)
+                    DisplayFrame(
+                        probe_id, seq, info.ch_labels, info.sfreq, merged, bypassed
+                    )
                 )
             items.clear()
 
@@ -453,6 +496,11 @@ class RealtimeScheduler:
                     "status": self.node_status(n),
                     "params": dict(n.impl.params),
                     "timing": m.stages[n.id].as_dict() if n.id in m.stages else {},
+                    **(
+                        {"pass_uncalibrated": n.impl.pass_uncalibrated}
+                        if isinstance(n.impl, Stage) and n.impl.manifest.requires_fit
+                        else {}
+                    ),
                 }
                 for n in self.graph.nodes
             ],

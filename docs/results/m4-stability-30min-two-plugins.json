@@ -1,0 +1,62 @@
+{
+  "minutes": 30.0,
+  "plugins": [
+    "meegxer/example-average-reference:0.1.0",
+    "meegxer/example-octave-iir-bandpass:0.1.0"
+  ],
+  "channels": 64,
+  "sfreq": 1000.0,
+  "generated": 1800000,
+  "daemon_processed": 1797603,
+  "daemon_input_gaps": 0,
+  "daemon_input_duplicates": 0,
+  "sent_before_daemon_connected": 2397,
+  "received": 1795853,
+  "received_first_index": 1750,
+  "received_last_index": 1797602,
+  "output_gaps": 0,
+  "output_duplicates": 0,
+  "overruns": 460,
+  "blocks": 162945,
+  "live_param_changes": 59,
+  "daemon_latency_ms": {
+    "mean_ms": 7.085414238830254,
+    "p95_ms": 8.920999411338927,
+    "max_ms": 17.615639061205002
+  },
+  "end_to_end_latency_ms": {
+    "mean": 13.250374509431026,
+    "p95": 18.486254694835225,
+    "max": 631.6087261143366
+  },
+  "stage_timing": {
+    "input": {},
+    "hp": {
+      "blocks": 162945,
+      "mean_ms": 0.15168791475019142,
+      "max_ms": 55.101319999721454
+    },
+    "notch": {
+      "blocks": 162945,
+      "mean_ms": 0.09053806544599961,
+      "max_ms": 14.732739000010042
+    },
+    "plugin1": {
+      "blocks": 162945,
+      "mean_ms": 1.2153966010247408,
+      "max_ms": 294.8319370000263
+    },
+    "plugin2": {
+      "blocks": 162945,
+      "mean_ms": 3.1946326339438076,
+      "max_ms": 319.40214599990213
+    },
+    "out": {
+      "blocks": 162945,
+      "mean_ms": 0.09101211434562265,
+      "max_ms": 6.384571000126016
+    }
+  },
+  "errors": [],
+  "passed": true
+}

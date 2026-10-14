@@ -60,6 +60,10 @@ class Processor(ABC):
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult: ...
 
+    def close(self) -> None:  # noqa: B027 - optional hook
+        """Release external resources (e.g. a plugin worker). May be called more
+        than once; a processor must work again after ``close`` if used again."""
+
 
 class _ConfiguredNode(ABC):
     """Sources, probes and sinks are configured once from resolved parameters."""

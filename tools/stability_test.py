@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
+from pathlib import Path
 
 import numpy as np
 import pylsl
@@ -81,6 +84,10 @@ def main() -> int:
     parser.add_argument("--tune-every", type=float, default=30.0)
     parser.add_argument("--max-p95-ms", type=float, default=150.0)
     parser.add_argument("--report", help="write the JSON report here")
+    parser.add_argument(
+        "--plugin-image", action="append", default=[],
+        help="insert this plugin image after the notch (repeatable)",
+    )  # fmt: skip
     args = parser.parse_args()
 
     tag = uuid.uuid4().hex[:6]
@@ -94,11 +101,25 @@ def main() -> int:
     ]))  # fmt: skip
     generator.start()
 
+    workdir = Path(tempfile.mkdtemp(prefix="meegxer-stability-"))
+    env = dict(os.environ)
+    plugin_nodes = []
+    if args.plugin_image:
+        from meegxer.runtime import index
+
+        env[index.INDEX_ENV] = str(workdir / "plugins.json")
+        for i, image in enumerate(args.plugin_image):
+            entry = index.add_image(image, path=workdir / "plugins.json")
+            plugin_nodes.append(
+                {"id": f"plugin{i + 1}", "node": entry["manifest"]["name"]}
+            )
+
     control, display = free_endpoint(), free_endpoint()
+    daemon_log = open(workdir / "daemon.log", "w")  # noqa: SIM115 - closed in finally
     daemon = subprocess.Popen(
         [sys.executable, "-m", "meegxer.core.daemon", "--control", control,
          "--display", display],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        stdout=daemon_log, stderr=subprocess.STDOUT, text=True, env=env,
     )  # fmt: skip
     client = ControlClient(control, timeout=30)
     report: dict[str, object] = {}
@@ -112,6 +133,7 @@ def main() -> int:
                 {"id": "hp", "node": "meegxer.sterile.iir_filter",
                  "params": {"kind": "highpass", "low": 1.0}},
                 {"id": "notch", "node": "meegxer.sterile.notch"},
+                *plugin_nodes,
                 {"id": "out", "node": "meegxer.core.lsl_out",
                  "params": {"stream_name": out_name, "include_index": True}},
             ],
@@ -150,6 +172,7 @@ def main() -> int:
         lat = np.asarray(receiver.latencies) * 1e3
         report = {
             "minutes": args.minutes,
+            "plugins": args.plugin_image,
             "channels": args.channels,
             "sfreq": args.sfreq,
             "generated": generated,
@@ -183,6 +206,7 @@ def main() -> int:
             daemon.wait(timeout=10)
         except subprocess.TimeoutExpired:
             daemon.kill()
+        daemon_log.close()
 
     first = report["sent_before_daemon_connected"]
     assert isinstance(first, int) and isinstance(report["generated"], int)

@@ -9,6 +9,7 @@ parameter, a refit, the input stream) the fingerprints differ and the stage repo
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -60,13 +61,35 @@ class Stage:
     """One processor plus its parameters, model and streaming state."""
 
     def __init__(
-        self, processor: Processor, params: Mapping[str, object] | None = None
+        self,
+        processor: Processor,
+        params: Mapping[str, object] | None = None,
+        *,
+        pass_uncalibrated: bool = False,
     ) -> None:
         self.processor = processor
         self.manifest = processor.manifest
         self.params: dict[str, ParamValue] = self.manifest.resolve_params(params)
         self.model: FittedModel | None = None
         self.state: State | None = None
+        self._calibrating = False
+        self.pass_uncalibrated = False
+        self.set_pass_uncalibrated(pass_uncalibrated)
+
+    def set_pass_uncalibrated(self, enabled: bool) -> None:
+        """Opt in to passing data through unprocessed while there is no valid
+        model (uncalibrated, calibrating or needs-refit). The default blocks."""
+        if enabled and not self.manifest.requires_fit:
+            raise ValueError(
+                f"{self.manifest.name} does not need calibration, so it has no "
+                "uncalibrated state to pass through"
+            )
+        self.pass_uncalibrated = bool(enabled)
+
+    def clear_model(self) -> None:
+        """Explicitly drop the fitted model (models are otherwise kept)."""
+        self.model = None
+        self.state = None
         self._calibrating = False
 
     def set_params(self, **updates: object) -> None:
@@ -152,6 +175,10 @@ class Stage:
         result = self.processor.transform(block, model, self.state, self.params)
         for port in self.manifest.outputs[:1]:
             check_block(port, result.block)
+        out = result.block
+        if block.bypassed and isinstance(out, Block) and out.bypassed != block.bypassed:
+            merged = tuple(dict.fromkeys((*block.bypassed, *out.bypassed)))
+            result = result._replace(block=dataclasses.replace(out, bypassed=merged))
         check_state(result.state)
         self.state = result.state
         return result

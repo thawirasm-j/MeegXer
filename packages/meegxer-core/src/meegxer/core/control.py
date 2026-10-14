@@ -21,6 +21,7 @@ from meegxer.core.graph import Graph
 from meegxer.core.manifest import SPEC_VERSION, Manifest
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.registry import Registry
+from meegxer.core.stage import Stage
 
 DEFAULT_CONTROL = "tcp://127.0.0.1:5555"
 DEFAULT_DISPLAY = "tcp://127.0.0.1:5556"
@@ -101,6 +102,8 @@ class Daemon:
             "status": self.status,
             "set_params": self.set_params,
             "calibrate": self.calibrate,
+            "clear_calibration": self.clear_calibration,
+            "set_pass_uncalibrated": self.set_pass_uncalibrated,
             "shutdown": self.shutdown,
         }
 
@@ -121,6 +124,8 @@ class Daemon:
             raise RuntimeError("stop the running pipeline before loading another")
         graph = Graph.from_dict(pipeline, self.registry)
         RealtimeScheduler(graph)  # validates: no offline-only nodes
+        if self._graph is not None:
+            self._close_processors(self._graph)
         self._pipeline, self._graph, self._scheduler = graph.to_dict(), graph, None
         return self._pipeline
 
@@ -134,12 +139,40 @@ class Daemon:
             raise RuntimeError("no pipeline loaded")
         if self._scheduler is not None and self._scheduler.running:
             raise RuntimeError("pipeline is already running")
-        if self._scheduler is not None:  # restart with fresh sources and sinks
+        if self._scheduler is not None:  # restart: fresh sources and sinks
+            old = self._graph
             self._graph = Graph.from_dict(self.get_pipeline() or {}, self.registry)
+            if old is not None:
+                self._carry_models(old, self._graph)
+                self._close_processors(old)
         assert self._graph is not None
         self._scheduler = RealtimeScheduler(self._graph, display=self.display)
         self._scheduler.start()
         return self.status()
+
+    @staticmethod
+    def _carry_models(old: Graph, new: Graph) -> None:
+        """Fitted models survive a restart by default (drop them explicitly with
+        ``clear_calibration``). Fingerprints still mark them needs-refit if the
+        source or anything upstream changed, and a channel or rate mismatch is
+        refused, so a kept model is never used silently on different data."""
+        for node in new.nodes:
+            if node.id not in old or not isinstance(node.impl, Stage):
+                continue
+            previous = old[node.id].impl
+            if (
+                isinstance(previous, Stage)
+                and previous.model is not None
+                and previous.manifest.name == node.impl.manifest.name
+                and previous.manifest.version == node.impl.manifest.version
+            ):
+                node.impl.model = previous.model
+
+    @staticmethod
+    def _close_processors(graph: Graph) -> None:
+        for node in graph.nodes:
+            if isinstance(node.impl, Stage):
+                node.impl.processor.close()
 
     def stop(self) -> dict[str, Any]:
         if self._scheduler is not None:
@@ -149,11 +182,16 @@ class Daemon:
     def status(self) -> dict[str, Any]:
         if self._scheduler is not None:
             return self._scheduler.status()
-        nodes = [
-            {"id": n.id, "node": n.manifest.name, "role": n.role.value,
-             "status": "stopped", "params": dict(n.impl.params)}
-            for n in (self._graph.nodes if self._graph else [])
-        ]  # fmt: skip
+        nodes = []
+        for n in self._graph.nodes if self._graph else []:
+            entry: dict[str, Any] = {
+                "id": n.id, "node": n.manifest.name, "role": n.role.value,
+                "status": "stopped", "params": dict(n.impl.params),
+            }  # fmt: skip
+            if isinstance(n.impl, Stage) and n.impl.manifest.requires_fit:
+                entry["calibrated"] = n.impl.model is not None
+                entry["pass_uncalibrated"] = n.impl.pass_uncalibrated
+            nodes.append(entry)
         return {"running": False, "nodes": nodes}
 
     def set_params(self, node: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -169,6 +207,26 @@ class Daemon:
         if self._scheduler is None or not self._scheduler.running:
             raise RuntimeError("start the pipeline before calibrating")
         self._scheduler.calibrate(node, float(seconds))
+        return self.status()
+
+    def clear_calibration(self, node: str | None = None) -> dict[str, Any]:
+        """Drop fitted models: one node, or all nodes when ``node`` is omitted."""
+        if self._graph is None:
+            raise RuntimeError("no pipeline loaded")
+        if node is not None and node not in self._graph:
+            raise KeyError(f"no node {node!r}")
+        scheduler = self._scheduler or RealtimeScheduler(self._graph)
+        cleared = scheduler.clear_calibration(node)
+        return {"cleared": cleared, "status": self.status()}
+
+    def set_pass_uncalibrated(self, node: str, enabled: bool) -> dict[str, Any]:
+        """Per-node opt-in to pass data through while it has no valid model."""
+        if self._graph is None:
+            raise RuntimeError("no pipeline loaded")
+        if node not in self._graph:
+            raise KeyError(f"no node {node!r}")
+        scheduler = self._scheduler or RealtimeScheduler(self._graph)
+        scheduler.set_pass_uncalibrated(node, bool(enabled))
         return self.status()
 
     def shutdown(self) -> str:
@@ -224,6 +282,8 @@ class Daemon:
     def close(self) -> None:
         if self._scheduler is not None:
             self._scheduler.stop()
+        if self._graph is not None:
+            self._close_processors(self._graph)
         self._socket.close(linger=0)
         self.display.close()
 
