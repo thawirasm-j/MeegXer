@@ -1,0 +1,48 @@
+{
+  "minutes": 30.0,
+  "channels": 64,
+  "sfreq": 1000.0,
+  "generated": 1800000,
+  "daemon_processed": 1798602,
+  "daemon_input_gaps": 0,
+  "daemon_input_duplicates": 0,
+  "sent_before_daemon_connected": 1398,
+  "received": 1797346,
+  "received_first_index": 1256,
+  "received_last_index": 1798601,
+  "output_gaps": 0,
+  "output_duplicates": 0,
+  "overruns": 2,
+  "blocks": 163403,
+  "live_param_changes": 59,
+  "daemon_latency_ms": {
+    "mean_ms": 2.7568412841264944,
+    "p95_ms": 4.021030601370512,
+    "max_ms": 11.572138766041462
+  },
+  "end_to_end_latency_ms": {
+    "mean": 8.927017702804342,
+    "p95": 14.067892849425334,
+    "max": 246.72355727102513
+  },
+  "stage_timing": {
+    "input": {},
+    "hp": {
+      "blocks": 163403,
+      "mean_ms": 0.1531367006359403,
+      "max_ms": 7.077293999827816
+    },
+    "notch": {
+      "blocks": 163403,
+      "mean_ms": 0.09253455566918327,
+      "max_ms": 18.685430999994423
+    },
+    "out": {
+      "blocks": 163403,
+      "mean_ms": 0.07710079891500358,
+      "max_ms": 45.57872300006238
+    }
+  },
+  "errors": [],
+  "passed": true
+}

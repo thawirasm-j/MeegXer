@@ -121,6 +121,10 @@ with `SAMPLE_INDEX` counter), `display` (index-aligned min/max decimation, lossy
 `control` + `daemon` (JSON-RPC over ZeroMQ, `meegxer-daemon`), CLI daemon commands,
 `spec/control-api.md`, `spec/display-protocol.md`, `tools/stability_test.py`
 (acceptance tests 2 and 3).
+Exit run (2026-10-14, 30 min, 64 ch / 1 kHz, Linux container, 59 live parameter
+changes): 0 gaps and 0 duplicates at the daemon input and output, 2 overruns in
+163,403 blocks, daemon latency p95 4.0 ms, end-to-end (generator -> daemon -> receiver
+over LSL) p95 14.1 ms, max 247 ms. Report: `docs/results/m3-stability-30min.json`.
 
 - Real-time scheduler: block-wise pull, deadlines, overrun detection/reporting,
   CPU/latency metrics per stage.
