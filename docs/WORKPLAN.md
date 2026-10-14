@@ -188,6 +188,7 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | GIL contention at 64 ch / 1 kHz + display | M3 | Daemon separate from GUI; measure, then Numba → PyO3 per CLAUDE.md order |
 | Docker Desktop latency/IPC overhead on Windows | M4 | Measure early with a passthrough plugin; ZeroMQ upgrade path |
 | LSL discovery across container boundary | M4 | Host-only LSL (already in design) |
+| pylsl has no bundled liblsl on Linux ARM64 (Pi) | Pi roadmap | Build liblsl from a pinned tag (as the ARM64 CI job does) or use conda-forge `liblsl`; set `PYLSL_LIB` |
 | Contract churn after many nodes exist | M1–M2 | Freeze contract at M1 exit; version the spec |
 | Python 3.14 wheels missing for a dependency (e.g. pylsl, numba, onnxruntime for mne-icalabel, PySide6 on ARM64) | M0, M6 | Dependency smoke job in M0; 3.13 floor as fallback; pin known-good versions |
 | Scientific stack drops 3.13 under SPEC 0 (~Oct 2027) | ongoing | Bump floor to 3.14 then |

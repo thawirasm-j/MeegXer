@@ -63,5 +63,15 @@ jobs:
       - name: Qt system libraries
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0
-      - run: uv run --no-project --python ${{ matrix.python }} python tools/smoke_deps.py --python ${{ matrix.python }} >> "$GITHUB_STEP_SUMMARY"
+      # pylsl bundles liblsl only for x86_64 Linux, macOS and Windows; on ARM64 the
+      # pure-Python wheel needs a system liblsl (same as on a Raspberry Pi).
+      - name: Build liblsl (ARM64)
+        if: runner.arch == 'ARM64'
+        run: |
+          git clone --depth 1 --branch v1.17.7 https://github.com/sccn/liblsl.git "$RUNNER_TEMP/liblsl"
+          cmake -S "$RUNNER_TEMP/liblsl" -B "$RUNNER_TEMP/liblsl-build" -DCMAKE_BUILD_TYPE=Release -DLSL_UNIXFOLDERS=ON -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/liblsl-prefix"
+          cmake --build "$RUNNER_TEMP/liblsl-build" -j
+          cmake --install "$RUNNER_TEMP/liblsl-build"
+          echo "PYLSL_LIB=$RUNNER_TEMP/liblsl-prefix/lib/liblsl.so" >> "$GITHUB_ENV"
+      - run: uv run --no-project --python ${{ matrix.python }} python tools/smoke_deps.py --python ${{ matrix.python }} | tee -a "$GITHUB_STEP_SUMMARY"
         shell: bash
