@@ -62,7 +62,7 @@ class SyntheticSource(Source):
         "meegxer.core.synthetic",
         [
             {"name": "n_channels", "type": "int", "default": 16, "min": 1,
-             "max": len(STANDARD_LABELS)},
+             "max": 256, "description": "10-20 labels first, then E21, E22, ..."},
             {"name": "sfreq", "type": "float", "default": 500.0, "min": 1.0,
              "unit": "Hz"},
             {"name": "duration", "type": "float", "default": 60.0, "min": 0.0,
@@ -90,7 +90,9 @@ class SyntheticSource(Source):
         super().__init__(params)
         p = self.params
         n_ch = int(p["n_channels"])
-        self._info = SignalInfo(STANDARD_LABELS[:n_ch], float(p["sfreq"]), "synthetic")
+        extra = tuple(f"E{k}" for k in range(len(STANDARD_LABELS) + 1, n_ch + 1))
+        labels = (STANDARD_LABELS + extra)[:n_ch]
+        self._info = SignalInfo(labels, float(p["sfreq"]), "synthetic")
         duration = float(p["duration"])
         self._total = round(duration * self._info.sfreq) if duration > 0 else None
         self._pos = 0

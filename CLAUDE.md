@@ -73,6 +73,9 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - `uv run python tools/check_sterile.py`: sterile wheels contain no runtime (rule 10).
 - `python tools/smoke_deps.py --python 3.14`: planned third-party deps install/import.
 - `uv run meegxer nodes`; `uv run meegxer run pipeline.json -i rec.set -o out.set`.
+- Live: `uv run meegxer daemon --pipeline live.json --start`, then `meegxer status`,
+  `meegxer set hp low=0.5`, `meegxer calibrate NODE --seconds 60`, `meegxer stop`.
+- `uv run python tools/stability_test.py --minutes 30`: acceptance tests 2 and 3.
 - New nodes register in the `meegxer.nodes` entry-point group (see package
   pyproject.toml) and declare `availability` (online/offline/both). Stream
   processors that run online must pass

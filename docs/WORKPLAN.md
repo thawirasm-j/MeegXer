@@ -115,6 +115,13 @@ test 1 passes for filter, notch, re-ref.
 
 **Goal:** the same nodes running live in a headless daemon.
 
+**Status:** implemented. `meegxer.core.realtime` (block-major scheduler, paced playback,
+overruns, per-stage timing, latency, one-shot calibration gating), `lsl` (LSL in/out
+with `SAMPLE_INDEX` counter), `display` (index-aligned min/max decimation, lossy PUB),
+`control` + `daemon` (JSON-RPC over ZeroMQ, `meegxer-daemon`), CLI daemon commands,
+`spec/control-api.md`, `spec/display-protocol.md`, `tools/stability_test.py`
+(acceptance tests 2 and 3).
+
 - Real-time scheduler: block-wise pull, deadlines, overrun detection/reporting,
   CPU/latency metrics per stage.
 - LSL inlet source and LSL outlet sink (pylsl); file playback source at real-time rate.
