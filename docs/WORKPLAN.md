@@ -85,6 +85,13 @@ status propagation, manifest validation.
 
 **Goal:** first end-to-end pipeline, offline.
 
+**Status:** implemented. `meegxer.core`: graph + pipeline format, entry-point registry,
+node-major batch scheduler, per-node cache (memory/directory), synthetic/file/BIDS
+sources, memory probe, .set/EDF/feature-TSV sinks, `conformance` (test 1 harness).
+`meegxer.sterile`: IIR filter, notch, re-reference (test 1 passes for all three).
+CLI: `meegxer run`, `meegxer nodes`. Spec 0.2.0 (manifest `role`, `live_params`;
+`pipeline.schema.json`).
+
 - Graph (DAG) with topological execution; linear-chain builder on top (rule 5).
 - Batch scheduler: whole recording, optionally fed block-wise to prove the contract.
 - Sources: synthetic generator (pink noise + alpha bursts + 50 Hz + SSVEP sine),
@@ -118,6 +125,7 @@ test 1 passes for filter, notch, re-ref.
   dropped when the client lags, never back-pressuring the core (rule 2).
 - Online calibration flow: record N s → fit → ready.
 - CLI (Typer): `meegxer daemon`, `meegxer run`, `meegxer status`.
+- Refuse offline-only nodes (manifest `availability`) in the real-time scheduler.
 - **Acceptance test 2 (stability, no plugins yet)** with a sample-counter channel;
   **acceptance test 3 (latency)** measured and reported.
 
@@ -153,7 +161,8 @@ build still contains no runtime code.
 
 - PySide6 + pyqtgraph client connecting via control + display channels only.
 - Linear drag-and-drop chain; insert-anywhere probes.
-- Auto-generated parameter controls from manifests.
+- Auto-generated parameter controls from manifests, with a friendly mode (hides
+  `advanced` params) and an advanced mode.
 - Probe viewer: Main solid, comparisons faded; overlay and difference modes; PSD view.
 - Per-stage status badges, CPU/latency/overrun meters.
 
@@ -218,3 +227,7 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | 9 | Manifest additions | Typed `inputs`/`outputs`, `spec_version`, enum `choices` | M1 |
 | 10 | Initial streaming state | `state` is `None` on first block; no `initial_state()` | M1 |
 | 11 | Distribution | Five `meegxer-*` names + `meegxer[full]` meta-package | M7 |
+| 12 | Filter start-up | Steady-state initialisation from the first sample | M2 |
+| 13 | Offline filtering | Zero-phase (forward-backward) nodes; every node declares `availability` | M2 |
+| 14 | Friendly/advanced UI | Per-parameter `advanced` flag; friendly mode uses defaults | M2, M5 |
+| 15 | Bad channels | `SignalInfo.bads`; average reference `exclude`/`exclude_bads` options | M2 |

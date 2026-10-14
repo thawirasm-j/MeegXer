@@ -18,11 +18,13 @@ import jsonschema
 
 from meegxer.core.ports import Port, PortType
 
-SPEC_VERSION = "0.1.0"
+SPEC_VERSION = "0.2.0"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]
 type NodeKind = Literal["stream", "analysis"]
+type NodeRoleName = Literal["source", "processor", "probe", "sink"]
+type Availability = Literal["online", "offline", "both"]
 
 
 class ManifestError(ValueError):
@@ -50,6 +52,7 @@ class ParamSpec:
     choices: tuple[str, ...] = ()
     unit: str = ""
     description: str = ""
+    advanced: bool = False
 
     def coerce(self, value: object) -> ParamValue:
         """Validate one value against this spec and return it in canonical form."""
@@ -95,6 +98,17 @@ class Manifest:
     requires_fit: bool = False
     image: str | None = None
     description: str = ""
+    role: NodeRoleName = "processor"
+    live_params: frozenset[str] = frozenset()
+    availability: Availability = "both"
+
+    @property
+    def runs_online(self) -> bool:
+        return self.availability in ("online", "both")
+
+    @property
+    def runs_offline(self) -> bool:
+        return self.availability in ("offline", "both")
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Manifest:
@@ -115,6 +129,7 @@ class Manifest:
                 choices=tuple(p.get("choices", ())),
                 unit=p.get("unit", ""),
                 description=p.get("description", ""),
+                advanced=p.get("advanced", False),
             )
             for p in data.get("params", [])
         )
@@ -132,6 +147,9 @@ class Manifest:
             requires_fit=data.get("requires_fit", False),
             image=data.get("image"),
             description=data.get("description", ""),
+            role=data.get("role", "processor"),
+            live_params=frozenset(data.get("live_params", ())),
+            availability=data.get("availability", "both"),
         )
         manifest._check_semantics()
         return manifest
@@ -148,10 +166,30 @@ class Manifest:
         names = [p.name for p in self.params]
         if len(set(names)) != len(names):
             raise ManifestError(f"duplicate parameter names: {names}")
-        if self.kind == "stream" and any(
-            p.type is not PortType.SIGNAL for p in (*self.inputs, *self.outputs)
+        n_in, n_out = len(self.inputs), len(self.outputs)
+        expected = {
+            "source": n_in == 0 and n_out >= 1,
+            "processor": n_in >= 1 and n_out >= 1,
+            "probe": n_in == 1 and n_out == 0,
+            "sink": n_in >= 1 and n_out == 0,
+        }
+        if not expected[self.role]:
+            raise ManifestError(
+                f"a {self.role} cannot have {n_in} input(s) and {n_out} output(s)"
+            )
+        if (
+            self.role == "processor"
+            and self.kind == "stream"
+            and any(
+                p.type is not PortType.SIGNAL for p in (*self.inputs, *self.outputs)
+            )
         ):
-            raise ManifestError("stream nodes take and return Signal ports only")
+            raise ManifestError("stream processors take and return Signal ports only")
+        if self.requires_fit and self.role != "processor":
+            raise ManifestError("only processors can require fitting")
+        unknown_live = sorted(self.live_params - set(names))
+        if unknown_live:
+            raise ManifestError(f"live_params names unknown parameters {unknown_live}")
         for spec in self.params:
             if spec.min is not None and spec.max is not None and spec.min > spec.max:
                 raise ManifestError(f"{spec.name}: min is greater than max")

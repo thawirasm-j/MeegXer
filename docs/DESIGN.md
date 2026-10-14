@@ -68,6 +68,14 @@ turn knobs, and see the effect live — on a streaming amp or on a recorded data
   (whole recordings, parallel subjects). Same node implementations for both.
 - **Caching (batch):** per-node cache keyed by hash(input, node version, params), so a
   change at stage N only recomputes stage N onward.
+- **Batch scheduling is node-major:** each node consumes its whole input (fed block by
+  block through the same `transform`) before the next node runs, so fitting sees the
+  full input and every node output is cacheable. The real-time scheduler is
+  block-major over the same nodes.
+- **Pipeline file:** `spec/pipeline.schema.json`, an ordered node list where each
+  node's input names an earlier node. Nodes are discovered through the
+  `meegxer.nodes` entry-point group, so the core never imports sterile or runtime code.
+- **Units:** signals are in volts (SI, as in MNE) throughout the core.
 
 ### 3.3 Processor contract
 ```
@@ -78,6 +86,17 @@ manifest:  spec_version, name, version, type (stream | analysis), image (externa
 fit(calibration_data | dataset, params)       -> model
 transform(block, model, state, params)        -> block_out, state, events
 ```
+- Every node (source, processor, probe, sink) has a manifest with a `role`;
+  `live_params` lists parameters that may change mid-stream without resetting state.
+- **Availability:** each node declares `online`, `offline` or `both`. The batch
+  scheduler refuses online-only nodes and hands offline-only nodes the whole recording
+  as one block; the real-time scheduler refuses offline-only nodes. Offline filtering
+  is zero-phase (forward-backward IIR nodes); online filtering is causal.
+- **Friendly and advanced modes:** each parameter may be marked `advanced`; friendly
+  mode hides those and uses their defaults.
+- **Bad channels:** `SignalInfo.bads` marks bad channels (read from files where the
+  format stores them). They stay in the data; pooling nodes such as the average
+  reference leave them out by default (`exclude_bads`).
 - Schema: `spec/manifest.schema.json`. `state` is `None` on the first block of a
   stream and after a parameter change or refit; the processor initialises it then.
   Model and state must be serializable (arrays, scalars, strings, lists, dicts).

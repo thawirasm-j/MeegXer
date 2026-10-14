@@ -53,7 +53,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   CI tests 3.13 + 3.14; revisit the floor when SPEC 0 drops 3.13, ~Oct 2027).
   Monorepo managed as a uv workspace. Only the core is a candidate for a later Rust rewrite,
   behind the same protocol.
-- Core: numpy, pylsl, pyzmq (JSON-RPC control and display both over ZeroMQ). Built-ins: MNE, SciPy, mne-icalabel, asrpy/meegkit,
+- Core: numpy, scipy, jsonschema, pylsl, pyzmq (JSON-RPC control and display both over
+  ZeroMQ); file I/O through MNE (mne-bids, eeglabio, edfio). Signals are in volts. Built-ins: MNE, SciPy, mne-icalabel, asrpy/meegkit,
   mne-connectivity, antropy. GUI: PySide6, pyqtgraph. CLI: Typer or Click.
 - I/O: BIDS (mne-bids), EDF/BDF, EEGLAB .set in; .set (eeglabio), EDF, BIDS-derivatives out.
 - Performance escalation order: vectorize (preallocated ring buffers, no per-sample
@@ -71,6 +72,11 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   `uv run ruff format --check .`, `uv run mypy`, `uv run lint-imports`.
 - `uv run python tools/check_sterile.py`: sterile wheels contain no runtime (rule 10).
 - `python tools/smoke_deps.py --python 3.14`: planned third-party deps install/import.
+- `uv run meegxer nodes`; `uv run meegxer run pipeline.json -i rec.set -o out.set`.
+- New nodes register in the `meegxer.nodes` entry-point group (see package
+  pyproject.toml) and declare `availability` (online/offline/both). Stream
+  processors that run online must pass
+  `meegxer.core.conformance.check_blockwise_equivalence` (acceptance test 1).
 - Architecture rules 1 and 10 are import-linter contracts in the root `pyproject.toml`;
   `tests/test_architecture.py` proves each contract catches a violation.
 

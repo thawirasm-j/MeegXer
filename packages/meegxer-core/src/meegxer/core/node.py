@@ -61,8 +61,17 @@ class Processor(ABC):
     ) -> TransformResult: ...
 
 
-class Source(ABC):
-    """Produces Signal blocks. Shape is provisional until the M2 schedulers."""
+class _ConfiguredNode(ABC):
+    """Sources, probes and sinks are configured once from resolved parameters."""
+
+    manifest: ClassVar[Manifest]
+
+    def __init__(self, params: Mapping[str, object] | None = None) -> None:
+        self.params: dict[str, ParamValue] = self.manifest.resolve_params(params)
+
+
+class Source(_ConfiguredNode):
+    """Produces Signal blocks from the start of a stream."""
 
     role: ClassVar[NodeRole] = NodeRole.SOURCE
 
@@ -70,13 +79,26 @@ class Source(ABC):
     @abstractmethod
     def info(self) -> SignalInfo: ...
 
+    @property
+    def n_samples(self) -> int | None:
+        """Total length if known (files, finite synthetic runs), else None."""
+        return None
+
     @abstractmethod
     def read(self, max_samples: int) -> Block | None:
-        """Return the next block, an empty block if none is ready, None at end."""
+        """Return up to ``max_samples`` new samples, an empty block if none are
+        ready yet, or None at the end of the stream."""
+
+    def content_id(self) -> str:
+        """Identity of the data beyond the parameters (e.g. a file content hash).
+
+        Part of the source fingerprint, so caches notice a changed file.
+        """
+        return ""
 
 
-class Probe(ABC):
-    """Non-modifying tap. Shape is provisional until the M2 schedulers."""
+class Probe(_ConfiguredNode):
+    """Non-modifying tap: sees every block of its input, changes nothing."""
 
     role: ClassVar[NodeRole] = NodeRole.PROBE
 
@@ -84,13 +106,13 @@ class Probe(ABC):
     def tap(self, block: AnyBlock) -> None: ...
 
 
-class Sink(ABC):
-    """Consumes blocks (files, LSL outlets, action sinks). Provisional until M2."""
+class Sink(_ConfiguredNode):
+    """Consumes blocks (files, LSL outlets, action sinks)."""
 
     role: ClassVar[NodeRole] = NodeRole.SINK
 
     @abstractmethod
     def write(self, block: AnyBlock) -> None: ...
 
-    def close(self) -> None:  # noqa: B027 - optional hook
+    def close(self) -> None:
         """Flush and release resources."""

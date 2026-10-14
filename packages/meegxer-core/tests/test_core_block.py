@@ -146,3 +146,14 @@ def test_event_block_sorts_and_checks_range() -> None:
         EventBlock((Event(10, "late"),), 0, 10)
     with pytest.raises(ValueError):
         Event(0, "")
+
+
+def test_bad_channels() -> None:
+    info = SignalInfo(("Fz", "Cz", "Pz"), 500.0, bads=("Cz",))
+    block = Block(np.zeros((3, 4)), info, 0, 0.0)
+    assert block.pick(["Pz", "Cz"]).info.bads == ("Cz",)
+    assert block.pick(["Fz"]).info.bads == ()
+    with pytest.raises(ChannelMismatchError):
+        SignalInfo(("Fz",), 500.0, bads=("Oz",))
+    with pytest.raises(ChannelMismatchError):
+        SignalInfo(("Fz", "Cz"), 500.0, bads=("Fz", "Fz"))

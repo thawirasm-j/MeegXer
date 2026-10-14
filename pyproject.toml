@@ -30,6 +30,7 @@ dev = [
     "mypy>=1.13",
     "import-linter>=2.1",
     "types-jsonschema",
+    "scipy-stubs",
     "pre-commit>=4.0",
 ]
 
@@ -57,6 +58,10 @@ mypy_path = [
     "packages/meegxer-cli/src",
 ]
 files = ["packages/*/src", "packages/*/tests", "tests", "tools"]
+
+[[tool.mypy.overrides]]
+module = ["mne", "mne.*", "mne_bids", "mne_bids.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "tests"]

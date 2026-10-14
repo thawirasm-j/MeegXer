@@ -18,6 +18,13 @@ uv run python tools/check_sterile.py   # sterile build has no plugin runtime
 uv run pre-commit install       # optional: run the checks on commit
 ```
 
+Run a pipeline offline (see `spec/pipeline.schema.json`):
+
+```bash
+uv run meegxer nodes            # installed nodes
+uv run meegxer run pipeline.json --input sub-01.set --output sub-01_clean.set
+```
+
 | Package | Role |
 |---|---|
 | `packages/meegxer-core` | headless engine (no GUI) |

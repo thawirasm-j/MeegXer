@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thawirasm-j/MeegXer/spec/pipeline.schema.json",
+  "title": "MeegXer pipeline",
+  "description": "A processing graph as an ordered node list. Each node's input must name an earlier node, so the graph is acyclic by construction. When input is omitted it defaults to the nearest earlier source or processor, so a plain list is a linear chain. Spec version 0.2.0 (unstable).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spec_version", "nodes"],
+  "properties": {
+    "spec_version": {"type": "string", "pattern": "^0\\.2\\.[0-9]+$"},
+    "name": {"type": "string"},
+    "description": {"type": "string"},
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node"],
+        "properties": {
+          "id": {
+            "description": "Unique within the pipeline; defaults to the node's last name segment plus a counter.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "node": {
+            "description": "Manifest name of an installed node.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {"type": ["number", "string", "boolean"]},
+            "default": {}
+          },
+          "input": {
+            "description": "id of the node feeding this one.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        }
+      }
+    }
+  }
+}

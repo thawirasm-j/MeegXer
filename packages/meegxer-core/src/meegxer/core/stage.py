@@ -40,7 +40,11 @@ class StaleModelError(RuntimeError):
 def signal_fingerprint(info: SignalInfo) -> str:
     """Fingerprint of a source stream: what a pipeline's first stage depends on."""
     return fingerprint(
-        "signal", info.stream_id, repr(float(info.sfreq)), *info.ch_labels
+        "signal",
+        info.stream_id,
+        repr(float(info.sfreq)),
+        ",".join(info.ch_labels),
+        ",".join(info.bads),
     )
 
 
@@ -66,9 +70,16 @@ class Stage:
         self._calibrating = False
 
     def set_params(self, **updates: object) -> None:
-        """Change parameters; streaming state restarts on the next block."""
-        self.params = self.manifest.resolve_params({**self.params, **updates})
-        self.state = None
+        """Change parameters.
+
+        Streaming state restarts on the next block unless every changed parameter
+        is listed in the manifest's ``live_params``.
+        """
+        new = self.manifest.resolve_params({**self.params, **updates})
+        changed = {name for name, value in new.items() if self.params[name] != value}
+        self.params = new
+        if not changed <= self.manifest.live_params:
+            self.state = None
 
     def fingerprint(self, input_fp: str) -> str:
         """What a model fitted for this stage depends on."""

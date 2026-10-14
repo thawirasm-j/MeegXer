@@ -55,11 +55,16 @@ def _check_index(name: str, value: int) -> int:
 
 @dataclass(frozen=True, slots=True)
 class SignalInfo:
-    """Static description of a Signal stream."""
+    """Static description of a Signal stream.
+
+    ``bads`` marks channels known to be bad. They stay in the data; nodes that
+    pool channels (e.g. average reference) can leave them out.
+    """
 
     ch_labels: tuple[str, ...]
     sfreq: float
     stream_id: str = ""
+    bads: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         labels = tuple(self.ch_labels)
@@ -73,6 +78,11 @@ class SignalInfo:
             raise ChannelMismatchError(f"duplicate channel labels: {duplicates}")
         if not math.isfinite(self.sfreq) or self.sfreq <= 0:
             raise ValueError(f"sfreq must be positive and finite, got {self.sfreq}")
+        bads = tuple(self.bads)
+        object.__setattr__(self, "bads", bads)
+        unknown = sorted(set(bads) - set(labels))
+        if unknown or len(set(bads)) != len(bads):
+            raise ChannelMismatchError(f"bad channels must be unique labels: {bads}")
 
     @property
     def n_channels(self) -> int:
@@ -154,7 +164,8 @@ class Block:
     def pick(self, labels: Sequence[str]) -> Block:
         """Return the given channels, in the given order."""
         idx = match_channels(self.info.ch_labels, labels)
-        info = SignalInfo(tuple(labels), self.info.sfreq, self.info.stream_id)
+        bads = tuple(label for label in labels if label in self.info.bads)
+        info = SignalInfo(tuple(labels), self.info.sfreq, self.info.stream_id, bads)
         return Block(self.data[idx], info, self.sample_index, self.timestamp)
 
 
