@@ -40,7 +40,7 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
 | Package | Contents |
 |---|---|
 | `meegxer-core` | engine, graph, schedulers, plugin spec, I/O, control API (no GUI) |
-| `meegxer-sterile` | audited built-ins: filters, re-ref, ASR, ICA/ICLabel/wICA, features, action sinks |
+| `meegxer-sterile` | audited built-ins: filters, re-ref, ASR, ICA/ICLabel, features, action sinks |
 | `meegxer-runtime` | Docker plugin runtime + Python/Octave SDKs (research builds only) |
 | `meegxer-gui` | PySide6 + pyqtgraph client |
 | `meegxer-cli` | headless runs, batch jobs, Pi deployment |
@@ -49,9 +49,10 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 
 ## Stack
 
-- Python first for everything. Only the core is a candidate for a later Rust rewrite,
+- Python first for everything; floor is Python 3.14 (Ubuntu 26.04 LTS system Python).
+  Monorepo managed as a uv workspace. Only the core is a candidate for a later Rust rewrite,
   behind the same protocol.
-- Core: numpy, pylsl, pyzmq. Built-ins: MNE, SciPy, mne-icalabel, asrpy/meegkit,
+- Core: numpy, pylsl, pyzmq (JSON-RPC control and display both over ZeroMQ). Built-ins: MNE, SciPy, mne-icalabel, asrpy/meegkit,
   mne-connectivity, antropy. GUI: PySide6, pyqtgraph. CLI: Typer or Click.
 - I/O: BIDS (mne-bids), EDF/BDF, EEGLAB .set in; .set (eeglabio), EDF, BIDS-derivatives out.
 - Performance escalation order: vectorize (preallocated ring buffers, no per-sample

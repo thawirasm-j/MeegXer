@@ -2,7 +2,7 @@
 
 Sequencing for the v1 scope in `DESIGN.md` §5. Each milestone ends with something
 runnable and a named acceptance test (`DESIGN.md` §6) where one applies.
-Decisions marked **[D]** need an owner answer before that milestone starts.
+Settled decisions are logged at the end; none are currently open.
 
 ## Guiding principles
 
@@ -44,11 +44,9 @@ M4 and M5 can run in parallel after M3. M6 offline work can start right after M2
   `meegxer.gui`, `meegxer.runtime`; `meegxer.sterile` must not import `meegxer.runtime`.
 - **Sterile packaging check:** CI builds the sterile wheel set and asserts no
   `meegxer.runtime`/docker module is present (rule 10).
-- CI matrix: Linux + Windows; Python floor **[D]**.
-
-**[D] decisions**
-- Python version floor (suggest 3.11: needed by recent MNE/PySide6, good perf gains).
-- Workspace tool: uv workspaces vs hatch. (Suggest uv.)
+- uv workspace at the root; `requires-python = ">=3.14"` in every package.
+- CI matrix: Linux + Windows, Python 3.14.
+- Early smoke job: install every third-party dependency on 3.14 (see risks).
 
 **Exit:** `pytest` green on an empty core; import-linter and sterile-packaging checks
 fail on a deliberately bad import.
@@ -70,11 +68,9 @@ fail on a deliberately bad import.
 - Preallocated ring buffer utility (no per-sample loops).
 - Channel matching by label; sample-index alignment helpers (rule 8).
 
-**[D] decisions**
-- Internal dtype: float64 in-process (IIR state precision) with float32 only on the
-  plugin wire, vs float32 everywhere. (Suggest float64 internal / float32 wire.)
-- Is `state` opaque per node, or must it be serializable (needed for session
-  save/resume mid-stream and for a future Rust core)? (Suggest: serializable.)
+**Decided**
+- float64 inside the core (IIR state precision); float32 only on the plugin wire.
+- Node `state` must be serializable (session save/resume, future Rust core).
 
 **Exit:** unit tests for Block slicing/concat by sample index, label matching,
 status propagation, manifest validation.
@@ -116,11 +112,10 @@ test 1 passes for filter, notch, re-ref.
 - **Acceptance test 2 (stability, no plugins yet)** with a sample-counter channel;
   **acceptance test 3 (latency)** measured and reported.
 
-**[D] decisions**
-- Control transport: JSON-RPC over ZeroMQ REQ/REP vs over WebSocket (the latter eases a
-  future web/remote GUI). Display: ZeroMQ PUB/SUB first, shared memory later.
-- Latency target number (`DESIGN.md` §8).
-- Calibration UX: one-shot at start only for v1? (Suggest yes; periodic refit later.)
+**Decided**
+- Control: JSON-RPC over ZeroMQ REQ/REP. Display: ZeroMQ PUB/SUB; shared memory later.
+- Latency target: < 150 ms end-to-end for monitoring.
+- Calibration: one-shot at session start for v1; periodic refit later.
 
 **Exit:** daemon streams synthetic LSL → filter → LSL out for 30 min with zero
 dropped/duplicated samples; a scripted client can tune params live.
@@ -160,18 +155,16 @@ line disappear in difference mode, and kill the GUI without interrupting process
 
 **Goal:** the processing that makes MeegXer useful for real data.
 
-- ASR (asrpy/meegkit), ICA → ICLabel → ICA rejection, wICA.
+- ASR (asrpy/meegkit), ICA → ICLabel → ICA rejection. (wICA dropped for v1.)
 - Features (analysis processors, Features port): PSD, band power, Hilbert envelope,
   connectivity (mne-connectivity), complexity (antropy).
 - Each: offline first, then streaming where meaningful; test 1 where stateful.
 - **Acceptance test 6:** concordance vs EEGLAB references on shared data; report
   per built-in.
 
-**[D] decisions**
-- wICA ground truth: existing implementation vs re-implement from the paper.
-- Do v1 Features feed downstream nodes (classifier, LSL feature stream) or are they
-  view/export only? Affects whether the scheduler must handle multi-rate edges in v1.
-  (Suggest: allow Features → Sink in v1, Features → Processor later.)
+**Decided**
+- Features → Sink only in v1 (view, export, LSL feature stream); Features → Processor
+  later, so the v1 scheduler needs no multi-rate processor edges.
 
 ## M7 — Reproducibility and release gate
 
@@ -193,16 +186,17 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | Docker Desktop latency/IPC overhead on Windows | M4 | Measure early with a passthrough plugin; ZeroMQ upgrade path |
 | LSL discovery across container boundary | M4 | Host-only LSL (already in design) |
 | Contract churn after many nodes exist | M1–M2 | Freeze contract at M1 exit; version the spec |
-| GPL-3.0 implications for third-party plugins | M4 | Decide and document whether container/stdio plugins are separate works **[D]** |
+| Python 3.14 wheels missing for a dependency (e.g. pylsl, numba, onnxruntime for mne-icalabel, PySide6 on ARM64) | M0, M6 | Dependency smoke job in M0; pin known-good versions; flag blockers early |
+| GPL-3.0 scope for externally distributed plugins | M4 | Repo is GPL-3.0; plugin licensing not yet prescribed, revisit before bundling any plugin |
 
-## Open decisions (summary)
+## Decision log
 
-| # | Decision | Needed by |
-|---|---|---|
-| 1 | Python floor | M0 |
-| 2 | Workspace tool (uv / hatch) | M0 |
-| 3 | Internal dtype; serializable node state | M1 |
-| 4 | Control/display transports | M3 |
-| 5 | Latency target; calibration UX | M3 |
-| 6 | Plugin licensing stance under GPL-3.0 | M4 |
-| 7 | wICA reference; Features downstream in v1 | M6 |
+| # | Decision | Outcome | Affects |
+|---|---|---|---|
+| 1 | Python floor | 3.14 (Ubuntu 26.04 LTS) | M0 |
+| 2 | Workspace tool | uv | M0 |
+| 3 | Internal dtype; node state | float64 core / float32 wire; serializable state | M1 |
+| 4 | Control/display transports | ZeroMQ for both (REQ/REP, PUB/SUB) | M3 |
+| 5 | Latency target; calibration UX | < 150 ms monitoring; one-shot calibration | M3 |
+| 6 | License | GPL-3.0 for this repo | all |
+| 7 | wICA; Features downstream | wICA dropped (non-standard); Features → Sink only | M6 |
