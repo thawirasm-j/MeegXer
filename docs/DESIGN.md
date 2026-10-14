@@ -182,4 +182,4 @@ CLAP native plugins, installers.
   be visualization/export only?
 - wICA: existing reference implementation to treat as ground truth, or write and
   validate against a published version?
-- Python version floor, license, latency target number.
+- Python version floor, latency target number. (License settled: GPL-3.0, see `LICENSE`.)

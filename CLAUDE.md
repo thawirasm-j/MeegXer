@@ -5,7 +5,7 @@ Voicemeeter/VST-style live and offline EEG pipelines, with built-in audited
 processing nodes and containerized research plugins (Octave/EEGLAB or MNE-Python).
 
 Status: pre-MVP. Full design and rationale: `docs/DESIGN.md` — read it before
-making architectural changes.
+making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
 
 ## Architecture rules (do not break these)
 
@@ -21,8 +21,9 @@ making architectural changes.
    single chain with probe taps. A node editor comes later on the same model.
 6. **Typed ports:** Signal (time series), Features (windowed), Events (markers/commands).
    **Node roles:** Source, Processor, Probe, Sink.
-7. **Fit/transform contract** for every processor: `fit(calibration) -> model`,
-   `transform(block, model, state) -> block, state`. Upstream changes mark downstream
+7. **Fit/transform contract** for every processor: `fit(calibration, params) -> model`,
+   `transform(block, model, state, params) -> block, state, events` (events may be
+   empty; full manifest in `docs/DESIGN.md` §3.3). Upstream changes mark downstream
    models "needs refit"; never silently reuse a stale model.
 8. **Align by sample index, match channels by label.** Every block carries a sample
    index and LSL timestamp. Probes overlay by index, never by arrival time.
@@ -59,6 +60,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 ## Benchmarks
 
 - Online: 16 ch / 500 Hz. Offline/batch: 64 ch / 1 kHz.
+- The streaming stability acceptance test (`docs/DESIGN.md` §6.2) intentionally runs at
+  the batch size (64 ch / 1 kHz) as headroom over the online target.
 
 ## Working style
 
