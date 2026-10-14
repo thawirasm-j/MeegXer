@@ -125,6 +125,7 @@ test 1 passes for filter, notch, re-ref.
   dropped when the client lags, never back-pressuring the core (rule 2).
 - Online calibration flow: record N s → fit → ready.
 - CLI (Typer): `meegxer daemon`, `meegxer run`, `meegxer status`.
+- Refuse offline-only nodes (manifest `availability`) in the real-time scheduler.
 - **Acceptance test 2 (stability, no plugins yet)** with a sample-counter channel;
   **acceptance test 3 (latency)** measured and reported.
 
@@ -160,7 +161,8 @@ build still contains no runtime code.
 
 - PySide6 + pyqtgraph client connecting via control + display channels only.
 - Linear drag-and-drop chain; insert-anywhere probes.
-- Auto-generated parameter controls from manifests.
+- Auto-generated parameter controls from manifests, with a friendly mode (hides
+  `advanced` params) and an advanced mode.
 - Probe viewer: Main solid, comparisons faded; overlay and difference modes; PSD view.
 - Per-stage status badges, CPU/latency/overrun meters.
 
@@ -225,3 +227,7 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | 9 | Manifest additions | Typed `inputs`/`outputs`, `spec_version`, enum `choices` | M1 |
 | 10 | Initial streaming state | `state` is `None` on first block; no `initial_state()` | M1 |
 | 11 | Distribution | Five `meegxer-*` names + `meegxer[full]` meta-package | M7 |
+| 12 | Filter start-up | Steady-state initialisation from the first sample | M2 |
+| 13 | Offline filtering | Zero-phase (forward-backward) nodes; every node declares `availability` | M2 |
+| 14 | Friendly/advanced UI | Per-parameter `advanced` flag; friendly mode uses defaults | M2, M5 |
+| 15 | Bad channels | `SignalInfo.bads`; average reference `exclude`/`exclude_bads` options | M2 |

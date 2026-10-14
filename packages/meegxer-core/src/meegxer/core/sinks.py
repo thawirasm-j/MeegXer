@@ -64,6 +64,7 @@ class _RawFileSink(Sink):
         info = mne.create_info(
             list(whole.info.ch_labels), whole.info.sfreq, ch_types="eeg"
         )
+        info["bads"] = list(whole.info.bads)
         raw = mne.io.RawArray(np.array(whole.data), info, verbose="ERROR")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         mne.export.export_raw(

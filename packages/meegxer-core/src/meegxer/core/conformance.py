@@ -67,6 +67,11 @@ def check_blockwise_equivalence(
     atol: float = 1e-12,
 ) -> float:
     """Raise :class:`ConformanceError` on mismatch; return the max abs deviation."""
+    if processor.manifest.availability == "offline":
+        raise ValueError(
+            f"{processor.manifest.name} is offline-only: it always receives the "
+            "whole recording, so block-wise equivalence does not apply"
+        )
     fp = signal_fingerprint(block.info)
     reference_stage = Stage(processor, params)
     if processor.manifest.requires_fit:

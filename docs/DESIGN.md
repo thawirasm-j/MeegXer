@@ -88,6 +88,15 @@ transform(block, model, state, params)        -> block_out, state, events
 ```
 - Every node (source, processor, probe, sink) has a manifest with a `role`;
   `live_params` lists parameters that may change mid-stream without resetting state.
+- **Availability:** each node declares `online`, `offline` or `both`. The batch
+  scheduler refuses online-only nodes and hands offline-only nodes the whole recording
+  as one block; the real-time scheduler refuses offline-only nodes. Offline filtering
+  is zero-phase (forward-backward IIR nodes); online filtering is causal.
+- **Friendly and advanced modes:** each parameter may be marked `advanced`; friendly
+  mode hides those and uses their defaults.
+- **Bad channels:** `SignalInfo.bads` marks bad channels (read from files where the
+  format stores them). They stay in the data; pooling nodes such as the average
+  reference leave them out by default (`exclude_bads`).
 - Schema: `spec/manifest.schema.json`. `state` is `None` on the first block of a
   stream and after a parameter change or refit; the processor initialises it then.
   Model and state must be serializable (arrays, scalars, strings, lists, dicts).

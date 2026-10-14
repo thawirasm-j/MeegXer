@@ -74,7 +74,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - `python tools/smoke_deps.py --python 3.14`: planned third-party deps install/import.
 - `uv run meegxer nodes`; `uv run meegxer run pipeline.json -i rec.set -o out.set`.
 - New nodes register in the `meegxer.nodes` entry-point group (see package
-  pyproject.toml); stream processors must pass
+  pyproject.toml) and declare `availability` (online/offline/both). Stream
+  processors that run online must pass
   `meegxer.core.conformance.check_blockwise_equivalence` (acceptance test 1).
 - Architecture rules 1 and 10 are import-linter contracts in the root `pyproject.toml`;
   `tests/test_architecture.py` proves each contract catches a violation.

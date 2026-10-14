@@ -41,3 +41,40 @@ def test_missing_or_empty_reference_raises() -> None:
 def test_reref_blockwise_equals_one_pass(params: dict[str, object]) -> None:
     """Acceptance test 1 for re-referencing."""
     check_blockwise_equivalence(Rereference(), BLOCK, params)
+
+
+BAD_INFO = SignalInfo(("Fz", "Cz", "M1", "M2"), 100.0, bads=("Cz",))
+BAD_BLOCK = Block(DATA, BAD_INFO, 0, 0.0)
+
+
+def run_on(block: Block, **params: object) -> Block:
+    out = Stage(Rereference(), params).transform(block, signal_fingerprint(block.info))
+    assert isinstance(out.block, Block)
+    return out.block
+
+
+def test_average_excludes_bads_and_listed_channels() -> None:
+    good = [0, 2, 3]
+    np.testing.assert_allclose(run_on(BAD_BLOCK).data, DATA - DATA[good].mean(axis=0))
+    with_bads = run_on(BAD_BLOCK, exclude_bads=False)
+    np.testing.assert_allclose(with_bads.data, DATA - DATA.mean(axis=0))
+    listed = run_on(BLOCK, exclude="M1,M2")
+    np.testing.assert_allclose(listed.data, DATA - DATA[:2].mean(axis=0))
+    both = run_on(BAD_BLOCK, exclude="M2")
+    np.testing.assert_allclose(both.data, DATA - DATA[[0, 2]].mean(axis=0))
+    assert both.info.bads == ("Cz",)  # bad channels are still re-referenced, kept
+
+
+def test_exclusion_errors() -> None:
+    with pytest.raises(ChannelMismatchError):
+        run_on(BLOCK, exclude="Oz")
+    with pytest.raises(ValueError, match="every channel"):
+        run_on(BLOCK, exclude="Fz,Cz,M1,M2")
+    with pytest.raises(ValueError, match="marked bad"):
+        run_on(BAD_BLOCK, mode="channels", channels="Cz")
+    ok = run_on(BAD_BLOCK, mode="channels", channels="Cz", exclude_bads=False)
+    np.testing.assert_allclose(ok.data[1], 0.0)
+
+
+def test_reref_with_bads_blockwise_equals_one_pass() -> None:
+    check_blockwise_equivalence(Rereference(), BAD_BLOCK, {"exclude": "M2"})

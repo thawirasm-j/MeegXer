@@ -1,9 +1,15 @@
-"""Causal IIR filters with carried state (second-order sections + ``zi``).
+"""IIR filters: causal (online and offline) and zero-phase (offline only).
 
-State is the per-channel ``sosfilt`` delay line, so filtering a recording block
-by block gives the same result as one pass. The first block initialises the state
-to the filter's steady-state response to that block's first sample, which avoids
-the start-up step a zero state would produce.
+Causal filters carry the per-channel ``sosfilt`` delay line as state, so filtering
+block by block gives the same result as one pass. The first block initialises the
+state to the filter's steady-state response to that block's first sample, which
+avoids the start-up step a zero state would produce.
+
+Zero-phase filters run the same design forwards and backwards (``sosfiltfilt``)
+over the whole recording. They have no phase distortion or group delay but are
+non-causal, so they are offline-only. Running the filter twice squares the
+magnitude response: attenuation doubles in dB and a Butterworth edge is -6 dB
+instead of -3 dB.
 """
 
 from __future__ import annotations
@@ -61,6 +67,7 @@ class IIRFilter(Processor):
             {"name": "high", "type": "float", "default": 40.0, "min": 0.0,
              "unit": "Hz", "description": "Upper edge (low-, band-pass, band-stop)"},
             {"name": "order", "type": "int", "default": 4, "min": 1, "max": 10,
+             "advanced": True,
              "description": "Butterworth order (doubled for band filters)"},
         ],
         description="Causal Butterworth IIR filter with carried state.",
@@ -101,8 +108,10 @@ class NotchFilter(Processor):
             {"name": "freq", "type": "float", "default": 50.0, "min": 0.0,
              "unit": "Hz"},
             {"name": "quality", "type": "float", "default": 30.0, "min": 0.1,
+             "advanced": True,
              "description": "Q factor: centre frequency / -3 dB bandwidth"},
             {"name": "harmonics", "type": "int", "default": 1, "min": 1, "max": 10,
+             "advanced": True,
              "description": "Number of notches (freq, 2*freq, ...) below Nyquist"},
         ],
         description="Causal IIR notch (line noise) with carried state.",
@@ -125,3 +134,75 @@ class NotchFilter(Processor):
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
         return _apply_sos(self.design(params, block.info.sfreq), block, state)
+
+
+def _apply_sos_zero_phase(sos: SosArray, block: Block) -> TransformResult:
+    data = np.asarray(block.data)
+    try:
+        out = signal.sosfiltfilt(sos, data, axis=-1)
+    except ValueError as exc:  # input shorter than the edge padding
+        raise ValueError(
+            f"zero-phase filtering needs a longer recording ({block.n_samples} "
+            f"samples): {exc}"
+        ) from exc
+    return TransformResult(
+        Block(out, block.info, block.sample_index, block.timestamp), {}
+    )
+
+
+def _zero_phase_manifest(causal: Manifest, name: str, description: str) -> Manifest:
+    return stream_manifest(
+        name,
+        causal.version,
+        [
+            {
+                k: v
+                for k, v in {
+                    "name": p.name,
+                    "type": p.type,
+                    "default": p.default,
+                    "min": p.min,
+                    "max": p.max,
+                    "choices": list(p.choices) if p.choices else None,
+                    "unit": p.unit or None,
+                    "description": p.description or None,
+                    "advanced": p.advanced or None,
+                }.items()
+                if v is not None
+            }
+            for p in causal.params
+        ],
+        description=description,
+        availability="offline",
+    )
+
+
+class IIRFilterZeroPhase(Processor):
+    """Forward-backward Butterworth filter (offline only, no phase shift)."""
+
+    manifest: ClassVar[Manifest] = _zero_phase_manifest(
+        IIRFilter.manifest,
+        "meegxer.sterile.iir_filter_zerophase",
+        "Zero-phase (forward-backward) Butterworth IIR filter; offline only.",
+    )
+
+    def transform(
+        self, block: Block, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        return _apply_sos_zero_phase(IIRFilter.design(params, block.info.sfreq), block)
+
+
+class NotchFilterZeroPhase(Processor):
+    """Forward-backward notch cascade (offline only, no phase shift)."""
+
+    manifest: ClassVar[Manifest] = _zero_phase_manifest(
+        NotchFilter.manifest,
+        "meegxer.sterile.notch_zerophase",
+        "Zero-phase (forward-backward) IIR notch; offline only.",
+    )
+
+    def transform(
+        self, block: Block, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        sos = NotchFilter.design(params, block.info.sfreq)
+        return _apply_sos_zero_phase(sos, block)

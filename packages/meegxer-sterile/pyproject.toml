@@ -20,6 +20,8 @@ dependencies = [
 [project.entry-points."meegxer.nodes"]
 "meegxer.sterile.iir_filter" = "meegxer.sterile.filters:IIRFilter"
 "meegxer.sterile.notch" = "meegxer.sterile.filters:NotchFilter"
+"meegxer.sterile.iir_filter_zerophase" = "meegxer.sterile.filters:IIRFilterZeroPhase"
+"meegxer.sterile.notch_zerophase" = "meegxer.sterile.filters:NotchFilterZeroPhase"
 "meegxer.sterile.rereference" = "meegxer.sterile.reference:Rereference"
 
 [build-system]

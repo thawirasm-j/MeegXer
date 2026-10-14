@@ -5,6 +5,10 @@ the next node starts. That makes calibration natural (a stage that needs fitting
 sees all of its input) and lets each node's output be cached. Within a node,
 input is still fed block by block through the same ``transform`` the real-time
 scheduler will use, so the processor code is identical in both.
+
+Node availability (manifest ``availability``): offline-only processors (e.g.
+zero-phase filters) receive the whole recording as a single block; online-only
+nodes are refused.
 """
 
 from __future__ import annotations
@@ -80,6 +84,10 @@ class BatchScheduler:
         streams: dict[str, Stream] = {}
         remaining = {n.id: len(graph.children(n.id)) for n in graph.nodes}
 
+        online_only = [n.id for n in graph.nodes if not n.manifest.runs_offline]
+        if online_only:
+            raise GraphError(f"online-only nodes cannot run in batch: {online_only}")
+
         for node in graph.nodes:
             if node.role is NodeRole.SOURCE:
                 assert isinstance(node.impl, Source)
@@ -136,6 +144,8 @@ class BatchScheduler:
                 result.events[node.id] = hit.events
                 return list(split_block(hit.block, self.block_size))
 
+        if stage.manifest.availability == "offline" and len(signal_in) > 1:
+            signal_in = [concat_blocks(signal_in)]  # offline nodes see everything
         stage.state = None  # a batch run always starts the stream from scratch
         out: Stream = []
         events: list[Event] = []

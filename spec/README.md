@@ -14,8 +14,10 @@ define it.
   - `pipeline.schema.json` (0.2.0): a processing graph as an ordered node list;
     each node's `input` names an earlier node (acyclic by construction) and defaults
     to the nearest earlier source or processor, so a plain list is a linear chain.
-  - 0.2.0 also added manifest `role` (source | processor | probe | sink) and
-    `live_params` (parameters that change without resetting streaming state).
+  - 0.2.0 also added manifest `role` (source | processor | probe | sink),
+    `live_params` (parameters that change without resetting streaming state),
+    `availability` (online | offline | both) and the per-parameter `advanced` flag
+    (hidden in the UI's friendly mode).
 - **Planned:**
   - `control-api.md`: JSON-RPC methods between core and clients. Milestone M3.
   - `plugin-protocol.md`: framed stdin/stdout protocol for containerized plugins.

@@ -46,6 +46,15 @@
       ],
       "default": "processor"
     },
+    "availability": {
+      "description": "Where the node can run: online (real-time scheduler), offline (batch scheduler; receives the whole recording as one block), or both.",
+      "enum": [
+        "online",
+        "offline",
+        "both"
+      ],
+      "default": "both"
+    },
     "description": {
       "type": "string"
     },
@@ -135,6 +144,11 @@
         },
         "unit": {
           "type": "string"
+        },
+        "advanced": {
+          "description": "Shown only in the UI's advanced mode; friendly mode uses the default.",
+          "type": "boolean",
+          "default": false
         }
       },
       "oneOf": [
@@ -154,7 +168,8 @@
             },
             "name": true,
             "description": true,
-            "unit": true
+            "unit": true,
+            "advanced": true
           },
           "additionalProperties": false
         },
@@ -174,7 +189,8 @@
             },
             "name": true,
             "description": true,
-            "unit": true
+            "unit": true,
+            "advanced": true
           },
           "additionalProperties": false
         },
@@ -187,7 +203,8 @@
               "type": "boolean"
             },
             "name": true,
-            "description": true
+            "description": true,
+            "advanced": true
           },
           "additionalProperties": false
         },
@@ -208,7 +225,8 @@
               "uniqueItems": true
             },
             "name": true,
-            "description": true
+            "description": true,
+            "advanced": true
           },
           "required": [
             "choices"
@@ -224,7 +242,8 @@
               "type": "string"
             },
             "name": true,
-            "description": true
+            "description": true,
+            "advanced": true
           },
           "additionalProperties": false
         }

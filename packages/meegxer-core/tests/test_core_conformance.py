@@ -89,3 +89,16 @@ def test_random_block_sizes() -> None:
     sizes = random_block_sizes(1000, rng, 50)
     assert sum(sizes) == 1000 and min(sizes) >= 1 and max(sizes) <= 50
     assert 1 in sizes
+
+
+def test_offline_processors_are_out_of_scope() -> None:
+    class Offline(Ema):
+        manifest: ClassVar[Manifest] = Manifest.from_dict({
+            "spec_version": "0.2.0", "name": "test.offline", "version": "0.1.0",
+            "type": "stream", "availability": "offline",
+            "inputs": [{"name": "in", "type": "signal"}],
+            "outputs": [{"name": "out", "type": "signal"}],
+        })  # fmt: skip
+
+    with pytest.raises(ValueError, match="offline-only"):
+        check_blockwise_equivalence(Offline(), SIGNAL)

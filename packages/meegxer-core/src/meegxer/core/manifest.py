@@ -24,6 +24,7 @@ type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]
 type NodeKind = Literal["stream", "analysis"]
 type NodeRoleName = Literal["source", "processor", "probe", "sink"]
+type Availability = Literal["online", "offline", "both"]
 
 
 class ManifestError(ValueError):
@@ -51,6 +52,7 @@ class ParamSpec:
     choices: tuple[str, ...] = ()
     unit: str = ""
     description: str = ""
+    advanced: bool = False
 
     def coerce(self, value: object) -> ParamValue:
         """Validate one value against this spec and return it in canonical form."""
@@ -98,6 +100,15 @@ class Manifest:
     description: str = ""
     role: NodeRoleName = "processor"
     live_params: frozenset[str] = frozenset()
+    availability: Availability = "both"
+
+    @property
+    def runs_online(self) -> bool:
+        return self.availability in ("online", "both")
+
+    @property
+    def runs_offline(self) -> bool:
+        return self.availability in ("offline", "both")
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Manifest:
@@ -118,6 +129,7 @@ class Manifest:
                 choices=tuple(p.get("choices", ())),
                 unit=p.get("unit", ""),
                 description=p.get("description", ""),
+                advanced=p.get("advanced", False),
             )
             for p in data.get("params", [])
         )
@@ -137,6 +149,7 @@ class Manifest:
             description=data.get("description", ""),
             role=data.get("role", "processor"),
             live_params=frozenset(data.get("live_params", ())),
+            availability=data.get("availability", "both"),
         )
         manifest._check_semantics()
         return manifest

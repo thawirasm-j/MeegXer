@@ -184,3 +184,15 @@ def test_live_params_must_exist_and_fit_only_for_processors() -> None:
         Manifest.from_dict(with_changes(live_params=["nope"]))
     with pytest.raises(ManifestError, match="fitting"):
         Manifest.from_dict(role_manifest("sink", 1, 0, requires_fit=True))
+
+
+def test_availability_and_advanced_flags() -> None:
+    m = Manifest.from_dict(VALID)
+    assert m.availability == "both" and m.runs_online and m.runs_offline
+    assert not any(p.advanced for p in m.params)
+    offline = Manifest.from_dict(with_changes(availability="offline"))
+    assert offline.runs_offline and not offline.runs_online
+    params = [{"name": "x", "type": "int", "default": 1, "advanced": True}]
+    assert Manifest.from_dict(with_changes(params=params)).params[0].advanced
+    with pytest.raises(ManifestError):
+        Manifest.from_dict(with_changes(availability="sometimes"))

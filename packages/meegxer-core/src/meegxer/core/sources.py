@@ -67,22 +67,22 @@ class SyntheticSource(Source):
              "unit": "Hz"},
             {"name": "duration", "type": "float", "default": 60.0, "min": 0.0,
              "unit": "s", "description": "0 streams forever"},
-            {"name": "seed", "type": "int", "default": 0, "min": 0},
-            {"name": "noise_uv", "type": "float", "default": 10.0, "min": 0.0,
-             "unit": "uV"},
-            {"name": "alpha_uv", "type": "float", "default": 15.0, "min": 0.0,
-             "unit": "uV"},
-            {"name": "alpha_hz", "type": "float", "default": 10.0, "min": 0.0,
-             "unit": "Hz"},
-            {"name": "line_uv", "type": "float", "default": 5.0, "min": 0.0,
-             "unit": "uV"},
-            {"name": "line_hz", "type": "float", "default": 50.0, "min": 0.0,
-             "unit": "Hz"},
-            {"name": "ssvep_uv", "type": "float", "default": 3.0, "min": 0.0,
-             "unit": "uV"},
-            {"name": "ssvep_hz", "type": "float", "default": 12.0, "min": 0.0,
-             "unit": "Hz"},
-            {"name": "start_time", "type": "float", "default": 0.0, "unit": "s"},
+            {"name": "seed", "type": "int", "default": 0, "min": 0, "advanced": True},
+            *(
+                {"name": name, "type": "float", "default": default, "min": 0.0,
+                 "unit": unit, "advanced": True}
+                for name, default, unit in (
+                    ("noise_uv", 10.0, "uV"),
+                    ("alpha_uv", 15.0, "uV"),
+                    ("alpha_hz", 10.0, "Hz"),
+                    ("line_uv", 5.0, "uV"),
+                    ("line_hz", 50.0, "Hz"),
+                    ("ssvep_uv", 3.0, "uV"),
+                    ("ssvep_hz", 12.0, "Hz"),
+                )
+            ),
+            {"name": "start_time", "type": "float", "default": 0.0, "unit": "s",
+             "advanced": True},
         ],
     )  # fmt: skip
 
@@ -186,7 +186,10 @@ class _RawSource(Source):
         raw.pick("data", exclude=())
         data: FloatArray = np.asarray(raw.get_data(), dtype=np.float64)
         info = SignalInfo(
-            tuple(raw.ch_names), float(raw.info["sfreq"]), self._stream_id()
+            tuple(raw.ch_names),
+            float(raw.info["sfreq"]),
+            self._stream_id(),
+            tuple(b for b in raw.info["bads"] if b in raw.ch_names),
         )
         return data, info
 

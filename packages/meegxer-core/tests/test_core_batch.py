@@ -209,3 +209,46 @@ def test_split_block() -> None:
     parts = split_block(block, 200)
     assert [p.n_samples for p in parts] == [200, 200, 100]
     assert split_block(block, None) == [block]
+
+
+class WholeOnly(Scale):
+    """Offline-only: records how many blocks it was given."""
+
+    manifest: ClassVar[Manifest] = Manifest.from_dict({
+        "spec_version": "0.2.0", "name": "test.whole", "version": "0.1.0",
+        "type": "stream", "availability": "offline",
+        "inputs": [{"name": "in", "type": "signal"}],
+        "outputs": [{"name": "out", "type": "signal"}],
+        "params": [{"name": "k", "type": "float", "default": 1.0}],
+    })  # fmt: skip
+    sizes: ClassVar[list[int]] = []
+
+    def transform(
+        self, block: Block, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        type(self).sizes.append(block.n_samples)
+        return super().transform(block, model, state, params)
+
+
+class LiveOnly(Scale):
+    manifest: ClassVar[Manifest] = Manifest.from_dict({
+        "spec_version": "0.2.0", "name": "test.live", "version": "0.1.0",
+        "type": "stream", "availability": "online",
+        "inputs": [{"name": "in", "type": "signal"}],
+        "outputs": [{"name": "out", "type": "signal"}],
+    })  # fmt: skip
+
+
+def test_offline_nodes_get_the_whole_recording() -> None:
+    WholeOnly.sizes.clear()
+    probe = MemoryProbe()
+    graph = Graph.chain([source(), Stage(WholeOnly()), Stage(Scale()), probe])
+    BatchScheduler(block_size=50).run(graph)
+    assert WholeOnly.sizes == [500]
+    np.testing.assert_allclose(probe.signal().data, raw_signal().data * 2)
+
+
+def test_online_only_nodes_are_refused_in_batch() -> None:
+    graph = Graph.chain([source(), Stage(LiveOnly())])
+    with pytest.raises(GraphError, match="online-only"):
+        BatchScheduler().run(graph)

@@ -40,7 +40,11 @@ class StaleModelError(RuntimeError):
 def signal_fingerprint(info: SignalInfo) -> str:
     """Fingerprint of a source stream: what a pipeline's first stage depends on."""
     return fingerprint(
-        "signal", info.stream_id, repr(float(info.sfreq)), *info.ch_labels
+        "signal",
+        info.stream_id,
+        repr(float(info.sfreq)),
+        ",".join(info.ch_labels),
+        ",".join(info.bads),
     )
 
 
