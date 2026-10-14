@@ -183,6 +183,17 @@ build still contains no runtime code.
 
 **Goal:** the "mixer" experience, as a pure client of M3's APIs.
 
+**Status:** implemented (`meegxer.gui`, `meegxer-gui`). Spec 0.2.2 added `primary`
+parameters, per-node `strip_params` and the adaptable band-pass (`phase`); the
+daemon gained `run_offline` / `offline_window` so offline mode stays a pure client.
+Every source and processor gets a probe tap, so showing a tap never reloads the
+pipeline. Exit criteria are automated in `packages/meegxer-gui/tests/test_gui_exit.py`
+(50 Hz line in difference mode; SIGKILL of the GUI leaves the daemon processing).
+Screenshots: `uv run python tools/gui_screenshot.py OUT_DIR`. Not yet: electrode
+positions from the recording (the standard 10-05 table is used), an incremental
+offline view for very long recordings, and a check on real displays and Windows.
+Found and fixed on the way: the memory probe kept every block in live runs.
+
 - PySide6 + pyqtgraph client connecting via control + display channels only
   (layout and behaviour: `docs/DESIGN.md` §3.7).
 - Horizontal chain of strips: + Add strip (end and gaps), drag to reorder,
@@ -190,7 +201,8 @@ build still contains no runtime code.
   (`primary`) ones in friendly mode, up to 3 user-picked ones in advanced mode.
 - Auto-generated parameter controls from manifests in the inspector, with a friendly
   mode (hides `advanced` params) and an advanced mode.
-- Mode set by the Input strip (LSL = live, file/BIDS = offline); incompatible strips
+- Mode set by the Input strip (LSL = live; file/BIDS/synthetic played live or
+  processed offline, default offline for files); incompatible strips
   reddish and blocking; adaptable band-pass (`phase`: auto/causal/zero).
 - Signal view: single trace area, channel selector (all by default), colour wheel
   channel colours, Main thick / comparisons faded; overlay, difference and spectrum

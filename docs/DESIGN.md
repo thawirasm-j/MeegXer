@@ -177,8 +177,10 @@ it never interrupts processing.
     pipeline file. The inspector always shows every parameter.
   - **+ Add strip** at the end of the chain and in each gap; strips drag to before or
     after any other strip. Probe taps sit between strips.
-- **Mode comes from the Input strip:** an LSL source means live, a file or BIDS source
-  means offline. The transport follows (Start/Stop live, Run/Export offline).
+- **Mode comes from the Input strip:** an LSL source is always live; a file or BIDS
+  source is offline by default and a synthetic source live, and either can be
+  switched on the Input strip (live playback or offline processing). The transport
+  follows (Start/Stop live; Run offline, with files written by output strips).
   Compatibility is strict: a strip whose availability does not fit the mode turns
   reddish ("Offline only" / "Live only") and the pipeline will not start. The one
   adaptable node is the band-pass filter (which also covers high- and low-pass): its

@@ -28,6 +28,8 @@ bind it to a non-local interface only on a trusted network.
 | `clear_calibration` | `node` (optional) | `{cleared, status}`: drops the fitted model of one node, or of every node when `node` is omitted |
 | `set_pass_uncalibrated` | `node`, `enabled` | status. Per-node opt-in: while the node has no valid model, pass data through unprocessed (marked as bypassed) instead of blocking |
 | `set_strip_params` | `node`, `params` (up to 3 names) | the pipeline. Display only: which parameters the node's strip shows in the UI's advanced mode |
+| `run_offline` | `pipeline` | offline status (below). Runs the pipeline over its whole, finite input in the background with the batch scheduler (offline variants such as the zero-phase band-pass apply). Its sinks write files; its probes are kept as display envelopes for `offline_window`. Refused while the live pipeline runs or another offline run is in progress |
+| `offline_window` | `probe`, `start_bin`, `n_bins` (≤ 20000) | `{probe, ch_labels, sfreq, bin_size, start_bin, mins, maxs}`: bins of one probe from the last offline run, clipped to its data; `mins`/`maxs` are channel × bin lists in volts (`null` where empty), aligned like display frames |
 | `shutdown` | – | `"bye"`; the daemon exits |
 
 ## Status
@@ -55,6 +57,9 @@ bind it to a non-local interface only on a trusted network.
 - `overruns`: blocks whose processing took longer than their duration.
 - `latency`: clock at the sinks minus the LSL timestamp of the block's last sample.
 - `source_*`: present when the source stream carries a `SAMPLE_INDEX` channel.
+- `offline`: present after `run_offline`: `{state, error, elapsed_s, probes}`, where
+  `state` is `running`, `done` or `error`, and `probes` maps each probe id to
+  `{ch_labels, sfreq, bin_size, first_bin, n_bins, bypassed}` once the run is done.
 
 ## Errors
 
