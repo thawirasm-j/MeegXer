@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
 from meegxer.gui.names import title
 from meegxer.gui.pipeline_doc import MAX_STRIP_PARAMS, PipelineDoc, StripNode
 
+CHANNEL_TYPES = ("eeg", "eog", "emg", "ecg", "resp", "misc")
+
 
 def _editor(spec: dict[str, Any], value: Any) -> tuple[QWidget, Any]:
     """A control for one parameter and the signal that reports a final value."""
@@ -77,6 +79,7 @@ def _value(widget: QWidget) -> Any:
 class Inspector(QScrollArea):
     param_changed = Signal(str, str, object)  # strip id, name, value
     strip_params_changed = Signal(str, list)
+    channel_types_changed = Signal(str, list)
     pass_uncalibrated_changed = Signal(str, bool)
     clear_calibration = Signal(str)
     calibrate = Signal(str, float)
@@ -151,6 +154,8 @@ class Inspector(QScrollArea):
 
         if manifest.get("requires_fit"):
             lay.addWidget(self._calibration(strip, node_status, running))
+        if advanced and is_processor:
+            lay.addWidget(self._channel_types(strip))
         if advanced and manifest["params"]:
             lay.addWidget(self._strip_picker(doc, strip))
         lay.addStretch(1)
@@ -194,6 +199,35 @@ class Inspector(QScrollArea):
             lambda on: self.pass_uncalibrated_changed.emit(strip.id, on)
         )
         lay.addWidget(passthrough)
+        return box
+
+    def _channel_types(self, strip: StripNode) -> QWidget:
+        """Which channel types this strip processes; the rest pass through it."""
+        box = QFrame()
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(0, 8, 0, 0)
+        lay.addWidget(
+            QLabel("<b>Processes channels</b> (others pass through untouched)")
+        )
+        chosen = strip.channel_types or ["eeg"]
+        row = QHBoxLayout()
+        boxes: list[tuple[str, QCheckBox]] = []
+
+        def changed() -> None:
+            picked = [t for t, b in boxes if b.isChecked()]
+            if not picked:  # at least one type: keep EEG
+                boxes[0][1].setChecked(True)
+                return
+            self.channel_types_changed.emit(strip.id, picked)
+
+        for kind in CHANNEL_TYPES:
+            b = QCheckBox(kind.upper())
+            b.setChecked(kind in chosen)
+            b.toggled.connect(lambda _: changed())
+            boxes.append((kind, b))
+            row.addWidget(b)
+        row.addStretch(1)
+        lay.addLayout(row)
         return box
 
     def _strip_picker(self, doc: PipelineDoc, strip: StripNode) -> QWidget:

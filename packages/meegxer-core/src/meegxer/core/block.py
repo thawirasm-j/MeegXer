@@ -20,6 +20,9 @@ import numpy.typing as npt
 FloatArray = npt.NDArray[np.float64]
 IndexArray = npt.NDArray[np.intp]
 Position = tuple[float, float, float]
+
+CHANNEL_TYPES = ("eeg", "eog", "emg", "ecg", "resp", "stim", "misc")
+DEFAULT_PROCESSED_TYPES = ("eeg",)
 type JSONValue = (
     str | int | float | bool | list[JSONValue] | dict[str, JSONValue] | None
 )
@@ -117,6 +120,17 @@ class SignalInfo:
     @property
     def n_channels(self) -> int:
         return len(self.ch_labels)
+
+    def labels_of_types(self, types: Sequence[str]) -> tuple[str, ...]:
+        """Channels whose type is in ``types``. Channels of unknown type count as
+        EEG, so streams that carry no types behave as all-EEG."""
+        if not self.ch_types:
+            return self.ch_labels if "eeg" in types else ()
+        return tuple(
+            label
+            for label, kind in zip(self.ch_labels, self.ch_types, strict=True)
+            if (kind or "eeg") in types
+        )
 
 
 def match_channels(available: Sequence[str], wanted: Sequence[str]) -> IndexArray:

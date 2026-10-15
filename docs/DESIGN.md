@@ -112,6 +112,12 @@ transform(block, model, state, params)        -> block_out, state, events
 - **Bad channels:** `SignalInfo.bads` marks bad channels (read from files where the
   format stores them). They stay in the data; pooling nodes such as the average
   reference leave them out by default (`exclude_bads`).
+- **Channel types:** `SignalInfo.ch_types` (eeg, eog, emg, ecg, resp, stim, misc;
+  unknown counts as EEG). A stage hands its processor only the channel types in its
+  `channel_types` (pipeline field, default EEG only) and puts the result back in
+  place; the other channels pass through untouched. So no node, including the
+  average reference, touches EOG/ECG/EMG unless its strip includes them, and the
+  processor code needs no type handling of its own.
 - Schema: `spec/manifest.schema.json`. `state` is `None` on the first block of a
   stream and after a parameter change or refit; the processor initialises it then.
   Model and state must be serializable (arrays, scalars, strings, lists, dicts).

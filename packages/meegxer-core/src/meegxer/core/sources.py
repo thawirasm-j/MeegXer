@@ -193,8 +193,14 @@ class _RawSource(Source):
 
     @cached_property
     def _raw(self) -> tuple[FloatArray, SignalInfo]:
+        import mne  # lazy: only file sources need it
+
         raw = self._load()
-        raw.pick("data", exclude=())
+        # data channels plus the non-EEG ones nodes skip by default (channel_types);
+        # trigger channels stay out: events come from the annotations
+        raw.pick(mne.pick_types(raw.info, meg=True, eeg=True, seeg=True, ecog=True,
+                                dbs=True, fnirs=True, eog=True, ecg=True, emg=True,
+                                misc=True, resp=True, exclude=[]))  # fmt: skip
         data: FloatArray = np.asarray(raw.get_data(), dtype=np.float64)
         info = SignalInfo(
             tuple(raw.ch_names),

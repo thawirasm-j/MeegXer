@@ -23,10 +23,9 @@ from typing import Any
 
 import numpy as np
 
-from meegxer.core.block import Block, Position, SignalInfo
+from meegxer.core.block import CHANNEL_TYPES, Block, Position, SignalInfo
 from meegxer.core.node import Source
 
-CHANNEL_TYPES = ("eeg", "eog", "emg", "ecg", "resp", "stim", "misc")
 _EVENT_LABEL_COLUMNS = ("trial_type", "value", "label", "description", "type")
 
 

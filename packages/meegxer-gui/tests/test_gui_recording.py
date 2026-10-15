@@ -159,3 +159,37 @@ def test_channel_lookup_fills_positions_by_name(
         assert 150 < wheel["EEG T3-REF"][0] < 210
     finally:
         win.close()
+
+
+def test_non_eeg_channels_hidden_by_default_and_strips_can_include_them(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]], tmp_path: Path
+) -> None:
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    info = mne.create_info(["Fz", "Cz", "VEOG", "ECG"], 250.0,
+                           ["eeg", "eeg", "eog", "ecg"])  # fmt: skip
+    raw = mne.io.RawArray(np.random.default_rng(0).standard_normal((4, 5000)) * 1e-5,
+                          info, verbose="error")  # fmt: skip
+    path = tmp_path / "types_raw.fif"
+    raw.save(path, verbose="error")
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        assert win.doc.source is not None
+        win.doc.source.params["path"] = str(path)
+        win.start()
+        deadline = time.monotonic() + 30
+        while win.offline_state != "done":
+            assert time.monotonic() < deadline
+            pump(qapp, 0.1)
+        pump(qapp, 0.3)
+        assert win.view.channels.hidden == {"VEOG", "ECG"}
+        assert win.view.channels.text() == "Channels: 2/4"
+        win.change_channel_types("iirfilter1", ["eeg", "eog"])
+        nodes = {n["id"]: n for n in win.doc.to_pipeline()["nodes"]}
+        assert nodes["iirfilter1"]["channel_types"] == ["eeg", "eog"]
+        assert "channel_types" not in nodes["notch1"]
+    finally:
+        win.close()

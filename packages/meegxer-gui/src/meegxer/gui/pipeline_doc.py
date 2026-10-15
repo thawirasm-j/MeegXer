@@ -24,7 +24,7 @@ PROBE = "meegxer.core.probe"
 TAP_PREFIX = "tap_"
 LIVE_ONLY_SOURCES = {"meegxer.core.lsl_in"}
 DEFAULT_OFFLINE_SOURCES = {"meegxer.core.file", "meegxer.core.bids"}
-SPEC_VERSION = "0.2.3"
+SPEC_VERSION = "0.2.4"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.sterile.iir_filter", "meegxer.sterile.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -38,6 +38,7 @@ class StripNode:
     pass_uncalibrated: bool = False
     strip_params: list[str] = field(default_factory=list)
     recording: dict[str, Any] = field(default_factory=dict)  # input strip only
+    channel_types: list[str] = field(default_factory=list)  # processors; [] = EEG
 
 
 def tap_id(strip_id: str) -> str:
@@ -243,6 +244,8 @@ class PipelineDoc:
                 entry["pass_uncalibrated"] = True
             if strip.strip_params:
                 entry["strip_params"] = list(strip.strip_params)
+            if strip.channel_types and strip.channel_types != ["eeg"]:
+                entry["channel_types"] = list(strip.channel_types)
             if strip.recording:
                 entry["recording"] = copy.deepcopy(strip.recording)
             nodes.append(entry)
@@ -273,6 +276,7 @@ class PipelineDoc:
                     bool(entry.get("pass_uncalibrated", False)),
                     list(entry.get("strip_params", [])),
                     dict(entry.get("recording", {})),
+                    list(entry.get("channel_types", [])),
                 )
             )
         if not strips or self.role(strips[0]) != "source":

@@ -228,10 +228,16 @@ and old 10-20 names match); channel colours from the recording's positions; even
 on the offline view. Offline probes write samples and zoom levels to memory-mapped
 files as the run goes (`MEEGXER_OFFLINE_DIR`), with a size-capped disk cache for
 processor outputs (`MEEGXER_OFFLINE_CACHE_GB`). Not yet: events routed through the
-pipeline (Events port) and written by the file sinks; the file source still keeps
-only data channels (EEG/MEG/...), so channels the file itself types as EOG/ECG/EMG
-are left out, a choice to revisit with ICA in M6 together with type-aware
-re-referencing; a sampling-rate override for formats without one.
+pipeline (Events port) and written by the file sinks; a sampling-rate override for
+formats without one.
+
+**Non-EEG channels** (spec 0.2.4, after M5.1): files keep EOG, ECG, EMG, misc and
+respiration channels (trigger channels stay out; events come from annotations).
+Every processor works on EEG only unless its `channel_types` lists more types; the
+others pass through it untouched, in place. Channels without a type count as EEG.
+The average reference therefore ignores non-EEG channels, and ICA (M6) includes
+EOG/ECG/EMG only when its strip says so. The signal view hides non-EEG channels by
+default.
 
 ## M6 — Heavy built-ins and features
 
@@ -307,3 +313,4 @@ re-referencing; a sampling-rate override for formats without one.
 | 25 | Themes | Colour-token themes; dark default, light included | M5 |
 | 26 | Recording settings | Separate Recording window from the Input strip; stored as the source's `recording` overrides (spec 0.2.3) | M5.1 |
 | 27 | Long offline recordings | Probes write memory-mapped samples + zoom levels while the run goes; size-capped disk cache; no chunk-major batch order | M5.1 |
+| 28 | Non-EEG channels | Kept; every strip processes EEG only unless it lists more types (`channel_types`, spec 0.2.4); reference ignores them; hidden in the view by default | M5.1 |
