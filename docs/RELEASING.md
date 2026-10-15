@@ -20,22 +20,34 @@ that workflow in this repository directly, so no API token exists anywhere.
 TestPyPI is a separate site with its own account: register at
 <https://test.pypi.org/account/register/> too (with 2FA, as on PyPI).
 
-On **PyPI**, open *Your account → Publishing → Add a new pending publisher →
-GitHub* and add **one entry per project** (six entries), each with:
+A pending publisher is how a trusted publisher creates a project that does not
+exist yet. PyPI allows only **one pending publisher at a time** for the same
+owner, repository, workflow and environment ("A pending trusted publisher matching
+this configuration has already been registered for a different project name").
+Once its first upload creates the project, the publisher is no longer pending and
+the next one can be added. So the six projects are created **one per round**:
 
 | Field | Value |
 |---|---|
-| PyPI Project Name | `meegxer`, then `meegxer-core`, `meegxer-sterile`, `meegxer-gui`, `meegxer-cli`, `meegxer-runtime` |
+| PyPI Project Name | one of `meegxer`, `meegxer-core`, `meegxer-sterile`, `meegxer-gui`, `meegxer-cli`, `meegxer-runtime` |
 | Owner | `thawirasm-j` |
 | Repository name | `MeegXer` |
 | Workflow name | `release.yml` |
-| Environment name | `pypi` |
+| Environment name | `testpypi` on TestPyPI, `pypi` on PyPI |
 
-Do the same on **TestPyPI** (<https://test.pypi.org/manage/account/publishing/>)
-with environment name **`testpypi`**.
+1. On TestPyPI (<https://test.pypi.org/manage/account/publishing/>) add the pending
+   publisher for one project name.
+2. Run a release (push a `v*` tag; later rounds: *Re-run failed jobs* in that
+   Actions run). The job for that project creates it; the jobs for projects
+   that do not exist yet fail with "Non-user identities cannot create new
+   projects". That is expected while bootstrapping.
+3. Add the pending publisher for the next name and re-run the failed jobs. Repeat
+   until all six jobs are green.
+4. Do the same on PyPI (*Your account → Publishing*) with the `pypi` target.
 
-A pending publisher reserves the name until the first upload creates the project
-(it expires if unused for a while; just add it again).
+After that, nothing here is needed again: every project has its publisher, and
+each release publishes all six. A pending publisher expires if unused for a while;
+just add it again.
 
 ### 2. GitHub environments
 
@@ -68,10 +80,10 @@ In the repository: *Settings → Environments → New environment*:
 3. Publish to **PyPI**: *Actions → Release → Run workflow*, pick the tag (not a
    branch) under *Use workflow from*, target `pypi`, and approve the deployment.
 
-Each package is uploaded by its own job, because one Trusted Publishing token
-exchange can turn only one pending publisher into a project (a single upload of
-all six created `meegxer` and was refused for the rest). Uploads skip files
-already present, so re-running a failed run finishes a partial release.
+Each package is uploaded by its own job, so one project that cannot be uploaded
+(for example while bootstrapping, above) does not stop the others, and each job
+does its own Trusted Publishing token exchange. Uploads skip files already
+present, so re-running failed jobs finishes a partial release.
 
 PyPI never lets a version be uploaded twice. A broken release is fixed with a new
 version (e.g. `0.1.0a2`), and can be *yanked* on PyPI so installers skip it.
