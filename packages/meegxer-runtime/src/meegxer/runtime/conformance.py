@@ -109,6 +109,9 @@ def run_conformance(
         out = result.block
         if not isinstance(out, Block):
             raise AssertionError("expected a Signal block")
+        tail = reference.flush(fp)  # a lagging plugin hands over its last samples
+        if tail is not None and isinstance(tail.block, Block):
+            out = concat_blocks([out, tail.block])
         if (out.sample_index, out.n_samples) != (block.sample_index, block.n_samples):
             raise AssertionError("output must cover the same samples as the input")
         if not np.all(np.isfinite(out.data)):
@@ -145,7 +148,11 @@ def run_conformance(
         processor.worker._kill()  # simulate a crash between blocks
         second = stage.transform(block.slice(half, block.stop_index), fp).block
         assert isinstance(first, Block) and isinstance(second, Block)
-        joined = concat_blocks([first, second])
+        parts = [first, second]
+        tail = stage.flush(fp)
+        if tail is not None and isinstance(tail.block, Block):
+            parts.append(tail.block)
+        joined = concat_blocks(parts)
         processor.close()
         if not np.allclose(joined.data, one_pass[0].data, rtol=1e-6, atol=1e-10):
             raise AssertionError("output after restart differs from one pass")

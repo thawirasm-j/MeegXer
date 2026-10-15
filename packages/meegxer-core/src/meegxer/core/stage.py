@@ -21,6 +21,7 @@ from meegxer.core.block import (
     DEFAULT_PROCESSED_TYPES,
     Block,
     SignalInfo,
+    concat_blocks,
 )
 from meegxer.core.manifest import ParamValue
 from meegxer.core.node import Mode, Processor, TransformResult
@@ -83,6 +84,9 @@ class Stage:
             raise ValueError(f"channel_types must name some of {CHANNEL_TYPES}")
         # which channels this stage processes; the others pass through untouched
         self.channel_types = tuple(dict.fromkeys(channel_types))
+        self._rest: list[Block] = []  # untouched channels not yet output (delays)
+        self._full_info: SignalInfo | None = None
+        self._last_info: SignalInfo | None = None  # what the processor last saw
         self.model: FittedModel | None = None
         self.state: State | None = None
         self._calibrating = False
@@ -201,10 +205,13 @@ class Stage:
         if status is not StageStatus.READY:
             raise StaleModelError(f"{self.manifest.name} is {status}, not ready")
         full = block
+        if self.state is None:  # a new stream: forget what an earlier one left
+            self._rest = []
         selected = self._selected(block)
         if selected is None:  # no channels of the processed types: pass through
             return TransformResult(full, self.state or {})
         block = selected
+        self._last_info = block.info
         model: State = {}
         if self.model is not None:
             if block.info.ch_labels != self.model.input_info.ch_labels or (
@@ -225,9 +232,43 @@ class Stage:
         check_state(result.state)
         self.state = result.state
         if block is not full and isinstance(result.block, Block):
-            joined = _merge(full, block.info.ch_labels, result.block)
+            rest = [lb for lb in full.info.ch_labels if lb not in block.info.ch_labels]
+            self._rest.append(full.pick(rest))
+            self._full_info = full.info
+            joined = self._join(block.info.ch_labels, result.block)
             result = result._replace(block=joined)
         return result
+
+    def flush(self, input_fp: str) -> TransformResult | None:
+        """End of stream: what a delaying processor still holds (its output for the
+        last samples), merged with the channels it did not process; None when it
+        holds nothing."""
+        if self._last_info is None:
+            return None
+        model: State = self.model.data if self.model is not None else {}
+        result = self.processor.flush(self._last_info, model, self.state, self.params)
+        if result is None:
+            return None
+        check_state(result.state)
+        self.state = result.state
+        if self._rest and self._full_info and isinstance(result.block, Block):
+            labels = self._full_info.labels_of_types(self.channel_types)
+            result = result._replace(block=self._join(labels, result.block))
+        return result
+
+    def _join(self, selected: tuple[str, ...], processed: Block) -> Block:
+        """Merge processed channels with the untouched ones over the samples the
+        processor returned (which may lag its input: a delaying node)."""
+        rest = concat_blocks(self._rest)
+        lo, hi = processed.sample_index, processed.stop_index
+        if not rest.sample_index <= lo <= hi <= rest.stop_index:
+            raise ValueError(
+                f"{self.manifest.name}: output [{lo}, {hi}) is outside the input seen "
+                f"[{rest.sample_index}, {rest.stop_index})"
+            )
+        self._rest = [rest.slice(hi, rest.stop_index)]
+        assert self._full_info is not None
+        return _merge(self._full_info, selected, processed, rest.slice(lo, hi))
 
     def _selected(self, block: Block) -> Block | None:
         """The channels this stage processes: the block itself when that is all of
@@ -238,30 +279,28 @@ class Stage:
         return block.pick(labels) if labels else None
 
 
-def _merge(full: Block, selected: tuple[str, ...], processed: Block) -> Block:
-    """Put a stage's output back among the channels it did not process. Same
-    channels out as in: each goes back to its place. Otherwise (a node that adds
-    or drops channels) the output comes first, then the untouched channels."""
-    if processed.n_samples != full.n_samples:
-        raise ValueError("a stage that skips channels must keep the block length")
+def _merge(
+    full: SignalInfo, selected: tuple[str, ...], processed: Block, others: Block
+) -> Block:
+    """Put a stage's output back among the channels it did not process (``others``,
+    covering the same samples). Same channels out as in: each goes back to its
+    place. Otherwise (a node that adds or drops channels) the output comes first,
+    then the untouched channels."""
     picked = processed.info.ch_labels
-    rest = [label for label in full.info.ch_labels if label not in selected]
-    others = full.pick(rest) if rest else None
-    if picked == selected and others is not None:
-        data = np.array(full.data)
-        index = {label: i for i, label in enumerate(full.info.ch_labels)}
+    if picked == selected:
+        index = {label: i for i, label in enumerate(full.ch_labels)}
+        data = np.empty((full.n_channels, processed.n_samples))
         data[[index[label] for label in picked]] = processed.data
+        data[[index[label] for label in others.info.ch_labels]] = others.data
         bads = tuple(
             label
-            for label in full.info.ch_labels
-            if label in (processed.info.bads if label in picked else full.info.bads)
+            for label in full.ch_labels
+            if label in (processed.info.bads if label in picked else others.info.bads)
         )
-        info = dataclasses.replace(full.info, bads=bads)
-        return dataclasses.replace(
-            full, data=data, info=info, bypassed=processed.bypassed
+        info = dataclasses.replace(full, bads=bads)
+        return Block(
+            data, info, processed.sample_index, processed.timestamp, processed.bypassed
         )
-    if others is None:
-        return processed
     a, b = processed.info, others.info
     info = SignalInfo(
         a.ch_labels + b.ch_labels,
@@ -279,8 +318,8 @@ def _merge(full: Block, selected: tuple[str, ...], processed: Block) -> Block:
     return Block(
         np.vstack([processed.data, others.data]),
         info,
-        full.sample_index,
-        full.timestamp,
+        processed.sample_index,
+        processed.timestamp,
         processed.bypassed,
     )
 

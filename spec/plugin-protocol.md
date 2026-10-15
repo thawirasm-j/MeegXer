@@ -1,9 +1,16 @@
-# MeegXer plugin protocol (`meegxer.plugin/0.1`, spec 0.2.x, unstable)
+# MeegXer plugin protocol (`meegxer.plugin/0.2`, spec 0.2.x, unstable)
 
 How the MeegXer host talks to an external processing plugin (CLAUDE.md rules 9 and
 11). The protocol is language-neutral: the Python and Octave SDKs implement it, they
 do not define it. A plugin is a program that reads requests on **stdin** and writes
 replies on **stdout**; anything it writes to **stderr** is treated as log text.
+
+A plugin whose own libraries print to stdout (e.g. EEGLAB functions) may move the
+protocol to another file descriptor inside its image: when the environment variable
+`MEEGXER_PROTOCOL_FD` is set, the SDKs write replies to that descriptor instead. The
+image's entrypoint then duplicates the real stdout onto it and points stdout at stderr,
+e.g. `sh -c 'exec 3>&1 1>&2; exec PROGRAM'` with `MEEGXER_PROTOCOL_FD=3`. The host
+sees no difference.
 
 ## Sandbox
 
@@ -88,11 +95,26 @@ the state's arrays. Reply: `{"type": "result", "state": TREE, "events": [...]}` 
 array `data` (the output block) plus the new state's arrays. Optional reply field
 `info` changes the output signal info (e.g. dropped channels).
 
+Reply field `sample_index` (0.2) is the sample index of the output's first sample.
+Without it the output is aligned with the input. A plugin with look-ahead (output
+lags its input) reports an earlier index and may return fewer samples than it
+received, including none; the host keeps the output aligned by sample index (CLAUDE.md
+rule 8), so the delay never shifts it against other channels or probes. Such a
+plugin should also declare `latency_samples` in its manifest.
+
 Each event is `{"sample_index": int, "label": str, "duration": int, "payload": {...}}`.
 
 The host owns model and state; the plugin keeps nothing between blocks except the
 models it was given. A plugin that crashes or times out is restarted and continues
 with the state the host already holds.
+
+### `flush` → `result` (0.2)
+
+Sent once at the end of a stream (offline runs, conformance), with the same fields as
+`transform` but no `data`, `sample_index` or `timestamp`. A plugin with look-ahead
+replies with the samples it still holds (a `result` with `sample_index`); any other
+plugin replies with an empty `data` array, or with a `bad_request` error (0.1
+plugins), which the host treats as "nothing held".
 
 ### `shutdown` → `ok`
 

@@ -51,6 +51,12 @@ def _run(
         if stage.state is not None:  # save/restore round trip between blocks
             stage.state = state_from_bytes(state_to_bytes(stage.state))
         start += size
+    tail = stage.flush(fp)
+    if tail is not None:
+        if not isinstance(tail.block, Block):
+            raise ConformanceError("block-wise equivalence applies to Signal outputs")
+        outputs.append(tail.block)
+        events.extend(tail.events)
     return concat_blocks(outputs), events
 
 

@@ -243,12 +243,30 @@ default.
 
 **Goal:** the processing that makes MeegXer useful for real data.
 
-- ASR (asrpy/meegkit), ICA → ICLabel → ICA rejection. (wICA dropped for v1.)
+- ASR as the EEGLAB plugin `eeglab.asr`; ICA → ICLabel → ICA rejection. (wICA
+  dropped for v1.)
 - Features (analysis processors, Features port): PSD, band power, Hilbert envelope,
   connectivity (mne-connectivity), complexity (antropy).
 - Each: offline first, then streaming where meaningful; test 1 where stateful.
 - **Acceptance test 6:** concordance vs EEGLAB references on shared data; report
   per built-in.
+
+**Delivery:** three PRs. M6a: ASR plugin plus delayed-output support in the core;
+M6b: ICA, ICLabel and component rejection; M6c: features.
+
+**M6a status:** implemented. `packages/meegxer-runtime/plugins/eeglab_asr/` runs
+EEGLAB's `asr_calibrate`/`asr_process` (clean_rawdata, fetched at a pinned commit when
+the image is built, never stored in this repository) in Octave. Octave's signal
+package has no `yulewalk`, so the plugin carries its own modified Yule–Walker
+(`mx_yulewalk.m`, GPL), which matches EEGLAB's precomputed filter tables to 6e-11.
+The plugin processes fixed `step_size` chunks, so its output does not depend on block
+sizes, and reports output with ASR's look-ahead delay (half a window) through the
+new result `sample_index` and `flush` (plugin protocol 0.2, spec 0.2.5); EEGLAB
+prints to stdout, so the image moves the protocol to fd 3 (`MEEGXER_PROTOCOL_FD`).
+Acceptance test 6 for ASR: streamed in 500-sample blocks and flushed, the plugin's
+output equals `clean_asr` run in EEGLAB on `tests/data/m6_eeg.npz` (stored reference
+`tests/data/m6_ref_asr.npz`, made by `tools/make_m6_references.py`); conformance
+(test 1, restart) passes in the sandbox.
 
 **Decided**
 - Features → Sink only in v1 (view, export, LSL feature stream); Features → Processor
@@ -314,3 +332,8 @@ default.
 | 26 | Recording settings | Separate Recording window from the Input strip; stored as the source's `recording` overrides (spec 0.2.3) | M5.1 |
 | 27 | Long offline recordings | Probes write memory-mapped samples + zoom levels while the run goes; size-capped disk cache; no chunk-major batch order | M5.1 |
 | 28 | Non-EEG channels | Kept; every strip processes EEG only unless it lists more types (`channel_types`, spec 0.2.4); reference ignores them; hidden in the view by default | M5.1 |
+| 29 | ASR | EEGLAB's ASR as a research-build plugin (`eeglab.asr`); its code is UC-licensed for non-commercial use only, so it is fetched at image build and never shipped in MeegXer; no ASR in the sterile build | M6a |
+| 30 | Look-ahead processors | Output may lag its input by sample index, plus an end-of-stream `flush`; the stage delays untouched channels to match (spec 0.2.5, plugin protocol 0.2) | M6a |
+| 31 | ICA | Picard (extended) by default, Extended Infomax as a strip setting; EEG only unless the strip includes EOG/ECG/EMG | M6b |
+| 32 | Component rejection | Reject when ICLabel's eye, muscle, heart, line-noise or channel-noise probability is ≥ 0.9 | M6b |
+| 33 | EEGLAB references | Stored in `tests/data/` with the generating script, so CI needs no EEGLAB | M6 |

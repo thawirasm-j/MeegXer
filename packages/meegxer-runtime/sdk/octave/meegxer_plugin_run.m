@@ -1,18 +1,41 @@
 ## -*- texinfo -*-
-## MeegXer plugin SDK for GNU Octave (protocol meegxer.plugin/0.1, spec 0.2.x).
+## MeegXer plugin SDK for GNU Octave (protocol meegxer.plugin/0.2, spec 0.2.x).
 ##
-## meegxer_plugin_run (MANIFEST, FIT_FN, TRANSFORM_FN)
+## meegxer_plugin_run (MANIFEST, FIT_FN, TRANSFORM_FN, FLUSH_FN)
 ##
 ## Serves the MeegXer plugin protocol on stdin/stdout (spec/plugin-protocol.md).
 ## MANIFEST is a struct following manifest.schema.json. FIT_FN is [] or
 ##   model = fit_fn (data, info, params)
 ## TRANSFORM_FN is
 ##   [data, state, events] = transform_fn (data, info, model, state, params)
+## or, for a plugin whose output lags its input (look-ahead),
+##   [data, state, events, first] = transform_fn (...)
+## where FIRST is the sample index of the first output sample (output may have
+## fewer samples than the input). FLUSH_FN (optional) returns what such a plugin
+## still holds at the end of the stream:
+##   [data, state, events, first] = flush_fn (info, model, state, params)
 ## DATA is double (n_channels x n_samples) in volts. STATE is [] on the first block;
 ## keep everything that must survive between blocks in STATE (the host owns it).
 ## EVENTS is a cell array of structs with fields sample_index, label (and optionally
-## duration, payload). Never write to stdout yourself: it carries the protocol.
-function meegxer_plugin_run (manifest, fit_fn, transform_fn)
+## duration, payload). The protocol goes to stdout, or to file descriptor N when
+## the environment sets MEEGXER_PROTOCOL_FD=N. Plugins that call libraries which
+## print (e.g. EEGLAB) should start Octave as
+##   sh -c 'exec 3>&1 1>&2; MEEGXER_PROTOCOL_FD=3 exec octave-cli ...'
+## so the protocol keeps the original stdout and every print goes to stderr.
+function meegxer_plugin_run (manifest, fit_fn, transform_fn, flush_fn)
+  if (nargin < 4)
+    flush_fn = [];
+  endif
+  lagging = abs (nargout (transform_fn)) >= 4;
+  global MX_OUT;
+  MX_OUT = stdout;
+  fd = getenv ("MEEGXER_PROTOCOL_FD");
+  if (! isempty (fd))
+    MX_OUT = fopen (["/dev/fd/" fd], "w");
+    if (MX_OUT < 0)
+      error ("meegxer_plugin: cannot open protocol descriptor %s", fd);
+    endif
+  endif
   models = struct ();
   while true
     [header, arrays, ok] = mx_read_frame ();
@@ -23,7 +46,7 @@ function meegxer_plugin_run (manifest, fit_fn, transform_fn)
     try
       switch (header.type)
         case "hello"
-          mx_write_frame (struct ("type", "hello", "id", rid, "spec_version", "0.2.1",
+          mx_write_frame (struct ("type", "hello", "id", rid, "spec_version", "0.2.5",
                                   "manifest", manifest,
                                   "sdk", "meegxer-octave/0.1.0"), {});
         case "shutdown"
@@ -53,15 +76,32 @@ function meegxer_plugin_run (manifest, fit_fn, transform_fn)
           if (! isempty (header.state))
             state = mx_from_wire (header.state, arrays);
           endif
-          [data, state, events] = transform_fn (double (arrays.data), mx_info (header),
-                                                model, state, header.params);
-          out = {"data", single(data)};
-          if (isempty (state))
-            state = struct ();
+          first = header.sample_index;
+          if (lagging)
+            [data, state, events, first] = transform_fn (double (arrays.data),
+                                                         mx_info (header), model,
+                                                         state, header.params);
+          else
+            [data, state, events] = transform_fn (double (arrays.data), mx_info (header),
+                                                  model, state, header.params);
           endif
-          [tree, out] = mx_to_wire (state, out, "s");
-          mx_write_frame (struct ("type", "result", "id", rid, "state", {tree},
-                                  "events", {mx_events(events)}), out);
+          mx_result (rid, data, state, events, first);
+        case "flush"
+          info = mx_info (header);
+          if (isempty (flush_fn))
+            mx_result (rid, zeros (numel (info.ch_labels), 0), struct (), {}, 0);
+            continue;
+          endif
+          model = [];
+          if (! isempty (header.model_id))
+            model = models.(mx_key (header.model_id));
+          endif
+          state = [];
+          if (! isempty (header.state))
+            state = mx_from_wire (header.state, arrays);
+          endif
+          [data, state, events, first] = flush_fn (info, model, state, header.params);
+          mx_result (rid, data, state, events, first);
         otherwise
           mx_write_frame (struct ("type", "error", "id", rid, "error", "bad_request",
                                   "message", ["unknown message type " header.type]), {});
@@ -74,6 +114,16 @@ function meegxer_plugin_run (manifest, fit_fn, transform_fn)
   endwhile
 endfunction
 
+function mx_result (rid, data, state, events, first)
+  out = {"data", single(data)};
+  if (isempty (state))
+    state = struct ();
+  endif
+  [tree, out] = mx_to_wire (state, out, "s");
+  mx_write_frame (struct ("type", "result", "id", rid, "state", {tree},
+                          "events", {mx_events(events)}, "sample_index", first), out);
+endfunction
+
 function key = mx_key (model_id)
   key = ["m", regexprep(model_id, "[^A-Za-z0-9]", "")];
   key = key(1:min (end, 60));
@@ -84,8 +134,10 @@ function info = mx_info (header)
   if (ischar (info.ch_labels))
     info.ch_labels = {info.ch_labels};
   endif
-  info.sample_index = header.sample_index;
-  info.timestamp = header.timestamp;
+  if (isfield (header, "sample_index"))
+    info.sample_index = header.sample_index;
+    info.timestamp = header.timestamp;
+  endif
 endfunction
 
 function evs = mx_events (events)
@@ -178,8 +230,9 @@ function mx_write_frame (header, arrays)
   head = uint8 (jsonencode (header));
   hlen = typecast (uint32 (numel (head)), "uint8");
   plen = typecast (uint64 (numel (payload)), "uint8");
-  fwrite (stdout, [uint8("MXP1"), hlen, head, plen, payload], "uint8");
-  fflush (stdout);
+  global MX_OUT;
+  fwrite (MX_OUT, [uint8("MXP1"), hlen, head, plen, payload], "uint8");
+  fflush (MX_OUT);
 endfunction
 
 function [tree, arrays] = mx_to_wire (value, arrays, prefix)

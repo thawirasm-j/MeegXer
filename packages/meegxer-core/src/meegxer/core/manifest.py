@@ -18,7 +18,7 @@ import jsonschema
 
 from meegxer.core.ports import Port, PortType
 
-SPEC_VERSION = "0.2.4"
+SPEC_VERSION = "0.2.5"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]

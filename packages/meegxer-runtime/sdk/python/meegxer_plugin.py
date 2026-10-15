@@ -1,4 +1,4 @@
-"""MeegXer plugin SDK for Python (protocol meegxer.plugin/0.1, spec 0.2.x).
+"""MeegXer plugin SDK for Python (protocol meegxer.plugin/0.2, spec 0.2.x).
 
 A single-file, numpy-only implementation of spec/plugin-protocol.md for use inside
 plugin images. Copy this file into your image and write::
@@ -24,8 +24,12 @@ plugin images. Copy this file into your image and write::
 ``ch_labels``, ``sfreq``, ``stream_id``, ``bads`` plus ``sample_index`` and
 ``timestamp`` of the block. ``state`` is None on the first block. Return
 ``(data, state, events)``; events are dicts with ``sample_index``, ``label`` and
-optionally ``duration`` and ``payload``. Keep everything that must survive between
-blocks in ``state``: the host owns it, saves it and restores it after a restart.
+optionally ``duration`` and ``payload``. A plugin whose output lags its input
+(look-ahead) returns ``(data, state, events, first)`` with ``first`` the sample index
+of its first output sample (output may be shorter than the input), and returns what
+it still holds at the end of the stream from ``flush(info, model, state, params)``.
+Keep everything that must survive between blocks in ``state``: the host owns it,
+saves it and restores it after a restart.
 Never print to stdout (it carries the protocol); log to stderr.
 """
 
@@ -41,7 +45,7 @@ from typing import Any, BinaryIO, ClassVar
 import numpy as np
 
 SDK = "meegxer-python/0.1.0"
-SPEC_VERSION = "0.2.1"
+SPEC_VERSION = "0.2.5"
 MAGIC = b"MXP1"
 _DTYPES = {"float32", "float64", "int32", "int64", "uint8", "bool"}
 
@@ -63,8 +67,19 @@ class Plugin:
         model: dict | None,
         state: dict | None,
         params: dict[str, Any],
-    ) -> tuple[np.ndarray, dict, list[dict]]:
+    ) -> tuple[Any, ...]:
         raise NotImplementedError
+
+    def flush(
+        self,
+        info: dict[str, Any],
+        model: dict | None,
+        state: dict | None,
+        params: dict[str, Any],
+    ) -> tuple[Any, ...] | None:
+        """End of stream: what a lagging plugin still holds, as transform's
+        4-tuple; None (the default) when nothing is held."""
+        return None
 
 
 # -- wire format ----------------------------------------------------------------
@@ -214,7 +229,7 @@ def run(
                 write_frame(
                     out, {"type": "model", "id": rid, "model": tree}, model_arrays
                 )
-            elif kind == "transform":
+            elif kind in ("transform", "flush"):
                 model_id = header.get("model_id")
                 if model_id is not None and model_id not in models:
                     write_frame(
@@ -228,20 +243,32 @@ def run(
                         {},
                     )
                     continue
-                info = dict(
-                    header["info"],
-                    sample_index=header["sample_index"],
-                    timestamp=header["timestamp"],
-                )
+                info = dict(header["info"])
+                if "sample_index" in header:
+                    info.update(
+                        sample_index=header["sample_index"],
+                        timestamp=header["timestamp"],
+                    )
                 state = header.get("state")
                 state = None if state is None else from_wire(state, arrays)
-                data, new_state, events = plugin.transform(
-                    arrays["data"].astype(np.float64),
-                    info,
-                    models.get(model_id) if model_id else None,
-                    state,
-                    header["params"],
-                )
+                model = models.get(model_id) if model_id else None
+                if kind == "transform":
+                    got = plugin.transform(
+                        arrays["data"].astype(np.float64),
+                        info,
+                        model,
+                        state,
+                        header["params"],
+                    )
+                    first = header["sample_index"]
+                else:
+                    got = plugin.flush(info, model, state, header["params"])
+                    if got is None:
+                        got = (np.zeros((len(info["ch_labels"]), 0)), state, [], 0)
+                    first = 0
+                data, new_state, events = got[0], got[1], got[2]
+                if len(got) > 3:
+                    first = int(got[3])
                 out_arrays: dict[str, np.ndarray] = {
                     "data": np.asarray(data, dtype=np.float32)
                 }
@@ -249,7 +276,13 @@ def run(
                 evs = [{"duration": 0, "payload": {}, **e} for e in events]
                 write_frame(
                     out,
-                    {"type": "result", "id": rid, "state": tree, "events": evs},
+                    {
+                        "type": "result",
+                        "id": rid,
+                        "state": tree,
+                        "events": evs,
+                        "sample_index": first,
+                    },
                     out_arrays,
                 )
             else:

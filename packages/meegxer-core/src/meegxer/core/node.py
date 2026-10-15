@@ -49,6 +49,10 @@ class Processor(ABC):
       must be serializable (see :mod:`meegxer.core.serialization`).
     - Never modify the input block (its data is read-only) and keep no per-stream
       data on ``self``.
+    - Output samples are aligned by sample index (rule 8). A processor that needs
+      look-ahead may return output that lags its input (an earlier
+      ``sample_index``, possibly fewer samples) and hand over the rest in
+      ``flush`` at the end of the stream.
     """
 
     role: ClassVar[NodeRole] = NodeRole.PROCESSOR
@@ -61,6 +65,15 @@ class Processor(ABC):
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult: ...
+
+    def flush(
+        self, info: SignalInfo, model: State, state: State | None, params: Params
+    ) -> TransformResult | None:
+        """End of stream (batch runs). A processor that delays its output (its
+        result starts before its input, by ``sample_index``) returns here what it
+        still holds for the last samples; ``info`` describes the stream as its last
+        block did. Default: nothing held, None."""
+        return None
 
     def for_mode(self, params: Params, mode: Mode) -> Processor:
         """The implementation to run in ``mode``. Adaptable nodes return a variant

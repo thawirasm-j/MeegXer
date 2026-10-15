@@ -25,8 +25,10 @@ define it.
     (crucial parameters, shown on the node's strip in friendly mode).
   - `control-api.md`: JSON-RPC 2.0 methods between the daemon and clients.
   - `display-protocol.md`: decimated min/max envelope frames on the display stream.
-  - `plugin-protocol.md` (`meegxer.plugin/0.1`): framed stdin/stdout protocol for
-    containerized plugins (handshake, fit, load_model, transform, shutdown, errors),
-    with host-owned model and state.
+  - `plugin-protocol.md` (`meegxer.plugin/0.2`): framed stdin/stdout protocol for
+    containerized plugins (handshake, fit, load_model, transform, flush, shutdown,
+    errors), with host-owned model and state. 0.2 (spec 0.2.5): results carry the
+    `sample_index` of their first sample, so output may lag its input (look-ahead),
+    plus the end-of-stream `flush` message and `MEEGXER_PROTOCOL_FD`.
 
 Still 0.x: expect breaking changes until v1.

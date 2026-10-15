@@ -16,7 +16,7 @@ import numpy as np
 import numpy.typing as npt
 
 MAGIC = b"MXP1"
-PROTOCOL = "meegxer.plugin/0.1"
+PROTOCOL = "meegxer.plugin/0.2"
 DTYPES = {"float32", "float64", "int32", "int64", "uint8", "bool"}
 _ARRAY = "mxarray"
 _FLOAT = "mxfloat"

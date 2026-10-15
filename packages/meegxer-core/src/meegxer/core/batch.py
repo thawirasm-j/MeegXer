@@ -156,6 +156,10 @@ class BatchScheduler:
             transformed = stage.transform(block, input_fp)
             out.append(transformed.block)
             events.extend(transformed.events)
+        tail = stage.flush(input_fp)  # what a delaying node still holds
+        if tail is not None:
+            out.append(tail.block)
+            events.extend(tail.events)
         result.events[node.id] = tuple(events)
         result.computed.append(node.id)
         if cacheable and self.cache is not None and out:

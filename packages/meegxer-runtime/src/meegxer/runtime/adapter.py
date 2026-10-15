@@ -81,7 +81,37 @@ class PluginProcessor(Processor):
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
-        arrays = {"data": block.data.astype(np.float32)}
+        result = self._exchange("transform", block.info, model, state, params, block)
+        assert result is not None
+        return result
+
+    def flush(
+        self, info: SignalInfo, model: State, state: State | None, params: Params
+    ) -> TransformResult | None:
+        """End of stream: ask a lagging plugin for what it still holds. Plugins
+        built for protocol 0.1 refuse the message: they hold nothing."""
+        try:
+            result = self._exchange("flush", info, model, state, params, None)
+        except PluginError as exc:
+            if "bad_request" in str(exc):
+                return None
+            raise
+        if result is None or not isinstance(result.block, Block):
+            return result
+        return result if result.block.n_samples else None
+
+    def _exchange(
+        self,
+        kind: str,
+        info: SignalInfo,
+        model: State,
+        state: State | None,
+        params: Params,
+        block: Block | None,
+    ) -> TransformResult | None:
+        arrays: dict[str, Any] = {}
+        if block is not None:
+            arrays["data"] = block.data.astype(np.float32)
         state_tree = None if state is None else tree_to_wire(state, arrays, "s")
         models: dict[str, tuple[Any, dict[str, Any]]] = {}
         model_id = None
@@ -89,22 +119,18 @@ class PluginProcessor(Processor):
             model_id = self._model_id(model)
             model_arrays: dict[str, Any] = {}
             models[model_id] = (tree_to_wire(model, model_arrays, "m"), model_arrays)
-        reply = self.worker.request(
-            {
-                "type": "transform",
-                "params": dict(params),
-                "info": _info_dict(block.info),
-                "sample_index": block.sample_index,
-                "timestamp": block.timestamp,
-                "model_id": model_id,
-                "state": state_tree,
-            },
-            arrays,
-            models=models,
-        )
+        header: dict[str, Any] = {
+            "type": kind,
+            "params": dict(params),
+            "info": _info_dict(info),
+            "model_id": model_id,
+            "state": state_tree,
+        }
+        if block is not None:
+            header.update(sample_index=block.sample_index, timestamp=block.timestamp)
+        reply = self.worker.request(header, arrays, models=models)
         if reply.type != "result" or "data" not in reply.arrays:
             raise PluginError(f"expected a result with data, got {reply.header}")
-        info = block.info
         if isinstance(reply.header.get("info"), dict):
             new = reply.header["info"]
             info = SignalInfo(
@@ -113,12 +139,16 @@ class PluginProcessor(Processor):
                 new.get("stream_id", info.stream_id),
                 tuple(new.get("bads", ())),
             )
-        out = Block(
-            reply.arrays["data"].astype(np.float64),
-            info,
-            block.sample_index,
-            block.timestamp,
-        )
+        data = np.asarray(reply.arrays["data"], dtype=np.float64)
+        if data.ndim == 1:  # an empty result may lose its channel axis
+            data = data.reshape(info.n_channels, -1)
+        first = int(reply.header.get("sample_index",
+                                     block.sample_index if block else 0))  # fmt: skip
+        if block is not None:
+            timestamp = block.timestamp + (first - block.sample_index) / info.sfreq
+        else:
+            timestamp = 0.0
+        out = Block(data, info, first, timestamp)
         new_state = tree_from_wire(reply.header.get("state") or {}, reply.arrays)
         events = tuple(Event(**e) for e in reply.header.get("events", []))
         return TransformResult(out, new_state, events)

@@ -118,6 +118,13 @@ transform(block, model, state, params)        -> block_out, state, events
   place; the other channels pass through untouched. So no node, including the
   average reference, touches EOG/ECG/EMG unless its strip includes them, and the
   processor code needs no type handling of its own.
+- **Delayed output (spec 0.2.5):** a processor with look-ahead (ASR) may return
+  output that lags its input: the output block carries the sample index of its first
+  sample, which may be earlier than the input's, and may be shorter or empty. It
+  returns what it still holds from `flush(info, model, state, params)` at the end of
+  the stream (the batch scheduler and the conformance helper call it). The stage
+  delays the channels it does not process by the same amount, so every channel and
+  probe stays aligned by sample index (rule 8); online, the delay is plain latency.
 - Schema: `spec/manifest.schema.json`. `state` is `None` on the first block of a
   stream and after a parameter change or refit; the processor initialises it then.
   Model and state must be serializable (arrays, scalars, strings, lists, dicts).
@@ -232,7 +239,7 @@ it never interrupts processing.
 | Package | Language now | Later |
 |---|---|---|
 | meegxer-core | Python (numpy, pylsl, pyzmq) | Rust behind the same protocol, if measured need |
-| meegxer-sterile | Python (MNE, SciPy, mne-icalabel, asrpy/meegkit, mne-connectivity, antropy) | stays Python |
+| meegxer-sterile | Python (MNE, SciPy, python-picard, mne-icalabel, mne-connectivity, antropy) | stays Python |
 | meegxer-runtime | Python (docker SDK; Podman-compatible) | follows core |
 | Plugin SDKs | Python package + Octave `.m` template | MATLAB-compatible variant |
 | meegxer-gui | PySide6 + pyqtgraph | stays Python |
@@ -251,8 +258,11 @@ same node interface plugins use so both remain possible.
    noise + SSVEP sine), file playback; BIDS, EDF/BDF, EEGLAB .set.
 2. Engine: DAG core with linear chain view, fit/transform + calibration, sample-index
    alignment, real-time and batch schedulers.
-3. Sterile built-ins: spectral filters, spatial filters, referencing, ASR,
+3. Sterile built-ins: spectral filters, spatial filters, referencing,
    ICA → ICLabel; features: PSD, band power, Hilbert, connectivity, complexity.
+   ASR is the EEGLAB plugin `eeglab.asr` (research builds only): EEGLAB's ASR code
+   is licensed for non-commercial use only, so no copy of it lives in MeegXer and
+   the sterile build has no ASR.
 4. External plugin runtime + two reference plugins (Octave/EEGLAB stateful IIR
    bandpass; MNE notch or re-ref).
 5. GUI: drag-and-drop chain, probes (overlay + difference), auto-generated parameter
@@ -276,8 +286,9 @@ CLAP native plugins, installers.
 4. **Reproducibility:** save session → reload on a second machine → offline run gives
    an identical output file.
 5. **Cross-platform:** passes on Linux and Windows (Docker Desktop / WSL2); macOS nice-to-have.
-6. **Built-in concordance:** Python built-ins (esp. ASR, ICLabel) compared against
-   EEGLAB reference implementations on the same data; report per built-in.
+6. **Built-in concordance:** Python built-ins (esp. ICLabel) and the EEGLAB ASR
+   plugin compared against EEGLAB reference implementations on the same data, with
+   the references stored in the repository so CI needs no EEGLAB; report per node.
 
 ## 7. Roadmap extensions (design must not block these)
 
