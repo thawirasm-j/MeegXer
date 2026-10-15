@@ -247,6 +247,10 @@ class Connectivity(WindowedFeatures):
         step=1.0,
     )  # fmt: skip
 
+    @classmethod
+    def warm_up(cls) -> None:
+        import mne_connectivity  # noqa: F401 - ~2 s to import
+
     def features(
         self, x: np.ndarray, info: SignalInfo, params: Params
     ) -> tuple[np.ndarray, tuple[str, ...], dict[str, tuple[Any, ...]]]:
@@ -290,6 +294,10 @@ class Complexity(WindowedFeatures):
          for m in COMPLEXITY],
         "Entropy, Hjorth and Lempel-Ziv measures per channel.",
     )  # fmt: skip
+
+    @classmethod
+    def warm_up(cls) -> None:
+        import antropy  # noqa: F401 - Numba compiles it on import (~9 s)
 
     def features(
         self, x: np.ndarray, info: SignalInfo, params: Params

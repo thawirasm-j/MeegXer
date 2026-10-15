@@ -121,3 +121,41 @@ def test_client_timeout_recovers() -> None:
     with pytest.raises(TimeoutError):  # socket was rebuilt, still usable
         client.call("ping")
     client.close()
+
+
+def test_warm_up_preloads_every_node_and_survives_failures() -> None:
+    """The daemon preloads slow node dependencies off the real-time thread
+    (antropy compiles for ~9 s on import); one failing node does not stop the rest."""
+    from meegxer.core.manifest import Manifest
+    from meegxer.core.node import Processor, TransformResult
+    from meegxer.core.registry import Registry
+    from meegxer.core.sources import SyntheticSource
+
+    warmed: list[str] = []
+
+    def node(name: str, fails: bool = False) -> type[Processor]:
+        class Node(Processor):
+            manifest = Manifest.from_dict({
+                "spec_version": "0.2.0", "name": name, "version": "0.1.0",
+                "type": "stream", "inputs": [{"name": "in", "type": "signal"}],
+                "outputs": [{"name": "out", "type": "signal"}], "params": [],
+            })  # fmt: skip
+
+            @classmethod
+            def warm_up(cls) -> None:
+                warmed.append(name)
+                if fails:
+                    raise RuntimeError("missing library")
+
+            def transform(self, block, model, state, params):  # type: ignore[no-untyped-def]
+                return TransformResult(block, {})
+
+        return Node
+
+    registry = Registry([SyntheticSource, node("t.a", fails=True), node("t.b")])
+    d = Daemon("tcp://127.0.0.1:0", "tcp://127.0.0.1:0", registry=registry)
+    try:
+        d.warm_up_nodes().join(10)
+        assert warmed == ["t.a", "t.b"]
+    finally:
+        d.close()
