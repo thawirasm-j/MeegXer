@@ -1,0 +1,46 @@
+[project]
+name = "meegxer"
+version = "0.0.0"
+description = "MeegXer, a user-friendly mixer for EEG processing: live and offline pipelines with audited built-in nodes (the sterile build: core, built-ins, GUI and CLI)."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+keywords = ["EEG", "BCI", "signal processing", "EEGLAB", "MNE", "LSL"]
+authors = [
+    { name = "Thawirasm Jungrungrueang" },
+    { name = "TrimLAB, Prince of Songkla University" },
+]
+dependencies = [
+    "meegxer-core",
+    "meegxer-sterile",
+    "meegxer-gui",
+    "meegxer-cli",
+]
+
+[project.urls]
+Homepage = "https://github.com/thawirasm-j/MeegXer"
+Documentation = "https://github.com/thawirasm-j/MeegXer/blob/main/docs/DESIGN.md"
+Issues = "https://github.com/thawirasm-j/MeegXer/issues"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "meegxer.bundle"
+
+[tool.uv.sources]
+meegxer-core = { workspace = true }
+meegxer-sterile = { workspace = true }
+meegxer-gui = { workspace = true }
+meegxer-cli = { workspace = true }

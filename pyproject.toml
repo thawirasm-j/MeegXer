@@ -17,6 +17,7 @@ meegxer-sterile = { workspace = true }
 meegxer-runtime = { workspace = true }
 meegxer-gui = { workspace = true }
 meegxer-cli = { workspace = true }
+meegxer = { workspace = true }
 
 [dependency-groups]
 dev = [

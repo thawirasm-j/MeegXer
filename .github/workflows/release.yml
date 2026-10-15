@@ -1,0 +1,83 @@
+name: Release
+
+# Publishes all MeegXer packages with one shared version, taken from the git tag
+# (v0.1.0a1 -> 0.1.0a1), through PyPI Trusted Publishing (no tokens stored).
+#  - Pushing a v* tag builds and publishes to TestPyPI.
+#  - Real PyPI: Actions -> Release -> "Run workflow", choose the tag as the ref and
+#    target "pypi". The "pypi" environment should require a reviewer's approval.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Where to publish (run this from a v* tag)"
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - name: Version from the tag
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::run the release from a v* tag, not $GITHUB_REF_NAME"; exit 1
+          fi
+          python3 tools/set_version.py "$GITHUB_REF_NAME"
+      - run: uv build --all-packages --out-dir dist
+      - name: Check the distributions
+        run: |
+          uvx twine check --strict dist/*
+          test "$(ls dist/*.whl | wc -l)" -eq 6
+      - name: Sterile set contains no plugin runtime (rule 10)
+        run: uv run --no-project --python 3.14 python tools/check_sterile.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    if: github.event_name == 'push' || inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/meegxer/
+    permissions:
+      id-token: write  # Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    name: Publish to PyPI
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/meegxer/
+    permissions:
+      id-token: write  # Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
