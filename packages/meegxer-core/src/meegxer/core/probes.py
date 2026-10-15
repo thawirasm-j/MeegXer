@@ -1,4 +1,4 @@
-"""Built-in probe: keeps every block it sees, for overlay and difference views."""
+"""Built-in probe: keeps the blocks it sees, for overlay and difference views."""
 
 from __future__ import annotations
 
@@ -10,7 +10,11 @@ from meegxer.core.node import AnyBlock, Probe
 
 
 class MemoryProbe(Probe):
-    """Stores the blocks of a Signal tap in memory (batch runs, tests)."""
+    """Stores the blocks of a tap in memory (batch runs, tests).
+
+    Only the most recent ``keep_seconds`` of Signal data are kept (0 keeps
+    everything), so a probe in a long live run does not grow without bound.
+    """
 
     manifest: ClassVar[Manifest] = Manifest.from_dict(
         {
@@ -21,16 +25,38 @@ class MemoryProbe(Probe):
             "role": "probe",
             "inputs": [{"name": "in", "type": "signal"}],
             "outputs": [],
-            "params": [{"name": "label", "type": "string", "default": ""}],
+            "params": [
+                {"name": "label", "type": "string", "default": "", "primary": True},
+                {
+                    "name": "keep_seconds",
+                    "type": "float",
+                    "default": 60.0,
+                    "min": 0.0,
+                    "unit": "s",
+                    "advanced": True,
+                    "description": "Signal history kept in memory (0 keeps all)",
+                },
+            ],
         }
     )
 
     def __init__(self, params: dict[str, object] | None = None) -> None:
         super().__init__(params)
         self.blocks: list[Block | FeatureBlock | EventBlock] = []
+        self._samples = 0
 
     def tap(self, block: AnyBlock) -> None:
         self.blocks.append(block)
+        if not isinstance(block, Block):
+            return
+        self._samples += block.n_samples
+        keep = float(self.params["keep_seconds"]) * block.info.sfreq
+        while keep > 0:
+            oldest = next(b for b in self.blocks if isinstance(b, Block))
+            if self._samples - oldest.n_samples < keep:
+                break
+            self.blocks.remove(oldest)
+            self._samples -= oldest.n_samples
 
     def signal(self) -> Block:
         """All tapped Signal blocks joined (gaps or overlaps raise)."""
@@ -39,3 +65,4 @@ class MemoryProbe(Probe):
 
     def clear(self) -> None:
         self.blocks.clear()
+        self._samples = 0

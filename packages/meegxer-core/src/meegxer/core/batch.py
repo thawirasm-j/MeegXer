@@ -123,8 +123,11 @@ class BatchScheduler:
     def _run_stage(
         self, node: GraphNode, upstream: Stream, result: BatchResult
     ) -> Stream:
-        stage = node.impl
-        assert isinstance(stage, Stage) and node.input is not None
+        assert isinstance(node.impl, Stage) and node.input is not None
+        try:
+            stage = node.impl.for_mode("offline")  # e.g. zero-phase band-pass
+        except ValueError as exc:
+            raise GraphError(f"{node.id}: {exc}") from exc
         input_fp = result.fingerprints[node.input]
         signal_in = [b for b in upstream if isinstance(b, Block)]
         if len(signal_in) != len(upstream):

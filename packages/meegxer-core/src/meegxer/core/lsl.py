@@ -69,7 +69,7 @@ class LslSource(Source):
         "meegxer.core.lsl_in",
         "source",
         [
-            {"name": "stream_name", "type": "string", "default": ""},
+            {"name": "stream_name", "type": "string", "default": "", "primary": True},
             {"name": "stream_type", "type": "string", "default": "", "advanced": True},
             {"name": "timeout", "type": "float", "default": 10.0, "min": 0.1,
              "unit": "s", "advanced": True, "description": "How long to search"},
@@ -170,7 +170,8 @@ class LslSink(Sink):
         "meegxer.core.lsl_out",
         "sink",
         [
-            {"name": "stream_name", "type": "string", "default": "MeegXer"},
+            {"name": "stream_name", "type": "string", "default": "MeegXer",
+             "primary": True},
             {"name": "stream_type", "type": "string", "default": "EEG",
              "advanced": True},
             {"name": "include_index", "type": "bool", "default": False,

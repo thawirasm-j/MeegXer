@@ -19,6 +19,7 @@ from meegxer.core import __version__
 from meegxer.core.display import DisplayPublisher, ZmqContext
 from meegxer.core.graph import Graph
 from meegxer.core.manifest import SPEC_VERSION, Manifest
+from meegxer.core.offline import OfflineJob
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.registry import Registry
 from meegxer.core.stage import Stage
@@ -63,6 +64,7 @@ def manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
                 "unit": p.unit,
                 "description": p.description,
                 "advanced": p.advanced,
+                "primary": p.primary,
             }
             for p in manifest.params
         ],
@@ -91,6 +93,7 @@ class Daemon:
         self._pipeline: dict[str, Any] | None = None
         self._graph: Graph | None = None
         self._scheduler: RealtimeScheduler | None = None
+        self._offline: OfflineJob | None = None
         self._stop = threading.Event()
         self._methods: dict[str, Callable[..., Any]] = {
             "ping": self.ping,
@@ -104,6 +107,9 @@ class Daemon:
             "calibrate": self.calibrate,
             "clear_calibration": self.clear_calibration,
             "set_pass_uncalibrated": self.set_pass_uncalibrated,
+            "set_strip_params": self.set_strip_params,
+            "run_offline": self.run_offline,
+            "offline_window": self.offline_window,
             "shutdown": self.shutdown,
         }
 
@@ -180,6 +186,12 @@ class Daemon:
         return self.status()
 
     def status(self) -> dict[str, Any]:
+        result = self._live_status()
+        if self._offline is not None:
+            result["offline"] = self._offline.status()
+        return result
+
+    def _live_status(self) -> dict[str, Any]:
         if self._scheduler is not None:
             return self._scheduler.status()
         nodes = []
@@ -228,6 +240,33 @@ class Daemon:
         scheduler = self._scheduler or RealtimeScheduler(self._graph)
         scheduler.set_pass_uncalibrated(node, bool(enabled))
         return self.status()
+
+    def set_strip_params(self, node: str, params: list[str]) -> dict[str, Any]:
+        """Display only: which parameters the node's strip shows in advanced mode."""
+        if self._graph is None:
+            raise RuntimeError("no pipeline loaded")
+        if node not in self._graph:
+            raise RuntimeError(f"unknown node {node!r}")
+        self._graph.set_strip_params(node, params)
+        return self._graph.to_dict()
+
+    def run_offline(self, pipeline: dict[str, Any]) -> dict[str, Any]:
+        """Run ``pipeline`` over its whole (finite) input in the background; its
+        probes become scrollable envelopes (``offline_window``), its sinks write
+        files. Independent of the live pipeline, but not while it runs."""
+        if self._scheduler is not None and self._scheduler.running:
+            raise RuntimeError("stop the live pipeline before an offline run")
+        if self._offline is not None and self._offline.state == "running":
+            raise RuntimeError("an offline run is already in progress")
+        job = OfflineJob(Graph.from_dict(pipeline, self.registry))
+        self._offline = job
+        job.start()
+        return job.status()
+
+    def offline_window(self, probe: str, start_bin: int, n_bins: int) -> dict[str, Any]:
+        if self._offline is None:
+            raise RuntimeError("no offline run")
+        return self._offline.window(probe, int(start_bin), int(n_bins))
 
     def shutdown(self) -> str:
         self._stop.set()

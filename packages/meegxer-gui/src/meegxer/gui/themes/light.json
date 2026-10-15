@@ -1,0 +1,27 @@
+{
+  "name": "Light",
+  "dark": false,
+  "background": "#f3f3f1",
+  "surface": "#ffffff",
+  "surface_alt": "#ebebe8",
+  "border": "#cfcfca",
+  "text": "#1d2027",
+  "text_muted": "#666b77",
+  "accent": "#1f6fd1",
+  "plot_background": "#fbfbfa",
+  "grid": "#e1e1dd",
+  "status": {
+    "ready": "#1f9d55",
+    "uncalibrated": "#8a8f99",
+    "calibrating": "#1f6fd1",
+    "needs-refit": "#c97a00",
+    "bypassed": "#8a4fd8",
+    "stopped": "#b5b8bf",
+    "error": "#d93a3a"
+  },
+  "incompatible": "#f8dcdf",
+  "incompatible_border": "#c9444f",
+  "bypass_hatch": "#8a4fd8",
+  "unknown_channel": "#8a8f99",
+  "wheel": {"rim_lightness": 0.62, "vertex_lightness": 0.15, "chroma": 0.15}
+}

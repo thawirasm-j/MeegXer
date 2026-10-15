@@ -117,7 +117,9 @@ def test_zero_phase_variants_are_offline_only_with_same_params() -> None:
     ):
         assert zero.manifest.availability == "offline"
         assert causal.manifest.availability == "both"
-        assert zero.manifest.params == causal.manifest.params
+        # the band-pass's ``phase`` picks the variant, so the variant lacks it
+        shared = tuple(p for p in causal.manifest.params if p.name != "phase")
+        assert zero.manifest.params == shared
 
 
 @pytest.mark.parametrize("params", IIR_CASES)

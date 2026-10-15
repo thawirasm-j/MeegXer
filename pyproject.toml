@@ -59,10 +59,17 @@ mypy_path = [
     "packages/meegxer-cli/src",
 ]
 files = ["packages/*/src", "packages/*/tests", "tests", "tools"]
+# mypy names every tests/conftest.py "conftest"; the runtime one is checked.
+exclude = ["packages/meegxer-gui/tests/conftest\\.py$"]
 
 [[tool.mypy.overrides]]
-module = ["mne", "mne.*", "mne_bids", "mne_bids.*", "pylsl", "pylsl.*"]
+module = ["mne", "mne.*", "mne_bids", "mne_bids.*", "pylsl", "pylsl.*", "pyqtgraph",
+          "pyqtgraph.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["meegxer.gui.signal_view"]
+disallow_subclassing_any = false  # pyqtgraph ships no type information
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "tests"]

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/thawirasm-j/MeegXer/spec/pipeline.schema.json",
   "title": "MeegXer pipeline",
-  "description": "A processing graph as an ordered node list. Each node's input must name an earlier node, so the graph is acyclic by construction. When input is omitted it defaults to the nearest earlier source or processor, so a plain list is a linear chain. Spec version 0.2.1 (unstable).",
+  "description": "A processing graph as an ordered node list. Each node's input must name an earlier node, so the graph is acyclic by construction. When input is omitted it defaults to the nearest earlier source or processor, so a plain list is a linear chain. Spec version 0.2.2 (unstable).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -55,6 +55,13 @@
             "description": "id of the node feeding this one.",
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "strip_params": {
+            "description": "UI: parameters shown on the node's strip in advanced mode (up to 3). Display only; does not affect processing.",
+            "type": "array",
+            "items": {"type": "string"},
+            "maxItems": 3,
+            "uniqueItems": true
           },
           "pass_uncalibrated": {
             "description": "For processors that need calibration: pass data through unprocessed (marked as bypassed) while the node has no valid model. Default false: block until calibrated.",

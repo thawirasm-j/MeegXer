@@ -149,6 +149,11 @@
           "description": "Shown only in the UI's advanced mode; friendly mode uses the default.",
           "type": "boolean",
           "default": false
+        },
+        "primary": {
+          "description": "A crucial parameter: shown on the node's strip in the UI's friendly mode.",
+          "type": "boolean",
+          "default": false
         }
       },
       "oneOf": [
@@ -169,7 +174,8 @@
             "name": true,
             "description": true,
             "unit": true,
-            "advanced": true
+            "advanced": true,
+            "primary": true
           },
           "additionalProperties": false
         },
@@ -190,7 +196,8 @@
             "name": true,
             "description": true,
             "unit": true,
-            "advanced": true
+            "advanced": true,
+            "primary": true
           },
           "additionalProperties": false
         },
@@ -204,7 +211,8 @@
             },
             "name": true,
             "description": true,
-            "advanced": true
+            "advanced": true,
+            "primary": true
           },
           "additionalProperties": false
         },
@@ -226,7 +234,8 @@
             },
             "name": true,
             "description": true,
-            "advanced": true
+            "advanced": true,
+            "primary": true
           },
           "required": [
             "choices"
@@ -243,7 +252,8 @@
             },
             "name": true,
             "description": true,
-            "advanced": true
+            "advanced": true,
+            "primary": true
           },
           "additionalProperties": false
         }

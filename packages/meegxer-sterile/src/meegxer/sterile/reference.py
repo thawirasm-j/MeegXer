@@ -32,7 +32,7 @@ class Rereference(Processor):
         "meegxer.sterile.rereference",
         "0.2.0",
         [
-            {"name": "mode", "type": "enum", "default": "average",
+            {"name": "mode", "type": "enum", "default": "average", "primary": True,
              "choices": ["average", "channels"]},
             {"name": "channels", "type": "string", "default": "",
              "description": "Comma-separated reference labels (mode=channels)"},

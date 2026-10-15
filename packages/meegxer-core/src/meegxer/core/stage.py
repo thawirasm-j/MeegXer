@@ -16,7 +16,7 @@ from enum import StrEnum
 
 from meegxer.core.block import Block, SignalInfo
 from meegxer.core.manifest import ParamValue
-from meegxer.core.node import Processor, TransformResult
+from meegxer.core.node import Mode, Processor, TransformResult
 from meegxer.core.ports import check_block
 from meegxer.core.serialization import (
     State,
@@ -75,6 +75,19 @@ class Stage:
         self._calibrating = False
         self.pass_uncalibrated = False
         self.set_pass_uncalibrated(pass_uncalibrated)
+
+    def for_mode(self, mode: Mode) -> Stage:
+        """This stage, or a stage running the processor's variant for ``mode``
+        (parameters the variant does not know, such as ``phase``, are dropped)."""
+        variant = self.processor.for_mode(self.params, mode)
+        if variant is self.processor:
+            return self
+        if self.manifest.requires_fit or variant.manifest.requires_fit:
+            raise ValueError(
+                f"{self.manifest.name}: adaptable nodes cannot need fitting"
+            )
+        known = {p.name for p in variant.manifest.params}
+        return Stage(variant, {k: v for k, v in self.params.items() if k in known})
 
     def set_pass_uncalibrated(self, enabled: bool) -> None:
         """Opt in to passing data through unprocessed while there is no valid

@@ -183,14 +183,34 @@ build still contains no runtime code.
 
 **Goal:** the "mixer" experience, as a pure client of M3's APIs.
 
-- PySide6 + pyqtgraph client connecting via control + display channels only.
-- Linear drag-and-drop chain; insert-anywhere probes.
-- Auto-generated parameter controls from manifests, with a friendly mode (hides
-  `advanced` params) and an advanced mode.
-- Probe viewer: Main solid, comparisons faded; overlay and difference modes; PSD view.
-- Per-stage status badges, CPU/latency/overrun meters.
+**Status:** implemented (`meegxer.gui`, `meegxer-gui`). Spec 0.2.2 added `primary`
+parameters, per-node `strip_params` and the adaptable band-pass (`phase`); the
+daemon gained `run_offline` / `offline_window` so offline mode stays a pure client.
+Every source and processor gets a probe tap, so showing a tap never reloads the
+pipeline. Exit criteria are automated in `packages/meegxer-gui/tests/test_gui_exit.py`
+(50 Hz line in difference mode; SIGKILL of the GUI leaves the daemon processing).
+Screenshots: `uv run python tools/gui_screenshot.py OUT_DIR`. Not yet: electrode
+positions from the recording (the standard 10-05 table is used), an incremental
+offline view for very long recordings, and a check on real displays and Windows.
+Found and fixed on the way: the memory probe kept every block in live runs.
+
+- PySide6 + pyqtgraph client connecting via control + display channels only
+  (layout and behaviour: `docs/DESIGN.md` §3.7).
+- Horizontal chain of strips: + Add strip (end and gaps), drag to reorder,
+  insert-anywhere probe taps. Strips show name, status LED and parameters: crucial
+  (`primary`) ones in friendly mode, up to 3 user-picked ones in advanced mode.
+- Auto-generated parameter controls from manifests in the inspector, with a friendly
+  mode (hides `advanced` params) and an advanced mode.
+- Mode set by the Input strip (LSL = live; file/BIDS/synthetic played live or
+  processed offline, default offline for files); incompatible strips
+  reddish and blocking; adaptable band-pass (`phase`: auto/causal/zero).
+- Signal view: single trace area, channel selector (all by default), colour wheel
+  channel colours, Main thick / comparisons faded; overlay, difference and spectrum
+  modes; stacked traces in a separate window.
+- Per-stage status LEDs, CPU/latency/overrun meters.
 - Per-node "pass through while uncalibrated" checkbox, a clear-calibration action, and
   a visible mark on probe views showing `bypassed` data.
+- Themes from colour tokens; dark (default) and light.
 
 **Exit:** a user can build Synthetic → HP → Probe → Notch → Probe, see the 50 Hz
 line disappear in difference mode, and kill the GUI without interrupting processing.
@@ -262,3 +282,8 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | 18 | Plugin state ownership | Host owns model and state; workers are restartable; models loaded once by hash | M4 |
 | 19 | Container engine access | Docker/Podman CLI (no Docker SDK dependency); locked-down `run` flags | M4 |
 | 20 | Unsandboxed plugins | Development and tests only, behind `MEEGXER_ALLOW_UNSANDBOXED=1` | M4 |
+| 21 | GUI chain layout | Horizontal strips, one per graph node (reused by the later node editor) | M5 |
+| 22 | Strip parameters | Friendly: crucial params (manifest `primary`); advanced: up to 3 user-picked, saved in the pipeline | M5 |
+| 23 | Live/offline in the GUI | Set by the Input strip; incompatible strips reddish and blocking; only the band-pass adapts (`phase` auto) | M5 |
+| 24 | Signal view and colours | Single trace area (all channels by default) + stacked window; uniform OKLCH colour wheel on the scalp (neutral at Cz: white dark theme, near-black light theme) | M5 |
+| 25 | Themes | Colour-token themes; dark default, light included | M5 |

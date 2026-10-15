@@ -1,0 +1,27 @@
+{
+  "name": "Dark",
+  "dark": true,
+  "background": "#14161b",
+  "surface": "#1c1f26",
+  "surface_alt": "#242833",
+  "border": "#323745",
+  "text": "#e3e6ec",
+  "text_muted": "#8b92a3",
+  "accent": "#5aa9ff",
+  "plot_background": "#101216",
+  "grid": "#2a2e38",
+  "status": {
+    "ready": "#3ccf7a",
+    "uncalibrated": "#6b7280",
+    "calibrating": "#4aa3ff",
+    "needs-refit": "#f2a93b",
+    "bypassed": "#c79bff",
+    "stopped": "#4b5263",
+    "error": "#ff5c5c"
+  },
+  "incompatible": "#4a2027",
+  "incompatible_border": "#b8434f",
+  "bypass_hatch": "#c79bff",
+  "unknown_channel": "#8b92a3",
+  "wheel": {"rim_lightness": 0.74, "vertex_lightness": 0.96, "chroma": 0.15}
+}

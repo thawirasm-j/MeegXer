@@ -23,7 +23,7 @@ from scipy import signal
 
 from meegxer.core.block import Block
 from meegxer.core.manifest import Manifest
-from meegxer.core.node import Params, Processor, TransformResult
+from meegxer.core.node import Mode, Params, Processor, TransformResult
 from meegxer.core.serialization import State
 from meegxer.sterile._manifest import stream_manifest
 
@@ -95,18 +95,35 @@ class IIRFilter(Processor):
         "meegxer.sterile.iir_filter",
         "0.1.0",
         [
-            {"name": "kind", "type": "enum", "default": "bandpass",
+            {"name": "kind", "type": "enum", "default": "bandpass", "primary": True,
              "choices": ["highpass", "lowpass", "bandpass", "bandstop"]},
             {"name": "low", "type": "float", "default": 1.0, "min": 0.0, "unit": "Hz",
+             "primary": True,
              "description": "Lower edge (high-pass, band-pass, band-stop)"},
             {"name": "high", "type": "float", "default": 40.0, "min": 0.0,
-             "unit": "Hz", "description": "Upper edge (low-, band-pass, band-stop)"},
+             "unit": "Hz", "primary": True,
+             "description": "Upper edge (low-, band-pass, band-stop)"},
             {"name": "order", "type": "int", "default": 4, "min": 1, "max": 10,
              "advanced": True,
              "description": "Butterworth order (doubled for band filters)"},
+            {"name": "phase", "type": "enum", "default": "auto",
+             "choices": ["auto", "causal", "zero"],
+             "description": "auto: causal live, zero-phase offline (zero: offline)"},
         ],
-        description="Causal Butterworth IIR filter with carried state.",
+        description="Butterworth IIR filter: causal with carried state live, "
+        "zero-phase offline (phase auto).",
     )  # fmt: skip
+
+    def for_mode(self, params: Params, mode: Mode) -> Processor:
+        phase = params["phase"]
+        if mode == "online":
+            if phase == "zero":
+                raise ValueError(
+                    "zero-phase filtering needs the whole recording; "
+                    "use phase auto or causal live"
+                )
+            return self
+        return self if phase == "causal" else IIRFilterZeroPhase()
 
     @staticmethod
     def design(params: Params, sfreq: float) -> SosArray:
@@ -133,7 +150,7 @@ class NotchFilter(Processor):
         "0.1.0",
         [
             {"name": "freq", "type": "float", "default": 50.0, "min": 0.0,
-             "unit": "Hz"},
+             "unit": "Hz", "primary": True},
             {"name": "quality", "type": "float", "default": 30.0, "min": 0.1,
              "advanced": True,
              "description": "Q factor: centre frequency / -3 dB bandwidth"},
@@ -190,10 +207,12 @@ def _zero_phase_manifest(causal: Manifest, name: str, description: str) -> Manif
                     "unit": p.unit or None,
                     "description": p.description or None,
                     "advanced": p.advanced or None,
+                    "primary": p.primary or None,
                 }.items()
                 if v is not None
             }
             for p in causal.params
+            if p.name != "phase"  # the zero-phase node is the resolved variant
         ],
         description=description,
         availability="offline",

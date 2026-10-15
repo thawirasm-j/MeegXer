@@ -1,4 +1,4 @@
-# MeegXer control API (0.2.1, unstable)
+# MeegXer control API (0.2.2, unstable)
 
 JSON-RPC 2.0 over a ZeroMQ REQ/REP socket (CLAUDE.md rule 3). The daemon binds
 `tcp://127.0.0.1:5555` by default. Every request is one JSON object; every reply is
@@ -17,8 +17,8 @@ bind it to a non-local interface only on a trusted network.
 | Method | Params | Result |
 |---|---|---|
 | `ping` | – | `{version, spec_version, display}`: `display` is the display endpoint |
-| `list_nodes` | – | installed node manifests: `name, version, role, type, availability, requires_fit, description, live_params, inputs, outputs, params[]` (each param: `name, type, default, min, max, choices, unit, description, advanced`) |
-| `load_pipeline` | `pipeline` (see `pipeline.schema.json`) | the normalised pipeline. Refused while running, or if any node is offline-only |
+| `list_nodes` | – | installed node manifests: `name, version, role, type, availability, requires_fit, description, live_params, inputs, outputs, params[]` (each param: `name, type, default, min, max, choices, unit, description, advanced, primary`) |
+| `load_pipeline` | `pipeline` (see `pipeline.schema.json`) | the normalised pipeline. Refused while running, or if any node cannot run live (offline-only, or a band-pass with `phase` `zero`) |
 | `get_pipeline` | – | current pipeline, including live parameter changes |
 | `start` | – | status. A restart builds fresh sources and sinks from the current pipeline and keeps fitted models (drop them with `clear_calibration`) |
 | `stop` | – | status |
@@ -27,6 +27,9 @@ bind it to a non-local interface only on a trusted network.
 | `calibrate` | `node`, `seconds` | status. Buffers `seconds` of the node's input, fits, then the node runs |
 | `clear_calibration` | `node` (optional) | `{cleared, status}`: drops the fitted model of one node, or of every node when `node` is omitted |
 | `set_pass_uncalibrated` | `node`, `enabled` | status. Per-node opt-in: while the node has no valid model, pass data through unprocessed (marked as bypassed) instead of blocking |
+| `set_strip_params` | `node`, `params` (up to 3 names) | the pipeline. Display only: which parameters the node's strip shows in the UI's advanced mode |
+| `run_offline` | `pipeline` | offline status (below). Runs the pipeline over its whole, finite input in the background with the batch scheduler (offline variants such as the zero-phase band-pass apply). Its sinks write files; its probes are kept as display envelopes for `offline_window`. Refused while the live pipeline runs or another offline run is in progress |
+| `offline_window` | `probe`, `start_bin`, `n_bins` (≤ 20000) | `{probe, ch_labels, sfreq, bin_size, start_bin, mins, maxs}`: bins of one probe from the last offline run, clipped to its data; `mins`/`maxs` are channel × bin lists in volts (`null` where empty), aligned like display frames |
 | `shutdown` | – | `"bye"`; the daemon exits |
 
 ## Status
@@ -54,6 +57,9 @@ bind it to a non-local interface only on a trusted network.
 - `overruns`: blocks whose processing took longer than their duration.
 - `latency`: clock at the sinks minus the LSL timestamp of the block's last sample.
 - `source_*`: present when the source stream carries a `SAMPLE_INDEX` channel.
+- `offline`: present after `run_offline`: `{state, error, elapsed_s, probes}`, where
+  `state` is `running`, `done` or `error`, and `probes` maps each probe id to
+  `{ch_labels, sfreq, bin_size, first_bin, n_bins, bypassed}` once the run is done.
 
 ## Errors
 

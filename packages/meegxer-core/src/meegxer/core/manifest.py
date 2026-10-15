@@ -18,7 +18,7 @@ import jsonschema
 
 from meegxer.core.ports import Port, PortType
 
-SPEC_VERSION = "0.2.1"
+SPEC_VERSION = "0.2.2"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]
@@ -53,6 +53,7 @@ class ParamSpec:
     unit: str = ""
     description: str = ""
     advanced: bool = False
+    primary: bool = False
 
     def coerce(self, value: object) -> ParamValue:
         """Validate one value against this spec and return it in canonical form."""
@@ -130,6 +131,7 @@ class Manifest:
                 unit=p.get("unit", ""),
                 description=p.get("description", ""),
                 advanced=p.get("advanced", False),
+                primary=p.get("primary", False),
             )
             for p in data.get("params", [])
         )

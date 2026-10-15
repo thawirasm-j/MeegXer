@@ -11,11 +11,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import ClassVar, NamedTuple
+from typing import ClassVar, Literal, NamedTuple
 
 from meegxer.core.block import Block, Event, EventBlock, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest, ParamValue
 from meegxer.core.serialization import State
+
+Mode = Literal["online", "offline"]
 
 type Params = Mapping[str, ParamValue]
 type AnyBlock = Block | FeatureBlock | EventBlock
@@ -59,6 +61,12 @@ class Processor(ABC):
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult: ...
+
+    def for_mode(self, params: Params, mode: Mode) -> Processor:
+        """The implementation to run in ``mode``. Adaptable nodes return a variant
+        (e.g. the zero-phase filter offline) and raise ``ValueError`` when ``params``
+        cannot run in that mode. Default: this processor in every mode."""
+        return self
 
     def close(self) -> None:  # noqa: B027 - optional hook
         """Release external resources (e.g. a plugin worker). May be called more

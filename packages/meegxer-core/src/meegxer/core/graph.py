@@ -8,6 +8,7 @@ defaults to the nearest earlier source or processor.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -53,6 +54,7 @@ class GraphNode:
     id: str
     impl: NodeImpl
     input: str | None
+    strip_params: tuple[str, ...] = ()  # UI only: shown on the strip (advanced mode)
 
     @property
     def role(self) -> NodeRole:
@@ -73,7 +75,12 @@ class Graph:
     # -- construction -----------------------------------------------------------
 
     def add(
-        self, impl: NodeImpl, *, id: str | None = None, input: str | None = None
+        self,
+        impl: NodeImpl,
+        *,
+        id: str | None = None,
+        input: str | None = None,
+        strip_params: Iterable[str] = (),
     ) -> GraphNode:
         """Append a node. ``input`` defaults to the nearest earlier source or
         processor; sources take no input."""
@@ -107,9 +114,29 @@ class Graph:
                 raise GraphError(f"{impl.manifest.name}: multi-input nodes need M3+")
             check_connection(parent.manifest.outputs[0], impl.manifest.inputs[0])
 
-        node = GraphNode(node_id, impl, input)
+        node = GraphNode(node_id, impl, input, self._check_strip(impl, strip_params))
         self._nodes[node_id] = node
         return node
+
+    @staticmethod
+    def _check_strip(impl: NodeImpl, names: Iterable[str]) -> tuple[str, ...]:
+        chosen = tuple(names)
+        known = {p.name for p in impl.manifest.params}
+        unknown = [n for n in chosen if n not in known]
+        if unknown:
+            raise GraphError(
+                f"{impl.manifest.name}: unknown strip parameter(s) {unknown}"
+            )
+        if len(chosen) > 3 or len(set(chosen)) != len(chosen):
+            raise GraphError("strip_params: up to 3 distinct parameters")
+        return chosen
+
+    def set_strip_params(self, node_id: str, names: Iterable[str]) -> None:
+        """Choose the parameters a node's strip shows (display only)."""
+        node = self._nodes[node_id]
+        self._nodes[node_id] = dataclasses.replace(
+            node, strip_params=self._check_strip(node.impl, names)
+        )
 
     def _default_input(self) -> str | None:
         for node in reversed(self._nodes.values()):
@@ -159,7 +186,12 @@ class Graph:
                         f"{entry['node']}: pass_uncalibrated applies to processors only"
                     )
                 impl = node_cls(params)
-            graph.add(impl, id=entry.get("id"), input=entry.get("input"))
+            graph.add(
+                impl,
+                id=entry.get("id"),
+                input=entry.get("input"),
+                strip_params=entry.get("strip_params", ()),
+            )
         return graph
 
     @classmethod
@@ -176,6 +208,9 @@ class Graph:
                     "node": n.manifest.name,
                     "params": _params_of(n.impl),
                     **({"input": n.input} if n.input is not None else {}),
+                    **(
+                        {"strip_params": list(n.strip_params)} if n.strip_params else {}
+                    ),
                     **(
                         {"pass_uncalibrated": True}
                         if isinstance(n.impl, Stage) and n.impl.pass_uncalibrated
@@ -225,4 +260,4 @@ class Graph:
             check_connection(parent.manifest.outputs[0], impl.manifest.inputs[0])
         for child in self.children(node_id):
             check_connection(impl.manifest.outputs[0], child.manifest.inputs[0])
-        self._nodes[node_id] = GraphNode(node_id, impl, old.input)
+        self._nodes[node_id] = GraphNode(node_id, impl, old.input, old.strip_params)
