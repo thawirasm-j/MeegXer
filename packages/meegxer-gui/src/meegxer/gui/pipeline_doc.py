@@ -269,7 +269,10 @@ class PipelineDoc:
     def load_pipeline(self, data: dict[str, Any]) -> None:
         """Replace the chain from a pipeline document; probes become taps."""
         strips: list[StripNode] = []
-        for entry in data.get("nodes", []):
+        nodes = data.get("nodes", []) if isinstance(data, dict) else None
+        if not isinstance(nodes, list) or not all(isinstance(e, dict) for e in nodes):
+            raise ValueError("not a pipeline document (expected {'nodes': [...]})")
+        for entry in nodes:
             if entry["node"] == PROBE:
                 continue
             if entry["node"] not in self.manifests:

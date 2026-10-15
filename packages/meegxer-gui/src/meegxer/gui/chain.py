@@ -242,10 +242,10 @@ class Gap(QWidget):
                 "comparison": theme.text_muted,
                 "off": theme.border,
             }[tap_state]
-            size = 18 if tap_state == "main" else 14
+            size = 13 if tap_state == "main" else 10  # pt: px leaves pointSize -1
             tap.setStyleSheet(
                 f"QToolButton {{ border: none; background: transparent; "
-                f"color: {colour}; font-size: {size}px; }}"
+                f"color: {colour}; font-size: {size}pt; }}"
             )
             tap.setToolTip(
                 f"Probe tap after {tap_of} ({tap_state}).\nClick: show or "
@@ -360,7 +360,13 @@ class ChainView(QScrollArea):
         add.clicked.connect(lambda: self._palette(len(doc.strips)))
         lay.addWidget(add)
         lay.addStretch(1)
+        # A rebuild usually runs inside an event handler of one of the old
+        # widgets (a strip clicked, a strip removed): setWidget would delete them
+        # while Qt is still delivering that event, so delete them later instead.
+        old = self.takeWidget()
         self.setWidget(inner)
+        if old is not None:
+            old.deleteLater()
         self.horizontalScrollBar().setValue(scroll)
 
     def _palette(self, index: int) -> None:

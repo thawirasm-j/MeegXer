@@ -3,11 +3,12 @@ import pytest
 from scipy import signal
 
 from meegxer.core.batch import BatchScheduler
-from meegxer.core.block import Block, SignalInfo
+from meegxer.core.block import Block, SignalInfo, concat_blocks
 from meegxer.core.conformance import check_blockwise_equivalence
 from meegxer.core.graph import Graph
 from meegxer.core.node import Processor
 from meegxer.core.probes import MemoryProbe
+from meegxer.core.registry import Registry
 from meegxer.core.sources import SyntheticSource
 from meegxer.core.stage import Stage, signal_fingerprint
 from meegxer.sterile.filters import (
@@ -164,3 +165,49 @@ def test_zero_phase_needs_enough_samples() -> None:
     short = Block(np.zeros((1, 10)), SignalInfo(("Cz",), 250.0), 0, 0.0)
     with pytest.raises(ValueError, match="longer recording"):
         run(IIRFilterZeroPhase(), short)
+
+
+def _stream(stage: Stage, block: Block, sizes: list[int]) -> Block:
+    fp = signal_fingerprint(block.info)
+    outs, start = [], block.sample_index
+    for size in sizes:
+        result = stage.transform(block.slice(start, start + size), fp)
+        assert isinstance(result.block, Block)
+        outs.append(result.block)
+        start += size
+    tail = stage.flush(fp)
+    if tail is not None:
+        assert isinstance(tail.block, Block)
+        outs.append(tail.block)
+    return concat_blocks([b for b in outs if b.n_samples])
+
+
+def _online_signal_processors() -> list[str]:
+    registry = Registry.from_entry_points()
+    return [
+        name
+        for name in registry.names()
+        if name.startswith("meegxer.sterile.")
+        and (m := registry.get(name).manifest).role == "processor"
+        and m.kind != "analysis"
+        and m.runs_online
+        and not m.requires_fit
+    ]
+
+
+@pytest.mark.parametrize("name", _online_signal_processors())
+def test_empty_blocks_from_a_delaying_node_upstream_change_nothing(name: str) -> None:
+    """A delaying node (envelope, ASR) may emit empty blocks, the first one
+    included (spec 0.2.5); the band-pass and notch crashed on them."""
+    factory = Registry.from_entry_points().get(name)
+    block = recording(4.0)
+
+    def stage() -> Stage:
+        processor = factory()
+        assert isinstance(processor, Processor)
+        return Stage(processor)
+
+    plain = _stream(stage(), block, [100] * 10)
+    gappy = _stream(stage(), block, [0, 100, 0, 0] + [100] * 9 + [0])
+    np.testing.assert_array_equal(gappy.data, plain.data)
+    assert gappy.sample_index == plain.sample_index

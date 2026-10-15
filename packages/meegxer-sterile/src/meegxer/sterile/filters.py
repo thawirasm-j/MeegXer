@@ -32,8 +32,11 @@ SosArray = npt.NDArray[np.float64]
 
 def _apply_sos(sos: SosArray, block: Block, state: State | None) -> TransformResult:
     data = np.asarray(block.data)
+    if data.shape[-1] == 0:  # an upstream delay (spec 0.2.5) can emit empty blocks
+        # no "zi" yet means the first real sample still seeds it
+        return TransformResult(block, state or {})
     zi: npt.NDArray[np.float64]
-    if state is None:
+    if state is None or "zi" not in state:
         zi_unit = signal.sosfilt_zi(sos)  # (n_sections, 2)
         zi = zi_unit[:, None, :] * data[None, :, :1]
     else:

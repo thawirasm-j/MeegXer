@@ -9,6 +9,7 @@ binding it to other interfaces is only safe on a trusted network.
 from __future__ import annotations
 
 import json
+import sys
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -355,6 +356,25 @@ class Daemon:
 
     def request_shutdown(self) -> None:
         self._stop.set()
+
+    def warm_up_nodes(self) -> threading.Thread:
+        """Let every installed node load its slow dependencies in the background
+        (e.g. antropy compiles for ~9 s on import), so the first block of a
+        pipeline using it does not stall the real-time thread."""
+
+        def run() -> None:
+            for name in self.registry.names():
+                warm_up = getattr(self.registry.get(name), "warm_up", None)
+                if callable(warm_up):
+                    try:
+                        warm_up()
+                    except Exception as exc:  # used nodes report it when they run
+                        print(f"meegxer-daemon: warm-up of {name} failed: {exc}",
+                              file=sys.stderr, flush=True)  # fmt: skip
+
+        thread = threading.Thread(target=run, name="warm-up", daemon=True)
+        thread.start()
+        return thread
 
     def close(self) -> None:
         if self._scheduler is not None:

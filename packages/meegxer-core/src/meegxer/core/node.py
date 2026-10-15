@@ -95,6 +95,12 @@ class Processor(ABC):
         cannot run in that mode. Default: this processor in every mode."""
         return self
 
+    @classmethod  # noqa: B027 - optional hook
+    def warm_up(cls) -> None:
+        """Load slow dependencies ahead of use (the daemon calls this in the
+        background at startup), so the first block does not stall the real-time
+        thread on an import. Default: nothing to load."""
+
     def close(self) -> None:  # noqa: B027 - optional hook
         """Release external resources (e.g. a plugin worker). May be called more
         than once; a processor must work again after ``close`` if used again."""

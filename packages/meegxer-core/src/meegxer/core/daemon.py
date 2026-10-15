@@ -17,9 +17,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--display", default=DEFAULT_DISPLAY, help="display endpoint")
     parser.add_argument("--pipeline", type=Path, help="pipeline JSON to load")
     parser.add_argument("--start", action="store_true", help="start it immediately")
+    parser.add_argument(
+        "--no-warm-up", action="store_true",
+        help="do not preload slow node dependencies in the background",
+    )  # fmt: skip
     args = parser.parse_args(argv)
 
     daemon = Daemon(args.control, args.display)
+    if not args.no_warm_up:
+        daemon.warm_up_nodes()
     if args.pipeline is not None:
         daemon.load_pipeline(json.loads(args.pipeline.read_text(encoding="utf-8")))
         if args.start:
