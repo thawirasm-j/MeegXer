@@ -27,6 +27,13 @@ dependencies = [
     "meegxer-cli",
 ]
 
+# The commands of the packages it installs, so that `uv tool install meegxer` puts
+# them on PATH (uv exposes only the commands of the package named).
+[project.scripts]
+meegxer = "meegxer.cli:app"
+meegxer-gui = "meegxer.gui.app:main"
+meegxer-daemon = "meegxer.core.daemon:main"
+
 [project.urls]
 Homepage = "https://github.com/thawirasm-j/MeegXer"
 Documentation = "https://github.com/thawirasm-j/MeegXer/blob/main/docs/DESIGN.md"

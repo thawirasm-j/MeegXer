@@ -314,9 +314,11 @@ stops the feature outlets.
 - BIDS-derivatives output layout with provenance.
 - **Acceptance test 4:** save → reload on a second machine → identical output file.
 - **Acceptance test 5:** full suite on Linux and Windows (Docker Desktop / WSL2).
-- Publish to PyPI: the five `meegxer-*` packages plus a `meegxer` meta-package whose
-  `meegxer[full]` extra installs everything (proposed: bare `meegxer` = sterile set,
-  `[full]` adds `meegxer-runtime`). Names to be reserved by the owner first.
+- Publish to PyPI: the five `meegxer-*` packages plus the `meegxer` bundle (the
+  sterile set; it also carries the CLI and GUI commands so `uv tool install
+  meegxer` exposes them). Research builds add the runtime by name
+  (`--with meegxer-runtime`); there is no `[full]` extra, since declaring the
+  runtime even as an optional dependency of the bundle breaks rule 10 (decision 11).
 - v1 tag once tests 1–6 are green.
 
 ---
@@ -349,7 +351,7 @@ stops the feature outlets.
 | 8 | Param change vs streaming state | Reset by default; opt-in carry-over in M2 | M2 |
 | 9 | Manifest additions | Typed `inputs`/`outputs`, `spec_version`, enum `choices` | M1 |
 | 10 | Initial streaming state | `state` is `None` on first block; no `initial_state()` | M1 |
-| 11 | Distribution | Five `meegxer-*` names + `meegxer[full]` meta-package | M7 |
+| 11 | Distribution | Five `meegxer-*` names + `meegxer` sterile bundle; research builds install `meegxer-runtime` by name (no `[full]` extra: rule 10 forbids the bundle declaring the runtime) | M7 |
 | 12 | Filter start-up | Steady-state initialisation from the first sample | M2 |
 | 13 | Offline filtering | Zero-phase (forward-backward) nodes; every node declares `availability` | M2 |
 | 14 | Friendly/advanced UI | Per-parameter `advanced` flag; friendly mode uses defaults | M2, M5 |
