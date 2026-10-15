@@ -1,6 +1,7 @@
 """Verify the sterile build contains no plugin runtime (CLAUDE.md rule 10).
 
-Builds wheels for the sterile package set (core + sterile + gui + cli), then fails if
+Builds wheels for the sterile package set (core + sterile + gui + cli, and the
+``meegxer`` bundle that installs them), then fails if
 any of them ships ``meegxer/runtime`` files, declares a dependency on the runtime or
 Docker, or pulls either in transitively when the set is resolved. Usage:
 
@@ -18,7 +19,10 @@ import zipfile
 from email.parser import Parser
 from pathlib import Path
 
-STERILE_PACKAGES = ["meegxer-core", "meegxer-sterile", "meegxer-gui", "meegxer-cli"]
+STERILE_PACKAGES = [
+    "meegxer-core", "meegxer-sterile", "meegxer-gui", "meegxer-cli",
+    "meegxer",  # the bundle that installs the four
+]  # fmt: skip
 FORBIDDEN_DISTS = {"meegxer-runtime", "docker"}
 FORBIDDEN_PATH_PREFIX = "meegxer/runtime/"
 
@@ -55,10 +59,15 @@ def check_wheels(wheels: list[Path]) -> list[str]:
 
 
 def check_resolution(wheel_dir: Path) -> list[str]:
-    """Resolve the sterile set against PyPI plus the local wheels."""
+    """Resolve the sterile set (exactly the wheels just built) against PyPI plus
+    the local wheels."""
+    pins = [
+        f"{w.name.split('-')[0]}=={w.name.split('-')[1]}"
+        for w in sorted(wheel_dir.glob("*.whl"))
+    ]
     result = subprocess.run(
         ["uv", "pip", "compile", "--quiet", "--find-links", str(wheel_dir), "-"],
-        input="\n".join(STERILE_PACKAGES) + "\n",
+        input="\n".join(pins) + "\n",
         capture_output=True,
         text=True,
         check=False,

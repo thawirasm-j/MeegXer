@@ -377,3 +377,4 @@ stops the feature outlets.
 | 36 | Features in a linear chain | Branch off: an omitted `input` takes the nearest earlier node with a matching output type (spec 0.2.7); no probe tap after Features strips | M6c |
 | 37 | Hilbert envelope | Signal strip, piecewise analytic signal with look-ahead (delayed output), one implementation live and offline | M6c |
 | 38 | First feature measures | Connectivity: coh, imcoh, PLV, wPLI; complexity: permutation/sample/spectral entropy, Hjorth, Lempel-Ziv | M6c |
+| 39 | PyPI releases | Six projects (five packages + `meegxer` bundle = sterile build), one shared version from a `v*` tag, Trusted Publishing; tag → TestPyPI, PyPI by manual approved run (`docs/RELEASING.md`) | — |

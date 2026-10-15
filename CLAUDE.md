@@ -44,6 +44,7 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
 | `meegxer-runtime` | Docker plugin runtime + Python/Octave SDKs, EEGLAB ASR plugin (research builds only) |
 | `meegxer-gui` | PySide6 + pyqtgraph client |
 | `meegxer-cli` | headless runs, batch jobs, Pi deployment |
+| `meegxer` | bundle: installs the sterile build (core + sterile + gui + cli); no code of its own |
 
 Canonical code name is lowercase `meegxer` everywhere (imports, repo, image prefixes).
 
@@ -89,6 +90,9 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   pyproject.toml) and declare `availability` (online/offline/both). Stream
   processors that run online must pass
   `meegxer.core.conformance.check_blockwise_equivalence` (acceptance test 1).
+- Releases: push a `v*` tag (TestPyPI), then run the Release workflow from the
+  tag with target `pypi`; see `docs/RELEASING.md`. `tools/set_version.py`
+  stamps one version on every package and pins siblings exactly.
 - Architecture rules 1 and 10 are import-linter contracts in the root `pyproject.toml`;
   `tests/test_architecture.py` proves each contract catches a violation.
 

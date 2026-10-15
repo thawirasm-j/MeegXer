@@ -6,6 +6,16 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+keywords = ["EEG", "BCI", "signal processing", "EEGLAB", "MNE", "LSL"]
 authors = [
     { name = "Thawirasm Jungrungrueang" },
     { name = "TrimLAB, Prince of Songkla University" },
@@ -19,6 +29,11 @@ meegxer-plugin = "meegxer.runtime.cli:main"
 
 [project.entry-points."meegxer.node_providers"]
 plugins = "meegxer.runtime.index:node_classes"
+
+[project.urls]
+Homepage = "https://github.com/thawirasm-j/MeegXer"
+Documentation = "https://github.com/thawirasm-j/MeegXer/blob/main/docs/DESIGN.md"
+Issues = "https://github.com/thawirasm-j/MeegXer/issues"
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]
