@@ -2,82 +2,94 @@
 
 Explore brain signals with a user-friendly EEG mixer.
 
-Pre-MVP. Design: [`docs/DESIGN.md`](docs/DESIGN.md). Plan: [`docs/WORKPLAN.md`](docs/WORKPLAN.md).
+Alpha (0.1.0a). Design: [`docs/DESIGN.md`](docs/DESIGN.md). Plan: [`docs/WORKPLAN.md`](docs/WORKPLAN.md).
 
 ## Install
 
-MeegXer is not on PyPI yet, so it runs from a copy of this repository. The
-[uv](https://docs.astral.sh/uv/) tool installs the right Python (3.14, from
-`.python-version`) and every dependency into a private `.venv` folder; nothing is
-installed system-wide.
+MeegXer is on PyPI as `meegxer`. The [uv](https://docs.astral.sh/uv/) tool installs
+it with its own Python (3.14) into a private folder and puts the commands on your
+PATH; nothing else on the system changes.
 
 ### Windows 10/11
 
 1. Open **PowerShell** (Start menu, type "PowerShell").
-2. Install uv and Git (skip either if you already have it):
+2. Install uv:
 
    ```powershell
    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-   winget install --id Git.Git -e
    ```
 
-   Close and reopen PowerShell so both commands are found.
-3. Get MeegXer and install it (the first run downloads Python and the packages,
-   a few hundred MB):
+   Close and reopen PowerShell so `uv` is found.
+3. Install MeegXer (the first run downloads Python and the packages, a few hundred
+   MB; `--prerelease allow` is needed while MeegXer is in alpha):
 
    ```powershell
-   cd $HOME
-   git clone https://github.com/thawirasm-j/MeegXer.git
-   cd MeegXer
-   uv sync --all-packages
+   uv tool install --python 3.14 --prerelease allow meegxer
    ```
 
 4. Start the mixer:
 
    ```powershell
-   uv run meegxer-gui
+   meegxer-gui
    ```
 
    The GUI starts the processing engine (the daemon) in the background if none is
    running. Closing the GUI while a pipeline runs leaves the engine running; stop
-   it with `uv run meegxer stop`, or `uv run meegxer shutdown` to end the daemon.
+   it with `meegxer stop`, or `meegxer shutdown` to end the daemon.
 
+- **Network drives:** Python cannot load its libraries from a network share
+  ("DLL load failed ... The parameter is incorrect"). If your user folder is on a
+  network drive (common on university PCs), keep uv's Python and tools on a local
+  folder instead; run this before step 3 (or set both permanently in *Edit
+  environment variables for your account*):
+
+  ```powershell
+  $env:UV_PYTHON_INSTALL_DIR = "$env:LOCALAPPDATA\uv\python"
+  $env:UV_TOOL_DIR = "$env:LOCALAPPDATA\uv\tools"
+  ```
 - **Windows Firewall:** the first time an LSL stream is opened, Windows may ask
   whether Python may use the network. Allow **private networks** so LSL can find
   amplifiers on your lab network. The control and display channels themselves only
   listen on this computer (`127.0.0.1`).
-- **Update:** `cd $HOME\MeegXer`, then `git pull` and `uv sync --all-packages`.
+- **Update:** `uv tool upgrade meegxer`.
 - **Ports in use:** the daemon uses TCP ports 5555 (control) and 5556 (display). If
   another program holds them, start with other ports:
-  `uv run meegxer-gui --connect tcp://127.0.0.1:5565 --display tcp://127.0.0.1:5566`.
+  `meegxer-gui --connect tcp://127.0.0.1:5565 --display tcp://127.0.0.1:5566`.
   Then give `meegxer` commands the same control port, e.g.
-  `uv run meegxer stop --control tcp://127.0.0.1:5565`.
-- **Without `uv run`:** the programs are also in `.venv\Scripts\` (for example
-  `.venv\Scripts\meegxer-gui.exe`), which you can pin to the taskbar or use for a
-  desktop shortcut.
-- **Plugins (optional, research builds):** containerized plugins need
-  [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
-  with the WSL 2 backend. MeegXer itself, the built-in nodes and LSL do not need
-  Docker. Then `uv run meegxer-plugin check IMAGE` and
-  `uv run meegxer-plugin add IMAGE`.
+  `meegxer stop --control tcp://127.0.0.1:5565`.
 
 ### macOS and Linux
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-git clone https://github.com/thawirasm-j/MeegXer.git && cd MeegXer
-uv sync --all-packages
-uv run meegxer-gui
+uv tool install --python 3.14 --prerelease allow meegxer
+meegxer-gui
 ```
 
 On a minimal Linux install the GUI may need the Qt system libraries
 (Debian/Ubuntu: `sudo apt install libegl1 libgl1 libxkbcommon0 libfontconfig1`).
 
-## Development
+### Research build (containerized plugins)
 
-Python 3.13+ (developed on 3.14); set up as in [Install](#install).
+The `meegxer` install is the sterile build: the audited built-in nodes, no plugin
+runtime. Research builds add the runtime by name, which also installs the
+`meegxer-plugin` command:
 
 ```bash
+uv tool install --python 3.14 --prerelease allow meegxer --with meegxer-runtime --with-executables-from meegxer-runtime
+```
+
+Plugins run in containers, so they need Docker (on Windows,
+[Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
+with the WSL 2 backend). MeegXer itself, the built-in nodes and LSL do not. Then
+`meegxer-plugin check IMAGE` and `meegxer-plugin add IMAGE`.
+
+## Development
+
+Python 3.13+ (developed on 3.14). Install uv as in [Install](#install), plus Git, then:
+
+```bash
+git clone https://github.com/thawirasm-j/MeegXer.git && cd MeegXer
 uv sync --all-packages          # create .venv with every workspace package
 uv run pytest                   # tests, including architecture guard self-tests
 uv run ruff check . && uv run ruff format --check .
