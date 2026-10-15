@@ -15,10 +15,11 @@ import numpy as np
 import numpy.typing as npt
 import pylsl
 
-from meegxer.core.block import Block, SignalInfo
+from meegxer.core.block import Block, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Sink, Source
 from meegxer.core.ports import PortTypeError
+from meegxer.core.sinks import feature_columns
 
 INDEX_CHANNEL = "SAMPLE_INDEX"
 _UNIT_SCALE = {"uV": 1e-6, "mV": 1e-3, "V": 1.0}
@@ -220,6 +221,66 @@ class LslSink(Sink):
             data = np.vstack([data, block.sample_indices()[None, :]])
         last = block.timestamp + (block.n_samples - 1) / block.info.sfreq
         self._outlet.push_chunk(np.ascontiguousarray(data.T), timestamp=last)
+
+    def close(self) -> None:
+        self._outlet = None
+
+
+class LslFeatureSink(Sink):
+    """Publishes feature windows as an irregular-rate LSL outlet: one sample per
+    window, one channel per feature value (labelled like the feature TSV columns,
+    e.g. ``Fz|alpha``), stamped with the window's start time."""
+
+    manifest: ClassVar[Manifest] = Manifest.from_dict(
+        {
+            "spec_version": "0.2.0",
+            "name": "meegxer.core.lsl_features_out",
+            "version": "0.1.0",
+            "type": "stream",
+            "role": "sink",
+            "description": "Feature windows as an LSL stream (one sample per window).",
+            "inputs": [{"name": "in", "type": "features"}],
+            "outputs": [],
+            "params": [
+                {"name": "stream_name", "type": "string",
+                 "default": "MeegXer features", "primary": True},
+                {"name": "stream_type", "type": "string", "default": "Features",
+                 "advanced": True},
+            ],
+            "availability": "both",
+        }
+    )  # fmt: skip
+
+    def __init__(self, params: Mapping[str, object] | None = None) -> None:
+        super().__init__(params)
+        self._outlet: pylsl.StreamOutlet | None = None
+        self._columns: list[str] = []
+
+    def _open(self, columns: list[str]) -> pylsl.StreamOutlet:
+        stream = pylsl.StreamInfo(
+            str(self.params["stream_name"]),
+            str(self.params["stream_type"]),
+            len(columns),
+            pylsl.IRREGULAR_RATE,
+            "float32",
+            f"meegxer-{self.params['stream_name']}",
+        )
+        channels = stream.desc().append_child("channels")
+        for label in columns:
+            channels.append_child("channel").append_child_value("label", label)
+        self._columns = columns
+        return pylsl.StreamOutlet(stream, chunk_size=0, max_buffered=60)
+
+    def write(self, block: AnyBlock) -> None:
+        if not isinstance(block, FeatureBlock):
+            raise PortTypeError("lsl_features_out accepts Features blocks only")
+        columns = feature_columns(block)
+        if self._outlet is None:
+            self._outlet = self._open(columns)
+        elif columns != self._columns:
+            raise ValueError("lsl_features_out: feature layout changed while streaming")
+        sample = [float(v) for v in block.data.ravel()]
+        self._outlet.push_sample(sample, timestamp=block.timestamp)
 
     def close(self) -> None:
         self._outlet = None

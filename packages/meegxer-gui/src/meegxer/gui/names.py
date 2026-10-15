@@ -18,6 +18,12 @@ TITLES = {
     "meegxer.sterile.rereference": "Re-reference",
     "meegxer.sterile.iir_filter_zerophase": "Filter (zero-phase)",
     "meegxer.sterile.ica": "ICA + ICLabel",
+    "meegxer.sterile.psd": "PSD",
+    "meegxer.sterile.band_power": "Band power",
+    "meegxer.sterile.connectivity": "Connectivity",
+    "meegxer.sterile.complexity": "Complexity",
+    "meegxer.sterile.hilbert_envelope": "Envelope",
+    "meegxer.core.lsl_features_out": "LSL features",
     "eeglab.asr": "ASR (EEGLAB)",
 }
 FILTER_KINDS = {

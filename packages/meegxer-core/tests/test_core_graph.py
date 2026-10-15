@@ -78,7 +78,7 @@ def test_explicit_fan_out_and_round_trip() -> None:
 @pytest.mark.parametrize(
     ("data", "match"),
     [
-        (pipeline({"node": "test.pass"}), "no upstream"),
+        (pipeline({"node": "test.pass"}), "no earlier node"),
         (pipeline(SRC, SRC), "exactly one source"),
         (pipeline(SRC, {"id": "x", "node": "test.pass", "input": "later"},
                   {"id": "later", "node": "test.pass"}), "not an earlier node"),
@@ -97,13 +97,11 @@ def test_invalid_pipelines_rejected(data: dict[str, Any], match: str) -> None:
 
 
 def test_port_type_mismatch_rejected() -> None:
+    tsv = {"node": "meegxer.core.feature_tsv", "params": {"path": "x"}}
     with pytest.raises(PortTypeError):
-        Graph.from_dict(
-            pipeline(
-                SRC, {"node": "meegxer.core.feature_tsv", "params": {"path": "x"}}
-            ),
-            REGISTRY,
-        )
+        Graph.from_dict(pipeline(SRC, {**tsv, "input": "synthetic1"}), REGISTRY)
+    with pytest.raises(GraphError, match="no earlier node with features output"):
+        Graph.from_dict(pipeline(SRC, tsv), REGISTRY)  # implicit: nothing matches
 
 
 def test_unknown_node() -> None:

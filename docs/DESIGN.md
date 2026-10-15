@@ -136,7 +136,13 @@ transform(block, model, state, params)        -> block_out, state, events
 - **Stream processors:** block in → block out at the same rate (filters with carried
   state, re-ref, ASR apply, ICA apply).
 - **Analysis processors:** windowed input → Features/Events at a lower rate (PSD,
-  band power, connectivity, CCA, classifiers).
+  band power, connectivity, CCA, classifiers). They buffer input in `state` and
+  return every window a block completes as a tuple of FeatureBlocks (none when no
+  window is complete), each with its sample range and the time of its first sample,
+  so windows never depend on block sizes (acceptance test 1 compares the windows).
+  In a linear chain a Features node branches off: a node without an explicit
+  `input` reads from the nearest earlier node whose output type matches (spec
+  0.2.7), so Signal strips after it continue from the last Signal node.
 - **Calibration (online):** record N seconds, fit, then go live. Per-stage status:
   uncalibrated / calibrating / ready / needs-refit.
 - Some processors are dataset-level only (ComBat, group statistics) and never stream.
@@ -172,7 +178,9 @@ transform(block, model, state, params)        -> block_out, state, events
   discovery does not cross Docker Desktop's VM boundary).
 
 ### 3.6 Sinks
-- LSL outlets, file writers (.set, EDF, BIDS-derivatives, feature TSV), session JSON.
+- LSL outlets (signal; features as an irregular-rate stream, one sample per window,
+  channels labelled like the feature TSV columns), file writers (.set, EDF,
+  BIDS-derivatives, feature TSV), session JSON.
 - Action sinks (later): keyboard/mouse (pynput), virtual gamepad (vgamepad/uinput),
   serial (pyserial), OSC/MIDI. Trusted host-side only; user maps Events → actions.
   Safety: arm/disarm toggle, confidence thresholds, dwell time.

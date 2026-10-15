@@ -24,7 +24,7 @@ from meegxer.core.block import (
     concat_blocks,
 )
 from meegxer.core.manifest import ParamValue
-from meegxer.core.node import Mode, Processor, TransformResult
+from meegxer.core.node import Mode, Processor, TransformResult, output_blocks
 from meegxer.core.ports import check_block
 from meegxer.core.serialization import (
     State,
@@ -219,6 +219,8 @@ class Stage:
             self._rest = []
         selected = self._selected(block)
         if selected is None:  # no channels of the processed types: pass through
+            if self.manifest.kind == "analysis":
+                return TransformResult((), self.state or {})  # nothing to analyse
             return TransformResult(full, self.state or {})
         block = selected
         self._last_info = block.info
@@ -234,7 +236,8 @@ class Stage:
             model = self.model.data
         result = self.processor.transform(block, model, self.state, self.params)
         for port in self.manifest.outputs[:1]:
-            check_block(port, result.block)
+            for out_block in output_blocks(result.block):
+                check_block(port, out_block)
         out = result.block
         if block.bypassed and isinstance(out, Block) and out.bypassed != block.bypassed:
             merged = tuple(dict.fromkeys((*block.bypassed, *out.bypassed)))

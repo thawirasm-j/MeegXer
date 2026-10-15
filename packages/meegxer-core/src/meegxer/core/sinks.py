@@ -37,6 +37,17 @@ def _sink_manifest(name: str, input_type: str) -> Manifest:
     )
 
 
+def feature_columns(block: FeatureBlock) -> list[str]:
+    """One name per feature value, in ``data.ravel()`` order, joined from its
+    coordinates (``Fz|10.0``); indices stand in for unlabelled dimensions."""
+    axes = []
+    for dim, size in zip(block.dims, block.data.shape, strict=True):
+        values = block.coords.get(dim, tuple(range(size)))
+        axes.append([str(v) for v in values])
+    grid = np.array(np.meshgrid(*axes, indexing="ij")).reshape(len(axes), -1)
+    return ["|".join(col) for col in grid.T]
+
+
 class _RawFileSink(Sink):
     fmt: ClassVar[Literal["eeglab", "edf"]]
 
@@ -106,19 +117,10 @@ class FeatureTsvSink(Sink):
         self._rows: list[list[str]] = []
         self._header: list[str] | None = None
 
-    @staticmethod
-    def _columns(block: FeatureBlock) -> list[str]:
-        axes = []
-        for dim, size in zip(block.dims, block.data.shape, strict=True):
-            values = block.coords.get(dim, tuple(range(size)))
-            axes.append([str(v) for v in values])
-        grid = np.array(np.meshgrid(*axes, indexing="ij")).reshape(len(axes), -1)
-        return ["|".join(col) for col in grid.T]
-
     def write(self, block: AnyBlock) -> None:
         if not isinstance(block, FeatureBlock):
             raise PortTypeError(f"{self.manifest.name} accepts Features blocks only")
-        columns = self._columns(block)
+        columns = feature_columns(block)
         if self._header is None:
             self._header = ["window_start", "window_stop", "timestamp", *columns]
         elif self._header[3:] != columns:

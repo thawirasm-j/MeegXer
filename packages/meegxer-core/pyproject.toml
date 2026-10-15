@@ -32,6 +32,7 @@ dependencies = [
 "meegxer.core.feature_tsv" = "meegxer.core.sinks:FeatureTsvSink"
 "meegxer.core.lsl_in" = "meegxer.core.lsl:LslSource"
 "meegxer.core.lsl_out" = "meegxer.core.lsl:LslSink"
+"meegxer.core.lsl_features_out" = "meegxer.core.lsl:LslFeatureSink"
 
 [project.scripts]
 meegxer-daemon = "meegxer.core.daemon:main"

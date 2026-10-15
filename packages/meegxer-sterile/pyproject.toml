@@ -18,6 +18,8 @@ dependencies = [
     "python-picard>=0.8",
     "mne-icalabel>=0.7",
     "onnxruntime>=1.20",
+    "mne-connectivity>=0.7",
+    "antropy>=0.1.9",
 ]
 
 [project.entry-points."meegxer.nodes"]
@@ -27,6 +29,11 @@ dependencies = [
 "meegxer.sterile.notch_zerophase" = "meegxer.sterile.filters:NotchFilterZeroPhase"
 "meegxer.sterile.rereference" = "meegxer.sterile.reference:Rereference"
 "meegxer.sterile.ica" = "meegxer.sterile.ica:ICAClean"
+"meegxer.sterile.psd" = "meegxer.sterile.features:PSD"
+"meegxer.sterile.band_power" = "meegxer.sterile.features:BandPower"
+"meegxer.sterile.connectivity" = "meegxer.sterile.features:Connectivity"
+"meegxer.sterile.complexity" = "meegxer.sterile.features:Complexity"
+"meegxer.sterile.hilbert_envelope" = "meegxer.sterile.features:HilbertEnvelope"
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]
