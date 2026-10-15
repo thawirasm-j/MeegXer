@@ -68,6 +68,11 @@ In the repository: *Settings → Environments → New environment*:
 3. Publish to **PyPI**: *Actions → Release → Run workflow*, pick the tag (not a
    branch) under *Use workflow from*, target `pypi`, and approve the deployment.
 
+Each package is uploaded by its own job, because one Trusted Publishing token
+exchange can turn only one pending publisher into a project (a single upload of
+all six created `meegxer` and was refused for the rest). Uploads skip files
+already present, so re-running a failed run finishes a partial release.
+
 PyPI never lets a version be uploaded twice. A broken release is fixed with a new
 version (e.g. `0.1.0a2`), and can be *yanked* on PyPI so installers skip it.
 
