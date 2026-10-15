@@ -17,6 +17,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication
 
 from meegxer.gui.connection import DaemonLink, spawn_daemon
@@ -33,6 +34,8 @@ def pump(app: QApplication, seconds: float) -> None:
     end = time.monotonic() + seconds
     while time.monotonic() < end:
         app.processEvents()
+        # widgets replaced with deleteLater go away in a real event loop
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         time.sleep(0.01)
 
 
