@@ -173,3 +173,32 @@ def test_eeglab_ced_file(tmp_path: Path) -> None:
     fpz, t7 = positions["EEG Fpz-REF"], positions["T7"]
     assert fpz[1] == pytest.approx(0.085) and abs(fpz[0]) < 1e-9  # front
     assert t7[0] == pytest.approx(-0.085)  # left ear: negative x
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"Fp1": {"rename": "AF7"}}, {"VEOG": {"type": "eog"}}, {"Cz": {"bad": True}},
+     {"Fp1": {"position": [0.0, 0.1, 0.0]}}],
+)  # fmt: skip
+def test_recording_changes_are_not_served_from_the_cache(
+    recording: Path, change: dict[str, object]
+) -> None:
+    """The overrides change what the source delivers, so outputs computed before
+    an edit in the Recording window must not be reused after it."""
+    from meegxer.core.batch import BatchScheduler
+    from meegxer.core.cache import MemoryCache
+
+    def pipeline(**rec: object) -> dict[str, object]:
+        hp = {"id": "hp", "node": "meegxer.sterile.iir_filter",
+              "params": {"kind": "highpass", "low": 1.0}}  # fmt: skip
+        return {"spec_version": SPEC_VERSION, "nodes": [source(recording, **rec), hp]}
+
+    registry, cache = Registry.from_entry_points(), MemoryCache()
+    BatchScheduler(cache=cache).run(Graph.from_dict(pipeline(), registry))
+    edited = Graph.from_dict(pipeline(channels=change), registry)
+    result = BatchScheduler(cache=cache).run(edited)
+    assert result.cached == []
+    src = edited["input"].impl
+    assert isinstance(src, Source)
+    out = result.outputs["hp"]
+    assert isinstance(out, Block) and out.info == src.info

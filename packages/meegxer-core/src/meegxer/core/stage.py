@@ -54,6 +54,8 @@ def signal_fingerprint(info: SignalInfo) -> str:
         repr(float(info.sfreq)),
         ",".join(info.ch_labels),
         ",".join(info.bads),
+        ",".join(info.ch_types),  # which channels a stage processes
+        repr(info.positions),  # e.g. ICLabel uses them
     )
 
 

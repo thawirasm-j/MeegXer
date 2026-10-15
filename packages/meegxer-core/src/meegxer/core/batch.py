@@ -21,19 +21,21 @@ from meegxer.core.cache import Cache, CachedOutput
 from meegxer.core.graph import Graph, GraphError, GraphNode
 from meegxer.core.node import NodeRole, Output, Probe, Sink, Source, output_blocks
 from meegxer.core.serialization import canonical_json, fingerprint
-from meegxer.core.stage import Stage, StageStatus
+from meegxer.core.stage import Stage, StageStatus, signal_fingerprint
 
 type Stream = list[Block | FeatureBlock | EventBlock]
 
 
 def source_fingerprint(source: Source) -> str:
-    """Identity of a source's output: node, parameters and data content."""
+    """Identity of a source's output: node, parameters, data content and the
+    channel description it delivers (which recording overrides change)."""
     return fingerprint(
         "source",
         source.manifest.name,
         source.manifest.version,
         canonical_json(source.params),
         source.content_id(),
+        signal_fingerprint(source.info),
     )
 
 
