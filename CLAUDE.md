@@ -40,8 +40,8 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
 | Package | Contents |
 |---|---|
 | `meegxer-core` | engine, graph, schedulers, plugin spec, I/O, control API (no GUI) |
-| `meegxer-sterile` | audited built-ins: filters, re-ref, ASR, ICA/ICLabel, features, action sinks |
-| `meegxer-runtime` | Docker plugin runtime + Python/Octave SDKs (research builds only) |
+| `meegxer-sterile` | audited built-ins: filters, re-ref, ICA/ICLabel, features, action sinks |
+| `meegxer-runtime` | Docker plugin runtime + Python/Octave SDKs, EEGLAB ASR plugin (research builds only) |
 | `meegxer-gui` | PySide6 + pyqtgraph client |
 | `meegxer-cli` | headless runs, batch jobs, Pi deployment |
 
@@ -54,8 +54,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   Monorepo managed as a uv workspace. Only the core is a candidate for a later Rust rewrite,
   behind the same protocol.
 - Core: numpy, scipy, jsonschema, pylsl, pyzmq (JSON-RPC control and display both over
-  ZeroMQ); file I/O through MNE (mne-bids, eeglabio, edfio). Signals are in volts. Built-ins: MNE, SciPy, mne-icalabel, asrpy/meegkit,
-  mne-connectivity, antropy. GUI: PySide6, pyqtgraph. CLI: Typer or Click.
+  ZeroMQ); file I/O through MNE (mne-bids, eeglabio, edfio). Signals are in volts. Built-ins: MNE, SciPy, python-picard, mne-icalabel,
+  mne-connectivity, antropy (ASR is the EEGLAB plugin, research builds only). GUI: PySide6, pyqtgraph. CLI: Typer or Click.
 - I/O: BIDS (mne-bids), EDF/BDF, EEGLAB .set in; .set (eeglabio), EDF, BIDS-derivatives out.
 - Performance escalation order: vectorize (preallocated ring buffers, no per-sample
   loops) → Numba → PyO3 Rust extension → full Rust core. Measure before escalating.
