@@ -99,7 +99,9 @@ Reply field `sample_index` (0.2) is the sample index of the output's first sampl
 Without it the output is aligned with the input. A plugin with look-ahead (output
 lags its input) reports an earlier index and may return fewer samples than it
 received, including none; the host keeps the output aligned by sample index (CLAUDE.md
-rule 8), so the delay never shifts it against other channels or probes. Such a
+rule 8), so the delay never shifts it against other channels or probes. The host
+never hands such an empty result on (since 0.2.8): no node, plugin or built-in, is
+sent a `transform` with zero samples. Such a
 plugin should also declare `latency_samples` in its manifest.
 
 Each event is `{"sample_index": int, "label": str, "duration": int, "payload": {...}}`.

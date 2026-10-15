@@ -117,3 +117,49 @@ def test_batch_runs_flush_delaying_nodes() -> None:
     out = probe.signal()
     assert (out.sample_index, out.n_samples) == (0, 500)
     np.testing.assert_array_equal(out.data, src.rec.data)
+
+
+class Spy(Processor):
+    """Identity that records the size of every block it is handed."""
+
+    manifest: ClassVar[Manifest] = Manifest.from_dict({
+        "spec_version": SPEC_VERSION, "name": "test.spy", "version": "0.1.0",
+        "type": "stream", "inputs": [{"name": "in", "type": "signal"}],
+        "outputs": [{"name": "out", "type": "signal"}],
+    })  # fmt: skip
+
+    def __init__(self) -> None:
+        self.sizes: list[int] = []
+
+    def transform(
+        self, block: Block, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        self.sizes.append(block.n_samples)
+        return TransformResult(block, {})
+
+
+def test_batch_never_hands_on_the_empty_blocks_of_a_delaying_node() -> None:
+    """Blocks shorter than the delay make the delaying node return empty blocks
+    (spec 0.2.5); the host drops them, so no node downstream ever sees one."""
+    spy, probe, src = Spy(), MemoryProbe({"keep_seconds": 0.0}), Fixed()
+    BatchScheduler(block_size=5).run(
+        Graph.chain([src, Stage(Delay()), Stage(spy), probe])
+    )
+    assert spy.sizes and min(spy.sizes) > 0
+    assert all(isinstance(b, Block) and b.n_samples for b in probe.blocks)
+    np.testing.assert_array_equal(probe.signal().data, src.rec.data)
+
+
+def test_realtime_never_hands_on_the_empty_blocks_of_a_delaying_node() -> None:
+    from meegxer.core.realtime import RealtimeScheduler
+
+    spy, probe = Spy(), MemoryProbe({"keep_seconds": 0.0})
+    graph = Graph.chain([Fixed(), Stage(Delay()), Stage(spy), probe])
+    scheduler = RealtimeScheduler(graph, max_block=5)
+    scheduler.start()
+    assert scheduler.wait(20.0)
+    assert not scheduler.metrics.errors
+    assert spy.sizes and min(spy.sizes) > 0
+    assert all(isinstance(b, Block) and b.n_samples for b in probe.blocks)
+    out = probe.signal()  # contiguous from the first sample (no flush online)
+    assert (out.sample_index, out.n_samples) == (0, 500 - DELAY)

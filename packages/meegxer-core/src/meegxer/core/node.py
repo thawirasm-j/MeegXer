@@ -65,8 +65,9 @@ class Processor(ABC):
       no window is complete yet), so its windows never depend on block sizes.
     - Output samples are aligned by sample index (rule 8). A processor that needs
       look-ahead may return output that lags its input (an earlier
-      ``sample_index``, possibly fewer samples) and hand over the rest in
-      ``flush`` at the end of the stream.
+      ``sample_index``, possibly fewer samples, even none) and hand over the rest
+      in ``flush`` at the end of the stream. The schedulers drop empty results,
+      so a processor is never handed a block with zero samples (spec 0.2.8).
     """
 
     role: ClassVar[NodeRole] = NodeRole.PROCESSOR

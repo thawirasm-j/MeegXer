@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from meegxer.core.block import Block, Event, EventBlock, FeatureBlock, concat_blocks
 from meegxer.core.cache import Cache, CachedOutput
 from meegxer.core.graph import Graph, GraphError, GraphNode
-from meegxer.core.node import NodeRole, Probe, Sink, Source, output_blocks
+from meegxer.core.node import NodeRole, Output, Probe, Sink, Source, output_blocks
 from meegxer.core.serialization import canonical_json, fingerprint
 from meegxer.core.stage import Stage, StageStatus
 
@@ -154,11 +154,11 @@ class BatchScheduler:
         events: list[Event] = []
         for block in signal_in:
             transformed = stage.transform(block, input_fp)
-            out.extend(output_blocks(transformed.block))
+            out.extend(_non_empty(transformed.block))
             events.extend(transformed.events)
         tail = stage.flush(input_fp)  # what a delaying node still holds
         if tail is not None:
-            out.extend(output_blocks(tail.block))
+            out.extend(_non_empty(tail.block))
             events.extend(tail.events)
         result.events[node.id] = tuple(events)
         result.computed.append(node.id)
@@ -201,3 +201,13 @@ class BatchScheduler:
             result.outputs[node_id] = concat_blocks(signal_blocks)
         else:
             result.outputs[node_id] = [b for b in stream if isinstance(b, FeatureBlock)]
+
+
+def _non_empty(output: Output) -> tuple[Block | FeatureBlock, ...]:
+    """A stage's output blocks without the empty ones a delaying node returns while
+    it holds data back (spec 0.2.5): downstream nodes never see an empty block."""
+    return tuple(
+        b
+        for b in output_blocks(output)
+        if not (isinstance(b, Block) and not b.n_samples)
+    )
