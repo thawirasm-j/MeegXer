@@ -26,6 +26,8 @@ define it.
     `availability` (online | offline | both) and the per-parameter `advanced` flag
     (hidden in the UI's friendly mode). 0.2.2 added the per-parameter `primary` flag
     (crucial parameters, shown on the node's strip in friendly mode).
+  - 0.2.8: the host never sends a node a block with zero samples; the empty
+    result of a delaying node is not handed on (`plugin-protocol.md`).
   - `control-api.md`: JSON-RPC 2.0 methods between the daemon and clients.
   - `display-protocol.md`: decimated min/max envelope frames on the display stream.
   - `plugin-protocol.md` (`meegxer.plugin/0.2`): framed stdin/stdout protocol for

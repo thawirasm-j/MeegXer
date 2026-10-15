@@ -422,6 +422,8 @@ class RealtimeScheduler:
         self.metrics.events += len(result.events)
         if isinstance(result.block, FeatureBlock):
             return (result.block,)
+        if isinstance(result.block, Block) and result.block.n_samples == 0:
+            return None  # a delaying node holding back: nothing to hand on yet
         return result.block
 
     @staticmethod

@@ -122,8 +122,9 @@ transform(block, model, state, params)        -> block_out, state, events
   processor code needs no type handling of its own.
 - **Delayed output (spec 0.2.5):** a processor with look-ahead (ASR) may return
   output that lags its input: the output block carries the sample index of its first
-  sample, which may be earlier than the input's, and may be shorter or empty. It
-  returns what it still holds from `flush(info, model, state, params)` at the end of
+  sample, which may be earlier than the input's, and may be shorter or empty (the
+  schedulers do not hand an empty result on, so no node ever receives an empty
+  block, spec 0.2.8). It returns what it still holds from `flush(info, model, state, params)` at the end of
   the stream (the batch scheduler and the conformance helper call it). The stage
   delays the channels it does not process by the same amount, so every channel and
   probe stays aligned by sample index (rule 8); online, the delay is plain latency.
