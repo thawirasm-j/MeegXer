@@ -139,12 +139,21 @@ class Stage:
             self.state = None
 
     def fingerprint(self, input_fp: str) -> str:
-        """What a model fitted for this stage depends on."""
+        """What a model fitted for this stage depends on.
+
+        A fitted node's live parameters act in ``transform`` only (manifest
+        ``live_params``), so they are left out: changing one needs no refit.
+        """
+        params = self.params
+        if self.manifest.requires_fit:
+            params = {
+                k: v for k, v in params.items() if k not in self.manifest.live_params
+            }
         return fingerprint(
             "stage",
             self.manifest.name,
             self.manifest.version,
-            canonical_json(self.params),
+            canonical_json(params),
             ",".join(self.channel_types),
             input_fp,
         )
@@ -155,7 +164,8 @@ class Stage:
         if not self.manifest.requires_fit:
             return own
         model_hash = self.model.content_hash if self.model else "unfitted"
-        return fingerprint("output", own, model_hash)
+        live = {k: v for k, v in self.params.items() if k in self.manifest.live_params}
+        return fingerprint("output", own, model_hash, canonical_json(live))
 
     def status(self, input_fp: str) -> StageStatus:
         if not self.manifest.requires_fit:

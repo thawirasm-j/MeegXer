@@ -13,6 +13,7 @@ def stream_manifest(
     description: str = "",
     live_params: list[str] | None = None,
     availability: str = "both",
+    requires_fit: bool = False,
 ) -> Manifest:
     return Manifest.from_dict(
         {
@@ -26,5 +27,6 @@ def stream_manifest(
             "params": params,
             "live_params": live_params or [],
             "availability": availability,
+            "requires_fit": requires_fit,
         }
     )

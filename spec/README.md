@@ -19,7 +19,8 @@ define it.
     each node's `input` names an earlier node (acyclic by construction) and defaults
     to the nearest earlier source or processor, so a plain list is a linear chain.
   - 0.2.0 also added manifest `role` (source | processor | probe | sink),
-    `live_params` (parameters that change without resetting streaming state),
+    `live_params` (parameters that change without resetting streaming state; on a
+    node that needs fitting, since 0.2.6, also without invalidating its model),
     `availability` (online | offline | both) and the per-parameter `advanced` flag
     (hidden in the UI's friendly mode). 0.2.2 added the per-parameter `primary` flag
     (crucial parameters, shown on the node's strip in friendly mode).
