@@ -170,12 +170,20 @@ def _hash_files(paths: list[Path]) -> str:
     return digest.hexdigest()
 
 
+def _location(loc: FloatArray) -> tuple[float, float, float] | None:
+    xyz = np.asarray(loc[:3], dtype=float)
+    if not np.all(np.isfinite(xyz)) or not np.any(xyz):
+        return None
+    return (float(xyz[0]), float(xyz[1]), float(xyz[2]))
+
+
 class _RawSource(Source):
     """Serves an in-memory MNE Raw block by block."""
 
     def __init__(self, params: Mapping[str, object] | None = None) -> None:
         super().__init__(params)
         self._pos = 0
+        self._annotations: list[dict[str, float | str]] = []
 
     def _load(self) -> mne.io.BaseRaw:
         raise NotImplementedError
@@ -193,8 +201,21 @@ class _RawSource(Source):
             float(raw.info["sfreq"]),
             self._stream_id(),
             tuple(b for b in raw.info["bads"] if b in raw.ch_names),
+            tuple(raw.get_channel_types()),
+            tuple(_location(ch["loc"]) for ch in raw.info["chs"]),
         )
+        self._annotations = [
+            {"onset": float(a["onset"] - raw.first_time),
+             "duration": float(a["duration"]), "label": str(a["description"])}
+            for a in raw.annotations
+        ]  # fmt: skip
         return data, info
+
+    def annotations(self) -> list[dict[str, float | str]]:
+        """Events stored in the recording: onset (s from the first sample),
+        duration (s) and label."""
+        _ = self._raw
+        return list(self._annotations)
 
     def _stream_id(self) -> str:
         return self._files()[0].name

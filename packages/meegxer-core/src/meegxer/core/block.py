@@ -19,6 +19,7 @@ import numpy.typing as npt
 
 FloatArray = npt.NDArray[np.float64]
 IndexArray = npt.NDArray[np.intp]
+Position = tuple[float, float, float]
 type JSONValue = (
     str | int | float | bool | list[JSONValue] | dict[str, JSONValue] | None
 )
@@ -58,13 +59,18 @@ class SignalInfo:
     """Static description of a Signal stream.
 
     ``bads`` marks channels known to be bad. They stay in the data; nodes that
-    pool channels (e.g. average reference) can leave them out.
+    pool channels (e.g. average reference) can leave them out. ``ch_types``
+    (e.g. ``eeg``, ``eog``) and ``positions`` (x, y, z in metres, head coordinates:
+    x right, y front, z up; None where unknown) are per channel, or empty when not
+    known at all. They describe the channels but do not change the data.
     """
 
     ch_labels: tuple[str, ...]
     sfreq: float
     stream_id: str = ""
     bads: tuple[str, ...] = ()
+    ch_types: tuple[str, ...] = ()
+    positions: tuple[Position | None, ...] = ()
 
     def __post_init__(self) -> None:
         labels = tuple(self.ch_labels)
@@ -83,6 +89,30 @@ class SignalInfo:
         unknown = sorted(set(bads) - set(labels))
         if unknown or len(set(bads)) != len(bads):
             raise ChannelMismatchError(f"bad channels must be unique labels: {bads}")
+        types = tuple(self.ch_types)
+        object.__setattr__(self, "ch_types", types)
+        positions = tuple(
+            None if p is None else (float(p[0]), float(p[1]), float(p[2]))
+            for p in self.positions
+        )
+        object.__setattr__(self, "positions", positions)
+        for name, values in (("ch_types", types), ("positions", positions)):
+            if values and len(values) != len(labels):
+                raise ChannelMismatchError(
+                    f"{name} has {len(values)} entries for {len(labels)} channels"
+                )
+
+    def subset(self, labels: Sequence[str]) -> SignalInfo:
+        """The description of the given channels, in the given order."""
+        idx = [int(i) for i in match_channels(self.ch_labels, labels)]
+        return SignalInfo(
+            tuple(labels),
+            self.sfreq,
+            self.stream_id,
+            tuple(label for label in labels if label in self.bads),
+            tuple(self.ch_types[i] for i in idx) if self.ch_types else (),
+            tuple(self.positions[i] for i in idx) if self.positions else (),
+        )
 
     @property
     def n_channels(self) -> int:
@@ -168,8 +198,7 @@ class Block:
     def pick(self, labels: Sequence[str]) -> Block:
         """Return the given channels, in the given order."""
         idx = match_channels(self.info.ch_labels, labels)
-        bads = tuple(label for label in labels if label in self.info.bads)
-        info = SignalInfo(tuple(labels), self.info.sfreq, self.info.stream_id, bads)
+        info = self.info.subset(labels)
         return Block(
             self.data[idx], info, self.sample_index, self.timestamp, self.bypassed
         )

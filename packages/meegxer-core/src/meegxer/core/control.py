@@ -19,8 +19,10 @@ from meegxer.core import __version__
 from meegxer.core.display import DisplayPublisher, ZmqContext
 from meegxer.core.graph import Graph
 from meegxer.core.manifest import SPEC_VERSION, Manifest
+from meegxer.core.node import Source
 from meegxer.core.offline import OfflineJob
 from meegxer.core.realtime import RealtimeScheduler
+from meegxer.core.recording import builtin_montages, describe
 from meegxer.core.registry import Registry
 from meegxer.core.stage import Stage
 
@@ -108,6 +110,8 @@ class Daemon:
             "clear_calibration": self.clear_calibration,
             "set_pass_uncalibrated": self.set_pass_uncalibrated,
             "set_strip_params": self.set_strip_params,
+            "describe_source": self.describe_source,
+            "list_montages": self.list_montages,
             "run_offline": self.run_offline,
             "offline_window": self.offline_window,
             "shutdown": self.shutdown,
@@ -250,6 +254,26 @@ class Daemon:
         self._graph.set_strip_params(node, params)
         return self._graph.to_dict()
 
+    def describe_source(self, node: dict[str, Any]) -> dict[str, Any]:
+        """Describe the recording a source entry (with its ``recording``
+        overrides) would produce: channels before and after the overrides,
+        sampling rate, length and events. Opens the file or stream to read it."""
+        source = Graph.from_dict(
+            {"spec_version": SPEC_VERSION, "nodes": [{**node, "id": "input"}]},
+            self.registry,
+        )["input"].impl
+        if not isinstance(source, Source):
+            raise RuntimeError(f"{node.get('node')} is not a source")
+        try:
+            return describe(source)
+        finally:
+            close = getattr(source, "close", None)
+            if callable(close):
+                close()
+
+    def list_montages(self) -> list[str]:
+        return builtin_montages()
+
     def run_offline(self, pipeline: dict[str, Any]) -> dict[str, Any]:
         """Run ``pipeline`` over its whole (finite) input in the background; its
         probes become scrollable envelopes (``offline_window``), its sinks write
@@ -259,14 +283,20 @@ class Daemon:
         if self._offline is not None and self._offline.state == "running":
             raise RuntimeError("an offline run is already in progress")
         job = OfflineJob(Graph.from_dict(pipeline, self.registry))
+        if self._offline is not None:
+            self._offline.discard()  # the previous run's files
         self._offline = job
         job.start()
         return job.status()
 
-    def offline_window(self, probe: str, start_bin: int, n_bins: int) -> dict[str, Any]:
+    def offline_window(
+        self, probe: str, start: int, n_samples: int, max_bins: int = 2000
+    ) -> dict[str, Any]:
+        """Min/max envelope of samples ``[start, start + n_samples)`` of one probe
+        of the current offline run, in at most ``max_bins`` bins."""
         if self._offline is None:
             raise RuntimeError("no offline run")
-        return self._offline.window(probe, int(start_bin), int(n_bins))
+        return self._offline.window(probe, int(start), int(n_samples), int(max_bins))
 
     def shutdown(self) -> str:
         self._stop.set()
@@ -323,6 +353,8 @@ class Daemon:
             self._scheduler.stop()
         if self._graph is not None:
             self._close_processors(self._graph)
+        if self._offline is not None:
+            self._offline.discard()
         self._socket.close(linger=0)
         self.display.close()
 

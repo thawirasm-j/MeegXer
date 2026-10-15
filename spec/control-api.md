@@ -1,4 +1,4 @@
-# MeegXer control API (0.2.2, unstable)
+# MeegXer control API (0.2.3, unstable)
 
 JSON-RPC 2.0 over a ZeroMQ REQ/REP socket (CLAUDE.md rule 3). The daemon binds
 `tcp://127.0.0.1:5555` by default. Every request is one JSON object; every reply is
@@ -28,8 +28,10 @@ bind it to a non-local interface only on a trusted network.
 | `clear_calibration` | `node` (optional) | `{cleared, status}`: drops the fitted model of one node, or of every node when `node` is omitted |
 | `set_pass_uncalibrated` | `node`, `enabled` | status. Per-node opt-in: while the node has no valid model, pass data through unprocessed (marked as bypassed) instead of blocking |
 | `set_strip_params` | `node`, `params` (up to 3 names) | the pipeline. Display only: which parameters the node's strip shows in the UI's advanced mode |
-| `run_offline` | `pipeline` | offline status (below). Runs the pipeline over its whole, finite input in the background with the batch scheduler (offline variants such as the zero-phase band-pass apply). Its sinks write files; its probes are kept as display envelopes for `offline_window`. Refused while the live pipeline runs or another offline run is in progress |
-| `offline_window` | `probe`, `start_bin`, `n_bins` (≤ 20000) | `{probe, ch_labels, sfreq, bin_size, start_bin, mins, maxs}`: bins of one probe from the last offline run, clipped to its data; `mins`/`maxs` are channel × bin lists in volts (`null` where empty), aligned like display frames |
+| `describe_source` | `node` (a source entry of a pipeline, with optional `recording`) | `{sfreq, n_samples, duration_s, stream_id, channels, events, event_labels, events_origin, recording}`. `channels`: per channel `{label, original, type, bad, position}` after the overrides (`original` is the label the source reports; `position` is `[x, y, z]` in metres or `null`). `events`: `{onset, duration, label}` (seconds) after renaming and dropping; `event_labels`: the event names before renaming; `events_origin`: `recording`, `file` or `none`. Opens the file or stream to read it |
+| `list_montages` | – | names of the standard montages `recording.montage` accepts |
+| `run_offline` | `pipeline` | offline status (below). Runs the pipeline over its whole, finite input in the background with the batch scheduler (offline variants such as the zero-phase band-pass apply). Its sinks write files. Its probes write their samples and min/max zoom levels to memory-mapped files in a temporary folder (`MEEGXER_OFFLINE_DIR`) as the run goes, so they can be viewed before it ends; the previous run's files are deleted. Processor outputs go to a disk cache capped at `MEEGXER_OFFLINE_CACHE_GB` (default 5). Refused while the live pipeline runs or another offline run is in progress |
+| `offline_window` | `probe`, `start`, `n_samples`, `max_bins` (default 2000, ≤ 20000) | `{probe, ch_labels, sfreq, bin_size, start_bin, mins, maxs}`: min/max of samples `[start, start + n_samples)` of one probe of the current offline run in at most `max_bins` bins (`bin_size` 1 when zoomed in to single samples), clipped to what has been written; `mins`/`maxs` are channel × bin lists in volts (`null` where empty). Bin `k` covers samples `[k * bin_size, (k + 1) * bin_size)`, as on the display stream |
 | `shutdown` | – | `"bye"`; the daemon exits |
 
 ## Status
@@ -57,9 +59,10 @@ bind it to a non-local interface only on a trusted network.
 - `overruns`: blocks whose processing took longer than their duration.
 - `latency`: clock at the sinks minus the LSL timestamp of the block's last sample.
 - `source_*`: present when the source stream carries a `SAMPLE_INDEX` channel.
-- `offline`: present after `run_offline`: `{state, error, elapsed_s, probes}`, where
-  `state` is `running`, `done` or `error`, and `probes` maps each probe id to
-  `{ch_labels, sfreq, bin_size, first_bin, n_bins, bypassed}` once the run is done.
+- `offline`: present after `run_offline`: `{state, error, elapsed_s, n_samples,
+  probes}`, where `state` is `running`, `done` or `error`, `n_samples` is the length
+  of the input, and `probes` maps each probe id that has data to `{ch_labels, sfreq,
+  first_sample, n_filled, n_samples, bypassed}`; `n_filled` grows while the run goes.
 
 ## Errors
 
