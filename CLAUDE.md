@@ -80,6 +80,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   (`--plugin-image IMAGE` to include plugins).
 - GUI: `uv run meegxer-gui` (connects to the daemon on the default endpoint, or
   starts one); `uv run python tools/gui_screenshot.py OUT_DIR` renders it offscreen.
+  Offline runs write to `MEEGXER_OFFLINE_DIR` (default: the system temp folder),
+  with a processor-output cache capped by `MEEGXER_OFFLINE_CACHE_GB` (default 5).
 - Plugins (research builds): `uv run meegxer-plugin check IMAGE` (conformance),
   `meegxer-plugin add IMAGE`, `meegxer-plugin list`. SDKs in
   `packages/meegxer-runtime/sdk/`; reference plugins in `packages/meegxer-runtime/plugins/`.

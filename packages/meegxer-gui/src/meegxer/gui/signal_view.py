@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -29,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from meegxer.gui.colors import ChannelStyle, channel_styles
+from meegxer.gui.colors import ChannelStyle, channel_styles_with
 from meegxer.gui.theme import Theme
 
 FloatArray = npt.NDArray[np.float64]
@@ -157,6 +158,7 @@ class TracePlot(pg.PlotWidget):
         self.getPlotItem().hideButtons()
         self._curves: list[pg.PlotDataItem] = []
         self._regions: list[pg.LinearRegionItem] = []
+        self._marks: list[pg.InfiniteLine] = []
         self.apply_theme(theme)
 
     def apply_theme(self, theme: Theme) -> None:
@@ -200,6 +202,29 @@ class TracePlot(pg.PlotWidget):
             region.setVisible(True)
         for region in self._regions[len(spans) :]:
             region.setVisible(False)
+
+    def mark(self, events: list[tuple[float, str]]) -> None:
+        """Event markers: a vertical line and the label at each onset (s)."""
+        pen = pg.mkPen(
+            QColor(self.theme.text_muted), width=1, style=Qt.PenStyle.DashLine
+        )
+        while len(self._marks) < len(events):
+            line = pg.InfiniteLine(
+                angle=90,
+                movable=False,
+                pen=pen,
+                label="",
+                labelOpts={"position": 0.95, "color": self.theme.text_muted},
+            )
+            self.addItem(line)
+            self._marks.append(line)
+        for line, (t, label) in zip(self._marks, events, strict=False):
+            line.setPen(pen)
+            line.setPos(t)
+            line.label.setFormat(label)
+            line.setVisible(True)
+        for line in self._marks[len(events) :]:
+            line.setVisible(False)
 
 
 def _runs(mask: npt.NDArray[np.bool_]) -> list[tuple[int, int]]:
@@ -254,6 +279,8 @@ class SignalView(QWidget):
         self.plot = TracePlot(theme)
         lay.addWidget(self.plot, 1)
         self.styles: dict[tuple[str, ...], list[ChannelStyle]] = {}
+        self.wheel: dict[str, tuple[float, float]] = {}
+        self.events: list[dict[str, Any]] = []
 
     def apply_theme(self, theme: Theme) -> None:
         self.theme = theme
@@ -268,9 +295,14 @@ class SignalView(QWidget):
     def seconds(self) -> float:
         return float(self.span.currentData())
 
+    def set_wheel(self, wheel: dict[str, tuple[float, float]]) -> None:
+        """Colour channels by the recording's own positions."""
+        self.wheel = wheel
+        self.styles.clear()
+
     def _styles(self, labels: tuple[str, ...]) -> list[ChannelStyle]:
         if labels not in self.styles:
-            self.styles[labels] = channel_styles(labels, self.theme)
+            self.styles[labels] = channel_styles_with(labels, self.theme, self.wheel)
         return self.styles[labels]
 
     def refresh(
@@ -285,6 +317,7 @@ class SignalView(QWidget):
         if main_win is None:
             self.plot.draw([])
             self.plot.hatch([])
+            self.plot.mark([])
             self.legend.setText("No probe shown: click a ◇ tap in the chain")
             return
         self.channels.set_labels(main_win.labels)
@@ -347,6 +380,16 @@ class SignalView(QWidget):
             plot.setLabel("left", "µV")
             plot.setLabel("bottom", "time", units="s")
         self.plot.draw(layers)
+        t0, t1 = float(main_win.t[0]), float(main_win.t[-1])
+        self.plot.mark(
+            []
+            if self.mode == "spectrum"
+            else [
+                (float(e["onset"]), str(e["label"]))
+                for e in self.events
+                if t0 <= float(e["onset"]) <= t1
+            ][:200]
+        )
         if self.mode == "spectrum":
             self.plot.hatch([])
         else:

@@ -205,6 +205,19 @@ it never interrupts processing.
   wheel's lightness, chroma and vertex lightness) drive both the Qt stylesheet and
   the plots. Dark (default) and light ship first. A theme is a small file, so more
   can be added.
+- **Recording window** (M5.1): opened from the Input strip. Tabs for channels
+  (label, type, bad, position), montage (a standard montage or a file, with a head
+  map that previews the channel colours), events (an events file instead of the
+  recording's own, renames, drops) and info (sampling rate, length: read from the
+  recording, not editable). The edits are the source's `recording` overrides in the
+  pipeline file (spec 0.2.3); they describe the channels and never change the
+  samples. Channel colours then use the recording's own positions (projected from a
+  sphere fitted to the electrodes), falling back to the standard table.
+- **Offline view** (M5.1): probes write their samples and min/max zoom levels to
+  memory-mapped files while the run goes, so a probe scrolls as soon as it has data;
+  the operating system keeps those files in RAM when memory allows and on disk when
+  not. The batch scheduler runs node by node, so taps fill in chain order. Events
+  are marked on the offline time axis.
 
 ## 4. Packages and languages
 

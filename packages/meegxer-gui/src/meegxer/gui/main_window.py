@@ -35,9 +35,11 @@ from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame
 from meegxer.gui.buffers import ProbeBuffer
 from meegxer.gui.chain import ChainView
+from meegxer.gui.colors import wheel_positions
 from meegxer.gui.connection import DaemonLink
 from meegxer.gui.inspector import Inspector
-from meegxer.gui.pipeline_doc import PipelineDoc, tap_id
+from meegxer.gui.pipeline_doc import LIVE_ONLY_SOURCES, PipelineDoc, tap_id
+from meegxer.gui.recording_window import RecordingWindow
 from meegxer.gui.signal_view import SignalView, StackedWindow, Window
 from meegxer.gui.theme import Theme, load_theme, stylesheet
 
@@ -65,7 +67,7 @@ class MainWindow(QMainWindow):
         self.node_status: dict[str, dict[str, Any]] = {}
         self.offline_probes: dict[str, dict[str, Any]] = {}
         self.offline_state = ""
-        self._offline_cache: dict[str, tuple[int, int, Window]] = {}
+        self._offline_cache: dict[str, tuple[tuple[int, int, int], Window]] = {}
         self.setWindowTitle("MeegXer")
         self.resize(1440, 900)
         self._build()
@@ -110,6 +112,7 @@ class MainWindow(QMainWindow):
         self.chain.calibrate_requested.connect(lambda sid: self.calibrate(sid, 60.0))
         self.chain.source_changed.connect(self.change_source)
         self.chain.mode_toggled.connect(self.toggle_mode)
+        self.chain.recording_requested.connect(self.open_recording)
         splitter.addWidget(self.chain)
 
         bottom = QSplitter(Qt.Orientation.Horizontal)
@@ -131,6 +134,8 @@ class MainWindow(QMainWindow):
         lay.addWidget(splitter, 1)
         self.setCentralWidget(root)
         self.stacked = StackedWindow(self.theme)
+        self.recording_window = RecordingWindow(self.call, self.theme)
+        self.recording_window.applied.connect(self.apply_recording)
 
     def _top_bar(self) -> QWidget:
         bar = QFrame()
@@ -197,6 +202,8 @@ class MainWindow(QMainWindow):
         self.view.apply_theme(theme)
         self.stacked.apply_theme(theme)
         self.stacked.setStyleSheet(stylesheet(theme))
+        self.recording_window.theme = theme
+        self.recording_window.setStyleSheet(stylesheet(theme))
         self.theme_btn.setText("☀" if theme.dark else "☾")
         self.refresh_chain()
 
@@ -304,10 +311,46 @@ class MainWindow(QMainWindow):
             return
         self._structure_changed(f"Moved {strip_id}.")
 
+    def open_recording(self) -> None:
+        if self.recording_window.load(self.doc.source_entry()):
+            self.recording_window.show()
+            self.recording_window.raise_()
+
+    def apply_recording(self, recording: dict[str, Any]) -> None:
+        assert self.doc.source is not None
+        self.doc.source.recording = recording
+        self.use_recording_info(self.recording_window.current)
+        self._structure_changed("Recording settings changed.")
+
+    def use_recording_info(self, info: dict[str, Any] | None) -> None:
+        """Colour channels by the recording's positions; mark its events on the
+        offline view (live views have no absolute time axis)."""
+        if info is None:
+            self.view.set_wheel({})
+            self.view.events = []
+            return
+        positions = {
+            c["label"]: tuple(c["position"]) for c in info["channels"] if c["position"]
+        }
+        self.view.set_wheel(wheel_positions(positions))
+        self.view.events = list(info["events"]) if self.doc.mode == "offline" else []
+
+    def _describe_input(self) -> None:
+        """Read the input's description before a run (not for LSL, whose stream
+        the run itself opens)."""
+        src = self.doc.source
+        if src is None or src.node in LIVE_ONLY_SOURCES:
+            self.use_recording_info(None)
+            return
+        self.use_recording_info(
+            self.call("describe_source", node=self.doc.source_entry())
+        )
+
     def change_source(self, node: str) -> None:
         if self.doc.source is not None and node == self.doc.source.node:
             return
         self.doc.set_source(node)
+        self.use_recording_info(None)
         self.offline_probes.clear()
         self._structure_changed(f"Input is now {node} ({self.doc.mode}).")
 
@@ -392,6 +435,7 @@ class MainWindow(QMainWindow):
         if problems:
             self.log("Cannot start: " + "; ".join(problems))
             return
+        self._describe_input()
         if self.doc.mode == "offline":
             pipeline = self.doc.to_pipeline(tap_keep_seconds=0.0)
             result = self.call("run_offline", pipeline=pipeline)
@@ -482,18 +526,20 @@ class MainWindow(QMainWindow):
             self.refresh_chain()
 
     def _offline_status(self, offline: dict[str, Any]) -> None:
+        """Probes become scrollable as soon as they have data (the run writes
+        them as it goes); the scrollbar spans the whole recording."""
+        self.offline_probes = offline.get("probes", {})
+        total = int(offline.get("n_samples") or 0)
+        sfreq = next((p["sfreq"] for p in self.offline_probes.values()), 0.0)
+        span = int(self.view.seconds() * sfreq)
+        self.timeline.setRange(0, max(0, total - span))
+        self.timeline.setPageStep(max(1, span))
+        self.timeline.setSingleStep(max(1, span // 10))
         state = offline.get("state", "")
         if state == self.offline_state:
             return
         self.offline_state = state
         if state == "done":
-            self.offline_probes = offline.get("probes", {})
-            self._offline_cache.clear()
-            longest = max(
-                (p["n_bins"] for p in self.offline_probes.values()), default=0
-            )
-            self.timeline.setRange(0, max(0, longest))
-            self.timeline.setValue(0)
             self.log(f"Offline run done in {offline.get('elapsed_s', 0):.1f} s.")
         elif state == "error":
             self.log(f"Offline run failed: {offline.get('error')}")
@@ -557,24 +603,34 @@ class MainWindow(QMainWindow):
 
     def _offline_window(self, probe: str, seconds: float) -> Window | None:
         info = self.offline_probes.get(probe)
-        if info is None:
+        if info is None or not info.get("n_filled"):
             return None
-        rate = info["sfreq"] / info["bin_size"]
-        n = max(2, int(seconds * rate))
-        start = info["first_bin"] + self.timeline.value()
+        n = max(2, int(seconds * info["sfreq"]))
+        start = info["first_sample"] + self.timeline.value()
+        key = (start, n, int(info["n_filled"]))
         cached = self._offline_cache.get(probe)
-        if cached is not None and cached[:2] == (start, n):
-            return cached[2]
-        reply = self.call("offline_window", probe=probe, start_bin=start, n_bins=n)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        reply = self.call(
+            "offline_window", probe=probe, start=start, n_samples=n, max_bins=2000
+        )
         if reply is None:
             return None
         mins = np.array(reply["mins"], dtype=float).reshape(len(reply["ch_labels"]), -1)
         maxs = np.array(reply["maxs"], dtype=float).reshape(mins.shape)
-        t = (reply["start_bin"] + np.arange(mins.shape[1])) / rate
+        size = reply["bin_size"]
+        t = (reply["start_bin"] + np.arange(mins.shape[1])) * size / info["sfreq"]
         bypassed = np.full(mins.shape[1], bool(info.get("bypassed")))
-        win = Window(probe, tuple(reply["ch_labels"]), t, mins, maxs, bypassed, rate)
-        self._offline_cache[probe] = (start, n, win)
-        self.timeline.setPageStep(n)
+        win = Window(
+            probe,
+            tuple(reply["ch_labels"]),
+            t,
+            mins,
+            maxs,
+            bypassed,
+            info["sfreq"] / size,
+        )
+        self._offline_cache[probe] = (key, win)
         return win
 
     def redraw(self) -> None:
@@ -592,6 +648,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         self._render.stop()
         self.stacked.close()
+        self.recording_window.close()
         if self.owns_daemon and not self.running:
             self.call("shutdown")
         elif self.running:

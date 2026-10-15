@@ -24,7 +24,7 @@ PROBE = "meegxer.core.probe"
 TAP_PREFIX = "tap_"
 LIVE_ONLY_SOURCES = {"meegxer.core.lsl_in"}
 DEFAULT_OFFLINE_SOURCES = {"meegxer.core.file", "meegxer.core.bids"}
-SPEC_VERSION = "0.2.2"
+SPEC_VERSION = "0.2.3"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.sterile.iir_filter", "meegxer.sterile.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -37,6 +37,7 @@ class StripNode:
     params: dict[str, Any] = field(default_factory=dict)
     pass_uncalibrated: bool = False
     strip_params: list[str] = field(default_factory=list)
+    recording: dict[str, Any] = field(default_factory=dict)  # input strip only
 
 
 def tap_id(strip_id: str) -> str:
@@ -174,6 +175,16 @@ class PipelineDoc:
                 return strip
         raise KeyError(strip_id)
 
+    def source_entry(self, *, with_recording: bool = True) -> dict[str, Any]:
+        """The input strip as a pipeline node (for describing the recording)."""
+        src = self.source
+        if src is None:
+            raise ValueError("no input")
+        entry: dict[str, Any] = {"node": src.node, "params": copy.deepcopy(src.params)}
+        if with_recording and src.recording:
+            entry["recording"] = copy.deepcopy(src.recording)
+        return entry
+
     def tappable(self) -> list[StripNode]:
         """Strips followed by a probe tap (the input and every processor)."""
         return [s for s in self.strips if self.role(s) in ("source", "processor")]
@@ -232,6 +243,8 @@ class PipelineDoc:
                 entry["pass_uncalibrated"] = True
             if strip.strip_params:
                 entry["strip_params"] = list(strip.strip_params)
+            if strip.recording:
+                entry["recording"] = copy.deepcopy(strip.recording)
             nodes.append(entry)
             if strip.id in tappable:
                 nodes.append(
@@ -259,6 +272,7 @@ class PipelineDoc:
                     {**self._defaults(entry["node"]), **entry.get("params", {})},
                     bool(entry.get("pass_uncalibrated", False)),
                     list(entry.get("strip_params", [])),
+                    dict(entry.get("recording", {})),
                 )
             )
         if not strips or self.role(strips[0]) != "source":

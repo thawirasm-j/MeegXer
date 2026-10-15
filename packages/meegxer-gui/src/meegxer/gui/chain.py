@@ -161,6 +161,7 @@ class InputStrip(StripWidget):
 
     source_changed = Signal(str)
     mode_toggled = Signal()
+    recording_requested = Signal()
 
     def __init__(
         self,
@@ -198,6 +199,13 @@ class InputStrip(StripWidget):
         )
         mode.clicked.connect(self.mode_toggled)
         lay.insertWidget(2, mode)
+        rec = QPushButton("Recording…" + (" ●" if strip.recording else ""))
+        rec.setToolTip(
+            "Channel names, types, bad channels, positions and events"
+            + (" (edited)" if strip.recording else "")
+        )
+        rec.clicked.connect(self.recording_requested)
+        lay.addWidget(rec)
 
 
 class Gap(QWidget):
@@ -286,6 +294,7 @@ class ChainView(QScrollArea):
     calibrate_requested = Signal(str)
     source_changed = Signal(str)
     mode_toggled = Signal()
+    recording_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -323,6 +332,7 @@ class ChainView(QScrollArea):
                 )
                 widget.source_changed.connect(self.source_changed)
                 widget.mode_toggled.connect(self.mode_toggled)
+                widget.recording_requested.connect(self.recording_requested)
             else:
                 widget = StripWidget(
                     doc, strip, theme, status=status, advanced=advanced, selected=chosen

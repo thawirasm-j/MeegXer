@@ -215,6 +215,22 @@ Found and fixed on the way: the memory probe kept every block in live runs.
 **Exit:** a user can build Synthetic → HP → Probe → Notch → Probe, see the 50 Hz
 line disappear in difference mode, and kill the GUI without interrupting processing.
 
+## M5.1 — Recording settings and long offline recordings
+
+**Goal:** describe real recordings correctly and view long ones without waiting.
+
+**Status:** implemented. Spec 0.2.3 `recording` overrides on the source (channel
+rename, type, bad flag, position; montage; events file, renames, drops);
+`SignalInfo.ch_types` and `positions`; daemon `describe_source` and `list_montages`;
+the GUI's Recording window; channel colours from the recording's positions; events
+on the offline view. Offline probes write samples and zoom levels to memory-mapped
+files as the run goes (`MEEGXER_OFFLINE_DIR`), with a size-capped disk cache for
+processor outputs (`MEEGXER_OFFLINE_CACHE_GB`). Not yet: events routed through the
+pipeline (Events port) and written by the file sinks; the file source still keeps
+only data channels (EEG/MEG/...), so channels the file itself types as EOG/ECG/EMG
+are left out, a choice to revisit with ICA in M6 together with type-aware
+re-referencing; a sampling-rate override for formats without one.
+
 ## M6 — Heavy built-ins and features
 
 **Goal:** the processing that makes MeegXer useful for real data.
@@ -287,3 +303,5 @@ line disappear in difference mode, and kill the GUI without interrupting process
 | 23 | Live/offline in the GUI | Set by the Input strip; incompatible strips reddish and blocking; only the band-pass adapts (`phase` auto) | M5 |
 | 24 | Signal view and colours | Single trace area (all channels by default) + stacked window; uniform OKLCH colour wheel on the scalp (neutral at Cz: white dark theme, near-black light theme) | M5 |
 | 25 | Themes | Colour-token themes; dark default, light included | M5 |
+| 26 | Recording settings | Separate Recording window from the Input strip; stored as the source's `recording` overrides (spec 0.2.3) | M5.1 |
+| 27 | Long offline recordings | Probes write memory-mapped samples + zoom levels while the run goes; size-capped disk cache; no chunk-major batch order | M5.1 |

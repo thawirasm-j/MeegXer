@@ -36,6 +36,67 @@ def pump(app: QApplication, seconds: float) -> None:
         time.sleep(0.01)
 
 
+def demo_recording(path: Path) -> Path:
+    """A 2-minute 32-channel recording with alpha, a 50 Hz line, events and one
+    channel stored under a non-standard name (to rename in the window)."""
+    import mne
+    import numpy as np
+
+    names = [
+        "Fp1",
+        "Fp2",
+        "F7",
+        "F3",
+        "Fz",
+        "F4",
+        "F8",
+        "FC5",
+        "FC1",
+        "FC2",
+        "FC6",
+        "T7",
+        "C3",
+        "Cz",
+        "C4",
+        "T8",
+        "CP5",
+        "CP1",
+        "CP2",
+        "CP6",
+        "P7",
+        "P3",
+        "Pz",
+        "P4",
+        "P8",
+        "PO3",
+        "PO4",
+        "O1",
+        "Oz",
+        "O2",
+        "HEOG",
+        "VEOG",
+    ]
+    sfreq, n = 250.0, 250 * 120
+    t = np.arange(n) / sfreq
+    rng = np.random.default_rng(1)
+    data = rng.standard_normal((len(names), n)) * 8e-6
+    data += (
+        12e-6 * np.sin(2 * np.pi * 10 * t) * np.linspace(0.3, 1, len(names))[:, None]
+    )
+    data += 4e-6 * np.sin(2 * np.pi * 50 * t)
+    raw = mne.io.RawArray(data, mne.create_info(names, sfreq, "eeg"), verbose="error")
+    onsets = np.arange(4.0, 118.0, 3.5)
+    raw.set_annotations(
+        mne.Annotations(
+            onsets,
+            0.0,
+            ["target" if i % 3 == 0 else "standard" for i in range(len(onsets))],
+        )
+    )
+    raw.save(path, overwrite=True, verbose="error")
+    return path
+
+
 def main() -> int:
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "screenshots")
     out.mkdir(parents=True, exist_ok=True)
@@ -85,6 +146,32 @@ def main() -> int:
         win.show_stacked()
         pump(app, 1.0)
         win.stacked.grab().save(str(out / "07-stacked-dark.png"))
+        win.stacked.close()
+        win.stop()
+        # a recorded file: Recording window, then the offline view with events
+        rec = demo_recording(out / "demo_raw.fif")
+        win.change_source("meegxer.core.file")
+        assert win.doc.source is not None
+        win.doc.source.params["path"] = str(rec)
+        win.open_recording()
+        rw = win.recording_window
+        rw.resize(1000, 640)
+        rw.montage.setCurrentText("colin27_1005")
+        rw.apply()
+        pump(app, 0.5)
+        rw.grab().save(str(out / "08-recording-channels.png"))
+        rw.tabs.setCurrentIndex(1)
+        pump(app, 0.5)
+        rw.grab().save(str(out / "09-recording-montage.png"))
+        rw.tabs.setCurrentIndex(2)
+        pump(app, 0.3)
+        rw.grab().save(str(out / "10-recording-events.png"))
+        rw.close()
+        win.start()
+        pump(app, 3.0)
+        win.timeline.setValue(250 * 8)
+        pump(app, 1.0)
+        win.grab().save(str(out / "11-offline-events-dark.png"))
         print("\n".join(win.logbox.toPlainText().splitlines()[-12:]))
     finally:
         win.close()
