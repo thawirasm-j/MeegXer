@@ -360,7 +360,13 @@ class ChainView(QScrollArea):
         add.clicked.connect(lambda: self._palette(len(doc.strips)))
         lay.addWidget(add)
         lay.addStretch(1)
+        # A rebuild usually runs inside an event handler of one of the old
+        # widgets (a strip clicked, a strip removed): setWidget would delete them
+        # while Qt is still delivering that event, so delete them later instead.
+        old = self.takeWidget()
         self.setWidget(inner)
+        if old is not None:
+            old.deleteLater()
         self.horizontalScrollBar().setValue(scroll)
 
     def _palette(self, index: int) -> None:
