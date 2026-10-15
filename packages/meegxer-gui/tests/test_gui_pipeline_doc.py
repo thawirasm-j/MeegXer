@@ -79,6 +79,16 @@ def test_taps_follow_input_and_processors(doc: PipelineDoc) -> None:
     assert [s.id for s in again.strips] == [s.id for s in doc.strips]
 
 
+@pytest.mark.parametrize("data", [[1, 2], "x", {"nodes": "abc"}, {"nodes": [1]}])
+def test_opening_a_json_file_that_is_not_a_pipeline_is_refused(
+    doc: PipelineDoc, data: object
+) -> None:
+    before = [s.id for s in doc.strips]
+    with pytest.raises(ValueError, match="not a pipeline"):
+        doc.load_pipeline(data)  # type: ignore[arg-type]
+    assert [s.id for s in doc.strips] == before
+
+
 def test_strip_shows_crucial_or_picked_params(doc: PipelineDoc) -> None:
     hp = doc.get("iirfilter1")
     hp.params["kind"] = "highpass"

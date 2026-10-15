@@ -42,6 +42,7 @@ from meegxer.gui.pipeline_doc import LIVE_ONLY_SOURCES, PipelineDoc, tap_id
 from meegxer.gui.recording_window import RecordingWindow
 from meegxer.gui.signal_view import SignalView, StackedWindow, Window
 from meegxer.gui.theme import Theme, load_theme, stylesheet
+from meegxer.gui.wheel import install_wheel_guard
 
 DEFAULT_CHAIN: list[tuple[str, dict[str, Any]]] = [
     ("meegxer.sterile.iir_filter", {"kind": "highpass", "low": 1.0}),
@@ -68,6 +69,9 @@ class MainWindow(QMainWindow):
         self.offline_probes: dict[str, dict[str, Any]] = {}
         self.offline_state = ""
         self._offline_cache: dict[str, tuple[tuple[int, int, int], Window]] = {}
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            install_wheel_guard(app)  # wheel scrolls panels, not unfocused values
         self.setWindowTitle("MeegXer")
         self.resize(1440, 900)
         self._build()

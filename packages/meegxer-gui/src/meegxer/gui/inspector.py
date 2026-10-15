@@ -94,7 +94,16 @@ class Inspector(QScrollArea):
         hint = QLabel("Select a strip to see all of its settings.")
         hint.setObjectName("muted")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setWidget(hint)
+        self._replace(hint)
+
+    def _replace(self, page: QWidget) -> None:
+        # Editing a value rebuilds the inspector while Qt is still delivering that
+        # event (wheel, Enter) to the old editor: setWidget would delete the editor
+        # under it, so delete the old page later instead.
+        old = self.takeWidget()
+        self.setWidget(page)
+        if old is not None:
+            old.deleteLater()
 
     def show_strip(
         self,
@@ -159,7 +168,7 @@ class Inspector(QScrollArea):
         if advanced and manifest["params"]:
             lay.addWidget(self._strip_picker(doc, strip))
         lay.addStretch(1)
-        self.setWidget(page)
+        self._replace(page)
 
     def _calibration(
         self, strip: StripNode, node_status: dict[str, Any], running: bool
