@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thawirasm-j/MeegXer/spec/session.schema.json",
+  "title": "MeegXer session",
+  "description": "Everything needed to repeat a run: the pipeline (validated separately against pipeline.schema.json), the node versions and provenance, fitted models, input and output hashes and the software environment. Only meegxer_session and pipeline are required; a missing section is simply not pinned. Paths are relative to the session file unless absolute. See session.md. Session format 1.0, spec version 0.2.9 (unstable).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["meegxer_session", "pipeline"],
+  "properties": {
+    "meegxer_session": {
+      "description": "Session format version (major.minor). Readers accept the same major version.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "spec_version": {"type": "string", "pattern": "^0\\.2\\.[0-9]+$"},
+    "name": {"type": "string"},
+    "description": {"type": "string"},
+    "pipeline": {
+      "description": "A pipeline document, unchanged (pipeline.schema.json).",
+      "type": "object"
+    },
+    "nodes": {
+      "description": "Per node id: what ran.",
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/node"}
+    },
+    "models": {
+      "description": "Per node id: the fitted model of a node that needs calibration.",
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/model"}
+    },
+    "inputs": {
+      "description": "Per source node id: the files it read.",
+      "type": "object",
+      "additionalProperties": {"type": "array", "items": {"$ref": "#/$defs/file"}}
+    },
+    "outputs": {
+      "description": "Files the run wrote (acceptance test 4 compares their hashes).",
+      "type": "array",
+      "items": {"$ref": "#/$defs/file"}
+    },
+    "environment": {"$ref": "#/$defs/environment"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "version"],
+      "properties": {
+        "node": {"type": "string"},
+        "version": {"type": "string"},
+        "provenance": {
+          "description": "Where the implementation comes from. External plugins: image, image_id, repo_digests, or command and unsandboxed for local development plugins. Empty or absent for built-in nodes.",
+          "type": "object",
+          "properties": {
+            "image": {"type": "string"},
+            "image_id": {"type": "string"},
+            "repo_digests": {"type": "array", "items": {"type": "string"}},
+            "engine": {"type": ["string", "null"]},
+            "command": {"type": "array", "items": {"type": "string"}},
+            "unsandboxed": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data"],
+      "properties": {
+        "fitted_on": {"$ref": "#/$defs/signal"},
+        "fingerprint": {
+          "description": "The node's input fingerprint at fitting time; a model whose fingerprint does not match the pipeline it is loaded into needs refitting.",
+          "type": "string"
+        },
+        "content_hash": {"$ref": "#/$defs/sha256"},
+        "data": {
+          "description": "The model as the node returned it. Arrays are {\"__array__\": dtype, \"shape\": [...], \"data\": nested lists} (complex: \"real\" and \"imag\" instead of \"data\"); non-finite floats are the strings NaN, Infinity, -Infinity inside arrays and {\"__float__\": ...} elsewhere.",
+          "type": "object"
+        }
+      }
+    },
+    "signal": {
+      "description": "The channels the model was fitted on.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channels", "sfreq"],
+      "properties": {
+        "channels": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "sfreq": {"type": "number", "exclusiveMinimum": 0},
+        "stream_id": {"type": "string"},
+        "bads": {"type": "array", "items": {"type": "string"}},
+        "types": {"type": "array", "items": {"type": "string"}},
+        "positions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {"type": "null"},
+              {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}
+            ]
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "created": {"type": "string"},
+        "meegxer": {"type": "string"},
+        "python": {"type": "string"},
+        "platform": {"type": "string"},
+        "packages": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    }
+  }
+}

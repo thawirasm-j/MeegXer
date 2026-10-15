@@ -106,6 +106,16 @@ uv run meegxer nodes            # installed nodes
 uv run meegxer run pipeline.json --input sub-01.set --output sub-01_clean.set
 ```
 
+Save what a run used (pipeline, node versions, fitted models such as ICA, file
+hashes, software versions) as a session file, and rerun it later or elsewhere with
+identical output (format: `spec/session.md`):
+
+```bash
+uv run meegxer run pipeline.json -i sub-01.set -o sub-01_clean.set --session sub-01.meegxer.json
+uv run meegxer session check sub-01.meegxer.json   # what would be reused or refitted
+uv run meegxer run sub-01.meegxer.json             # same output, byte for byte
+```
+
 Run live in the headless daemon and control it (see `spec/control-api.md`):
 
 ```bash

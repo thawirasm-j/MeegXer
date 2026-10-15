@@ -31,12 +31,18 @@ def nodes() -> None:
 
 @app.command()
 def run(
-    pipeline: Annotated[Path, typer.Argument(help="Pipeline JSON file.")],
+    pipeline: Annotated[
+        Path, typer.Argument(help="Pipeline or session (.meegxer.json) file.")
+    ],
     input: Annotated[
         Path | None, typer.Option("--input", "-i", help="Recording to process.")
     ] = None,
     output: Annotated[
         Path | None, typer.Option("--output", "-o", help="Output .set or .edf.")
+    ] = None,
+    session: Annotated[
+        Path | None,
+        typer.Option(help="Write a session file of this run (e.g. out.meegxer.json)."),
     ] = None,
     block_size: Annotated[
         int | None, typer.Option(help="Feed nodes in blocks of this many samples.")
@@ -45,18 +51,45 @@ def run(
         Path | None, typer.Option(help="Reuse unchanged node outputs from here.")
     ] = None,
     overwrite: Annotated[bool, typer.Option(help="Replace existing output.")] = False,
+    allow_version_mismatch: Annotated[
+        bool,
+        typer.Option(
+            help="Run a session whose node versions or plugin images "
+            "differ (their models are refitted)."
+        ),
+    ] = False,
+    strict: Annotated[
+        bool, typer.Option(help="Refuse a session whose input files changed.")
+    ] = False,
 ) -> None:
-    """Run a pipeline offline over one recording."""
-    from meegxer.core.batch import BatchScheduler
+    """Run a pipeline or session offline over one recording."""
+    from meegxer.core.batch import BatchScheduler, offline_input_fingerprints
     from meegxer.core.cache import DirectoryCache
-    from meegxer.core.graph import Graph, GraphError
+    from meegxer.core.graph import GraphError
     from meegxer.core.node import Sink
     from meegxer.core.registry import Registry
+    from meegxer.core.session import (
+        SessionError,
+        adopt_models,
+        build_session,
+        load_session,
+        model_status,
+        read_session,
+        sink_outputs,
+        write_session,
+    )
     from meegxer.core.sources import FileSource
 
     registry = Registry.from_entry_points()
     try:
-        graph = Graph.load(pipeline, registry)
+        document = read_session(pipeline)
+        loaded = load_session(
+            document,
+            registry,
+            allow_version_mismatch=allow_version_mismatch,
+            strict=strict,
+        )
+        graph = loaded.graph
         if input is not None:
             source = FileSource({"path": str(input)})
             graph.replace(graph.source.id, source)
@@ -73,20 +106,106 @@ def run(
             and not any(n.role.value == "sink" for n in graph.nodes)
         ):
             typer.echo("warning: pipeline has no sink; nothing will be written")
+        fps = offline_input_fingerprints(graph)
+        adopt_models(loaded, fps)
+        for warning in loaded.warnings:
+            typer.echo(f"warning: {warning}")
+        for node_id, state in model_status(graph, fps).items():
+            typer.echo(f"model {node_id}: {state}")
         scheduler = BatchScheduler(
             block_size=block_size,
             cache=DirectoryCache(cache_dir) if cache_dir else None,
         )
         result = scheduler.run(graph)
-    except (GraphError, FileNotFoundError, FileExistsError, ValueError) as exc:
+        if session is not None:
+            write_session(
+                session,
+                build_session(
+                    graph,
+                    name=document.get("name"),
+                    description=document.get("description"),
+                    outputs=sink_outputs(graph),
+                ),
+            )
+    except (
+        GraphError,
+        SessionError,
+        FileNotFoundError,
+        FileExistsError,
+        ValueError,
+    ) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
     typer.echo(f"computed: {', '.join(result.computed) or '-'}")
     if result.cached:
         typer.echo(f"from cache: {', '.join(result.cached)}")
+    if result.fitted:
+        typer.echo(f"fitted: {', '.join(result.fitted)}")
     if output is not None:
         typer.echo(f"wrote {output}")
+    if session is not None:
+        typer.echo(f"wrote {session}")
+
+
+session_app = typer.Typer(no_args_is_help=True, help="Session files (reproducibility).")
+app.add_typer(session_app, name="session")
+
+
+@session_app.command("check")
+def session_check(
+    file: Annotated[Path, typer.Argument(help="Session file to check.")],
+    allow_version_mismatch: Annotated[bool, typer.Option()] = False,
+) -> None:
+    """Report what rerunning a session would reuse, refit or warn about."""
+    from meegxer.core.batch import offline_input_fingerprints
+    from meegxer.core.registry import Registry
+    from meegxer.core.session import (
+        SessionError,
+        adopt_models,
+        load_session,
+        model_status,
+        read_session,
+    )
+
+    try:
+        loaded = load_session(
+            read_session(file),
+            Registry.from_entry_points(),
+            allow_version_mismatch=allow_version_mismatch,
+        )
+        finite = loaded.graph.source.manifest.availability != "online"
+        fps = offline_input_fingerprints(loaded.graph) if finite else {}
+        if finite:
+            adopt_models(loaded, fps)
+    except (SessionError, FileNotFoundError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    for warning in loaded.warnings:
+        typer.echo(f"warning: {warning}")
+    for node_id in loaded.dropped_models:
+        typer.echo(f"model {node_id}: dropped (refitted)")
+    if finite:
+        for node_id, state in model_status(loaded.graph, fps).items():
+            typer.echo(f"model {node_id}: {state}")
+    typer.echo("ok" if not loaded.warnings else "ok, with warnings")
+
+
+@session_app.command("save")
+def session_save(
+    file: Annotated[Path, typer.Argument(help="Where to write (NAME.meegxer.json).")],
+    name: Annotated[str | None, typer.Option(help="Session name.")] = None,
+    control: Annotated[
+        str, typer.Option(help="Daemon control endpoint.")
+    ] = "tcp://127.0.0.1:5555",
+) -> None:
+    """Save the daemon's pipeline with its calibrated models as a session."""
+    from meegxer.core.session import write_session
+
+    session = _call(control, "get_session", name=name)
+    assert isinstance(session, dict)
+    write_session(file, session)
+    typer.echo(f"wrote {file}")
 
 
 ControlOpt = Annotated[str, typer.Option(help="Daemon control endpoint.")]

@@ -25,6 +25,7 @@ from meegxer.core.offline import OfflineJob
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.recording import builtin_montages, describe, lookup_positions
 from meegxer.core.registry import Registry
+from meegxer.core.session import build_session, load_session
 from meegxer.core.stage import Stage
 
 DEFAULT_CONTROL = "tcp://127.0.0.1:5555"
@@ -103,6 +104,8 @@ class Daemon:
             "list_nodes": self.list_nodes,
             "load_pipeline": self.load_pipeline,
             "get_pipeline": self.get_pipeline,
+            "get_session": self.get_session,
+            "load_session": self.load_session,
             "start": self.start,
             "stop": self.stop,
             "status": self.status,
@@ -140,6 +143,45 @@ class Daemon:
             self._close_processors(self._graph)
         self._pipeline, self._graph, self._scheduler = graph.to_dict(), graph, None
         return self._pipeline
+
+    def get_session(self, name: str | None = None) -> dict[str, Any]:
+        """The loaded pipeline as a session (``spec/session.md``), with the
+        models calibrated so far; paths are absolute (the client writes the
+        file and makes them relative to it)."""
+        if self._graph is None:
+            raise RuntimeError("no pipeline loaded")
+        return build_session(self._graph, name=name)
+
+    def load_session(
+        self, session: dict[str, Any], allow_version_mismatch: bool = False
+    ) -> dict[str, Any]:
+        """Load a session's pipeline with its fitted models (paths must be
+        absolute: the client resolves them against the session file). A model
+        is used live only if its fingerprint matches this input (rule 7)."""
+        if self._scheduler is not None and self._scheduler.running:
+            raise RuntimeError("stop the running pipeline before loading another")
+        loaded = load_session(
+            session, self.registry, allow_version_mismatch=bool(allow_version_mismatch)
+        )
+        RealtimeScheduler(loaded.graph)  # validates: no offline-only nodes
+        warnings = list(loaded.warnings)
+        for node_id in loaded.unpinned_models:
+            warnings.append(f"models: {node_id!r} has no fingerprint; not used live")
+        if self._graph is not None:
+            self._close_processors(self._graph)
+        graph = loaded.graph
+        self._pipeline, self._graph, self._scheduler = graph.to_dict(), graph, None
+        models = [
+            n.id
+            for n in graph.nodes
+            if isinstance(n.impl, Stage) and n.impl.model is not None
+        ]
+        return {
+            "pipeline": self._pipeline,
+            "models": models,
+            "dropped_models": loaded.dropped_models,
+            "warnings": warnings,
+        }
 
     def get_pipeline(self) -> dict[str, Any] | None:
         if self._graph is not None:

@@ -28,6 +28,10 @@ define it.
     (crucial parameters, shown on the node's strip in friendly mode).
   - 0.2.8: the host never sends a node a block with zero samples; the empty
     result of a delaying node is not handed on (`plugin-protocol.md`).
+  - `session.schema.json` and `session.md` (0.2.9, session format 1.0): the
+    session file, the unit of reproducibility: a pipeline plus node versions and
+    provenance (external plugins: image, image ID, registry digests), fitted
+    models as readable JSON, input/output file hashes and the environment.
   - `control-api.md`: JSON-RPC 2.0 methods between the daemon and clients.
   - `display-protocol.md`: decimated min/max envelope frames on the display stream.
   - `plugin-protocol.md` (`meegxer.plugin/0.2`): framed stdin/stdout protocol for

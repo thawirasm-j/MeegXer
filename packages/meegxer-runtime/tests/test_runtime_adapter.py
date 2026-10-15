@@ -106,3 +106,54 @@ def test_plugins_run_in_both_schedulers(plugin: Callable[..., LocalLauncher]) ->
         for node in g.nodes:
             if isinstance(node.impl, Stage):
                 node.impl.processor.close()
+
+
+def test_fitted_plugin_round_trips_through_a_session(
+    plugin: Callable[..., LocalLauncher],
+) -> None:
+    """A plugin's model is host-owned state like any other: a session stores it
+    as readable JSON, records where the plugin came from, and a reload uses the
+    model without refitting."""
+    from meegxer.core.registry import Registry
+    from meegxer.core.session import (
+        build_session,
+        load_session,
+        model_status,
+    )
+    from meegxer.runtime.index import origin_of
+
+    launcher = plugin("center")
+    entry = {"command": list(launcher.argv), "unsandboxed": True}
+    cls = plugin_class(probe_manifest(launcher), launcher, origin=origin_of(entry))
+    registry = Registry.from_entry_points()
+    registry.add(cls)
+    source = {"id": "input", "node": "meegxer.core.synthetic",
+              "params": {"duration": 2.0, "n_channels": 3, "sfreq": 100.0}}  # fmt: skip
+    pipeline = {
+        "spec_version": "0.2.9",
+        "nodes": [source, {"id": "c", "node": "test.center"}],
+    }
+    graph = Graph.from_dict(pipeline, registry)
+    first = BatchScheduler().run(graph)
+    session = build_session(graph)
+    assert session["nodes"]["c"]["provenance"] == {
+        "command": list(launcher.argv),
+        "unsandboxed": True,
+    }
+    assert session["models"]["c"]["data"]  # readable JSON of the plugin's model
+
+    from meegxer.core.batch import offline_input_fingerprints
+
+    loaded = load_session(session, registry)
+    assert model_status(loaded.graph, offline_input_fingerprints(loaded.graph)) == {
+        "c": "reused"
+    }
+    again = BatchScheduler().run(loaded.graph)
+    assert again.fitted == [] and first.fitted == ["c"]
+    for g in (graph, loaded.graph):
+        impl = g["c"].impl
+        assert isinstance(impl, Stage)
+        impl.processor.close()
+    a, b = first.outputs["c"], again.outputs["c"]
+    assert isinstance(a, Block) and isinstance(b, Block)
+    np.testing.assert_array_equal(a.data, b.data)

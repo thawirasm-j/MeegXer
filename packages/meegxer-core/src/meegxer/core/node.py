@@ -11,7 +11,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import ClassVar, Literal, NamedTuple
+from pathlib import Path
+from typing import Any, ClassVar, Literal, NamedTuple
 
 from meegxer.core.block import Block, Event, EventBlock, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest, ParamValue
@@ -102,6 +103,13 @@ class Processor(ABC):
         background at startup), so the first block does not stall the real-time
         thread on an import. Default: nothing to load."""
 
+    @classmethod
+    def provenance(cls) -> dict[str, Any]:
+        """Where this implementation comes from, recorded in sessions: for an
+        external plugin its image (``image``, ``image_id``, ``repo_digests``) or
+        local command. Built-in nodes: empty (the package version says it all)."""
+        return {}
+
     def close(self) -> None:  # noqa: B027 - optional hook
         """Release external resources (e.g. a plugin worker). May be called more
         than once; a processor must work again after ``close`` if used again."""
@@ -138,9 +146,15 @@ class Source(_ConfiguredNode):
     def content_id(self) -> str:
         """Identity of the data beyond the parameters (e.g. a file content hash).
 
-        Part of the source fingerprint, so caches notice a changed file.
+        Part of the source fingerprint, so caches notice a changed file. A source
+        with a content id is identified by its content, not by its parameters (a
+        moved file is the same data).
         """
         return ""
+
+    def input_files(self) -> list[Path]:
+        """The files this source reads (recorded with their hashes in sessions)."""
+        return []
 
 
 class Probe(_ConfiguredNode):

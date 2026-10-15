@@ -20,6 +20,8 @@ bind it to a non-local interface only on a trusted network.
 | `list_nodes` | – | installed node manifests: `name, version, role, type, availability, requires_fit, description, live_params, inputs, outputs, params[]` (each param: `name, type, default, min, max, choices, unit, description, advanced, primary`) |
 | `load_pipeline` | `pipeline` (see `pipeline.schema.json`) | the normalised pipeline. Refused while running, or if any node cannot run live (offline-only, or a band-pass with `phase` `zero`) |
 | `get_pipeline` | – | current pipeline, including live parameter changes |
+| `get_session` | `name` (optional) | the loaded pipeline as a session (`session.md`), with the models calibrated so far; paths absolute (the client writes the file, making paths relative to it) |
+| `load_session` | `session`, `allow_version_mismatch` (default false) | `{pipeline, models, dropped_models, warnings}`: loads the pipeline with its fitted models. Paths must be absolute (the client resolves them against the session file). Refused like `load_pipeline`, and on a node version or plugin image mismatch unless allowed (that node's model is then dropped). A model is used live only if its fingerprint matches this input |
 | `start` | – | status. A restart builds fresh sources and sinks from the current pipeline and keeps fitted models (drop them with `clear_calibration`) |
 | `stop` | – | status |
 | `status` | – | see below |

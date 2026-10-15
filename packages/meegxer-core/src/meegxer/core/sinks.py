@@ -94,6 +94,20 @@ class SetSink(_RawFileSink):
     manifest: ClassVar[Manifest] = _sink_manifest("meegxer.core.set_writer", "signal")
     fmt = "eeglab"
 
+    # The MAT-file header's descriptive text carries the platform and the time
+    # of writing; replaced so the same data gives the same file (sessions,
+    # acceptance test 4). Readers ignore this text.
+    MAT_HEADER = b"MATLAB 5.0 MAT-file, written by MeegXer".ljust(116, b" ")
+
+    def close(self) -> None:
+        written = bool(self._blocks)
+        super().close()
+        if written:
+            with self.path.open("r+b") as fh:
+                if fh.read(10) == b"MATLAB 5.0":  # v5 MAT-file (not HDF5 v7.3)
+                    fh.seek(0)
+                    fh.write(self.MAT_HEADER)
+
 
 class EdfSink(_RawFileSink):
     """EDF (written with edfio through MNE). EDF stores 16-bit samples."""
