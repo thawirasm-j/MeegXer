@@ -112,6 +112,27 @@ class RecordingWindow(QWidget):
         hint.setObjectName("muted")
         tools.addWidget(hint)
         lay.addLayout(tools)
+        lookup = QHBoxLayout()
+        lookup.addWidget(QLabel("Look up positions by channel name in"))
+        self.lookup_source = QComboBox()
+        self.lookup_source.setEditable(True)
+        self.lookup_source.setMinimumWidth(220)
+        self.lookup_source.setToolTip(
+            "A standard montage, or a montage file (.elc, .sfp, .loc, .ced, .bvef, "
+            "BIDS electrodes.tsv). Names like 'EEG Fp1-REF' and old ones (T3) match."
+        )
+        lookup.addWidget(self.lookup_source)
+        browse = QPushButton("File…")
+        browse.clicked.connect(self._browse_lookup)
+        lookup.addWidget(browse)
+        self.lookup_empty_only = QCheckBox("only channels without a position")
+        self.lookup_empty_only.setChecked(True)
+        lookup.addWidget(self.lookup_empty_only)
+        go = QPushButton("Look up")
+        go.clicked.connect(self.look_up_positions)
+        lookup.addWidget(go)
+        lookup.addStretch(1)
+        lay.addLayout(lookup)
         self.table = QTableWidget(0, len(COLS))
         self.table.setHorizontalHeaderLabels(COLS)
         self.table.horizontalHeader().setSectionResizeMode(
@@ -268,6 +289,12 @@ class RecordingWindow(QWidget):
     def _fill_montage(self) -> None:
         self.montage.clear()
         names = self.call("list_montages") or []
+        chosen = self.lookup_source.currentText()
+        self.lookup_source.clear()
+        self.lookup_source.addItems(names)
+        self.lookup_source.setCurrentText(
+            chosen or ("standard_1005" if "standard_1005" in names else "colin27_1005")
+        )
         self.montage.addItem("")
         self.montage.addItems(names)
         self.montage.setCurrentText(self.recording.get("montage", ""))
@@ -398,6 +425,52 @@ class RecordingWindow(QWidget):
             box = self._bad_box(self.table, r, 3)
             if box is not None:
                 box.setChecked(bad)
+
+    def _browse_lookup(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Channel locations file", "",
+                                              "Locations (*)")  # fmt: skip
+        if path:
+            self.lookup_source.setCurrentText(path)
+
+    def look_up_positions(self) -> None:
+        """Fill x, y, z from the chosen montage or file by channel name (like
+        EEGLAB's channel-location lookup). Filled positions become this
+        recording's own; Apply keeps them."""
+        source = self.lookup_source.currentText().strip()
+        if not source:
+            self.status.setText("Choose a montage or a locations file to look up.")
+            return
+        rows: dict[str, int] = {}
+        for r in range(self.table.rowCount()):
+            item = self.table.item(r, 1)
+            cells = [self.table.item(r, 4 + k) for k in range(3)]
+            has_pos = all(c is not None and c.text().strip() for c in cells)
+            if item is not None and not (
+                self.lookup_empty_only.isChecked() and has_pos
+            ):
+                rows[item.text().strip()] = r
+        if not rows:
+            self.status.setText("Every channel already has a position.")
+            return
+        reply = self.call("lookup_positions", labels=list(rows), montage=source)
+        if reply is None:
+            self.status.setText("Lookup failed (see the log).")
+            return
+        self.table.blockSignals(True)
+        for label, xyz in reply["positions"].items():
+            r = rows[label]
+            for k in range(3):
+                item = _item(f"{xyz[k]:.4f}")
+                item.setData(INHERITED, False)
+                self.table.setItem(r, 4 + k, item)
+        self.table.blockSignals(False)
+        missing = reply["unmatched"]
+        self.status.setText(
+            f"Found {len(reply['positions'])} of {len(rows)} channels in {source}."
+            + (f" No match: {', '.join(missing[:12])}"
+               + ("…" if len(missing) > 12 else "") if missing else "")
+            + " Apply to keep them."
+        )  # fmt: skip
 
     def _browse_montage(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Montage file", "", "Montage (*)")

@@ -129,3 +129,47 @@ def test_disk_cache_keeps_the_channel_description() -> None:
     cache.put("k", CachedOutput(Block(np.zeros((2, 5)), info, 0, 0.0), ()))
     hit = cache.get("k")
     assert hit is not None and hit.block.info == info
+
+
+@pytest.mark.parametrize(
+    ("label", "found"),
+    [("Fp1", "Fp1"), ("FP1", "Fp1"), ("EEG Fp1-REF", "Fp1"), ("EEG O1-LE", "O1"),
+     ("EEG_C3_A2", "C3"), ("T3", "T7"), ("EEG T5-REF", "P7"), ("Fp1-F7", None),
+     ("HEOG", None)],
+)  # fmt: skip
+def test_label_lookup_like_eeglab(label: str, found: str | None) -> None:
+    from meegxer.core.recording import lookup_positions, montage_positions
+
+    table = montage_positions("standard_1005")
+    positions, unmatched = lookup_positions([label], "standard_1005")
+    if found is None:
+        assert unmatched == [label] and not positions
+    else:
+        assert positions[label] == table[found]
+
+
+def test_daemon_lookup_positions(daemon: Daemon) -> None:
+    reply = daemon.lookup_positions(["Cz", "EEG Pz-REF", "Status"], "standard_1020")
+    assert set(reply["positions"]) == {"Cz", "EEG Pz-REF"}
+    assert reply["unmatched"] == ["Status"]
+    assert len(reply["positions"]["Cz"]) == 3
+
+
+def test_eeglab_ced_file(tmp_path: Path) -> None:
+    from meegxer.core.recording import lookup_positions
+
+    ced = tmp_path / "chanlocs.ced"
+    ced.write_text(
+        "Number\tlabels\ttheta\tradius\tX\tY\tZ\tsph_theta\tsph_phi\tsph_radius\ttype\n"
+        "1\tFpz\t0\t0.5\t85\t0\t-1.8\t0\t-1.2\t85\t\n"
+        "2\tT7\t-90\t0.5\t0\t85\t-1.8\t90\t-1.2\t85\t\n"
+        "3\tCz\t0\t0\t0\t0\t85\t0\t90\t85\t\n"
+        "4\tEOG\t\t\t\t\t\t\t\t\t\n"
+    )
+    positions, unmatched = lookup_positions(
+        ["EEG Fpz-REF", "T7", "Cz", "EOG"], str(ced)
+    )
+    assert unmatched == ["EOG"]  # listed without coordinates
+    fpz, t7 = positions["EEG Fpz-REF"], positions["T7"]
+    assert fpz[1] == pytest.approx(0.085) and abs(fpz[0]) < 1e-9  # front
+    assert t7[0] == pytest.approx(-0.085)  # left ear: negative x

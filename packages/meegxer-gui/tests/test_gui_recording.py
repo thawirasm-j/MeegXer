@@ -123,3 +123,39 @@ def test_offline_view_scrolls_and_marks_events(
         assert [m.value() for m in visible] == [30.0]  # only the event at 30 s
     finally:
         win.close()
+
+
+def test_channel_lookup_fills_positions_by_name(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]], tmp_path: Path
+) -> None:
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    names = ["EEG Fp1-REF", "EEG Cz-REF", "EEG T3-REF", "Status"]
+    raw = mne.io.RawArray(np.zeros((4, 2500)), mne.create_info(names, 250.0, "eeg"),
+                          verbose="error")  # fmt: skip
+    path = tmp_path / "edf_style_raw.fif"
+    raw.save(path, verbose="error")
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        assert win.doc.source is not None
+        win.doc.source.params["path"] = str(path)
+        win.open_recording()
+        rw = win.recording_window
+        assert all(c["position"] is None for c in rw.current["channels"])
+        rw.lookup_source.setCurrentText("standard_1005")
+        rw.look_up_positions()
+        assert "Found 3 of 4" in rw.status.text() and "Status" in rw.status.text()
+        rw.apply()
+        rec = win.doc.source.recording
+        assert set(rec["channels"]) == {"EEG Fp1-REF", "EEG Cz-REF", "EEG T3-REF"}
+        assert all(len(e["position"]) == 3 for e in rec["channels"].values())
+        positioned = {c["label"] for c in rw.current["channels"] if c["position"]}
+        assert positioned == {"EEG Fp1-REF", "EEG Cz-REF", "EEG T3-REF"}
+        # T3 (old name) lands on the left, where T7 is
+        wheel = win.view.wheel
+        assert 150 < wheel["EEG T3-REF"][0] < 210
+    finally:
+        win.close()

@@ -206,7 +206,9 @@ it never interrupts processing.
   the plots. Dark (default) and light ship first. A theme is a small file, so more
   can be added.
 - **Recording window** (M5.1): opened from the Input strip. Tabs for channels
-  (label, type, bad, position), montage (a standard montage or a file, with a head
+  (label, type, bad, position, and an EEGLAB-style lookup that fills positions by
+  channel name from a standard montage or a locations file, for recordings that
+  store names only), montage (a standard montage or a file, with a head
   map that previews the channel colours), events (an events file instead of the
   recording's own, renames, drops) and info (sampling rate, length: read from the
   recording, not editable). The edits are the source's `recording` overrides in the

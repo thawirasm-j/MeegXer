@@ -222,7 +222,9 @@ line disappear in difference mode, and kill the GUI without interrupting process
 **Status:** implemented. Spec 0.2.3 `recording` overrides on the source (channel
 rename, type, bad flag, position; montage; events file, renames, drops);
 `SignalInfo.ch_types` and `positions`; daemon `describe_source` and `list_montages`;
-the GUI's Recording window; channel colours from the recording's positions; events
+the GUI's Recording window, with a channel-location lookup by name (standard
+montages or files, including EEGLAB `.ced`; EDF-style names such as `EEG Fp1-REF`
+and old 10-20 names match); channel colours from the recording's positions; events
 on the offline view. Offline probes write samples and zoom levels to memory-mapped
 files as the run goes (`MEEGXER_OFFLINE_DIR`), with a size-capped disk cache for
 processor outputs (`MEEGXER_OFFLINE_CACHE_GB`). Not yet: events routed through the

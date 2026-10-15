@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 import dataclasses
+import re
 import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -128,6 +129,29 @@ def _electrodes_tsv(path: Path) -> dict[str, Position]:
             for r, (x, y, z) in zip(rows, xyz, strict=True)}  # fmt: skip
 
 
+def _eeglab_ced(path: Path) -> dict[str, Position]:
+    """EEGLAB ``.ced`` channel locations (labels, X, Y, Z with X towards the nose
+    and Y towards the left ear), turned to x right, y front, z up."""
+    with path.open(encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh, delimiter="\t"))
+    keys = {k.strip().casefold(): k for k in (rows[0] if rows else {})}
+    if not {"labels", "x", "y", "z"} <= set(keys):
+        raise RecordingError(f"{path}: needs labels, X, Y and Z columns")
+    named = []
+    for row in rows:
+        try:
+            xyz = [float(row[keys[c]]) for c in ("x", "y", "z")]
+        except (TypeError, ValueError):
+            continue  # a channel without coordinates
+        named.append((row[keys["labels"]].strip(), (-xyz[1], xyz[0], xyz[2])))
+    if not named:
+        raise RecordingError(f"{path}: no channel coordinates")
+    xyz_all = np.array([p for _, p in named])
+    radius = float(np.median(np.linalg.norm(xyz_all - xyz_all.mean(axis=0), axis=1)))
+    scale = 1.0 if radius < 0.5 else 0.01 if radius < 30 else 0.001  # m, cm, mm
+    return {name: (x * scale, y * scale, z * scale) for name, (x, y, z) in named}
+
+
 @cache
 def montage_positions(spec: str) -> dict[str, Position]:
     """Electrode positions of a standard montage (by name) or a montage file
@@ -147,16 +171,60 @@ def montage_positions(spec: str) -> dict[str, Position]:
             raise RecordingError(f"montage file not found: {spec}")
         if path.name.endswith("electrodes.tsv"):
             return _electrodes_tsv(path)
+        if path.suffix.lower() == ".ced":
+            return _eeglab_ced(path)
         montage = mne.channels.read_custom_montage(path)
     return {name: (float(p[0]), float(p[1]), float(p[2]))
             for name, p in montage.get_positions()["ch_pos"].items()}  # fmt: skip
 
 
+# How channel labels are often written in files, around a 10-05 name: "EEG Fp1-REF",
+# "FP1-LE", "EEG_O1_A2". Bipolar labels ("Fp1-F7") name two sites and never match.
+_TYPE_PREFIX = re.compile(r"^(EEG|EOG|ECG|EKG|EMG)[\s_:-]+", re.IGNORECASE)
+_REF_SUFFIX = re.compile(r"[\s_-]+(REF|LE|RE|AR|AVG|AVERAGE|LINKED|A1|A2|M1|M2)$",
+                         re.IGNORECASE)  # fmt: skip
+OLD_NAMES = {"T3": "T7", "T4": "T8", "T5": "P7", "T6": "P8"}
+
+
+def label_candidates(label: str) -> list[str]:
+    """Names to try for a channel label, most literal first: the label, then
+    without a type prefix or reference suffix, then the 10-20 name for old ones
+    (T3/T4/T5/T6)."""
+    out = [label.strip()]
+    bare = _REF_SUFFIX.sub("", _TYPE_PREFIX.sub("", out[0])).strip()
+    if bare and bare not in out:
+        out.append(bare)
+    for name in list(out):
+        new = OLD_NAMES.get(name.upper())
+        if new and new not in out:
+            out.append(new)
+    return out
+
+
 def _lookup(table: Mapping[str, Position], label: str) -> Position | None:
-    if label in table:
-        return table[label]
+    """The position of ``label`` in a montage: exact, then case-insensitive, then
+    the cleaned-up candidates (see ``label_candidates``)."""
     folded = {k.casefold(): v for k, v in table.items()}
-    return folded.get(label.casefold())
+    for name in label_candidates(label):
+        if name in table:
+            return table[name]
+        if name.casefold() in folded:
+            return folded[name.casefold()]
+    return None
+
+
+def lookup_positions(
+    labels: list[str], montage: str
+) -> tuple[dict[str, Position], list[str]]:
+    """Look channel labels up in a standard montage or a montage file (like
+    EEGLAB's channel-location lookup): ``(positions by label, unmatched labels)``."""
+    table = montage_positions(montage)
+    found: dict[str, Position] = {}
+    for label in labels:
+        pos = _lookup(table, label)
+        if pos is not None:
+            found[label] = pos
+    return found, [label for label in labels if label not in found]
 
 
 # -- events -----------------------------------------------------------------------

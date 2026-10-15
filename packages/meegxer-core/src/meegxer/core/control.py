@@ -22,7 +22,7 @@ from meegxer.core.manifest import SPEC_VERSION, Manifest
 from meegxer.core.node import Source
 from meegxer.core.offline import OfflineJob
 from meegxer.core.realtime import RealtimeScheduler
-from meegxer.core.recording import builtin_montages, describe
+from meegxer.core.recording import builtin_montages, describe, lookup_positions
 from meegxer.core.registry import Registry
 from meegxer.core.stage import Stage
 
@@ -112,6 +112,7 @@ class Daemon:
             "set_strip_params": self.set_strip_params,
             "describe_source": self.describe_source,
             "list_montages": self.list_montages,
+            "lookup_positions": self.lookup_positions,
             "run_offline": self.run_offline,
             "offline_window": self.offline_window,
             "shutdown": self.shutdown,
@@ -273,6 +274,13 @@ class Daemon:
 
     def list_montages(self) -> list[str]:
         return builtin_montages()
+
+    def lookup_positions(self, labels: list[str], montage: str) -> dict[str, Any]:
+        """Positions for channel labels from a standard montage or montage file:
+        ``{positions: {label: [x, y, z]}, unmatched: [label]}``."""
+        found, unmatched = lookup_positions(list(labels), str(montage))
+        return {"positions": {k: list(v) for k, v in found.items()},
+                "unmatched": unmatched}  # fmt: skip
 
     def run_offline(self, pipeline: dict[str, Any]) -> dict[str, Any]:
         """Run ``pipeline`` over its whole (finite) input in the background; its
