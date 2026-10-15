@@ -19,6 +19,7 @@ from typing import Any
 
 import jsonschema
 
+from meegxer.core.block import DEFAULT_PROCESSED_TYPES
 from meegxer.core.manifest import SPEC_VERSION, Manifest, ParamValue
 from meegxer.core.node import NodeRole, Probe, Processor, Sink, Source
 from meegxer.core.ports import check_connection
@@ -182,7 +183,14 @@ class Graph:
             passthrough = bool(entry.get("pass_uncalibrated", False))
             if issubclass(node_cls, Processor):
                 try:
-                    impl = Stage(node_cls(), params, pass_uncalibrated=passthrough)
+                    impl = Stage(
+                        node_cls(),
+                        params,
+                        pass_uncalibrated=passthrough,
+                        channel_types=entry.get(
+                            "channel_types", DEFAULT_PROCESSED_TYPES
+                        ),
+                    )
                 except ValueError as exc:
                     raise GraphError(
                         f"{entry.get('id', entry['node'])}: {exc}"
@@ -191,6 +199,10 @@ class Graph:
                 if passthrough:
                     raise GraphError(
                         f"{entry['node']}: pass_uncalibrated applies to processors only"
+                    )
+                if "channel_types" in entry:
+                    raise GraphError(
+                        f"{entry['node']}: channel_types applies to processors only"
                     )
                 impl = cls._configured(node_cls, params, entry.get("recording"))
             graph.add(
@@ -243,6 +255,12 @@ class Graph:
                     **(
                         {"pass_uncalibrated": True}
                         if isinstance(n.impl, Stage) and n.impl.pass_uncalibrated
+                        else {}
+                    ),
+                    **(
+                        {"channel_types": list(n.impl.channel_types)}
+                        if isinstance(n.impl, Stage)
+                        and n.impl.channel_types != DEFAULT_PROCESSED_TYPES
                         else {}
                     ),
                 }

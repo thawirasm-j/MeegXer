@@ -100,14 +100,18 @@ class ChannelMenu(QToolButton):
         self.setText("Channels: all")
         self.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.labels: tuple[str, ...] = ()
+        self.defaults: frozenset[str] = frozenset()
         self.hidden: set[str] = set()
         self.setMenu(QMenu(self))
 
-    def set_labels(self, labels: tuple[str, ...]) -> None:
-        if labels == self.labels:
+    def set_labels(
+        self, labels: tuple[str, ...], hide_by_default: frozenset[str] = frozenset()
+    ) -> None:
+        """New channels: non-EEG ones (``hide_by_default``) start hidden."""
+        if labels == self.labels and hide_by_default == self.defaults:
             return
-        self.labels = labels
-        self.hidden &= set(labels)
+        self.labels, self.defaults = labels, hide_by_default
+        self.hidden = set(hide_by_default) & set(labels)
         menu = QMenu(self)
         menu.addAction("All", lambda: self._set(set()))
         menu.addAction("None", lambda: self._set(set(labels)))
@@ -280,6 +284,7 @@ class SignalView(QWidget):
         lay.addWidget(self.plot, 1)
         self.styles: dict[tuple[str, ...], list[ChannelStyle]] = {}
         self.wheel: dict[str, tuple[float, float]] = {}
+        self.types: dict[str, str] = {}  # label -> channel type, when known
         self.events: list[dict[str, Any]] = []
 
     def apply_theme(self, theme: Theme) -> None:
@@ -320,7 +325,14 @@ class SignalView(QWidget):
             self.plot.mark([])
             self.legend.setText("No probe shown: click a ◇ tap in the chain")
             return
-        self.channels.set_labels(main_win.labels)
+        self.channels.set_labels(
+            main_win.labels,
+            frozenset(
+                lb
+                for lb in main_win.labels
+                if self.types.get(lb, "eeg") not in ("eeg", "")
+            ),
+        )
         chans = self.channels.selected(main_win.labels)
         styles = self._styles(main_win.labels)
         layers: list[tuple[FloatArray, FloatArray, QPen]] = []

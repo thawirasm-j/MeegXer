@@ -106,6 +106,9 @@ class StripWidget(QFrame):
         sub.setObjectName("muted")
         lay.addWidget(sub)
         note = problem or badge(strip.node, strip.params, doc.mode)
+        if not problem and strip.channel_types and strip.channel_types != ["eeg"]:
+            types = "+".join(t.upper() for t in strip.channel_types)
+            note = f"{note} · {types}" if note else types
         if note:
             chip = QLabel(note)
             colour = theme.incompatible_border if problem else theme.text_muted

@@ -119,6 +119,7 @@ class MainWindow(QMainWindow):
         self.inspector = Inspector()
         self.inspector.param_changed.connect(self.change_param)
         self.inspector.strip_params_changed.connect(self.change_strip_params)
+        self.inspector.channel_types_changed.connect(self.change_channel_types)
         self.inspector.pass_uncalibrated_changed.connect(self.change_passthrough)
         self.inspector.clear_calibration.connect(self.clear_calibration)
         self.inspector.calibrate.connect(self.calibrate)
@@ -327,8 +328,10 @@ class MainWindow(QMainWindow):
         offline view (live views have no absolute time axis)."""
         if info is None:
             self.view.set_wheel({})
+            self.view.types = {}
             self.view.events = []
             return
+        self.view.types = {c["label"]: c["type"] for c in info["channels"]}
         positions = {
             c["label"]: tuple(c["position"]) for c in info["channels"] if c["position"]
         }
@@ -408,6 +411,13 @@ class MainWindow(QMainWindow):
             advanced=self.advanced,
             selected=self.selected,
         )
+
+    def change_channel_types(self, strip_id: str, types: list[str]) -> None:
+        strip = self.doc.get(strip_id)
+        if (strip.channel_types or ["eeg"]) == types:
+            return
+        strip.channel_types = [] if types == ["eeg"] else types
+        self._structure_changed(f"{strip_id} processes: {', '.join(types)}.")
 
     def change_passthrough(self, strip_id: str, enabled: bool) -> None:
         self.doc.get(strip_id).pass_uncalibrated = enabled
