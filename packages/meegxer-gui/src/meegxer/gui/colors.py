@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+
+import numpy as np
 
 from meegxer.gui._positions import ALIASES, POSITIONS
 from meegxer.gui.theme import Theme, Wheel
@@ -77,10 +80,42 @@ def _hex(color: str) -> RGB:
     return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
 
 
-def channel_style(label: str, theme: Theme) -> ChannelStyle:
+def wheel_positions(
+    positions: Mapping[str, tuple[float, float, float]],
+) -> dict[str, tuple[float, float]]:
+    """``(azimuth_deg, radius)`` from 3-D positions (x right, y front, z up):
+    fit a sphere to the electrodes, then project azimuthally from its top, so the
+    equator (T7-Fpz-T8-Oz) lands on radius 1 whatever the montage's origin."""
+    if not positions:
+        return {}
+    xyz = np.array(list(positions.values()), dtype=float)
+    centre = np.zeros(3)
+    if len(xyz) >= 4:
+        a = np.column_stack([2 * xyz, np.ones(len(xyz))])
+        sol, *_ = np.linalg.lstsq(a, (xyz**2).sum(axis=1), rcond=None)
+        if np.all(np.isfinite(sol[:3])):
+            centre = sol[:3]
+    out: dict[str, tuple[float, float]] = {}
+    for label, p in zip(positions, xyz, strict=True):
+        v = p - centre
+        norm = float(np.linalg.norm(v))
+        if norm == 0:
+            continue
+        theta = math.degrees(math.acos(max(-1.0, min(1.0, v[2] / norm))))
+        out[label] = (math.degrees(math.atan2(v[1], v[0])) % 360.0, theta / 90.0)
+    return out
+
+
+def channel_style(
+    label: str,
+    theme: Theme,
+    wheel: Mapping[str, tuple[float, float]] | None = None,
+) -> ChannelStyle:
+    """Style of one channel: from the recording's positions (``wheel``, see
+    ``wheel_positions``) when known, else from the standard 10-05 table."""
     if _NON_EEG.match(label):
         return ChannelStyle(_hex(theme.unknown_channel), dashed=True)
-    pos = position(label)
+    pos = (wheel or {}).get(label) or position(label)
     if pos is not None:
         return ChannelStyle(wheel_color(*pos, theme.wheel))
     parts = label.split("-")
@@ -91,6 +126,14 @@ def channel_style(label: str, theme: Theme) -> ChannelStyle:
             mixed = tuple((x + y) / 2 for x, y in zip(la, lb, strict=True))
             return ChannelStyle(_oklab_to_srgb(*mixed))
     return ChannelStyle(_hex(theme.unknown_channel), dashed=True)
+
+
+def channel_styles_with(
+    labels: tuple[str, ...] | list[str],
+    theme: Theme,
+    wheel: Mapping[str, tuple[float, float]] | None,
+) -> list[ChannelStyle]:
+    return [channel_style(label, theme, wheel) for label in labels]
 
 
 def channel_styles(

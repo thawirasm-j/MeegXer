@@ -84,10 +84,19 @@ class DirectoryCache:
         if not path.is_file():
             return None
         with np.load(path, allow_pickle=False) as npz:
+            positions = npz["positions"] if "positions" in npz else np.empty((0, 3))
             info = SignalInfo(
                 tuple(str(x) for x in npz["ch_labels"]),
                 float(npz["sfreq"]),
                 str(npz["stream_id"]),
+                tuple(str(x) for x in npz["bads"]) if "bads" in npz else (),
+                tuple(str(x) for x in npz["ch_types"]) if "ch_types" in npz else (),
+                tuple(
+                    None
+                    if np.isnan(p).any()
+                    else (float(p[0]), float(p[1]), float(p[2]))
+                    for p in positions
+                ),
             )
             block = Block(
                 npz["data"], info, int(npz["sample_index"]), float(npz["timestamp"])
@@ -108,6 +117,15 @@ class DirectoryCache:
                     ch_labels=np.array(block.info.ch_labels),
                     sfreq=np.float64(block.info.sfreq),
                     stream_id=np.array(block.info.stream_id),
+                    bads=np.array(block.info.bads, dtype=str),
+                    ch_types=np.array(block.info.ch_types, dtype=str),
+                    positions=np.array(
+                        [
+                            p if p is not None else (np.nan,) * 3
+                            for p in block.info.positions
+                        ],
+                        dtype=np.float64,
+                    ).reshape(-1, 3),
                     sample_index=np.int64(block.sample_index),
                     timestamp=np.float64(block.timestamp),
                     events=np.array(_events_to_json(value.events)),

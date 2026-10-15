@@ -97,6 +97,9 @@ QPlainTextEdit {{ background: {t.surface}; border: 1px solid {t.border};
     border-radius: 6px; color: {t.text_muted}; font-family: monospace; }}
 QScrollArea {{ border: none; }}
 QCheckBox {{ background: transparent; }}
+QCheckBox::indicator {{ width: 14px; height: 14px; border: 1px solid {t.text_muted};
+    border-radius: 3px; background: {t.surface_alt}; }}
+QCheckBox::indicator:checked {{ background: {t.accent}; border-color: {t.accent}; }}
 QToolTip {{ background: {t.surface}; color: {t.text}; border: 1px solid {t.border}; }}
 QSplitter::handle {{ background: {t.background}; }}
 """

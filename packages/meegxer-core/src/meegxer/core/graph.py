@@ -22,6 +22,13 @@ import jsonschema
 from meegxer.core.manifest import SPEC_VERSION, Manifest, ParamValue
 from meegxer.core.node import NodeRole, Probe, Processor, Sink, Source
 from meegxer.core.ports import check_connection
+from meegxer.core.recording import (
+    RecordingError,
+    RecordingOverrides,
+    montage_positions,
+    recording_of,
+    with_recording,
+)
 from meegxer.core.registry import Registry
 from meegxer.core.stage import Stage
 
@@ -185,7 +192,7 @@ class Graph:
                     raise GraphError(
                         f"{entry['node']}: pass_uncalibrated applies to processors only"
                     )
-                impl = node_cls(params)
+                impl = cls._configured(node_cls, params, entry.get("recording"))
             graph.add(
                 impl,
                 id=entry.get("id"),
@@ -193,6 +200,23 @@ class Graph:
                 strip_params=entry.get("strip_params", ()),
             )
         return graph
+
+    @staticmethod
+    def _configured(
+        node_cls: type[Any], params: Mapping[str, Any], recording: Any
+    ) -> NodeImpl:
+        if recording is None:
+            impl: NodeImpl = node_cls(params)
+            return impl
+        if not issubclass(node_cls, Source):
+            raise GraphError(f"{node_cls.manifest.name}: recording applies to sources")
+        try:
+            overrides = RecordingOverrides.from_dict(recording)
+            if overrides.montage:
+                montage_positions(overrides.montage)  # fail early on a bad montage
+        except (RecordingError, ValueError, OSError) as exc:
+            raise GraphError(f"recording: {exc}") from exc
+        return with_recording(node_cls, params, overrides)
 
     @classmethod
     def load(cls, path: str | Path, registry: Registry | None = None) -> Graph:
@@ -208,6 +232,11 @@ class Graph:
                     "node": n.manifest.name,
                     "params": _params_of(n.impl),
                     **({"input": n.input} if n.input is not None else {}),
+                    **(
+                        {"recording": rec}
+                        if isinstance(n.impl, Source) and (rec := recording_of(n.impl))
+                        else {}
+                    ),
                     **(
                         {"strip_params": list(n.strip_params)} if n.strip_params else {}
                     ),
