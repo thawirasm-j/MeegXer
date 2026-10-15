@@ -304,3 +304,37 @@ def test_live_params_keep_state() -> None:
     assert stage.state is kept  # no change at all
     stage.set_params(alpha=0.2, mode="b")
     assert stage.state is None  # a non-live parameter changed
+
+
+def test_live_params_of_a_fitted_node_need_no_refit() -> None:
+    class ScaledDemean(Demean):
+        manifest = Manifest.from_dict(
+            {
+                "spec_version": "0.2.0",
+                "name": "test.sdemean",
+                "version": "0.1.0",
+                "type": "stream",
+                "inputs": [{"name": "in", "type": "signal"}],
+                "outputs": [{"name": "out", "type": "signal"}],
+                "params": [
+                    {"name": "k", "type": "float", "default": 1.0},
+                    {"name": "w", "type": "int", "default": 1},
+                ],
+                "live_params": ["k"],
+                "requires_fit": True,
+            }
+        )
+
+    chain = [Stage(ScaledDemean()), Stage(Demean())]
+    fps = chain_input_fingerprints(chain, SOURCE_FP)
+    chain[0].fit(signal(100, seed=1), fps[0])
+    fps = chain_input_fingerprints(chain, SOURCE_FP)
+    chain[1].fit(signal(100, seed=2), fps[1])
+
+    chain[0].set_params(k=3.0)  # acts in transform only: the model stays valid
+    fps = chain_input_fingerprints(chain, SOURCE_FP)
+    assert chain[0].status(fps[0]) is StageStatus.READY
+    assert chain[1].status(fps[1]) is StageStatus.NEEDS_REFIT  # its input changed
+
+    chain[0].set_params(w=2)  # not live: the model is stale
+    assert chain[0].status(fps[0]) is StageStatus.NEEDS_REFIT

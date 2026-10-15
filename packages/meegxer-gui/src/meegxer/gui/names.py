@@ -17,6 +17,8 @@ TITLES = {
     "meegxer.sterile.notch_zerophase": "Notch (zero-phase)",
     "meegxer.sterile.rereference": "Re-reference",
     "meegxer.sterile.iir_filter_zerophase": "Filter (zero-phase)",
+    "meegxer.sterile.ica": "ICA + ICLabel",
+    "eeglab.asr": "ASR (EEGLAB)",
 }
 FILTER_KINDS = {
     "highpass": "High-pass",

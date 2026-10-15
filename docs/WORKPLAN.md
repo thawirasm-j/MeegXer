@@ -268,6 +268,23 @@ output equals `clean_asr` run in EEGLAB on `tests/data/m6_eeg.npz` (stored refer
 `tests/data/m6_ref_asr.npz`, made by `tools/make_m6_references.py`); conformance
 (test 1, restart) passes in the sandbox.
 
+**M6b status:** implemented. `meegxer.sterile.ica` ("ICA + ICLabel" strip) fits
+extended Picard (default) or Extended Infomax through MNE, classifies the components
+with ICLabel (mne-icalabel, ONNX backend) and removes those with eye, muscle, heart,
+line-noise or channel-noise probability ≥ 0.9. Removal is a fixed spatial filter, so
+the strip streams after calibration (`availability: both`); threshold and classes
+are live parameters and need no refit (for fitted nodes, live parameters now stay
+out of the model's fingerprint, spec 0.2.6). Bad channels stay out of the
+decomposition; positions are required (ICLabel's topographies). Components are
+scaled to RMS microvolts as EEGLAB's `eeg_checkset` does, which ICLabel's spectrum
+feature depends on. Acceptance test 6, on `tests/data/m6_ica.npz` (19 channels,
+known brain and artifact sources, `tools/make_m6_ica_testdata.py`) against
+`tests/data/m6_ref_ica.npz` (`tools/make_m6_ica_references.py`, EEGLAB in Octave):
+on the same decomposition, ICLabel features equal EEGLAB's to float32 precision and
+probabilities to 4e-6; Extended Infomax matches `runica` (matched components,
+median |r| 1.000, min 0.98) and extended Picard nearly so (median 0.996, min 0.93).
+Not yet: showing the component labels in the GUI.
+
 **Decided**
 - Features → Sink only in v1 (view, export, LSL feature stream); Features → Processor
   later, so the v1 scheduler needs no multi-rate processor edges.
@@ -337,3 +354,4 @@ output equals `clean_asr` run in EEGLAB on `tests/data/m6_eeg.npz` (stored refer
 | 31 | ICA | Picard (extended) by default, Extended Infomax as a strip setting; EEG only unless the strip includes EOG/ECG/EMG | M6b |
 | 32 | Component rejection | Reject when ICLabel's eye, muscle, heart, line-noise or channel-noise probability is ≥ 0.9 | M6b |
 | 33 | EEGLAB references | Stored in `tests/data/` with the generating script, so CI needs no EEGLAB | M6 |
+| 34 | Live params on fitted nodes | Act in `transform` only and stay out of the model fingerprint, so e.g. the ICA threshold changes without a refit (spec 0.2.6) | M6b |

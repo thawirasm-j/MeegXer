@@ -63,8 +63,8 @@ files = ["packages/*/src", "packages/*/tests", "tests", "tools"]
 exclude = ["packages/meegxer-gui/tests/conftest\\.py$"]
 
 [[tool.mypy.overrides]]
-module = ["mne", "mne.*", "mne_bids", "mne_bids.*", "pylsl", "pylsl.*", "pyqtgraph",
-          "pyqtgraph.*"]
+module = ["mne", "mne.*", "mne_bids", "mne_bids.*", "mne_icalabel", "mne_icalabel.*",
+          "pylsl", "pylsl.*", "pyqtgraph", "pyqtgraph.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

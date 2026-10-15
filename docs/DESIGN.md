@@ -102,7 +102,9 @@ fit(calibration_data | dataset, params)       -> model
 transform(block, model, state, params)        -> block_out, state, events
 ```
 - Every node (source, processor, probe, sink) has a manifest with a `role`;
-  `live_params` lists parameters that may change mid-stream without resetting state.
+  `live_params` lists parameters that may change mid-stream without resetting state;
+  on a node that needs fitting they act in `transform` only, so changing one never
+  asks for a refit (e.g. the ICA rejection threshold).
 - **Availability:** each node declares `online`, `offline` or `both`. The batch
   scheduler refuses online-only nodes and hands offline-only nodes the whole recording
   as one block; the real-time scheduler refuses offline-only nodes. Offline filtering
