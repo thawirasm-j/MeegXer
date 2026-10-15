@@ -31,10 +31,10 @@ from typing import Any, Protocol
 import numpy as np
 import pylsl
 
-from meegxer.core.block import Block, SignalInfo, concat_blocks
+from meegxer.core.block import Block, FeatureBlock, SignalInfo, concat_blocks
 from meegxer.core.display import Decimator, DisplayFrame, DisplayPublisher, Envelope
 from meegxer.core.graph import Graph, GraphError, GraphNode
-from meegxer.core.node import Probe, Sink, Source
+from meegxer.core.node import Probe, Sink, Source, output_blocks
 from meegxer.core.stage import Stage, StageStatus, StaleModelError, signal_fingerprint
 
 Clock = Callable[[], float]
@@ -362,7 +362,9 @@ class RealtimeScheduler:
                 )
 
     def _process(self, block: Block) -> None:
-        outputs: dict[str, Block | None] = {self.graph.source.id: block}
+        outputs: dict[str, Block | tuple[FeatureBlock, ...] | None] = {
+            self.graph.source.id: block
+        }
         sink_hit = False
         for node in self.graph.nodes[1:]:
             assert node.input is not None
@@ -372,13 +374,21 @@ class RealtimeScheduler:
                 continue
             started = time.perf_counter()
             if isinstance(node.impl, Stage):
-                outputs[node.id] = self._run_stage(node, upstream)
+                # processors take Signal input in v1 (port types keep it so)
+                outputs[node.id] = (
+                    self._run_stage(node, upstream)
+                    if isinstance(upstream, Block)
+                    else None
+                )
             elif isinstance(node.impl, Probe):
-                node.impl.tap(upstream)
-                self._feed_display(node, upstream)
+                for item in output_blocks(upstream):
+                    node.impl.tap(item)
+                    if isinstance(item, Block):
+                        self._feed_display(node, item)
             elif isinstance(node.impl, Sink):
-                node.impl.write(upstream)
-                sink_hit = True
+                for item in output_blocks(upstream):  # feature windows one by one
+                    node.impl.write(item)
+                    sink_hit = True
             self.metrics.stages.setdefault(node.id, StageMetrics()).add(
                 time.perf_counter() - started
             )
@@ -388,7 +398,9 @@ class RealtimeScheduler:
             if len(self.metrics.latencies) > 20000:
                 del self.metrics.latencies[:10000]
 
-    def _run_stage(self, node: GraphNode, block: Block) -> Block | None:
+    def _run_stage(
+        self, node: GraphNode, block: Block
+    ) -> Block | tuple[FeatureBlock, ...] | None:
         stage = node.impl
         assert isinstance(stage, Stage)
         input_fp = self._input_fps[node.id]
@@ -408,7 +420,9 @@ class RealtimeScheduler:
         except StaleModelError:
             return self._without_model(node, block)
         self.metrics.events += len(result.events)
-        return result.block if isinstance(result.block, Block) else None
+        if isinstance(result.block, FeatureBlock):
+            return (result.block,)
+        return result.block
 
     @staticmethod
     def _without_model(node: GraphNode, block: Block) -> Block | None:

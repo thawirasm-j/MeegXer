@@ -30,10 +30,21 @@ class NodeRole(StrEnum):
     SINK = "sink"
 
 
+type Output = Block | FeatureBlock | tuple[FeatureBlock, ...]
+
+
 class TransformResult(NamedTuple):
-    block: Block | FeatureBlock
+    """``block`` is the output: a Signal block, or for an analysis processor the
+    feature windows completed by this call (a tuple, possibly empty)."""
+
+    block: Output
     state: State
     events: tuple[Event, ...] = ()
+
+
+def output_blocks(output: Output) -> tuple[Block | FeatureBlock, ...]:
+    """A result's output as a tuple of blocks (feature windows one by one)."""
+    return output if isinstance(output, tuple) else (output,)
 
 
 class Processor(ABC):
@@ -49,6 +60,9 @@ class Processor(ABC):
       must be serializable (see :mod:`meegxer.core.serialization`).
     - Never modify the input block (its data is read-only) and keep no per-stream
       data on ``self``.
+    - An analysis processor buffers its input in ``state`` and returns every
+      feature window the block completes, as a tuple of FeatureBlocks (none when
+      no window is complete yet), so its windows never depend on block sizes.
     - Output samples are aligned by sample index (rule 8). A processor that needs
       look-ahead may return output that lags its input (an earlier
       ``sample_index``, possibly fewer samples) and hand over the rest in

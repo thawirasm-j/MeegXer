@@ -10,9 +10,9 @@ import numpy as np
 import pylsl
 import pytest
 
-from meegxer.core.block import Block, SignalInfo
+from meegxer.core.block import Block, FeatureBlock, SignalInfo
 from meegxer.core.graph import Graph
-from meegxer.core.lsl import INDEX_CHANNEL, LslSink, LslSource
+from meegxer.core.lsl import INDEX_CHANNEL, LslFeatureSink, LslSink, LslSource
 from meegxer.core.probes import MemoryProbe
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.sources import SyntheticSource
@@ -47,6 +47,37 @@ def test_sink_to_source_round_trip_with_units_and_index() -> None:
     )  # uV on the wire
     assert source.gaps == 0 and source.duplicates == 0
     source.close()
+    sink.close()
+
+
+def test_feature_outlet_sends_one_labelled_sample_per_window() -> None:
+    name = unique("mx-feat")
+    sink = LslFeatureSink({"stream_name": name})
+    coords = {"channel": ("Fz", "Cz"), "band": ("alpha", "beta")}
+    t0 = pylsl.local_clock()
+
+    def window(k: int) -> FeatureBlock:
+        values = np.arange(4.0).reshape(2, 2) + 10 * k
+        return FeatureBlock(values, ("channel", "band"), (k * 50, k * 50 + 100),
+                            t0 + k * 0.2, coords)  # fmt: skip
+
+    sink.write(window(0))  # opens the outlet
+    streams = pylsl.resolve_byprop("name", name, timeout=5.0)
+    assert streams
+    inlet = pylsl.StreamInlet(streams[0])
+    info = inlet.info()
+    assert info.nominal_srate() == pylsl.IRREGULAR_RATE
+    labels, ch = [], info.desc().child("channels").child("channel")
+    while not ch.empty():
+        labels.append(ch.child_value("label"))
+        ch = ch.next_sibling()
+    assert labels == ["Fz|alpha", "Fz|beta", "Cz|alpha", "Cz|beta"]
+    inlet.open_stream(timeout=5.0)
+    time.sleep(0.2)
+    sink.write(window(1))
+    sample, stamp = inlet.pull_sample(timeout=5.0)
+    assert sample == [10.0, 11.0, 12.0, 13.0]
+    assert stamp == pytest.approx(t0 + 0.2, abs=1e-6)
     sink.close()
 
 

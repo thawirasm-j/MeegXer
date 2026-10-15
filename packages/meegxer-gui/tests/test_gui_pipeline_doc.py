@@ -87,3 +87,17 @@ def test_strip_shows_crucial_or_picked_params(doc: PipelineDoc) -> None:
     assert doc.shown_params(hp, advanced=True) == ["order", "phase"]
     assert doc.shown_params(hp, advanced=False) == ["kind", "low"]
     assert doc.format_param(hp, "low") == "1 Hz"
+
+
+def test_feature_strips_branch_off_untapped_and_build_a_graph(doc: PipelineDoc) -> None:
+    from meegxer.core.graph import Graph
+
+    psd = doc.insert(3, "meegxer.sterile.band_power")
+    tsv = doc.insert(4, "meegxer.core.feature_tsv")
+    tsv.params["path"] = "bands.tsv"
+    reref = doc.insert(5, "meegxer.sterile.rereference")
+    assert psd.id not in {s.id for s in doc.tappable()}
+    graph = Graph.from_dict(doc.to_pipeline(), Registry.from_entry_points())
+    inputs = {node.id: node.input for node in graph.nodes}
+    assert inputs[tsv.id] == psd.id
+    assert inputs[reref.id] == "notch1"  # the signal chain goes on

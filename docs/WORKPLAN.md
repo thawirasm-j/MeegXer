@@ -285,6 +285,24 @@ probabilities to 4e-6; Extended Infomax matches `runica` (matched components,
 median |r| 1.000, min 0.98) and extended Picard nearly so (median 0.996, min 0.93).
 Not yet: showing the component labels in the GUI.
 
+**M6c status:** implemented. Analysis processors return the windows a block
+completes as a tuple of FeatureBlocks; both schedulers route them to Features sinks
+(feature TSV and the new `meegxer.core.lsl_features_out`), and acceptance test 1 has
+a windows variant. Nodes in `meegxer.sterile.features`: PSD (Welch, as MATLAB's
+pwelch runs it for EEGLAB's spectopo), band power (named bands, absolute or
+relative, optional dB), connectivity (mne-connectivity: coh, imcoh, PLV, wPLI in one
+band, the window cut into 1 s pieces), complexity (antropy: permutation, sample and
+spectral entropy, Hjorth mobility and complexity, Lempel-Ziv), and the Hilbert
+envelope as a Signal strip computed piecewise with look-ahead (output delayed by it,
+same code live and offline). Acceptance test 6: PSD equals Octave's pwelch with
+MATLAB's no-detrend setting to 3e-16 (`tests/data/m6_ref_features.npz`,
+`tools/make_m6_feature_references.py`); the envelope stays within 1 % of a
+whole-recording `hilbert` away from the recording's ends (median 0.03 %);
+connectivity and complexity equal direct mne-connectivity/antropy calls and give
+the expected answers on signals with known coupling and regularity. Not yet: GUI
+feature views (PSD plot and the like); a strip's channel layout changing mid-stream
+stops the feature outlets.
+
 **Decided**
 - Features → Sink only in v1 (view, export, LSL feature stream); Features → Processor
   later, so the v1 scheduler needs no multi-rate processor edges.
@@ -355,3 +373,7 @@ Not yet: showing the component labels in the GUI.
 | 32 | Component rejection | Reject when ICLabel's eye, muscle, heart, line-noise or channel-noise probability is ≥ 0.9 | M6b |
 | 33 | EEGLAB references | Stored in `tests/data/` with the generating script, so CI needs no EEGLAB | M6 |
 | 34 | Live params on fitted nodes | Act in `transform` only and stay out of the model fingerprint, so e.g. the ICA threshold changes without a refit (spec 0.2.6) | M6b |
+| 35 | Feature windows | An analysis processor returns a tuple of FeatureBlocks, one per completed window (or none); sinks get them one by one | M6c |
+| 36 | Features in a linear chain | Branch off: an omitted `input` takes the nearest earlier node with a matching output type (spec 0.2.7); no probe tap after Features strips | M6c |
+| 37 | Hilbert envelope | Signal strip, piecewise analytic signal with look-ahead (delayed output), one implementation live and offline | M6c |
+| 38 | First feature measures | Connectivity: coh, imcoh, PLV, wPLI; complexity: permutation/sample/spectral entropy, Hjorth, Lempel-Ziv | M6c |

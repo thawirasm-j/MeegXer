@@ -3,7 +3,8 @@
 Nodes are kept in insertion order and may only take input from an earlier node,
 so insertion order is a topological order and cycles cannot be expressed. The v1
 UI's linear chain with probe taps is the special case where each node's input
-defaults to the nearest earlier source or processor.
+defaults to the nearest earlier source or processor whose output type matches the
+node's input (so a Features strip branches off the Signal chain, spec 0.2.7).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ import jsonschema
 from meegxer.core.block import DEFAULT_PROCESSED_TYPES
 from meegxer.core.manifest import SPEC_VERSION, Manifest, ParamValue
 from meegxer.core.node import NodeRole, Probe, Processor, Sink, Source
-from meegxer.core.ports import check_connection
+from meegxer.core.ports import Port, check_connection
 from meegxer.core.recording import (
     RecordingError,
     RecordingOverrides,
@@ -91,7 +92,7 @@ class Graph:
         strip_params: Iterable[str] = (),
     ) -> GraphNode:
         """Append a node. ``input`` defaults to the nearest earlier source or
-        processor; sources take no input."""
+        processor with a matching output port type; sources take no input."""
         role = _role_of(impl)
         if impl.manifest.role != role.value:
             raise GraphError(
@@ -108,9 +109,13 @@ class Graph:
             if any(n.role is NodeRole.SOURCE for n in self._nodes.values()):
                 raise GraphError("v1 pipelines have exactly one source")
         else:
-            input = input or self._default_input()
+            input = input or self._default_input(impl.manifest.inputs[:1])
             if input is None:
-                raise GraphError(f"{node_id!r} has no upstream node to read from")
+                wanted = ", ".join(p.type.value for p in impl.manifest.inputs[:1])
+                raise GraphError(
+                    f"{node_id!r} has no earlier node with {wanted or 'an'} output "
+                    "to read from"
+                )
             parent = self._nodes.get(input)
             if parent is None:
                 raise GraphError(
@@ -146,9 +151,13 @@ class Graph:
             node, strip_params=self._check_strip(node.impl, names)
         )
 
-    def _default_input(self) -> str | None:
+    def _default_input(self, inputs: Iterable[Port]) -> str | None:
+        wanted = next((port.type for port in inputs), None)
         for node in reversed(self._nodes.values()):
-            if node.role in (NodeRole.SOURCE, NodeRole.PROCESSOR):
+            if node.role not in (NodeRole.SOURCE, NodeRole.PROCESSOR):
+                continue
+            outputs = node.manifest.outputs
+            if wanted is None or (outputs and outputs[0].type is wanted):
                 return node.id
         return None
 

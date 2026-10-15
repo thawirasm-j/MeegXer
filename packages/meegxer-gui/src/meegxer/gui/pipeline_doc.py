@@ -24,7 +24,7 @@ PROBE = "meegxer.core.probe"
 TAP_PREFIX = "tap_"
 LIVE_ONLY_SOURCES = {"meegxer.core.lsl_in"}
 DEFAULT_OFFLINE_SOURCES = {"meegxer.core.file", "meegxer.core.bids"}
-SPEC_VERSION = "0.2.6"
+SPEC_VERSION = "0.2.7"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.sterile.iir_filter", "meegxer.sterile.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -187,8 +187,14 @@ class PipelineDoc:
         return entry
 
     def tappable(self) -> list[StripNode]:
-        """Strips followed by a probe tap (the input and every processor)."""
-        return [s for s in self.strips if self.role(s) in ("source", "processor")]
+        """Strips followed by a probe tap: the input and every processor with a
+        Signal output (Features strips branch off the chain untapped)."""
+        return [
+            s
+            for s in self.strips
+            if self.role(s) in ("source", "processor")
+            and [p["type"] for p in self.manifest(s)["outputs"][:1]] == ["signal"]
+        ]
 
     # -- what a strip shows -------------------------------------------------------
 

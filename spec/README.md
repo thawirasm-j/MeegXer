@@ -14,7 +14,9 @@ define it.
   - `pipeline.schema.json` (0.2.1: per-node `pass_uncalibrated`; 0.2.2: per-node
     `strip_params`, display only; 0.2.3: `recording` on the source: channel
     names, types, bad flags and positions, a montage, and events; 0.2.4:
-    `channel_types` on processors, default EEG only): a processing graph as an
+    `channel_types` on processors, default EEG only; 0.2.7: an omitted `input`
+    takes the nearest earlier node whose output type matches, so Features nodes
+    branch off a linear chain): a processing graph as an
     ordered node list;
     each node's `input` names an earlier node (acyclic by construction) and defaults
     to the nearest earlier source or processor, so a plain list is a linear chain.

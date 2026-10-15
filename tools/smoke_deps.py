@@ -36,9 +36,9 @@ DEPENDENCIES: list[tuple[str, str, bool]] = [
     ("python-picard", "picard", True),
     ("mne-icalabel", "mne_icalabel", True),
     ("onnxruntime", "onnxruntime", True),
-    ("mne-connectivity", "mne_connectivity", False),
-    ("antropy", "antropy", False),
-    ("numba", "numba", False),
+    ("mne-connectivity", "mne_connectivity", True),
+    ("antropy", "antropy", True),
+    ("numba", "numba", True),
 ]
 
 

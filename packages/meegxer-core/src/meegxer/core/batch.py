@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from meegxer.core.block import Block, Event, EventBlock, FeatureBlock, concat_blocks
 from meegxer.core.cache import Cache, CachedOutput
 from meegxer.core.graph import Graph, GraphError, GraphNode
-from meegxer.core.node import NodeRole, Probe, Sink, Source
+from meegxer.core.node import NodeRole, Probe, Sink, Source, output_blocks
 from meegxer.core.serialization import canonical_json, fingerprint
 from meegxer.core.stage import Stage, StageStatus
 
@@ -154,11 +154,11 @@ class BatchScheduler:
         events: list[Event] = []
         for block in signal_in:
             transformed = stage.transform(block, input_fp)
-            out.append(transformed.block)
+            out.extend(output_blocks(transformed.block))
             events.extend(transformed.events)
         tail = stage.flush(input_fp)  # what a delaying node still holds
         if tail is not None:
-            out.append(tail.block)
+            out.extend(output_blocks(tail.block))
             events.extend(tail.events)
         result.events[node.id] = tuple(events)
         result.computed.append(node.id)
