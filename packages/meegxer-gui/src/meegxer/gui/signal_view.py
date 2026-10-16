@@ -6,8 +6,10 @@ thick, comparison probes thin and faded. Difference mode shows Main minus the
 first comparison (what that stretch of the chain removed); spectrum mode shows
 power spectra of the same windows. Bypassed data is hatched.
 
-Time moves only with the panner under each trace area, so the shown span is
-always filled edge to edge (no blank margins). The mouse works on the Y axis only:
+Time moves only with the panner under each trace area, and the shown span is
+always the chosen one (e.g. 10 s): no margins beyond it, and while a live stream
+is younger than the span the part before its first data stays blank. The mouse
+works on the Y axis only:
 the wheel scales it, dragging moves it, a double click fits it again. While the
 stacked window is open the signal view rests; the stacked window has its own
 channels, span and panner.

@@ -12,8 +12,9 @@ from typing import Any
 
 import numpy as np
 
-from meegxer.core.block import Block, concat_blocks
+from meegxer.core.block import Block, FeatureBlock, concat_blocks
 from meegxer.core.conformance import check_blockwise_equivalence
+from meegxer.core.node import output_blocks
 from meegxer.core.sources import SyntheticSource
 from meegxer.core.stage import Stage, signal_fingerprint
 from meegxer.plugins.adapter import PluginProcessor, plugin_class
@@ -110,13 +111,29 @@ def run_conformance(
 
     fp = signal_fingerprint(block.info)
     reference = Stage(plugin_cls(), params)
-    one_pass: list[Block] = []
+    one_pass: list[Any] = []
 
     def transform() -> str:
         if plugin_cls.manifest.requires_fit:
             reference.fit(block, fp)
         result = reference.transform(block, fp)
         out = result.block
+        if plugin_cls.manifest.kind == "analysis":
+            windows = list(output_blocks(out))
+            tail = reference.flush(fp)
+            if tail is not None:
+                windows += list(output_blocks(tail.block))
+            if not windows or not all(isinstance(w, FeatureBlock) for w in windows):
+                raise AssertionError("expected feature windows")
+            for w in windows:
+                assert isinstance(w, FeatureBlock)
+                if not (block.sample_index <= w.window[0] <= w.window[1]
+                        <= block.stop_index):  # fmt: skip
+                    raise AssertionError(f"window {w.window} outside the input")
+                if not np.all(np.isfinite(w.data)):
+                    raise AssertionError("features contain NaN or inf")
+            one_pass.extend(windows)
+            return f"{len(windows)} feature windows, shape {windows[0].data.shape}"
         if not isinstance(out, Block):
             raise AssertionError("expected a Signal block")
         tail = reference.flush(fp)  # a lagging plugin hands over its last samples
@@ -157,6 +174,21 @@ def run_conformance(
         assert isinstance(processor, PluginProcessor)
         processor.worker._kill()  # simulate a crash between blocks
         second = stage.transform(block.slice(half, block.stop_index), fp).block
+        if plugin_cls.manifest.kind == "analysis":
+            got = [*output_blocks(first), *output_blocks(second)]
+            tail = stage.flush(fp)
+            if tail is not None:
+                got += output_blocks(tail.block)
+            processor.close()
+            same = len(got) == len(one_pass) and all(
+                isinstance(a, FeatureBlock) and isinstance(b, FeatureBlock)
+                and a.window == b.window
+                and np.allclose(a.data, b.data, rtol=1e-6, atol=1e-10)
+                for a, b in zip(got, one_pass, strict=False)
+            )  # fmt: skip
+            if not same:
+                raise AssertionError("feature windows after restart differ")
+            return "worker killed mid-stream; relaunched and continued exactly"
         assert isinstance(first, Block) and isinstance(second, Block)
         parts = [first, second]
         tail = stage.flush(fp)

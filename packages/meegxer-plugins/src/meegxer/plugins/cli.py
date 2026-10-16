@@ -44,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("image", nargs="?", help="container image")
     check.add_argument("--engine", help="docker or podman")
     check.add_argument(
-        "--script", type=Path, help="a custom script (process(raw, ...))"
+        "--script", type=Path, help="a custom script (process, transform or features)"
     )
     check.add_argument("--param", action="append", default=[], help="name=value")
     check.add_argument(
@@ -58,7 +58,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     add.add_argument("image", nargs="?", help="container image")
     add.add_argument("--engine")
-    add.add_argument("--script", type=Path, help="a custom script (process(raw, ...))")
+    add.add_argument(
+        "--script", type=Path, help="a custom script (process, transform or features)"
+    )
     add.add_argument(
         "--accept-risk",
         action="store_true",

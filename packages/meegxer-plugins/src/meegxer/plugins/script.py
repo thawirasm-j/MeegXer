@@ -44,6 +44,20 @@ recording as an ``mne.io.Raw`` plus the settings it names, and returns the model
 input (no look-ahead). A live script must give the same result block by block as
 in one pass (acceptance test 1); ``meegxer-plugin check --script`` tests that.
 
+A feature-extraction script defines ``features``, called once per analysis
+window, live and offline alike::
+
+    def features(data, info, fmin: float = 8.0, fmax: float = 13.0):
+        ...                      # data: (channels, samples) of one window
+        return {"power": p, "peak": f}   # each: one value per channel
+
+It returns a dict of feature name -> one value per channel (or a channels x
+features array). The runner cuts the stream into windows and keeps the unfinished
+one between blocks, so the result never depends on how the stream is cut. Every
+such strip gets ``window`` (default 2 s) and ``step`` (0.5 s) settings; declare
+them in the signature to choose other defaults (``features`` then receives them
+too). ``info`` is optional, as with ``transform``.
+
 The runner speaks spec/plugin-protocol.md through the bundled SDK, in its own
 process, with the user's permissions (rule 9).
 """
@@ -63,9 +77,15 @@ import numpy as np
 
 from meegxer.plugins._sdk import Plugin, run
 
-_ENTRY = ("process", "transform")
-# transform parameters that are not settings
+_ENTRY = ("process", "transform", "features")
+# transform/features parameters that are not settings
 _RESERVED = {"state", "model", "info"}
+# the windowing settings every features script gets (seconds)
+_WINDOWING = {"window": 2.0, "step": 0.5}
+_WINDOW_TEXT = {
+    "window": "Length of each analysis window",
+    "step": "Time from one window to the next",
+}
 _TYPES: dict[type, str] = {bool: "bool", int: "int", float: "float", str: "string"}
 _UNIT = re.compile(r"\(([^()\s]{1,8})\)\.?\s*$")
 
@@ -80,20 +100,26 @@ def load_script(path: Path) -> ModuleType:
         raise ScriptError(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    process, transform = (callable(getattr(module, f, None)) for f in _ENTRY)
-    if process == transform:
+    found = [f for f in _ENTRY if callable(getattr(module, f, None))]
+    if len(found) != 1:
         raise ScriptError(
             f"{path.name} needs one function: process(raw, ...) for offline use, "
-            "or transform(data, state, ...) for live and offline use"
-            + (" (it has both)" if process else "")
+            "transform(data, state, ...) for live and offline use, or "
+            "features(data, ...) for feature extraction"
+            + (f" (it has {' and '.join(found)})" if found else "")
         )
-    if process and callable(getattr(module, "fit", None)):
-        raise ScriptError("fit goes with transform (live scripts), not process")
+    if found[0] != "transform" and callable(getattr(module, "fit", None)):
+        raise ScriptError(f"fit goes with transform (live scripts), not {found[0]}")
     return module
 
 
+def entry_kind(module: ModuleType) -> str:
+    """Which convention the script follows: process, transform or features."""
+    return next(f for f in _ENTRY if callable(getattr(module, f, None)))
+
+
 def is_live(module: ModuleType) -> bool:
-    return callable(getattr(module, "transform", None))
+    return entry_kind(module) == "transform"
 
 
 def _raw(data: np.ndarray, info: dict[str, Any]) -> Any:
@@ -162,34 +188,62 @@ def _param(name: str, p: inspect.Parameter, hint: Any, text: str) -> dict[str, A
 
 def script_manifest(module: ModuleType, path: Path) -> dict[str, Any]:
     """The plugin manifest of a custom script, from its signature and docstrings."""
-    live = is_live(module)
-    entry = module.transform if live else module.process
+    kind = entry_kind(module)
+    live = kind == "transform"
+    entry = getattr(module, kind)
     params = list(inspect.signature(entry).parameters.items())
-    first = "the block (data)" if live else "the recording"
+    first = "the recording" if kind == "process" else "the data"
     if not params:
         raise ScriptError(f"{entry.__name__} needs {first} as its first argument")
     if live and "state" not in dict(params):
         raise ScriptError("transform needs a state parameter: transform(data, state)")
-    settings = [(n, p) for n, p in params[1:] if not (live and n in _RESERVED)]
+    if kind == "features" and "state" in dict(params):
+        raise ScriptError(
+            "features gets one whole window and keeps no state; "
+            "use transform(data, state) for a stream processor"
+        )
+    settings = [(n, p) for n, p in params[1:]
+                if not (kind != "process" and n in _RESERVED)]  # fmt: skip
     hints = typing.get_type_hints(entry)
     texts = _docstring_params(entry.__doc__ or "")
+    windowing = []
+    if kind == "features":
+        declared = dict(settings)
+        for name, default in _WINDOWING.items():
+            if name not in declared:
+                windowing.append({"name": name, "type": "float",
+                                  "default": default, "unit": "s",
+                                  "description": _WINDOW_TEXT[name]})  # fmt: skip
+        for name, text in _WINDOW_TEXT.items():
+            texts[name] = texts.get(name) or text
     stem = re.sub(r"[^a-z0-9_]+", "_", path.stem.lower()).strip("_") or "script"
     summary = (inspect.getdoc(module) or inspect.getdoc(entry) or "").split("\n\n")
     manifest: dict[str, Any] = {
         "spec_version": "0.2.5",
         "name": str(getattr(module, "NAME", f"script.{stem}")),
         "version": str(getattr(module, "__version__", "0.1.0")),
-        "type": "stream",
-        "availability": "both" if live else "offline",
+        "type": "analysis" if kind == "features" else "stream",
+        "availability": "offline" if kind == "process" else "both",
         "description": summary[0].replace("\n", " ").strip()
         or f"Custom script {path.name}",
         "inputs": [{"name": "in", "type": "signal"}],
-        "outputs": [{"name": "out", "type": "signal"}],
+        "outputs": [
+            {"name": "out", "type": "features" if kind == "features" else "signal"}
+        ],
         "params": [
             _param(name, p, hints.get(name), texts.get(name, ""))
             for name, p in settings
-        ],
+        ]
+        + windowing,
     }
+    if kind == "features":
+        for spec in manifest["params"]:
+            if spec["name"] in _WINDOWING:
+                if spec["type"] not in ("int", "float"):
+                    raise ScriptError(f"{spec['name']} is a time in seconds")
+                spec.setdefault("unit", "s")
+                if spec["type"] == "float":
+                    spec.setdefault("min", 0.01)
     if live and callable(getattr(module, "fit", None)):
         manifest["requires_fit"] = True
     manifest.update(_credits(module))
@@ -230,8 +284,9 @@ def _credits(module: ModuleType) -> dict[str, Any]:
 
 
 class ScriptPlugin(Plugin):
-    """Wraps ``process(raw, ...)`` (the whole recording in, the same shape out) or
-    ``transform(data, state, ...)`` with an optional ``fit(raw, ...)``."""
+    """Wraps ``process(raw, ...)`` (the whole recording in, the same shape out),
+    ``transform(data, state, ...)`` with an optional ``fit(raw, ...)``, or
+    ``features(data, ...)`` (one value per channel and feature, per window)."""
 
     manifest: ClassVar[dict[str, Any]] = {}
 
@@ -255,9 +310,57 @@ class ScriptPlugin(Plugin):
         state: dict[str, Any] | None,
         params: dict[str, Any],
     ) -> tuple[Any, ...]:
-        if is_live(self.module):
+        kind = entry_kind(self.module)
+        if kind == "transform":
             return self._live(data, info, model, state, params)
+        if kind == "features":
+            return self._windows(data, info, state, params)
         return self._process(data, info, state, params)
+
+    def _windows(
+        self,
+        data: np.ndarray,
+        info: dict[str, Any],
+        state: dict[str, Any] | None,
+        params: dict[str, Any],
+    ) -> tuple[Any, ...]:
+        """Buffer the stream and compute each complete window (the same windows
+        whatever the block size; spec/plugin-protocol.md, Feature results)."""
+        sfreq = float(info["sfreq"])
+        n = max(1, round(float(params["window"]) * sfreq))
+        step = max(1, round(float(params["step"]) * sfreq))
+        index = int(info["sample_index"])
+        if not state:  # times come from the first block, so splits agree
+            state = {"buffer": np.zeros((data.shape[0], 0)), "start": index,
+                     "next": index, "t_ref": float(info.get("timestamp", 0.0)),
+                     "i_ref": index}  # fmt: skip
+        t_ref, i_ref = float(state["t_ref"]), int(state["i_ref"])
+        buffer = np.asarray(state["buffer"], dtype=np.float64)
+        start, nxt = int(state["start"]), int(state["next"])
+        if index < start:  # a skipped stretch (step > window)
+            data = data[:, start - index :]
+        buffer = np.concatenate([buffer, data], axis=1)
+        wanted = _accepted(self.module.features, params)
+        extra = _accepted(self.module.features, {"info": info})
+        windows = []
+        while nxt + n <= start + buffer.shape[1]:
+            x = buffer[:, nxt - start : nxt - start + n]
+            values, names = _feature_table(
+                self.module.features(x.copy(), **wanted, **extra), x.shape[0]
+            )
+            windows.append({"window": [nxt, nxt + n],
+                            "timestamp": t_ref + (nxt - i_ref) / sfreq,
+                            "dims": ["channel", "feature"],
+                            "coords": {"channel": list(info["ch_labels"]),
+                                       "feature": names},
+                            "data": values})  # fmt: skip
+            nxt += step
+        keep = min(max(nxt - start, 0), buffer.shape[1])
+        buffer, start = buffer[:, keep:], start + keep
+        start = max(start, nxt)  # the next window starts beyond what we hold
+        new_state = {"buffer": buffer, "start": start, "next": nxt,
+                     "t_ref": t_ref, "i_ref": i_ref}  # fmt: skip
+        return windows, new_state, []
 
     def _live(
         self,
@@ -318,6 +421,31 @@ class ScriptPlugin(Plugin):
                 f"samples, got {array.shape}"
             )
         return array, state or {}, events
+
+
+def _feature_table(got: Any, n_channels: int) -> tuple[np.ndarray, list[str]]:
+    """``features``' return value as a channels x features array and names."""
+    if isinstance(got, dict):
+        names = [str(k) for k in got]
+        columns = []
+        for name, v in got.items():
+            col = np.asarray(v, dtype=np.float64).reshape(-1)
+            if col.size != n_channels:
+                raise ScriptError(
+                    f"feature {name!r}: give one value per channel ({n_channels}), "
+                    f"got {col.size}"
+                )
+            columns.append(col)
+        return np.stack(columns, axis=1), names
+    values = np.asarray(got, dtype=np.float64)
+    if values.ndim == 1:
+        values = values[:, None]
+    if values.ndim != 2 or values.shape[0] != n_channels:
+        raise ScriptError(
+            "features must return a dict of name -> one value per channel, or a "
+            f"{n_channels} channels x features array, got shape {values.shape}"
+        )
+    return values, [f"feature_{i}" for i in range(values.shape[1])]
 
 
 def main(argv: list[str] | None = None) -> int:

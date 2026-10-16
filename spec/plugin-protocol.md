@@ -106,6 +106,27 @@ plugin should also declare `latency_samples` in its manifest.
 
 Each event is `{"sample_index": int, "label": str, "duration": int, "payload": {...}}`.
 
+**Feature results (0.2.14).** A plugin whose manifest has `type: "analysis"` (a
+Features output) replies without a `data` array. Its `result` carries `features`,
+the feature windows completed by this call (possibly none), in order:
+
+```json
+{"type": "result", "id": 7, "state": {...}, "events": [],
+ "features": [{"window": [1000, 1500], "dims": ["channel", "feature"],
+               "coords": {"channel": ["Fz", "Cz"], "feature": ["alpha", "beta"]},
+               "data": "f0"}]}
+```
+
+`window` is the source sample range `[start, stop)` the values were computed from,
+`dims` names each axis of the array named by `data` (sent like any other array),
+`coords` optionally labels the entries of a dimension (`channel` must hold
+channel labels), and `timestamp` optionally gives the LSL time of the window's
+first sample. The host keeps the windows' order; without `timestamp` it times a
+window from the block's timestamp, which can differ in the last bits with how the
+stream is cut, so a plugin that wants exact times anchors them to its first block
+(keeping that anchor in `state`). The result must not depend on how the stream is cut into blocks
+(acceptance test 1), so a windowing plugin keeps its unfinished window in `state`.
+
 The host owns model and state; the plugin keeps nothing between blocks except the
 models it was given. A plugin that crashes or times out is restarted and continues
 with the state the host already holds.

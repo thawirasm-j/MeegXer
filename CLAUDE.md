@@ -105,7 +105,7 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - Plugins: `uv run meegxer-plugin check IMAGE` (conformance),
   `meegxer-plugin add IMAGE`, `meegxer-plugin list`. Custom scripts
   (`process(raw, ...)` offline, or `transform(data, state, ...)` [+ `fit(raw, ...)`]
-  live and offline): `meegxer-plugin check|add --script FILE` (`add` asks to accept
+  or `features(data, ...)` per window, live and offline): `meegxer-plugin check|add --script FILE` (`add` asks to accept
   the local-code notice, or `--accept-risk`, then runs the conformance suite). SDKs in
   `packages/meegxer-plugins/sdk/`; reference plugins in `packages/meegxer-plugins/plugins/`.
 - New nodes register in the `meegxer.nodes` entry-point group (see package

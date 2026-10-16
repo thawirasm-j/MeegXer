@@ -204,7 +204,11 @@ transform(block, model, state, params)        -> block_out, state, events
   result must keep channels, rate and length; added annotations become events.
   Live tier: `transform(data, state, ...)` block by block (availability both), with
   optional `info`/`model` and an optional `fit(raw, ...)` (requires_fit); state is
-  host-owned like any plugin's. Adding a script runs the conformance suite (for a
+  host-owned like any plugin's. Feature tier (spec 0.2.14): `features(data, ...)`
+  per analysis window returns name → per-channel values; the runner buffers the
+  stream in host-owned state (as `WindowedFeatures` does), adds `window`/`step`
+  settings and emits Features (`channel` × `feature`) through the protocol's
+  `features` result. Adding a script runs the conformance suite (for a
   live script including acceptance test 1 and a restart mid-stream) and refuses it
   on failure. Next: the Octave/EEGLAB tier (`function EEG = process(EEG, ...)`,
   then a live one), committed but after the MNE side.

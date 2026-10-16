@@ -166,7 +166,7 @@ def add_image(
 
 
 def script_command(script: Path) -> list[str]:
-    """The command that runs a custom script (``process(raw, ...)``) as a plugin."""
+    """The command that runs a custom script (any of its conventions) as a plugin."""
     return [sys.executable, "-m", "meegxer.plugins.script", str(script.resolve())]
 
 

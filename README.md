@@ -75,8 +75,8 @@ The `meegxer` install includes everything: the built-in nodes, the plugin runtim
 and the `meegxer-plugin` command. Processing runs on your machine.
 
 **Custom scripts:** your own MNE-Python function becomes a strip:
-`process(raw, ...)` for offline runs, or `transform(data, state, ...)` for live and
-offline; see [docs/CUSTOM_SCRIPTS.md](docs/CUSTOM_SCRIPTS.md). In the
+`process(raw, ...)` for offline runs, `transform(data, state, ...)` for live and
+offline, or `features(data, ...)` for windowed feature extraction; see [docs/CUSTOM_SCRIPTS.md](docs/CUSTOM_SCRIPTS.md). In the
 GUI: *+ Add strip → Add a custom script…*. It runs on your computer with your
 permissions, so MeegXer asks you to accept that first.
 

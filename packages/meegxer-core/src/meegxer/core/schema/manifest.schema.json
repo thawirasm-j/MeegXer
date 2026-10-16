@@ -220,6 +220,11 @@
             "max": {
               "type": "number"
             },
+            "step": {
+              "description": "How much one step (arrow, wheel) changes the value in a UI (spec 0.2.13); hosts choose one when absent.",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
             "name": true,
             "description": true,
             "unit": true,
@@ -241,6 +246,11 @@
             },
             "max": {
               "type": "integer"
+            },
+            "step": {
+              "description": "How much one step (arrow, wheel) changes the value in a UI (spec 0.2.13); hosts choose one when absent.",
+              "type": "integer",
+              "exclusiveMinimum": 0
             },
             "name": true,
             "description": true,

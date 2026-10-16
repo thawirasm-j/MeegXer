@@ -318,3 +318,22 @@ def test_live_legend_shows_each_tap_delay(qapp: QApplication) -> None:
     view.refresh(lambda p, s: replace(window(), probe=p), "tap", ["tap_in"])
     assert view.legend.text() == "Main: after Notch · Input"
     dispose(qapp, view)
+
+
+def test_the_live_window_is_always_the_full_span(qapp: QApplication) -> None:
+    """A stream younger than the span: the window still covers the whole span,
+    blank before the first data, so the time axis does not change size."""
+    from types import SimpleNamespace
+
+    from meegxer.core.display import DisplayFrame, Envelope
+    from meegxer.gui.buffers import ProbeBuffer
+    from meegxer.gui.main_window import MainWindow
+
+    buf = ProbeBuffer()
+    mins = np.zeros((2, 250))  # 2 s at 125 bins per second
+    buf.add(DisplayFrame("tap", 0, ("Cz", "Pz"), 250.0, Envelope(0, 2, mins, mins)))
+    host = SimpleNamespace(buffers={"tap": buf}, _live_reference=lambda b: b)
+    win = MainWindow._live_window(host, "tap", 10.0)  # type: ignore[arg-type]
+    assert win is not None
+    assert win.t[0] == pytest.approx(-10.0) and len(win.t) == 1250
+    assert np.isnan(win.mins[:, :1000]).all() and not np.isnan(win.mins[:, -250:]).any()
