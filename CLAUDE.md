@@ -74,6 +74,9 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - `uv run python tools/check_sterile.py`: sterile wheels contain no runtime (rule 10).
 - `python tools/smoke_deps.py --python 3.14`: planned third-party deps install/import.
 - `uv run meegxer nodes`; `uv run meegxer run pipeline.json -i rec.set -o out.set`.
+- Sessions (`spec/session.md`): `meegxer run … --session out.meegxer.json`,
+  `meegxer run out.meegxer.json`, `meegxer session check FILE`,
+  `meegxer session save FILE` (from the daemon, with calibrated models).
 - Live: `uv run meegxer daemon --pipeline live.json --start`, then `meegxer status`,
   `meegxer set hp low=0.5`, `meegxer calibrate NODE --seconds 60`, `meegxer stop`,
   `meegxer clear-calibration [NODE]`, `meegxer passthrough NODE --on/--off`.

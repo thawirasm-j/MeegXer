@@ -248,6 +248,9 @@ class _RawSource(Source):
     def content_id(self) -> str:
         return _hash_files(self._files())
 
+    def input_files(self) -> list[Path]:
+        return self._files()
+
 
 class FileSource(_RawSource):
     """EDF/BDF, EEGLAB .set, BrainVision, FIF: anything ``mne.io.read_raw`` reads."""

@@ -67,6 +67,31 @@ def image_id(image: str, engine: str | None = None) -> str:
     return result.stdout.strip()
 
 
+def repo_digests(image: str, engine: str | None = None) -> list[str]:
+    """Registry digests of a pulled image (empty for a locally built one)."""
+    result = subprocess.run(
+        [find_engine(engine), "image", "inspect", "--format",
+         "{{json .RepoDigests}}", image],
+        capture_output=True, text=True, check=False, timeout=60,
+    )  # fmt: skip
+    try:
+        digests = json.loads(result.stdout or "null")
+    except json.JSONDecodeError:
+        return []
+    return [str(d) for d in digests or []]
+
+
+def origin_of(entry: dict[str, Any]) -> dict[str, Any]:
+    """Where an index entry's plugin comes from, as sessions record it."""
+    if "command" in entry:
+        return {"command": list(entry["command"]), "unsandboxed": True}
+    origin: dict[str, Any] = {"image": entry["image"]}
+    for key in ("image_id", "repo_digests", "engine"):
+        if entry.get(key):
+            origin[key] = entry[key]
+    return origin
+
+
 def launcher_for_entry(entry: dict[str, Any]) -> Launcher:
     if "command" in entry:
         if not entry.get("unsandboxed"):
@@ -87,6 +112,7 @@ def add_image(
         "image": image,
         "engine": engine,
         "image_id": image_id(image, engine),
+        "repo_digests": repo_digests(image, engine),
         "manifest": manifest,
     }
     entries = [e for e in load_index(path) if e["manifest"]["name"] != manifest["name"]]
@@ -123,7 +149,13 @@ def node_classes() -> list[type[PluginProcessor]]:
         try:
             if "command" in entry and os.environ.get(UNSANDBOXED_ENV) != "1":
                 continue
-            classes.append(plugin_class(entry["manifest"], launcher_for_entry(entry)))
+            classes.append(
+                plugin_class(
+                    entry["manifest"],
+                    launcher_for_entry(entry),
+                    origin=origin_of(entry),
+                )
+            )
         except Exception as exc:
             name = entry.get("manifest", {}).get("name", "?")
             print(f"meegxer: skipping plugin {name}: {exc}", file=sys.stderr)

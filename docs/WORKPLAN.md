@@ -310,9 +310,15 @@ stops the feature outlets.
 ## M7 — Reproducibility and release gate
 
 - Session JSON (graph, node versions, params, fitted models or their hashes, spec
-  version, image digests): the unit of reproducibility.
+  version, image digests): the unit of reproducibility. **Done:** `spec/session.md`
+  (format 1.0, spec 0.2.9): models as readable JSON, plugin provenance (image,
+  image ID, registry digests), path-independent file fingerprints, deterministic
+  `.set` writer; CLI `run --session`, `session check/save`; daemon
+  `get_session`/`load_session`. GUI open/save: next.
 - BIDS-derivatives output layout with provenance.
 - **Acceptance test 4:** save → reload on a second machine → identical output file.
+  **Passing** (`packages/meegxer-cli/tests/test_cli_session.py`, ICA model reused,
+  byte-identical `.set`).
 - **Acceptance test 5:** full suite on Linux and Windows (Docker Desktop / WSL2).
 - Publish to PyPI: the five `meegxer-*` packages plus the `meegxer` bundle (the
   sterile set; it also carries the CLI and GUI commands so `uv tool install

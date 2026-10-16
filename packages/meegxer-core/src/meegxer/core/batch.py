@@ -21,20 +21,45 @@ from meegxer.core.cache import Cache, CachedOutput
 from meegxer.core.graph import Graph, GraphError, GraphNode
 from meegxer.core.node import NodeRole, Output, Probe, Sink, Source, output_blocks
 from meegxer.core.serialization import canonical_json, fingerprint
-from meegxer.core.stage import Stage, StageStatus
+from meegxer.core.stage import Stage, StageStatus, signal_fingerprint
 
 type Stream = list[Block | FeatureBlock | EventBlock]
 
 
 def source_fingerprint(source: Source) -> str:
-    """Identity of a source's output: node, parameters and data content."""
+    """Identity of a source's output: node, data content (or, for sources without
+    one, the parameters that generate it) and the channel description it delivers
+    (which recording overrides change). A file is identified by its content, not
+    its path, so a model fitted on it stays valid when the file moves (sessions)."""
+    content = source.content_id()
     return fingerprint(
         "source",
         source.manifest.name,
         source.manifest.version,
-        canonical_json(source.params),
-        source.content_id(),
+        content or canonical_json(source.params),
+        signal_fingerprint(source.info),
     )
+
+
+def offline_input_fingerprints(graph: Graph) -> dict[str, str]:
+    """The input fingerprint of every node as a batch run computes it (sources
+    by content, offline variants of adaptable nodes), without running anything:
+    tells whether a loaded model would be reused or refitted (sessions)."""
+    outputs: dict[str, str] = {}
+    inputs: dict[str, str] = {}
+    for node in graph.nodes:
+        if isinstance(node.impl, Source):
+            outputs[node.id] = source_fingerprint(node.impl)
+            continue
+        assert node.input is not None
+        inputs[node.id] = outputs.get(node.input, "")
+        if isinstance(node.impl, Stage):
+            try:
+                stage = node.impl.for_mode("offline")
+            except ValueError:
+                stage = node.impl
+            outputs[node.id] = stage.output_fingerprint(inputs[node.id])
+    return inputs
 
 
 def split_block(block: Block, size: int | None) -> list[Block]:

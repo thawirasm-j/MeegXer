@@ -36,6 +36,11 @@ class PluginProcessor(Processor):
 
     launcher: ClassVar[Launcher]
     worker_options: ClassVar[dict[str, Any]] = {}
+    origin: ClassVar[dict[str, Any]] = {}  # image or command (sessions)
+
+    @classmethod
+    def provenance(cls) -> dict[str, Any]:
+        return dict(cls.origin)
 
     def __init__(self) -> None:
         self._worker: PluginWorker | None = None
@@ -159,6 +164,7 @@ def plugin_class(
     launcher: Launcher,
     *,
     worker_options: dict[str, Any] | None = None,
+    origin: dict[str, Any] | None = None,
 ) -> type[PluginProcessor]:
     """Build the node class for a plugin from its (handshake) manifest."""
     parsed = Manifest.from_dict(manifest)
@@ -170,6 +176,7 @@ def plugin_class(
         "manifest": parsed,
         "launcher": launcher,
         "worker_options": dict(worker_options or {}),
+        "origin": dict(origin or {}),
         "__doc__": f"Plugin {parsed.name} {parsed.version} ({launcher.describe()}).",
     }
     name = "Plugin_" + parsed.name.replace(".", "_")
