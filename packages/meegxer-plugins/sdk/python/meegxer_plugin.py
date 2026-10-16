@@ -30,6 +30,13 @@ of its first output sample (output may be shorter than the input), and returns w
 it still holds at the end of the stream from ``flush(info, model, state, params)``.
 Keep everything that must survive between blocks in ``state``: the host owns it,
 saves it and restores it after a restart.
+
+An analysis plugin (manifest ``"type": "analysis"``, a Features output) returns
+the feature windows it completed instead of ``data``: a list of dicts with
+``window`` ([start, stop) sample range), ``dims`` (axis names), ``data`` (the
+array) and optionally ``coords`` ({dim: labels}) and ``timestamp`` (LSL time of
+the window's first sample; anchor it to the first block so it does not depend on
+how the stream is cut).
 Never print to stdout (it carries the protocol); log to stderr.
 """
 
@@ -45,7 +52,7 @@ from typing import Any, BinaryIO, ClassVar
 import numpy as np
 
 SDK = "meegxer-python/0.1.0"
-SPEC_VERSION = "0.2.5"
+SPEC_VERSION = "0.2.14"
 MAGIC = b"MXP1"
 _DTYPES = {"float32", "float64", "int32", "int64", "uint8", "bool"}
 
@@ -174,6 +181,22 @@ def from_wire(tree: Any, arrays: dict[str, np.ndarray]) -> Any:
     return tree
 
 
+def _features_to_wire(windows: list, arrays: dict[str, np.ndarray]) -> list:
+    """Feature windows (dicts with window, dims, data, coords) for a result."""
+    wire = []
+    for i, w in enumerate(windows):
+        name = f"f{i}"
+        arrays[name] = np.asarray(w["data"], dtype=np.float64)
+        coords = {str(k): [v.item() if isinstance(v, np.generic) else v for v in vals]
+                  for k, vals in (w.get("coords") or {}).items()}  # fmt: skip
+        wire.append({"window": [int(w["window"][0]), int(w["window"][1])],
+                     "dims": [str(d) for d in w["dims"]], "coords": coords,
+                     "data": name})  # fmt: skip
+        if w.get("timestamp") is not None:
+            wire[-1]["timestamp"] = float(w["timestamp"])
+    return wire
+
+
 # -- main loop ------------------------------------------------------------------
 
 
@@ -264,27 +287,26 @@ def run(
                 else:
                     got = plugin.flush(info, model, state, header["params"])
                     if got is None:
-                        got = (np.zeros((len(info["ch_labels"]), 0)), state, [], 0)
+                        empty = (
+                            []
+                            if plugin.manifest.get("type") == "analysis"
+                            else np.zeros((len(info["ch_labels"]), 0))
+                        )
+                        got = (empty, state, [], 0)
                     first = 0
                 data, new_state, events = got[0], got[1], got[2]
                 if len(got) > 3:
                     first = int(got[3])
-                out_arrays: dict[str, np.ndarray] = {
-                    "data": np.asarray(data, dtype=np.float32)
-                }
-                tree = to_wire(new_state or {}, out_arrays, "s")
-                evs = [{"duration": 0, "payload": {}, **e} for e in events]
-                write_frame(
-                    out,
-                    {
-                        "type": "result",
-                        "id": rid,
-                        "state": tree,
-                        "events": evs,
-                        "sample_index": first,
-                    },
-                    out_arrays,
-                )
+                out_arrays: dict[str, np.ndarray] = {}
+                reply = {"type": "result", "id": rid}
+                if plugin.manifest.get("type") == "analysis":
+                    reply["features"] = _features_to_wire(data or [], out_arrays)
+                else:
+                    out_arrays["data"] = np.asarray(data, dtype=np.float32)
+                    reply["sample_index"] = first
+                reply["state"] = to_wire(new_state or {}, out_arrays, "s")
+                reply["events"] = [{"duration": 0, "payload": {}, **e} for e in events]
+                write_frame(out, reply, out_arrays)
             else:
                 write_frame(
                     out,

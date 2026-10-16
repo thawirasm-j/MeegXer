@@ -548,8 +548,8 @@ class ChainView(QScrollArea):
         script = menu.addAction("✎ Add a custom script…")
         script.setToolTip(
             "An MNE-Python script: process(raw, ...) for offline runs, or "
-            "transform(data, state, ...) for live and offline (runs on your "
-            "computer, unsandboxed)"
+            "transform(data, state, ...) for live and offline, or features(data, "
+            "...) per window (runs on your computer, unsandboxed)"
         )
         script.triggered.connect(lambda: self.script_requested.emit(index))
         menu.setToolTipsVisible(True)

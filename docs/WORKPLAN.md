@@ -348,9 +348,9 @@ Next, in order:
    Python tier (`docs/CUSTOM_SCRIPTS.md`), *Add a custom script…* in the GUI. Live Python
    tier done (0.2.1a3): `transform(data, state, ...)` + optional `fit(raw, ...)`,
    conformance checked when added. Credit and custom grouping done (decision 41).
-   Next on the MNE side: feature-extraction scripts (`features(data, state, ...)`
-   returning windowed values), which need the plugin protocol to carry Features
-   results (spec + both SDKs + adapter). Committed after that: the Octave/EEGLAB tier
+   Feature-extraction scripts done: `features(data, ...)` per window, with Features
+   results in the plugin protocol (spec 0.2.14; Python SDK and adapter, the Octave
+   SDK gains them with the Octave tier). Committed next: the Octave/EEGLAB tier
    (`function EEG = process(EEG, ...)`, then live); "Enable Sterile mode" in the
    prompt once Sterile mode exists.
 2. **Sterile mode.** A processing-worker image with the built-in nodes; the whole

@@ -12,7 +12,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-from meegxer.core.block import Block, Event, SignalInfo
+from meegxer.core.block import Block, Event, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, Processor, TransformResult
 from meegxer.core.serialization import State, hash_state
@@ -101,9 +101,34 @@ class PluginProcessor(Processor):
             if "bad_request" in str(exc):
                 return None
             raise
-        if result is None or not isinstance(result.block, Block):
-            return result
+        if result is None:
+            return None
+        if not isinstance(result.block, Block):  # feature windows: any left?
+            return result if result.block else None
         return result if result.block.n_samples else None
+
+    def _features(
+        self, reply: Any, info: SignalInfo, block: Block | None
+    ) -> TransformResult:
+        """An analysis plugin's result: its completed feature windows (0.2.14)."""
+        if reply.type != "result" or not isinstance(reply.header.get("features"), list):
+            raise PluginError(f"expected a result with features, got {reply.header}")
+        windows = []
+        for w in reply.header["features"]:
+            start, stop = (int(v) for v in w["window"])
+            if w.get("timestamp") is not None:
+                timestamp = float(w["timestamp"])
+            elif block is not None:
+                timestamp = block.timestamp + (start - block.sample_index) / info.sfreq
+            else:
+                timestamp = 0.0
+            coords = {str(k): tuple(v) for k, v in (w.get("coords") or {}).items()}
+            data = np.asarray(reply.arrays[w["data"]], dtype=np.float64)
+            windows.append(FeatureBlock(data, tuple(w["dims"]), (start, stop),
+                                        timestamp, coords, info.stream_id))  # fmt: skip
+        new_state = tree_from_wire(reply.header.get("state") or {}, reply.arrays)
+        events = tuple(Event(**e) for e in reply.header.get("events", []))
+        return TransformResult(tuple(windows), new_state, events)
 
     def _exchange(
         self,
@@ -134,6 +159,8 @@ class PluginProcessor(Processor):
         if block is not None:
             header.update(sample_index=block.sample_index, timestamp=block.timestamp)
         reply = self.worker.request(header, arrays, models=models)
+        if self.manifest.kind == "analysis":
+            return self._features(reply, info, block)
         if reply.type != "result" or "data" not in reply.arrays:
             raise PluginError(f"expected a result with data, got {reply.header}")
         if isinstance(reply.header.get("info"), dict):

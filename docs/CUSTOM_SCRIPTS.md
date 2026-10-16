@@ -131,6 +131,55 @@ def transform(data, state, info, cutoff: float = 1.0, order: int = 4):
   tests it, and adding a script that fails is refused with the reason.
 - No look-ahead yet: the output covers the same samples as the input.
 
+## Feature-extraction scripts
+
+A script with `features` computes values per analysis window instead of changing
+the signal; it lands under *Custom feature extraction* and works live and offline:
+
+```python
+"""Alpha power and line length per channel."""
+
+import mne
+import numpy as np
+
+
+def features(data, info, fmin: float = 8.0, fmax: float = 13.0):
+    """Band power (Welch) and line length.
+
+    Parameters
+    ----------
+    fmin : float
+        Lower band edge (Hz).
+    fmax : float
+        Upper band edge (Hz).
+    """
+    psd, freqs = mne.time_frequency.psd_array_welch(
+        data,
+        info["sfreq"],
+        fmin=fmin,
+        fmax=fmax,
+        n_fft=min(256, data.shape[1]),
+        verbose="error",
+    )
+    return {
+        "alpha_power": psd.mean(axis=1),
+        "line_length": np.abs(np.diff(data, axis=1)).sum(axis=1),
+    }
+```
+
+- `data` is **one whole window**, `(channels, samples)` in volts. MeegXer cuts the
+  stream into windows and keeps the unfinished one between blocks, so there is no
+  state to manage and the result never depends on block sizes.
+- Return a dict of feature name → one value per channel (or a `channels × features`
+  array; its columns are then named `feature_0`, `feature_1`, …). The output is a
+  Features stream with `channel` and `feature` labels, which the feature writers
+  (CSV/TSV, BIDS derivatives) record per window.
+- Every such strip gets **window** (default 2 s) and **step** (0.5 s) settings.
+  Declare them in the signature (`window: float = 4.0`) to choose other defaults;
+  `features` then receives them too.
+- Optional `info`, as for `transform`. A window that is still incomplete at the end
+  of a recording is dropped, as the built-in feature strips do.
+
 Octave/EEGLAB scripts (`function EEG = process(EEG, ...)`) are planned next.
 
 ## Add one

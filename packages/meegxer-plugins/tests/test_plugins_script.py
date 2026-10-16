@@ -199,7 +199,7 @@ def test_live_script_settings_skip_state_info_and_model(tmp_path: Path) -> None:
     ("body", "message"),
     [
         ("def process(raw):\n    return raw\n\ndef transform(d, state):\n"
-         "    return d, state\n", "it has both"),
+         "    return d, state\n", "it has process and transform"),
         ("def transform(data, k=1.0):\n    return data\n", "needs a state"),
         ("def fit(raw):\n    return {}\n\ndef process(raw):\n    return raw\n",
          "fit goes with transform"),
@@ -324,3 +324,117 @@ def test_the_check_mentions_missing_credit_without_failing(
     credited = write(tmp_path, "credited.py", CREDITED)
     assert cli_main(["check", "--script", str(credited)]) == 0
     assert "2 author(s), 2 reference(s)" in capsys.readouterr().out
+
+
+# -- feature extraction: features(data, ...) ---------------------------------------
+
+BANDPOWER = '''
+    """Band power per channel (a feature-extraction script)."""
+
+    import numpy as np
+    from scipy import signal
+
+
+    def features(data, info, fmin: float = 8.0, fmax: float = 13.0):
+        """Mean power in a band and the line length.
+
+        Parameters
+        ----------
+        fmin : float
+            Lower band edge (Hz).
+        fmax : float
+            Upper band edge (Hz).
+        """
+        f, p = signal.welch(data, info["sfreq"], nperseg=min(128, data.shape[1]))
+        band = (f >= fmin) & (f <= fmax)
+        return {"power": p[:, band].mean(axis=1),
+                "line_length": np.abs(np.diff(data, axis=1)).sum(axis=1)}
+'''
+
+
+def test_feature_script_settings_include_the_windowing(tmp_path: Path) -> None:
+    path = write(tmp_path, "bp.py", BANDPOWER)
+    manifest = script_manifest(load_script(path), path)
+    assert manifest["type"] == "analysis" and manifest["availability"] == "both"
+    assert manifest["outputs"] == [{"name": "out", "type": "features"}]
+    params = {p["name"]: p for p in manifest["params"]}
+    assert list(params) == ["fmin", "fmax", "window", "step"]
+    assert params["window"]["default"] == 2.0 and params["window"]["unit"] == "s"
+    assert params["step"]["default"] == 0.5
+
+    own = "def features(data, window: float = 4.0):\n    return data.mean(axis=1)\n"
+    path = write(tmp_path, "own.py", own)
+    params = {p["name"]: p for p in script_manifest(load_script(path), path)["params"]}
+    assert params["window"]["default"] == 4.0 and params["window"]["unit"] == "s"
+    assert params["window"]["description"] == "Length of each analysis window"
+    assert params["step"]["default"] == 0.5
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("def features(data, state):\n    return {}\n", "keeps no state"),
+        ("def fit(raw):\n    return {}\n\ndef features(data):\n    return {}\n",
+         "fit goes with transform"),
+        ("def features(data):\n    return {}\n\ndef transform(d, state):\n"
+         "    return d, state\n", "it has transform and features"),
+    ],
+)  # fmt: skip
+def test_feature_script_conventions_are_explained(
+    tmp_path: Path, body: str, message: str
+) -> None:
+    path = write(tmp_path, "bad.py", body)
+    with pytest.raises(ScriptError, match=message):
+        script_manifest(load_script(path), path)
+
+
+def test_a_feature_script_gives_the_same_windows_however_the_stream_is_cut(
+    tmp_path: Path,
+) -> None:
+    from scipy import signal
+
+    from meegxer.core.block import FeatureBlock
+    from meegxer.core.conformance import check_blockwise_equivalence
+    from meegxer.core.node import output_blocks
+    from meegxer.core.sources import SyntheticSource
+    from meegxer.core.stage import Stage, signal_fingerprint
+
+    cls = script_class(write(tmp_path, "bp.py", BANDPOWER))
+    x = SyntheticSource({"duration": 4.0, "n_channels": 3, "sfreq": 200.0}).read(10**6)
+    assert x is not None
+    params = {"fmin": 8.0, "fmax": 13.0, "window": 1.0, "step": 0.5}
+    stage = Stage(cls(), params)
+    out = stage.transform(x, signal_fingerprint(x.info)).block
+    stage.processor.close()
+    windows = [w for w in output_blocks(out) if isinstance(w, FeatureBlock)]
+    assert [w.window for w in windows] == [(i, i + 200) for i in range(0, 601, 100)]
+    first = windows[0]
+    assert first.dims == ("channel", "feature")
+    assert first.coords == {"channel": x.info.ch_labels,
+                            "feature": ("power", "line_length")}  # fmt: skip
+    f, p = signal.welch(x.data[:, :200], 200.0, nperseg=128)
+    band = (f >= 8.0) & (f <= 13.0)
+    np.testing.assert_allclose(first.data[:, 0], p[:, band].mean(axis=1), rtol=1e-6)
+
+    processor = cls()
+    try:
+        worst = check_blockwise_equivalence(processor, x, params, trials=3)
+    finally:
+        processor.close()
+    assert worst < 1e-9
+
+
+def test_a_feature_script_that_returns_the_wrong_shape_is_explained(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(index.INDEX_ENV, str(tmp_path / "plugins.json"))
+    bad = "def features(data):\n    return {'mean': 1.0}\n"
+    assert cli_main(["check", "--script", str(write(tmp_path, "bad.py", bad))]) == 1
+    assert "one value per channel" in capsys.readouterr().out
+    good = write(tmp_path, "bp.py", BANDPOWER)
+    assert cli_main(["check", "--script", str(good)]) == 0
+    report = capsys.readouterr().out
+    assert "PASS  transform" in report and "feature windows" in report
+    assert "PASS  restart with host-held state" in report
+    assert cli_main(["add", "--script", str(good), "--accept-risk"]) == 0
+    assert [e["manifest"]["name"] for e in index.load_index()] == ["script.bp"]
