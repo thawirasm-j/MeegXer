@@ -21,7 +21,10 @@ channels and length. Its settings come from the signature: every parameter after
 int, float, str, or ``Literal[...]`` for a choice). The numpy-style docstring gives
 descriptions, and a trailing ``(unit)`` becomes the unit. Optional module-level
 ``NAME`` (default ``script.<file name>``), ``__version__`` (default 0.1.0) and the
-module docstring (the strip description). Annotations the script adds to the
+module docstring (the strip description). Credit, shown with the strip and kept in
+session and BIDS provenance: ``__author__`` (a string or a list), ``__license__``
+and ``REFERENCES``, a list of citations (strings, or dicts with ``citation`` and an
+optional ``doi`` or ``url``). Annotations the script adds to the
 returned recording come out as events.
 
 That tier runs offline only (the whole recording at once). A live script instead
@@ -189,7 +192,41 @@ def script_manifest(module: ModuleType, path: Path) -> dict[str, Any]:
     }
     if live and callable(getattr(module, "fit", None)):
         manifest["requires_fit"] = True
+    manifest.update(_credits(module))
     return manifest
+
+
+def _credits(module: ModuleType) -> dict[str, Any]:
+    """``__author__``, ``__license__`` and ``REFERENCES`` as manifest fields."""
+    out: dict[str, Any] = {}
+    authors = getattr(module, "__author__", None)
+    if authors:
+        out["authors"] = [authors] if isinstance(authors, str) else list(authors)
+    if getattr(module, "__license__", None):
+        out["license"] = str(module.__license__)
+    references = getattr(module, "REFERENCES", None) or []
+    if isinstance(references, str | dict):
+        references = [references]
+    refs = []
+    for ref in references:
+        if isinstance(ref, str):
+            refs.append({"citation": ref})
+        elif isinstance(ref, dict) and ref.get("citation"):
+            refs.append(
+                {k: str(v) for k, v in ref.items() if k in ("citation", "doi", "url")}
+            )
+        else:
+            raise ScriptError(
+                "REFERENCES: give each as a string or a dict with 'citation'"
+            )
+    for ref in refs:
+        if ref.get("doi", "").startswith(("https://doi.org/", "doi:")):
+            ref["doi"] = (
+                ref["doi"].removeprefix("https://doi.org/").removeprefix("doi:")
+            )
+    if refs:
+        out["references"] = refs
+    return out
 
 
 class ScriptPlugin(Plugin):

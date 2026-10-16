@@ -106,7 +106,8 @@ turn knobs, and see the effect live — on a streaming amp or on a recorded data
 manifest:  spec_version, name, version, type (stream | analysis), image (external only),
            inputs/outputs [{name, type: signal | features | events}],
            params [{name, type, min, max, default, unit, choices}],
-           latency_samples, requires_fit (bool)
+           latency_samples, requires_fit (bool),
+           authors, references [{citation, doi | url}], license (credit, 0.2.12)
 fit(calibration_data | dataset, params)       -> model
 transform(block, model, state, params)        -> block_out, state, events
 ```
@@ -207,6 +208,15 @@ transform(block, model, state, params)        -> block_out, state, events
   live script including acceptance test 1 and a restart mid-stream) and refuses it
   on failure. Next: the Octave/EEGLAB tier (`function EEG = process(EEG, ...)`,
   then a live one), committed but after the MNE side.
+- **Credit and grouping (0.2.12):** every manifest may carry `authors`,
+  `references` and `license`; built-ins cite their methods and software (checked
+  DOIs, `meegxer.core.references`, `meegxer.nodes.references`), scripts use
+  `__author__`, `__license__` and `REFERENCES`. The inspector shows them (Credits),
+  sessions record each node's references, BIDS derivatives gather them
+  (`ReferencesAndLinks`). Informative only: `meegxer-plugin check` mentions missing
+  credit but never fails on it. `list_nodes` reports each node's `origin`
+  (builtin, plugin, custom); the GUI pools plugins and scripts into "Custom
+  preprocessing / feature extraction / outputs" by their data types.
 - Plugins emit Events only; trusted host Sinks perform actions.
 - **Sterile mode** (planned): one container runs the whole processing chain (built-in
   nodes and plugins) as a single worker over the plugin protocol, so the added

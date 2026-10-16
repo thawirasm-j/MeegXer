@@ -108,9 +108,53 @@
       },
       "uniqueItems": true,
       "default": []
+    },
+    "authors": {
+      "description": "Who wrote the node, for credit (spec 0.2.12).",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+    "references": {
+      "description": "What to cite when using the node: the method's papers and the software it builds on (spec 0.2.12). Hosts show them and gather them into session and BIDS provenance.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reference"
+      },
+      "default": []
+    },
+    "license": {
+      "description": "Licence of the node's code, ideally an SPDX identifier such as BSD-3-Clause (spec 0.2.12).",
+      "type": "string"
     }
   },
   "$defs": {
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "citation"
+      ],
+      "properties": {
+        "citation": {
+          "description": "The reference as text, e.g. Author A, Author B (2020). Title. Journal 1(2):3-4.",
+          "type": "string",
+          "minLength": 1
+        },
+        "doi": {
+          "description": "DOI without the https://doi.org/ prefix.",
+          "type": "string",
+          "pattern": "^10\\.[0-9]{4,9}/\\S+$"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
     "port": {
       "type": "object",
       "additionalProperties": false,

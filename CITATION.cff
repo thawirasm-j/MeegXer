@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: >-
+  If you use MeegXer, please cite it as below, together with the methods and
+  software your pipeline used (each strip lists them under Credits; BIDS
+  derivatives gather them in dataset_description.json, ReferencesAndLinks).
+title: "MeegXer: a user-friendly mixer for EEG processing"
+type: software
+authors:
+  - family-names: Jungrungrueang
+    given-names: Thawirasm
+    affiliation: "TrimLAB, Prince of Songkla University"
+repository-code: "https://github.com/thawirasm-j/MeegXer"
+license: GPL-3.0-or-later
+keywords:
+  - EEG
+  - BCI
+  - signal processing
+  - EEGLAB
+  - MNE
+  - LSL

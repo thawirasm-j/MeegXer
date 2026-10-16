@@ -17,6 +17,7 @@ from meegxer.core.block import Block, FeatureBlock, concat_blocks
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Sink
 from meegxer.core.ports import PortTypeError
+from meegxer.core.references import credits
 
 
 def _sink_manifest(name: str, input_type: str) -> Manifest:
@@ -33,6 +34,7 @@ def _sink_manifest(name: str, input_type: str) -> Manifest:
                 {"name": "path", "type": "string", "default": "", "primary": True},
                 {"name": "overwrite", "type": "bool", "default": False},
             ],
+            **credits(name),
         }
     )
 

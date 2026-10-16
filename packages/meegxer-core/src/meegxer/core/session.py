@@ -207,6 +207,8 @@ def build_session(
         provenance = impl_cls.provenance() if hasattr(impl_cls, "provenance") else {}
         if provenance:
             entry["provenance"] = provenance
+        if node.manifest.references:  # what to cite, so the session stands alone
+            entry["references"] = [r.as_dict() for r in node.manifest.references]
         nodes[node.id] = entry
         if isinstance(node.impl, Stage) and node.impl.model is not None:
             model = node.impl.model

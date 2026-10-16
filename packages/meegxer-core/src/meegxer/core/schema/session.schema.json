@@ -60,7 +60,7 @@
         "node": {"type": "string"},
         "version": {"type": "string"},
         "provenance": {
-          "description": "Where the implementation comes from. External plugins: image, image_id, repo_digests, or command and unsandboxed for local development plugins. Empty or absent for built-in nodes.",
+          "description": "Where the implementation comes from. External plugins: image, image_id, repo_digests; local plugins and custom scripts: command, unsandboxed, sha256 (of their code files) and script. Empty or absent for built-in nodes.",
           "type": "object",
           "properties": {
             "image": {"type": "string"},
@@ -68,7 +68,22 @@
             "repo_digests": {"type": "array", "items": {"type": "string"}},
             "engine": {"type": ["string", "null"]},
             "command": {"type": "array", "items": {"type": "string"}},
-            "unsandboxed": {"type": "boolean"}
+            "unsandboxed": {"type": "boolean"},
+            "sha256": {"type": "string"},
+            "script": {"type": "string"}
+          }
+        },
+        "references": {
+          "description": "What to cite for this node, from its manifest (spec 0.2.12).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["citation"],
+            "properties": {
+              "citation": {"type": "string"},
+              "doi": {"type": "string"},
+              "url": {"type": "string"}
+            }
           }
         }
       }

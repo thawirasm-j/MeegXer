@@ -194,3 +194,15 @@ def test_a_pipeline_saved_with_old_node_names_loads(doc: PipelineDoc) -> None:
         "meegxer.nodes.iir_filter",
         "meegxer.nodes.notch",
     ]
+
+
+def test_scripts_and_plugins_are_grouped_as_custom(doc: PipelineDoc) -> None:
+    script = {**doc.manifest("meegxer.nodes.notch"), "name": "script.notch",
+              "origin": "custom"}  # fmt: skip
+    feature = {**doc.manifest("meegxer.nodes.band_power"), "name": "lab.bp",
+               "origin": "plugin"}  # fmt: skip
+    doc.set_manifests([*doc.manifests.values(), script, feature])
+    assert doc.group_label("meegxer.nodes.notch") == "Preprocessing"
+    assert doc.group_label("script.notch") == "Custom preprocessing"
+    assert doc.group_label("lab.bp") == "Custom feature extraction"
+    assert not doc.is_custom("meegxer.nodes.notch")

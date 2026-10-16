@@ -41,6 +41,27 @@ def process(
   description. A trailing `(unit)` such as `(Hz)` becomes its unit.
 - Optional, at module level: `NAME = "lab.my_filter"` (default
   `script.<file name>`), `__version__ = "1.2.0"` (default `0.1.0`).
+- **Credit** (optional, encouraged): `__author__` (a name or a list),
+  `__license__` (e.g. `"BSD-3-Clause"`) and `REFERENCES`, the papers to cite when
+  someone uses the script, as strings or as dicts with `citation` and a `doi` or
+  `url`:
+
+  ```python
+  __author__ = ["Jane Doe", "TrimLAB"]
+  __license__ = "BSD-3-Clause"
+  REFERENCES = [
+      {
+          "citation": "Doe J (2025). A better blink remover. J Neural Eng 1:1.",
+          "doi": "10.1234/example",
+      },
+  ]
+  ```
+
+  The strip shows them under *Credits*; sessions record them and BIDS derivatives
+  list them in `dataset_description.json`. `meegxer-plugin check` notes when there
+  is none, but never refuses a script for it.
+- In the strip menu, scripts and plugins appear under *Custom preprocessing* (or
+  *Custom feature extraction*, *Custom outputs*), sorted by what they return.
 - **Offline only.** `process` sees the whole recording at once, so it runs in
   offline runs (files, BIDS), not live. For live use, write `transform` instead
   (below).
@@ -114,7 +135,7 @@ Octave/EEGLAB scripts (`function EEG = process(EEG, ...)`) are planned next.
 
 ## Add one
 
-In the GUI: **+ Add strip → Custom script…**, pick the file, read the notice.
+In the GUI: **+ Add strip → ✎ Add a custom script…**, pick the file, read the notice.
 From the command line:
 
 ```bash

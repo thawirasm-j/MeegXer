@@ -93,6 +93,16 @@ def run_conformance(
     if not check("handshake", handshake) or not check("manifest", valid_manifest):
         worker.close()
         return checks
+
+    def credit() -> str:
+        """Informative only: never fails."""
+        authors = manifest.get("authors") or []
+        refs = manifest.get("references") or []
+        if authors or refs:
+            return f"{len(authors)} author(s), {len(refs)} reference(s)"
+        return "none given (optional): authors and references credit the work"
+
+    check("credits", credit)
     check("unknown message", unknown_message)
     check("shutdown", shutdown)
     assert cls is not None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from meegxer.core.manifest import Manifest
+from meegxer.nodes.references import credits
 
 
 def stream_manifest(
@@ -30,5 +31,6 @@ def stream_manifest(
             "availability": availability,
             "requires_fit": requires_fit,
             "requires_positions": requires_positions,
+            **credits(name),
         }
     )

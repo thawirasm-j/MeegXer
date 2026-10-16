@@ -18,7 +18,7 @@ import jsonschema
 
 from meegxer.core.ports import Port, PortType
 
-SPEC_VERSION = "0.2.11"
+SPEC_VERSION = "0.2.12"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]
@@ -87,6 +87,23 @@ class ParamSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class Reference:
+    """Something to cite when using a node (spec 0.2.12)."""
+
+    citation: str
+    doi: str = ""
+    url: str = ""
+
+    def as_dict(self) -> dict[str, str]:
+        out = {"citation": self.citation}
+        if self.doi:
+            out["doi"] = self.doi
+        if self.url:
+            out["url"] = self.url
+        return out
+
+
+@dataclass(frozen=True, slots=True)
 class Manifest:
     spec_version: str
     name: str
@@ -103,6 +120,9 @@ class Manifest:
     role: NodeRoleName = "processor"
     live_params: frozenset[str] = frozenset()
     availability: Availability = "both"
+    authors: tuple[str, ...] = ()
+    references: tuple[Reference, ...] = ()
+    license: str = ""
 
     @property
     def runs_online(self) -> bool:
@@ -154,6 +174,12 @@ class Manifest:
             role=data.get("role", "processor"),
             live_params=frozenset(data.get("live_params", ())),
             availability=data.get("availability", "both"),
+            authors=tuple(data.get("authors", ())),
+            references=tuple(
+                Reference(r["citation"], r.get("doi", ""), r.get("url", ""))
+                for r in data.get("references", ())
+            ),
+            license=data.get("license", ""),
         )
         manifest._check_semantics()
         return manifest

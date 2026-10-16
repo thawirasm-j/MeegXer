@@ -36,6 +36,10 @@ define it.
     (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
     with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
     session file next to each recording.
+  - 0.2.12: manifest `authors`, `references` (each `citation` with an optional
+    `doi` or `url`) and `license`, for credit; hosts show them and gather the
+    references into session and BIDS provenance. Optional; nothing is refused for
+    leaving them out.
   - 0.2.11: manifest `requires_positions`: the node needs an electrode position
     for every good channel it processes (ICA's ICLabel). Hosts check the input
     (after its `recording` overrides) before running and refuse to start without

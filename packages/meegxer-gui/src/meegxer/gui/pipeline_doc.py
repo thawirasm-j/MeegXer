@@ -32,7 +32,7 @@ SYNTHETIC = "meegxer.core.synthetic"
 # the GUI's defaults where they differ from the node's: synthetic input played
 # live runs until stopped (a live calibration never runs out of it)
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
-SPEC_VERSION = "0.2.11"
+SPEC_VERSION = "0.2.12"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -51,6 +51,14 @@ class StripNode:
 
 def tap_id(strip_id: str) -> str:
     return TAP_PREFIX + strip_id
+
+
+GROUP_NAMES = {
+    "input": "Input",
+    "preprocess": "Preprocessing",
+    "features": "Feature extraction",
+    "output": "Output",
+}
 
 
 class PipelineDoc:
@@ -248,6 +256,16 @@ class PipelineDoc:
             return "output"
         outputs = {p["type"] for p in manifest["outputs"]}
         return "preprocess" if outputs <= {"signal"} else "features"
+
+    def is_custom(self, strip: StripNode | str) -> bool:
+        """Added by the user (a custom script or a plugin), not built in."""
+        return bool(self.manifest(strip).get("origin", "builtin") != "builtin")
+
+    def group_label(self, strip: StripNode | str) -> str:
+        """``Preprocessing``, ``Custom feature extraction``, ...: the group by
+        data type, marked custom for scripts and plugins."""
+        name = GROUP_NAMES[self.group(strip)]
+        return f"Custom {name.lower()}" if self.is_custom(strip) else name
 
     def on_main_line(self, strip: StripNode) -> bool:
         """The signal path: the input and the preprocessing strips. Feature

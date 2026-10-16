@@ -91,4 +91,6 @@ def test_inspector_labels_choices_and_folded_advanced(
     assert fold.isChecked()  # advanced mode opens it
     texts = {lb.text() for lb in ins.findChildren(QLabel)}
     assert {"Calibration", "Channels processed", "Shown on the strip"} <= texts
+    assert "Credits" in texts  # ICA cites MNE, Picard, ICLabel, ...
+    assert any("doi.org/10.1016/j.neuroimage.2019.05.026" in t for t in texts)
     dispose(qapp, ins)

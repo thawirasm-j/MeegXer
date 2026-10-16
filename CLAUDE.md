@@ -36,7 +36,7 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
    adding one asks the user to acknowledge that risk (patient data: HIPAA, GDPR, IRB).
    In a container it runs with `--network none` and read-only mounts. (Local plugins
    and custom scripts need the accepted notice: `meegxer-plugin add --local/--script`
-   or *Custom script…* in the GUI; `docs/CUSTOM_SCRIPTS.md`.)
+   or *Add a custom script…* in the GUI; `docs/CUSTOM_SCRIPTS.md`.)
 10. **Sterile = isolation, a runtime mode.** Sterile mode runs all processing (built-in
     nodes and plugins) in a container with no network and read-only mounts; the host
     keeps only trusted I/O (sources, LSL, file writers, device sinks, the GUI). It

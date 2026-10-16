@@ -345,9 +345,12 @@ behaviour (plugins still run in containers).
 Next, in order:
 1. **Local plugins and custom scripts by default.** Done (0.2.1a2): consent in the
    plugin index, notice shared by CLI and GUI, `sha256` provenance, the offline
-   Python tier (`docs/CUSTOM_SCRIPTS.md`), *Custom script…* in the GUI. Live Python
+   Python tier (`docs/CUSTOM_SCRIPTS.md`), *Add a custom script…* in the GUI. Live Python
    tier done (0.2.1a3): `transform(data, state, ...)` + optional `fit(raw, ...)`,
-   conformance checked when added. Committed next: the Octave/EEGLAB tier
+   conformance checked when added. Credit and custom grouping done (decision 41).
+   Next on the MNE side: feature-extraction scripts (`features(data, state, ...)`
+   returning windowed values), which need the plugin protocol to carry Features
+   results (spec + both SDKs + adapter). Committed after that: the Octave/EEGLAB tier
    (`function EEG = process(EEG, ...)`, then live); "Enable Sterile mode" in the
    prompt once Sterile mode exists.
 2. **Sterile mode.** A processing-worker image with the built-in nodes; the whole
@@ -419,3 +422,4 @@ identical output.
 | 38 | First feature measures | Connectivity: coh, imcoh, PLV, wPLI; complexity: permutation/sample/spectral entropy, Hjorth, Lempel-Ziv | M6c |
 | 39 | PyPI releases | Six projects (five packages + `meegxer` bundle = sterile build), one shared version from a `v*` tag, Trusted Publishing; tag → TestPyPI, PyPI by manual approved run (`docs/RELEASING.md`) | — |
 | 40 | Sterile = isolation (0.2.1) | "Sterile" names a runtime mode, never a package: Sterile mode runs all processing (built-ins and plugins) in one no-network container, the host keeps trusted I/O; auditing stays the user's responsibility. Packages renamed `meegxer-sterile` → `meegxer-nodes`, `meegxer-runtime` → `meegxer-plugins`; the `meegxer` bundle installs everything; `meegxer.sterile.*` node names still resolve. Rules 9 and 10 rewritten; the sterile wheel check is gone, an import-linter contract keeps plugins reachable only through entry points | M8 |
+| 41 | Credit and custom grouping (0.2.12) | Manifest `authors`, `references` (citation + DOI or URL), `license`; built-ins cite methods and software with checked DOIs; shown in the inspector, recorded in sessions, gathered into BIDS `ReferencesAndLinks`; informative, never a gate. Plugins and scripts are grouped as "Custom <group>" by their data types (`origin` in `list_nodes`) | M8 |

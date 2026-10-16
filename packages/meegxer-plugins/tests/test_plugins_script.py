@@ -274,3 +274,53 @@ def test_a_live_script_that_is_not_blockwise_is_refused(
     err = capsys.readouterr().err
     assert "FAIL  acceptance test 1" in err and "was not added" in err
     assert index.load_index() == []
+
+
+# -- credit -------------------------------------------------------------------------
+
+CREDITED = '''
+    """Notch with credit."""
+
+    __author__ = ["Jane Doe", "TrimLAB"]
+    __license__ = "BSD-3-Clause"
+    REFERENCES = [
+        "Doe J (2025). A better notch. J Neural Eng 1:1.",
+        {"citation": "Gramfort A et al. (2013). MNE-Python. Front Neurosci 7:267.",
+         "doi": "https://doi.org/10.3389/fnins.2013.00267"},
+    ]
+
+
+    def process(raw):
+        return raw
+'''
+
+
+def test_scripts_credit_their_authors_and_references(tmp_path: Path) -> None:
+    path = write(tmp_path, "notch.py", CREDITED)
+    manifest = script_manifest(load_script(path), path)
+    assert manifest["authors"] == ["Jane Doe", "TrimLAB"]
+    assert manifest["license"] == "BSD-3-Clause"
+    assert manifest["references"] == [
+        {"citation": "Doe J (2025). A better notch. J Neural Eng 1:1."},
+        {"citation": "Gramfort A et al. (2013). MNE-Python. Front Neurosci 7:267.",
+         "doi": "10.3389/fnins.2013.00267"},  # the URL prefix is dropped
+    ]  # fmt: skip
+    from meegxer.core.manifest import Manifest
+
+    assert Manifest.from_dict(manifest).references[1].doi.startswith("10.3389")
+    bad = write(
+        tmp_path, "bad.py", "REFERENCES = [42]\ndef process(raw):\n    return raw\n"
+    )
+    with pytest.raises(ScriptError, match="REFERENCES"):
+        script_manifest(load_script(bad), bad)
+
+
+def test_the_check_mentions_missing_credit_without_failing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plain = write(tmp_path, "plain.py", "def process(raw):\n    return raw\n")
+    assert cli_main(["check", "--script", str(plain)]) == 0
+    assert "PASS  credits" in capsys.readouterr().out
+    credited = write(tmp_path, "credited.py", CREDITED)
+    assert cli_main(["check", "--script", str(credited)]) == 0
+    assert "2 author(s), 2 reference(s)" in capsys.readouterr().out

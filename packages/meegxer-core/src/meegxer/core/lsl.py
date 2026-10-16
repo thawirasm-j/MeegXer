@@ -19,6 +19,7 @@ from meegxer.core.block import Block, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Sink, Source
 from meegxer.core.ports import PortTypeError
+from meegxer.core.references import credits
 from meegxer.core.sinks import feature_columns
 
 INDEX_CHANNEL = "SAMPLE_INDEX"
@@ -38,6 +39,7 @@ def _manifest(name: str, role: str, params: list[dict[str, object]]) -> Manifest
             "inputs": [] if role == "source" else ports,
             "outputs": ports if role == "source" else [],
             "params": params,
+            **credits(name),
         }
     )
 
@@ -248,6 +250,7 @@ class LslFeatureSink(Sink):
                  "advanced": True},
             ],
             "availability": "both",
+            **credits("meegxer.core.lsl_features_out"),
         }
     )  # fmt: skip
 

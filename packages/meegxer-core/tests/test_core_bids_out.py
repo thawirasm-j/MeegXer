@@ -82,6 +82,10 @@ def test_derivative_is_readable_by_bids_tools(tmp_path: Path) -> None:
     assert description["DatasetType"] == "derivative"
     assert description["GeneratedBy"][0]["Name"] == "MeegXer"
     assert description["DatasetLinks"] == {"raw": "../.."}
+    links = description["ReferencesAndLinks"]  # what the pipeline's nodes cite
+    assert any("10.3389/fnins.2013.00267" in r for r in links)  # MNE
+    assert any("10.1038/s41597-019-0104-8" in r for r in links)  # EEG-BIDS
+    assert len(links) == len(set(links))
     assert "*_meegxer.json" in (deriv / ".bidsignore").read_text()
     sidecar = json.loads((folder / f"{stem}_eeg.json").read_text())
     assert sidecar["Sources"] == ["bids:raw:sub-01/eeg/sub-01_task-rest_eeg.edf"]
@@ -120,6 +124,7 @@ def test_dataset_description_is_merged_not_replaced(tmp_path: Path) -> None:
     run(second)
     merged = json.loads(path.read_text())
     assert merged["Authors"] == ["TrimLAB"] and len(merged["GeneratedBy"]) == 1
+    assert len(merged["ReferencesAndLinks"]) == len(set(merged["ReferencesAndLinks"]))
     assert (deriv / "sub-01").is_dir() and (deriv / "sub-02").is_dir()
 
 

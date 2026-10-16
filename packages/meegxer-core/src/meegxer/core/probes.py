@@ -7,6 +7,7 @@ from typing import ClassVar
 from meegxer.core.block import Block, EventBlock, FeatureBlock, concat_blocks
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Probe
+from meegxer.core.references import credits
 
 
 class MemoryProbe(Probe):
@@ -37,6 +38,7 @@ class MemoryProbe(Probe):
                     "description": "Signal history kept in memory (0 keeps all)",
                 },
             ],
+            **credits("meegxer.core.probe"),
         }
     )
 

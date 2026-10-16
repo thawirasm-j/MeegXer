@@ -77,7 +77,7 @@ and the `meegxer-plugin` command. Processing runs on your machine.
 **Custom scripts:** your own MNE-Python function becomes a strip:
 `process(raw, ...)` for offline runs, or `transform(data, state, ...)` for live and
 offline; see [docs/CUSTOM_SCRIPTS.md](docs/CUSTOM_SCRIPTS.md). In the
-GUI: *+ Add strip → Custom script…*. It runs on your computer with your
+GUI: *+ Add strip → Add a custom script…*. It runs on your computer with your
 permissions, so MeegXer asks you to accept that first.
 
 Plugin images run in containers, so they need Docker (on Windows,
@@ -156,3 +156,10 @@ uv run meegxer set hp low=0.5
 | `packages/meegxer-cli` | command-line interface (`meegxer`) |
 
 Licensed under GPL-3.0 (see `LICENSE`).
+
+## Citing
+
+If MeegXer helps your work, please cite it (`CITATION.cff`, or GitHub's *Cite this
+repository*) together with the methods your pipeline used: each strip lists its
+references under *Credits*, and BIDS derivatives collect them in
+`dataset_description.json` (`ReferencesAndLinks`).

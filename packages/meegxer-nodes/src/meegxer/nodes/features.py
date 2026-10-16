@@ -24,6 +24,7 @@ from meegxer.core.block import Block, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, Processor, TransformResult
 from meegxer.core.serialization import State
+from meegxer.nodes.references import credits
 
 WINDOW_PARAMS: list[dict[str, object]] = [
     {"name": "window", "type": "float", "default": 2.0, "min": 0.05, "unit": "s",
@@ -62,6 +63,7 @@ def analysis_manifest(
             "outputs": [{"name": "out", "type": "features"}],
             "params": [*windowing, *params],
             "availability": "both",
+            **credits(name),
         }
     )
 
@@ -352,6 +354,7 @@ class HilbertEnvelope(Processor):
                  "description": "Context on each side; also the output delay"},
             ],
             "availability": "both",
+            **credits("meegxer.nodes.hilbert_envelope"),
         }
     )  # fmt: skip
 

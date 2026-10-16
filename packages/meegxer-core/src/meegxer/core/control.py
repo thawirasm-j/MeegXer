@@ -24,7 +24,7 @@ from meegxer.core.node import Source
 from meegxer.core.offline import OfflineJob
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.recording import builtin_montages, describe, lookup_positions
-from meegxer.core.registry import Registry
+from meegxer.core.registry import Registry, node_origin
 from meegxer.core.session import build_session, load_session, sink_outputs
 from meegxer.core.stage import Stage
 
@@ -56,6 +56,9 @@ def manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
         "requires_positions": manifest.requires_positions,
         "latency_samples": manifest.latency_samples,
         "description": manifest.description,
+        "authors": list(manifest.authors),
+        "references": [r.as_dict() for r in manifest.references],
+        "license": manifest.license,
         "live_params": sorted(manifest.live_params),
         "inputs": [{"name": p.name, "type": p.type.value} for p in manifest.inputs],
         "outputs": [{"name": p.name, "type": p.type.value} for p in manifest.outputs],
@@ -137,8 +140,8 @@ class Daemon:
 
     def list_nodes(self) -> list[dict[str, Any]]:
         return [
-            manifest_to_dict(self.registry.get(n).manifest)
-            for n in self.registry.names()
+            {**manifest_to_dict(cls.manifest), "origin": node_origin(cls)}
+            for cls in (self.registry.get(n) for n in self.registry.names())
         ]
 
     def rescan_nodes(self) -> list[dict[str, Any]]:
