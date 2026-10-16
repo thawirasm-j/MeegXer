@@ -8,10 +8,16 @@ from typing import Any
 import mne
 import numpy as np
 import pytest
-from PySide6.QtCore import QPointF
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtCore import QCoreApplication, QEvent, QPointF
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
-from meegxer.gui.signal_view import SignalView, StackedWindow, TracePlot, Window
+from meegxer.gui.signal_view import (
+    Panner,
+    SignalView,
+    StackedWindow,
+    TracePlot,
+    Window,
+)
 from meegxer.gui.theme import load_theme
 
 CHANNELS = ["Fp1", "Fp2", "Cz", "O1", "EOG"]
@@ -41,7 +47,17 @@ def window(t0: float = 0.0, seconds: float = 10.0, scale: Any = 1.0) -> Window:
                   np.zeros(len(t), dtype=bool), 50.0)  # fmt: skip
 
 
-def test_wheel_scales_y_only_and_double_click_restores(qapp: QApplication) -> None:
+def dispose(qapp: QApplication, *widgets: QWidget) -> None:
+    """Delete parentless widgets now: left to interpreter exit, plot widgets
+    can outlive the application and crash the process on the way out."""
+    for w in widgets:
+        w.close()
+        w.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+
+
+def test_mouse_moves_y_only_and_double_click_fits_y(qapp: QApplication) -> None:
     plot = TracePlot(load_theme("dark"))
     vb = plot.getViewBox()
     vb.setRange(xRange=(0, 10), yRange=(-50, 50), padding=0)
@@ -50,14 +66,25 @@ def test_wheel_scales_y_only_and_double_click_restores(qapp: QApplication) -> No
     (x1, y1) = vb.viewRange()
     assert x1 == pytest.approx(x0)
     assert (y1[1] - y1[0]) < (y0[1] - y0[0])  # zoomed in on Y
-    assert vb.state["mouseEnabled"] == [True, True]  # dragging pans X and Y
+    assert vb.state["mouseEnabled"] == [False, True]  # time is the panner's
 
     class Click:
         def accept(self) -> None: ...
 
     vb.enableAutoRange(enable=False)
     vb.mouseDoubleClickEvent(Click())
-    assert all(vb.autoRangeEnabled())
+    assert not vb.autoRangeEnabled()[0] and vb.autoRangeEnabled()[1]
+    dispose(qapp, plot)
+
+
+def test_time_axis_shows_exactly_the_window(qapp: QApplication) -> None:
+    """No blank margins left or right: X is the window's span, edge to edge."""
+    view = SignalView(load_theme("dark"))
+    view.refresh(lambda p, s: window(t0=-10.0), "tap", [])
+    (x0, x1), _ = view.plot.getViewBox().viewRange()
+    assert x0 == pytest.approx(-10.0)
+    assert x1 == pytest.approx(0.0)
+    dispose(qapp, view)
 
 
 def test_stacked_has_own_channels_all_by_default_and_normalizes(
@@ -85,19 +112,25 @@ def test_stacked_has_own_channels_all_by_default_and_normalizes(
     stacked.refresh(view, lambda p, s: window(scale=scale), "tap", [])
     norm = spreads()
     assert norm[-1] < 2 * norm[0]  # comparable rows after normalizing
-    stacked.close()
+    dispose(qapp, stacked, view)
 
 
-def test_live_scrollbar_follows_until_moved_back(qapp: QApplication) -> None:
-    stacked = StackedWindow(load_theme("dark"))
-    stacked.set_extent(100, 1000, 100, live=True)
-    assert stacked.position() == 1000
-    stacked.set_extent(110, 1010, 100, live=True)
-    assert stacked.position() == 1010  # follows the stream
-    stacked.scrollbar.setSliderPosition(500)
-    stacked._moved(500)
-    stacked.set_extent(120, 1020, 100, live=True)
-    assert stacked.position() == 500  # stays where the user looks
+def test_live_panner_follows_until_moved_back(qapp: QApplication) -> None:
+    panner = Panner()
+    panner.set_extent(100, 1000, 100, live=True)
+    assert panner.position() == 1000
+    assert not panner.latest.isEnabled()
+    panner.set_extent(110, 1010, 100, live=True)
+    assert panner.position() == 1010  # follows the stream
+    panner.bar.setSliderPosition(500)
+    panner._moved(500)
+    panner.set_extent(120, 1020, 100, live=True)
+    assert panner.position() == 500  # stays where the user looks
+    assert panner.latest.isEnabled()
+    panner.follow()  # "Latest"
+    panner.set_extent(130, 1030, 100, live=True)
+    assert panner.position() == 1030
+    dispose(qapp, panner)
 
 
 def test_stacked_rests_the_signal_view_and_scrolls_the_recording(
@@ -131,7 +164,7 @@ def test_stacked_rests_the_signal_view_and_scrolls_the_recording(
         win.show_stacked()
         assert not win.view.active and not win.timeline.isEnabled()
         win.redraw()
-        bar = win.stacked.scrollbar
+        bar = win.stacked.panner.bar
         assert bar.maximum() == 250 * 50  # 60 s recording, 10 s shown
         bar.setValue(250 * 30)
         win.redraw()
@@ -141,6 +174,7 @@ def test_stacked_rests_the_signal_view_and_scrolls_the_recording(
         assert win.view.active and win.timeline.isEnabled()
     finally:
         win.close()
+        dispose(qapp, win.stacked, win.recording_window, win)
 
 
 def test_comparison_stays_a_comparison_while_main_has_no_data(
@@ -165,7 +199,7 @@ def test_comparison_stays_a_comparison_while_main_has_no_data(
     stacked.refresh(view, lambda p, s: windows.get(p), "tap_ica", ["tap_hp"])
     curves = [c for c in stacked.plot._curves if c.isVisible()]
     assert curves and all(c.opts["pen"].widthF() == 1.0 for c in curves)
-    stacked.close()
+    dispose(qapp, stacked, view)
 
 
 def test_offline_strips_fit_on_the_whole_recording(qapp: QApplication) -> None:
@@ -223,6 +257,7 @@ def test_start_without_positions_opens_the_channels_tab(
         win.stop()
     finally:
         win.close()
+        dispose(qapp, win.stacked, win.recording_window, win)
 
 
 def test_chain_draws_forks_off_the_main_line(qapp: QApplication) -> None:
@@ -251,7 +286,7 @@ def test_chain_draws_forks_off_the_main_line(qapp: QApplication) -> None:
         if (label := w.findChild(QLabel, "group")) is not None
     }
     assert labels["bandpower1"] == "◆ FEATURES"
-    assert labels["ica1"] == "● PREPROCESS"
+    assert labels["ica1"] == "● PREPROCESSING"
     chain.deleteLater()
     qapp.processEvents()
 

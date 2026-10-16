@@ -88,6 +88,11 @@ QLabel {{ background: transparent; border: none; }}
 QLabel#muted {{ color: {t.text_muted}; }}
 QLabel#title {{ font-weight: 600; }}
 QLabel#meter {{ color: {t.text_muted}; padding: 0 6px; }}
+QFrame#card {{ background: {t.surface}; border: 1px solid {t.border};
+    border-radius: 6px; }}
+QWidget#cardbody {{ background: transparent; }}
+QLabel#section {{ font-weight: 600; }}
+QLabel#heading {{ font-size: 13pt; font-weight: 700; }}
 QPushButton, QToolButton {{ background: {t.surface_alt}; border: 1px solid {t.border};
     border-radius: 4px; padding: 4px 10px; }}
 QPushButton:hover, QToolButton:hover {{ border-color: {t.accent}; }}
@@ -114,4 +119,12 @@ QCheckBox::indicator {{ width: 14px; height: 14px; border: 1px solid {t.text_mut
 QCheckBox::indicator:checked {{ background: {t.accent}; border-color: {t.accent}; }}
 QToolTip {{ background: {t.surface}; color: {t.text}; border: 1px solid {t.border}; }}
 QSplitter::handle {{ background: {t.background}; }}
+QScrollBar:horizontal {{ background: {t.surface_alt}; height: 12px; border: none;
+    border-radius: 6px; margin: 0; }}
+QScrollBar::handle:horizontal {{ background: {t.text_muted}; border-radius: 6px;
+    min-width: 24px; }}
+QScrollBar::handle:horizontal:hover {{ background: {t.accent}; }}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+    background: transparent; }}
 """

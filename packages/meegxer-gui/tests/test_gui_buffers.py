@@ -32,3 +32,12 @@ def test_ring_wraps_and_a_restart_resets() -> None:
     assert np.all(np.isnan(old[:, :20]))  # beyond the ring
     buf.add(frame(0, 5, 0, value=7.0))  # the stream restarted
     assert buf.end_bin == 5
+
+
+def test_oldest_bin_is_the_first_received_until_the_ring_is_full() -> None:
+    buf = ProbeBuffer(capacity_bins=20)
+    buf.add(frame(100, 5, 0))
+    assert buf.oldest_bin == 100  # a short history: nothing before it to show
+    for k in range(1, 10):
+        buf.add(frame(100 + k * 5, 5, k))
+    assert buf.oldest_bin == buf.end_bin - 20

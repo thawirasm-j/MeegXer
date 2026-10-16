@@ -1,0 +1,162 @@
+"""Friendly words for parameter names, choices and units.
+
+The manifests use short machine names (``sfreq``, ``n_channels``, ``imcoh``); the
+GUI shows plain words instead. Commonly known abbreviations stay (EEG, ICA, LSL,
+BIDS, Hz, µV). Names without an entry are tidied mechanically, so plugin
+parameters read reasonably too.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+# parameter name -> label (the same name means the same thing on every node)
+PARAMS: dict[str, str] = {
+    # input and files
+    "n_channels": "Channels",
+    "sfreq": "Sampling rate",
+    "duration": "Duration",
+    "seed": "Random seed",
+    "start_time": "Start time",
+    "path": "File",
+    "root": "Dataset folder",
+    "subject": "Subject",
+    "session": "Session",
+    "task": "Task",
+    "run": "Run",
+    "datatype": "Data type",
+    "desc": "Output label",
+    "overwrite": "Replace existing files",
+    "stream_name": "Stream name",
+    "stream_type": "Stream type",
+    "timeout": "Search time",
+    "unit": "Unit on the stream",
+    "include_index": "Add a sample counter channel",
+    "label": "Name",
+    "keep_seconds": "History kept",
+    # synthetic parts
+    "neural": "Brain-like signal",
+    "line": "Line noise",
+    "ssvep": "Steady-state visual response (SSVEP)",
+    "sine": "Pure sine wave",
+    "dc": "DC offset",
+    "blinks": "Eye blinks",
+    "saccades": "Eye movements (saccades)",
+    "slow_eye": "Slow eye movements",
+    "ecg": "Heartbeat (ECG)",
+    "emg": "Muscle activity (EMG)",
+    "pops": "Electrode pops",
+    "drift": "Slow drift",
+    "markers": "Mark artefacts as events",
+    "noise_uv": "Background size",
+    "alpha_uv": "Alpha size",
+    "alpha_hz": "Alpha frequency",
+    "line_uv": "Line noise size",
+    "line_hz": "Line frequency",
+    "ssvep_uv": "SSVEP size",
+    "ssvep_hz": "SSVEP frequency",
+    "sine_uv": "Sine size",
+    "sine_hz": "Sine frequency",
+    "dc_mv": "Largest DC offset",
+    "blink_rate": "Blinks",
+    "blink_uv": "Blink size",
+    "blink_ms": "Blink length",
+    "saccade_rate": "Eye movements",
+    "saccade_deg": "Largest gaze angle",
+    "saccade_uv_per_deg": "Signal per degree of gaze",
+    "slow_eye_uv": "Slow eye movement size",
+    "ecg_bpm": "Heart rate",
+    "ecg_uv": "Heartbeat size",
+    "emg_rate": "Muscle bursts",
+    "emg_uv": "Muscle burst size",
+    "emg_s": "Muscle burst length",
+    "pop_rate": "Electrode pops",
+    "pop_uv": "Electrode pop size",
+    "drift_uv": "Drift size",
+    # filters and processing
+    "kind": "Type",
+    "low": "Low cut-off",
+    "high": "High cut-off",
+    "order": "Filter order",
+    "phase": "Phase",
+    "freq": "Frequency",
+    "quality": "Sharpness (Q)",
+    "harmonics": "Number of harmonics",
+    "mode": "Reference",
+    "channels": "Reference channels",
+    "exclude": "Left out of the average",
+    "exclude_bads": "Leave bad channels out",
+    "method": "Method",
+    "threshold": "Removal threshold",
+    "reject_eye": "Remove eye components",
+    "reject_muscle": "Remove muscle components",
+    "reject_heart": "Remove heart components",
+    "reject_line_noise": "Remove line-noise components",
+    "reject_channel_noise": "Remove channel-noise components",
+    "n_components": "Number of components",
+    "max_iter": "Maximum iterations",
+    "lookahead": "Look-ahead",
+    # features
+    "window": "Window length",
+    "step": "Step between windows",
+    "segment": "Segment length",
+    "overlap": "Segment overlap",
+    "taper": "Taper",
+    "bands": "Frequency bands",
+    "relative": "Relative to total power",
+    "db": "In decibels",
+    "fmin": "Lowest frequency",
+    "fmax": "Highest frequency",
+    "perm_entropy": "Permutation entropy",
+    "sample_entropy": "Sample entropy",
+    "spectral_entropy": "Spectral entropy",
+    "hjorth_mobility": "Hjorth mobility",
+    "hjorth_complexity": "Hjorth complexity",
+    "lziv": "Lempel-Ziv complexity",
+}
+
+# (parameter name, value) -> label for enum choices
+CHOICES: dict[tuple[str, str], str] = {
+    ("kind", "highpass"): "High-pass",
+    ("kind", "lowpass"): "Low-pass",
+    ("kind", "bandpass"): "Band-pass",
+    ("kind", "bandstop"): "Band-stop",
+    ("phase", "auto"): "Automatic",
+    ("phase", "causal"): "Causal (live)",
+    ("phase", "zero"): "Zero-phase (offline)",
+    ("method", "coh"): "Coherence",
+    ("method", "imcoh"): "Imaginary coherence",
+    ("method", "plv"): "Phase-locking value",
+    ("method", "wpli"): "Weighted phase lag index",
+    ("method", "picard"): "Picard (fast)",
+    ("method", "infomax"): "Infomax (EEGLAB runica)",
+    ("mode", "average"): "Average of all channels",
+    ("mode", "channels"): "Chosen channels",
+    ("taper", "hamming"): "Hamming",
+    ("taper", "hann"): "Hann",
+}
+
+UNITS = {"uV": "µV", "/min": "per minute", "deg": "°", "s": "s", "ms": "ms"}
+
+_WORDS = {"uv": "µV", "mv": "mV", "hz": "Hz", "n": "number of", "ms": "ms",
+          "db": "dB", "bpm": "per minute", "deg": "°", "s": "s"}  # fmt: skip
+
+
+def param_label(name: str, spec: dict[str, Any] | None = None) -> str:
+    """The friendly label of a parameter (a manifest ``label``, if any, wins)."""
+    if spec and spec.get("label"):
+        return str(spec["label"])
+    if name in PARAMS:
+        return PARAMS[name]
+    words = [_WORDS.get(w, w) for w in re.split(r"[_\s]+", name) if w]
+    text = " ".join(words)
+    return text[:1].upper() + text[1:]
+
+
+def choice_label(name: str, value: Any) -> str:
+    return CHOICES.get((name, str(value)), str(value))
+
+
+def unit_label(unit: str | None) -> str:
+    return UNITS.get(unit or "", unit or "")

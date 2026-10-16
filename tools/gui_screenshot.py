@@ -172,7 +172,7 @@ def main() -> int:
         rw.close()
         win.start()
         pump(app, 3.0)
-        win.timeline.setValue(250 * 8)
+        win.timeline.bar.setValue(250 * 8)
         pump(app, 1.0)
         win.grab().save(str(out / "11-offline-events-dark.png"))
         print("\n".join(win.logbox.toPlainText().splitlines()[-12:]))

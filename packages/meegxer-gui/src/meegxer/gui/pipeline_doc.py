@@ -17,6 +17,8 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from meegxer.gui.labels import choice_label, unit_label
+
 Mode = Literal["live", "offline"]
 Group = Literal["input", "preprocess", "features", "output"]
 Manifest = dict[str, Any]
@@ -285,6 +287,8 @@ class PipelineDoc:
         value = strip.params.get(name, spec["default"])
         if spec["type"] == "bool":
             text = "on" if value else "off"
+        elif spec["type"] == "enum":
+            text = choice_label(name, value)
         elif spec["type"] == "float":
             text = f"{float(value):g}"
         elif spec["type"] == "string":
@@ -293,7 +297,7 @@ class PipelineDoc:
                 text = "…" + text[-13:]
         else:
             text = str(value)
-        unit = spec.get("unit") or ""
+        unit = unit_label(spec.get("unit"))
         return f"{text} {unit}".strip()
 
     # -- pipeline files -----------------------------------------------------------

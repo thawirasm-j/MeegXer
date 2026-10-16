@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QScrollBar,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -42,9 +41,11 @@ from meegxer.gui.chain import ChainView
 from meegxer.gui.colors import wheel_positions
 from meegxer.gui.connection import DaemonLink
 from meegxer.gui.inspector import Inspector
+from meegxer.gui.labels import param_label
+from meegxer.gui.names import title
 from meegxer.gui.pipeline_doc import LIVE_ONLY_SOURCES, PipelineDoc, tap_id
 from meegxer.gui.recording_window import RecordingWindow
-from meegxer.gui.signal_view import SignalView, StackedWindow, Window
+from meegxer.gui.signal_view import Panner, SignalView, StackedWindow, Window
 from meegxer.gui.theme import Theme, load_theme, stylesheet
 from meegxer.gui.wheel import install_wheel_guard
 
@@ -82,7 +83,9 @@ class MainWindow(QMainWindow):
         self._load_initial()
         link.status.connect(self.on_status)
         link.frame.connect(self.on_frame)
-        link.lost.connect(lambda msg: self.log(f"Daemon not answering: {msg}"))
+        link.lost.connect(
+            lambda msg: self.log(f"The processing engine is not answering: {msg}")
+        )
         self._render = QTimer(self)
         self._render.timeout.connect(self.redraw)
         self._render.start(50)
@@ -105,10 +108,7 @@ class MainWindow(QMainWindow):
         self.view = SignalView(self.theme)
         self.view.stacked_requested.connect(self.show_stacked)
         sp.addWidget(self.view, 1)
-        self.timeline = QScrollBar(Qt.Orientation.Horizontal)
-        self.timeline.setVisible(False)
-        self.timeline.valueChanged.connect(lambda _: self._offline_cache.clear())
-        sp.addWidget(self.timeline)
+        self.timeline = self.view.panner
         splitter.addWidget(signal_panel)
 
         self.chain = ChainView()
@@ -211,6 +211,7 @@ class MainWindow(QMainWindow):
         if isinstance(app, QApplication):
             app.setStyleSheet(stylesheet(theme))
         self.view.apply_theme(theme)
+        self.inspector.apply_theme(theme)
         self.stacked.apply_theme(theme)
         self.stacked.setStyleSheet(stylesheet(theme))
         self.recording_window.theme = theme
@@ -230,8 +231,22 @@ class MainWindow(QMainWindow):
             advanced=self.advanced,
             selected=self.selected,
         )
+        self.view.names = self._probe_names()
         self.refresh_inspector()
         self._transport()
+
+    def _probe_names(self) -> dict[str, str]:
+        """Legend names: "Input", "after Notch" (the id is added when two strips
+        share a title, or in advanced mode)."""
+        titles = {s.id: self._name(s.id) for s in self.doc.tappable()}
+        repeated = {t for t in titles.values() if list(titles.values()).count(t) > 1}
+        names = {}
+        for sid, name in titles.items():
+            text = "Input" if name == "the input" else f"after {name}"
+            if self.advanced or name in repeated:
+                text += f" ({sid})"
+            names[tap_id(sid)] = text
+        return names
 
     def refresh_inspector(self) -> None:
         if self.selected is None:
@@ -257,7 +272,6 @@ class MainWindow(QMainWindow):
         self.start_btn.setEnabled(not self.running and self.offline_state != "running")
         self.stop_btn.setVisible(live)
         self.stop_btn.setEnabled(self.running)
-        self.timeline.setVisible(not live and bool(self.offline_probes))
 
     def _default_taps(self) -> None:
         tappable = [s.id for s in self.doc.tappable()]
@@ -301,6 +315,16 @@ class MainWindow(QMainWindow):
             self.log("Restarting to apply the change (fitted models are kept).")
             self.restart()
 
+    def _name(self, strip_id: str) -> str:
+        """A strip's title for messages (its id when it is no longer there)."""
+        try:
+            strip = self.doc.get(strip_id)
+        except KeyError:
+            return strip_id
+        if self.doc.role(strip) == "source":
+            return "the input"
+        return title(strip.node, strip.params)
+
     def select(self, strip_id: str) -> None:
         self.selected = strip_id
         self.refresh_chain()
@@ -308,11 +332,12 @@ class MainWindow(QMainWindow):
     def insert_strip(self, index: int, node: str) -> None:
         strip = self.doc.insert(index, node)
         self.selected = strip.id
-        self._structure_changed(f"Added {strip.id}.")
+        self._structure_changed(f"Added {self._name(strip.id)}.")
 
     def remove_strip(self, strip_id: str) -> None:
+        name = self._name(strip_id)
         self.doc.remove(strip_id)
-        self._structure_changed(f"Removed {strip_id}.")
+        self._structure_changed(f"Removed {name}.")
 
     def move_strip(self, strip_id: str, index: int) -> None:
         try:
@@ -320,7 +345,7 @@ class MainWindow(QMainWindow):
         except (KeyError, ValueError) as exc:
             self.log(str(exc))
             return
-        self._structure_changed(f"Moved {strip_id}.")
+        self._structure_changed(f"Moved {self._name(strip_id)}.")
 
     def open_recording(self) -> None:
         if self.recording_window.load(self.doc.source_entry()):
@@ -379,7 +404,7 @@ class MainWindow(QMainWindow):
         self.doc.set_source(node)
         self.use_recording_info(None)
         self.offline_probes.clear()
-        self._structure_changed(f"Input is now {node} ({self.doc.mode}).")
+        self._structure_changed(f"Input is now {title(node)} ({self.doc.mode}).")
 
     def toggle_mode(self) -> None:
         if self.running:
@@ -419,7 +444,9 @@ class MainWindow(QMainWindow):
                 if self.call("set_params", node=strip_id, params={name: value}) is None:
                     strip.params[name] = old  # refused (e.g. zero-phase live)
             else:
-                self.log(f"{strip_id}.{name} = {value}: restarting.")
+                self.log(
+                    f"{self._name(strip_id)}: {param_label(name)} changed, restarting."
+                )
                 self.restart()
         self.refresh_chain()
 
@@ -441,14 +468,18 @@ class MainWindow(QMainWindow):
         if (strip.channel_types or ["eeg"]) == types:
             return
         strip.channel_types = [] if types == ["eeg"] else types
-        self._structure_changed(f"{strip_id} processes: {', '.join(types)}.")
+        self._structure_changed(
+            f"{self._name(strip_id)} processes: "
+            f"{', '.join(t.upper() for t in types)} channels."
+        )
 
     def change_passthrough(self, strip_id: str, enabled: bool) -> None:
         self.doc.get(strip_id).pass_uncalibrated = enabled
         if self.running:
             self.call("set_pass_uncalibrated", node=strip_id, enabled=enabled)
         self.log(
-            f"{strip_id}: pass through while uncalibrated {'on' if enabled else 'off'}."
+            f"{self._name(strip_id)}: pass data through while uncalibrated "
+            f"{'on' if enabled else 'off'}."
         )
 
     def calibrate(self, strip_id: str, seconds: float) -> None:
@@ -456,11 +487,11 @@ class MainWindow(QMainWindow):
             self.log("Start the pipeline before calibrating.")
             return
         if self.call("calibrate", node=strip_id, seconds=seconds) is not None:
-            self.log(f"Calibrating {strip_id} on {seconds:g} s of input…")
+            self.log(f"Calibrating {self._name(strip_id)} on {seconds:g} s of input…")
 
     def clear_calibration(self, strip_id: str) -> None:
         if self.call("clear_calibration", node=strip_id) is not None:
-            self.log(f"Cleared the calibration of {strip_id}.")
+            self.log(f"Cleared the calibration of {self._name(strip_id)}.")
 
     # -- transport --------------------------------------------------------------------
 
@@ -624,7 +655,7 @@ class MainWindow(QMainWindow):
             fitted = set((offline or {}).get("models", []))
             statuses = {s.id: "ready" for s in self.doc.strips if s.id in fitted}
         for err in status.get("errors", [])[len(getattr(self, "_errors", [])) :]:
-            self.log(f"Daemon error: {err}")
+            self.log(f"Engine error: {err}")
         self._errors = list(status.get("errors", []))
         if offline:
             self._offline_status(offline)
@@ -643,9 +674,7 @@ class MainWindow(QMainWindow):
         total = int(offline.get("n_samples") or 0)
         sfreq = next((p["sfreq"] for p in self.offline_probes.values()), 0.0)
         span = int(self.view.seconds() * sfreq)
-        self.timeline.setRange(0, max(0, total - span))
-        self.timeline.setPageStep(max(1, span))
-        self.timeline.setSingleStep(max(1, span // 10))
+        self.timeline.set_extent(0, max(0, total - span), span, live=False)
         state = offline.get("state", "")
         if state == self.offline_state:
             return
@@ -675,13 +704,17 @@ class MainWindow(QMainWindow):
                 (n.get("timing") or {}).get("mean_ms", 0.0)
                 for n in status.get("nodes", [])
             )
-            m["load"].setText(f"load {100 * busy / (1000 * uptime / blocks):.0f}%")
+            m["load"].setText(
+                f"processing load {100 * busy / (1000 * uptime / blocks):.0f}%"
+            )
         p95 = (status.get("latency") or {}).get("p95_ms")
-        m["latency"].setText(f"latency p95 {p95:.0f} ms" if p95 is not None else "")
+        m["latency"].setText(
+            f"delay {p95:.0f} ms (95% of blocks)" if p95 is not None else ""
+        )
         if "overruns" in status:
-            m["overruns"].setText(f"overruns {status['overruns']}")
+            m["overruns"].setText(f"late blocks {status['overruns']}")
         shown = sum(b.dropped for b in self.buffers.values())
-        m["display"].setText(f"frames dropped {shown}" if self.buffers else "")
+        m["display"].setText(f"display frames skipped {shown}" if self.buffers else "")
 
     def on_frame(self, frame: DisplayFrame) -> None:
         buf = self.buffers.get(frame.probe)
@@ -696,25 +729,27 @@ class MainWindow(QMainWindow):
         comps = [tap_id(k) for k, v in self.taps.items() if v == "comparison"]
         return main, comps
 
-    def _live_reference(self, buf: ProbeBuffer) -> int:
-        """The newest bin: the Main probe's, so all probes line up by index."""
+    def _live_reference(self, buf: ProbeBuffer) -> ProbeBuffer:
+        """The Main probe's buffer, so all probes line up by index."""
         main, _ = self._shown()
         ref = self.buffers.get(main) if main else None
         if ref is not None and ref.bin_size == buf.bin_size:
-            return ref.end_bin
-        return buf.end_bin
+            return ref
+        return buf
 
     def _live_window(
         self, probe: str, seconds: float, end: int | None = None
     ) -> Window | None:
         """The window ending at bin ``end`` (default: the newest); time in
-        seconds before the newest data."""
+        seconds before the newest data. Shorter while the history is shorter,
+        so the view never shows time before the data."""
         buf = self.buffers.get(probe)
         if buf is None or not buf.labels or not buf.bin_rate:
             return None
-        newest = self._live_reference(buf)
+        ref = self._live_reference(buf)
+        newest = ref.end_bin
         end = newest if end is None else min(end, newest)
-        n = max(2, int(seconds * buf.bin_rate))
+        n = max(2, min(int(seconds * buf.bin_rate), end - ref.oldest_bin))
         mins, maxs, bypassed = buf.window(end, n)
         t = (np.arange(end - n, end) - newest) / buf.bin_rate
         return Window(probe, buf.labels, t, mins, maxs, bypassed, buf.bin_rate)
@@ -723,12 +758,12 @@ class MainWindow(QMainWindow):
         self, probe: str, seconds: float, offset: int | None = None
     ) -> Window | None:
         """The window starting ``offset`` samples into the recording (default:
-        where the timeline is)."""
+        where the panner is)."""
         info = self.offline_probes.get(probe)
         if info is None or not info.get("n_filled"):
             return None
         n = max(2, int(seconds * info["sfreq"]))
-        offset = self.timeline.value() if offset is None else offset
+        offset = self.timeline.position() if offset is None else offset
         start = info["first_sample"] + offset
         key = (start, n, int(info["n_filled"]))
         cached = self._offline_cache.get(probe)
@@ -761,25 +796,27 @@ class MainWindow(QMainWindow):
         if self.stacked.isVisible():  # the signal view rests meanwhile
             self.stacked.refresh(self.view, self._stacked_provider(main), main, comps)
             return
-        provider = (
-            self._live_window if self.doc.mode == "live" else self._offline_window
-        )
+        provider = self._panned_provider(self.timeline, self.view.seconds(), main)
         self.view.refresh(provider, main, comps)
 
     def _stacked_provider(self, main: str | None) -> Callable[..., Window | None]:
-        """Windows at the stacked window's own scroll position, after setting
-        its range: the whole recording offline, the kept history live."""
-        seconds = self.stacked.seconds()
+        return self._panned_provider(self.stacked.panner, self.stacked.seconds(), main)
+
+    def _panned_provider(
+        self, panner: Panner, seconds: float, main: str | None
+    ) -> Callable[..., Window | None]:
+        """Windows at a panner's position, after setting its range: the whole
+        recording offline, the kept history live."""
         if self.doc.mode == "live":
             buf = self.buffers.get(main) if main else None
             buf = buf or next(iter(self.buffers.values()), None)
             if buf is None or not buf.bin_rate:
                 return self._live_window
-            newest = self._live_reference(buf)
+            ref = self._live_reference(buf)
+            newest, oldest = ref.end_bin, ref.oldest_bin
             n = int(seconds * buf.bin_rate)
-            oldest = max(0, newest - buf.capacity)
-            self.stacked.set_extent(min(oldest + n, newest), newest, n, live=True)
-            end = self.stacked.position()
+            panner.set_extent(min(oldest + n, newest), newest, n, live=True)
+            end = panner.position()
             return lambda p, s: self._live_window(p, s, end=end)
         info = self.offline_probes.get(main) if main else None
         info = info or next(iter(self.offline_probes.values()), None)
@@ -787,8 +824,8 @@ class MainWindow(QMainWindow):
             return self._offline_window
         span = int(seconds * info["sfreq"])
         total = int(info.get("n_samples") or 0)
-        self.stacked.set_extent(0, max(0, total - span), span, live=False)
-        offset = self.stacked.position()
+        panner.set_extent(0, max(0, total - span), span, live=False)
+        offset = panner.position()
         return lambda p, s: self._offline_window(p, s, offset=offset)
 
     def show_stacked(self) -> None:

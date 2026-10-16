@@ -114,7 +114,7 @@ def test_offline_view_scrolls_and_marks_events(
         assert main is not None
         first = win._offline_window(main, 10.0)
         assert first is not None and first.t[0] == pytest.approx(0.0, abs=0.01)
-        win.timeline.setValue(250 * 25)  # scroll to 25 s
+        win.timeline.bar.setValue(250 * 25)  # scroll to 25 s
         later = win._offline_window(main, 10.0)
         assert later is not None and later.t[0] == pytest.approx(25.0, abs=0.05)
         assert [e["label"] for e in win.view.events] == ["go", "stop", "go"]
