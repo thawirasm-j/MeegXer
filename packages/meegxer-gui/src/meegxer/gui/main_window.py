@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollBar,
@@ -33,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame
+from meegxer.core.session import is_session, read_session, write_session
 from meegxer.gui.buffers import ProbeBuffer
 from meegxer.gui.chain import ChainView
 from meegxer.gui.colors import wheel_positions
@@ -161,6 +163,7 @@ class MainWindow(QMainWindow):
         for text, slot in (
             ("Open…", self.open_pipeline),
             ("Save…", self.save_pipeline),
+            ("Save session…", self.save_session),
         ):
             b = QPushButton(text)
             b.clicked.connect(slot)
@@ -480,18 +483,91 @@ class MainWindow(QMainWindow):
         self.start()
 
     def open_pipeline(self) -> None:
+        """Open a pipeline, or a session (``*.meegxer.json``) with its models."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open pipeline", "", "Pipeline (*.json)"
-        )
+            self, "Open pipeline or session", "",
+            "Pipeline or session (*.json);;MeegXer session (*.meegxer.json)",
+        )  # fmt: skip
         if not path:
             return
         try:
-            self.doc.load_pipeline(json.loads(Path(path).read_text(encoding="utf-8")))
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            if is_session(data):
+                self.open_session(path)
+                return
+            self.doc.load_pipeline(data)
         except (OSError, ValueError, KeyError) as exc:
             self.log(f"Could not open {path}: {exc}")
             return
         self._default_taps()
         self._structure_changed(f"Opened {path}.")
+
+    def open_session(self, path: str) -> None:
+        """Load a session: its pipeline here, its fitted models in the daemon
+        (used while they match the input; otherwise the node needs calibrating)."""
+        if self.running:
+            self.log("Stop the pipeline before opening a session.")
+            return
+        session = read_session(path)
+        try:
+            reply = self.link.call("load_session", session=session)
+        except (RpcError, TimeoutError) as exc:
+            if "allow the mismatch" not in str(exc) or not self._ask(
+                "Different node versions",
+                f"{exc}\n\nLoad it anyway? Those nodes' models are refitted.",
+            ):
+                self.log(f"Could not open {path}: {exc}")
+                return
+            reply = self.call("load_session", session=session,
+                              allow_version_mismatch=True)  # fmt: skip
+            if reply is None:
+                return
+        try:
+            self.doc.load_pipeline(session["pipeline"])
+        except (ValueError, KeyError) as exc:
+            self.log(f"Could not show the session's pipeline: {exc}")
+            return
+        self._default_taps()
+        for warning in reply.get("warnings", []):
+            self.log(f"Session: {warning}")
+        models = ", ".join(reply.get("models", [])) or "none"
+        self._structure_changed(f"Opened session {path} (fitted models: {models}).")
+
+    def _ask(self, title: str, text: str) -> bool:
+        answer = QMessageBox.question(self, title, text)
+        return answer == QMessageBox.StandardButton.Yes
+
+    def save_session(self) -> None:
+        """Save what is shown as a session, with the models fitted by the last
+        offline run (offline mode) or calibrated live."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save session", "session.meegxer.json",
+            "MeegXer session (*.meegxer.json)",
+        )  # fmt: skip
+        if not path:
+            return
+        if path.endswith(".meegxer"):
+            path += ".json"
+        elif not path.endswith(".json"):
+            path += ".meegxer.json"
+        offline = self.doc.mode == "offline" and self.offline_state == "done"
+        session = self.call(
+            "get_session",
+            name=Path(path).name.removesuffix(".json").removesuffix(".meegxer"),
+            pipeline=self.doc.to_pipeline(taps=False),
+            offline=offline,
+        )
+        if session is None:
+            return
+        try:
+            write_session(path, session)
+        except OSError as exc:
+            self.log(f"Could not save {path}: {exc}")
+            return
+        models = ", ".join(session.get("models", {})) or "none"
+        outputs = len(session.get("outputs", []))
+        self.log(f"Saved session {path} (fitted models: {models}; "
+                 f"output files: {outputs}).")  # fmt: skip
 
     def save_pipeline(self) -> None:
         path, _ = QFileDialog.getSaveFileName(

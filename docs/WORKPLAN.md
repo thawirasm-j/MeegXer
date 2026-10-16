@@ -314,7 +314,8 @@ stops the feature outlets.
   (format 1.0, spec 0.2.9): models as readable JSON, plugin provenance (image,
   image ID, registry digests), path-independent file fingerprints, deterministic
   `.set` writer; CLI `run --session`, `session check/save`; daemon
-  `get_session`/`load_session`. GUI open/save: next.
+  `get_session`/`load_session`; GUI *Open…* reads sessions and *Save session…*
+  writes them (offline runs reuse the previous run's or the session's models).
 - BIDS-derivatives output layout with provenance.
 - **Acceptance test 4:** save → reload on a second machine → identical output file.
   **Passing** (`packages/meegxer-cli/tests/test_cli_session.py`, ICA model reused,

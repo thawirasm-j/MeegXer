@@ -316,3 +316,56 @@ def test_daemon_loads_a_session_and_gives_it_back(
         assert back["nodes"] == session["nodes"]
     finally:
         daemon.close()
+
+
+def _offline(daemon: Any, pipeline: dict[str, Any]) -> None:
+    daemon.run_offline(pipeline)
+    assert daemon._offline is not None
+    daemon._offline.join(30)
+    assert daemon._offline.state == "done", daemon._offline.error
+
+
+def test_offline_runs_save_and_reuse_their_models(
+    registry: Registry, recording: Path
+) -> None:
+    """GUI flow: run offline (fits), save the session, change nothing and run
+    again (reused), open the session in a fresh daemon and run (reused)."""
+    from meegxer.core.control import Daemon
+
+    data = pipeline(recording, recording.parent / "o.set")
+    d = Daemon("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", registry=registry)
+    try:
+        before = Center.fits
+        _offline(d, data)
+        assert Center.fits == before + 1
+        session = d.get_session(name="gui", pipeline=data, offline=True)
+        assert session["models"]["center"]["data"]["mean"]["__array__"] == "float64"
+        assert session["outputs"][0]["path"].endswith("o.set")
+        _offline(d, data)
+        assert Center.fits == before + 1  # the previous run's model, reused
+    finally:
+        d.close()
+    fresh = Daemon("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", registry=registry)
+    try:
+        reply = fresh.load_session(session)
+        assert reply["models"] == ["center"]
+        _offline(fresh, data)
+        assert Center.fits == before + 1  # the session's model, reused
+    finally:
+        fresh.close()
+
+
+def test_offline_only_session_loads_and_live_start_says_why(
+    registry: Registry, recording: Path
+) -> None:
+    from meegxer.core.control import Daemon
+
+    data = pipeline(recording, recording.parent / "o.set")
+    data["nodes"][1]["node"] = "meegxer.sterile.iir_filter_zerophase"
+    d = Daemon("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", registry=registry)
+    try:
+        d.load_session({"meegxer_session": "1.0", "pipeline": data})
+        with pytest.raises(Exception, match="offline"):
+            d.start()
+    finally:
+        d.close()

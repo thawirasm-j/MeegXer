@@ -159,3 +159,68 @@ def test_warm_up_preloads_every_node_and_survives_failures() -> None:
         assert warmed == ["t.a", "t.b"]
     finally:
         d.close()
+
+
+def test_reloading_the_pipeline_keeps_fitted_models() -> None:
+    """The GUI's Start (and its restart after an edit) loads the pipeline again;
+    calibrated models must survive that like a daemon restart (fingerprints
+    still mark them needs-refit if the input changed, rule 7)."""
+    import time
+
+    import numpy as np
+
+    from meegxer.core.block import Block
+    from meegxer.core.manifest import SPEC_VERSION, Manifest
+    from meegxer.core.node import Params, Processor, TransformResult
+    from meegxer.core.registry import Registry
+    from meegxer.core.serialization import State
+    from meegxer.core.stage import Stage
+
+    class Mean(Processor):
+        manifest = Manifest.from_dict({
+            "spec_version": SPEC_VERSION, "name": "test.mean", "version": "0.1.0",
+            "type": "stream", "requires_fit": True,
+            "inputs": [{"name": "in", "type": "signal"}],
+            "outputs": [{"name": "out", "type": "signal"}],
+        })  # fmt: skip
+
+        def fit(self, calibration: Block, params: Params) -> State:
+            return {"mean": calibration.data.mean(axis=1)}
+
+        def transform(
+            self, block: Block, model: State, state: State | None, params: Params
+        ) -> TransformResult:
+            return TransformResult(block, {})
+
+    registry = Registry.from_entry_points()
+    registry.add(Mean)
+    pipeline = {"spec_version": SPEC_VERSION, "nodes": [
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"n_channels": 3, "sfreq": 100.0}},
+        {"id": "m", "node": "test.mean"},
+    ]}  # fmt: skip
+    d = Daemon("tcp://127.0.0.1:0", "tcp://127.0.0.1:0", registry=registry)
+    try:
+        d.load_pipeline(pipeline)
+        d.start()
+        d.calibrate("m", 0.3)
+
+        def model() -> object:
+            assert d._graph is not None
+            stage = d._graph["m"].impl
+            assert isinstance(stage, Stage)
+            return stage.model
+
+        for _ in range(100):
+            if model() is not None:
+                break
+            time.sleep(0.05)
+        fitted = model()
+        assert fitted is not None
+        d.stop()
+        d.load_pipeline(pipeline)  # what the GUI's Start does
+        assert model() is fitted
+        assert np.all(np.isfinite(fitted.data["mean"]))  # type: ignore[attr-defined]
+    finally:
+        d.stop()
+        d.close()
