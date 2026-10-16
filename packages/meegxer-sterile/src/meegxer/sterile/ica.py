@@ -96,11 +96,8 @@ def eeglab_ica(info: Any, weights: np.ndarray) -> Any:
     return ica
 
 
-def iclabel(x: np.ndarray, info: SignalInfo, weights: np.ndarray) -> np.ndarray:
-    """ICLabel probabilities (components x 7 classes) for data in volts."""
-    import mne
-    from mne_icalabel.iclabel import iclabel_label_components
-
+def require_positions(info: SignalInfo) -> None:
+    """ICLabel needs a position for every channel it labels."""
     missing = [lb for lb, p in zip(info.ch_labels, info.positions or (), strict=True)
                if p is None] if info.positions else list(info.ch_labels)  # fmt: skip
     if missing:
@@ -108,6 +105,14 @@ def iclabel(x: np.ndarray, info: SignalInfo, weights: np.ndarray) -> np.ndarray:
             "ICLabel needs electrode positions; set a montage or positions for "
             f"{', '.join(missing)} (Recording window, Channels tab)"
         )
+
+
+def iclabel(x: np.ndarray, info: SignalInfo, weights: np.ndarray) -> np.ndarray:
+    """ICLabel probabilities (components x 7 classes) for data in volts."""
+    import mne
+    from mne_icalabel.iclabel import iclabel_label_components
+
+    require_positions(info)
     mne_info = mne.create_info(list(info.ch_labels), info.sfreq, "eeg")
     raw = mne.io.RawArray(x, mne_info, verbose=False)
     montage = mne.channels.make_dig_montage(
@@ -170,6 +175,7 @@ class ICAClean(Processor):
         live_params=["threshold", "reject_eye", "reject_muscle", "reject_heart",
                      "reject_line_noise", "reject_channel_noise"],
         requires_fit=True,
+        requires_positions=True,  # ICLabel
     )  # fmt: skip
 
     def fit(self, calibration: Block, params: Params) -> State:

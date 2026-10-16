@@ -101,3 +101,20 @@ def test_offline_refuses_live_only_nodes_and_reports_errors(daemon: Daemon) -> N
     daemon.run_offline(endless)
     status = wait_done(daemon)
     assert status["state"] == "error" and "finite" in status["error"]
+
+
+def test_status_lists_the_models_the_run_fitted(daemon: Daemon) -> None:
+    """Offline runs fit on the whole recording; the GUI shows which nodes have
+    a model from the last run (not the live pipeline's calibration)."""
+    pipeline = {"spec_version": SPEC_VERSION, "nodes": [
+        {"id": "input", "node": "meegxer.core.synthetic",
+         "params": {"duration": 20.0, "n_channels": 8, "sfreq": 250.0},
+         "recording": {"montage": "colin27_1020"}},
+        {"id": "ica", "node": "meegxer.sterile.ica", "params": {"max_iter": 100}},
+        {"id": "tap_ica", "node": "meegxer.core.probe", "input": "ica",
+         "params": {"keep_seconds": 0.0}},
+    ]}  # fmt: skip
+    assert daemon.run_offline(pipeline)["models"] == []  # while running
+    status = wait_done(daemon)
+    assert status["state"] == "done", status["error"]
+    assert status["models"] == ["ica"]

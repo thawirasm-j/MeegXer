@@ -18,7 +18,7 @@ import jsonschema
 
 from meegxer.core.ports import Port, PortType
 
-SPEC_VERSION = "0.2.10"
+SPEC_VERSION = "0.2.11"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]
@@ -97,6 +97,7 @@ class Manifest:
     params: tuple[ParamSpec, ...] = ()
     latency_samples: int = 0
     requires_fit: bool = False
+    requires_positions: bool = False
     image: str | None = None
     description: str = ""
     role: NodeRoleName = "processor"
@@ -147,6 +148,7 @@ class Manifest:
             params=params,
             latency_samples=data.get("latency_samples", 0),
             requires_fit=data.get("requires_fit", False),
+            requires_positions=data.get("requires_positions", False),
             image=data.get("image"),
             description=data.get("description", ""),
             role=data.get("role", "processor"),

@@ -36,6 +36,10 @@ define it.
     (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
     with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
     session file next to each recording.
+  - 0.2.11: manifest `requires_positions`: the node needs an electrode position
+    for every good channel it processes (ICA's ICLabel). Hosts check the input
+    (after its `recording` overrides) before running and refuse to start without
+    them, naming the node and channels; a live stream is checked once it is open.
   - `control-api.md`: JSON-RPC 2.0 methods between the daemon and clients.
   - `display-protocol.md`: decimated min/max envelope frames on the display stream.
   - `plugin-protocol.md` (`meegxer.plugin/0.2`): framed stdin/stdout protocol for

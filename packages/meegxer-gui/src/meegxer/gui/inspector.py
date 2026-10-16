@@ -161,8 +161,16 @@ class Inspector(QScrollArea):
             note.setObjectName("muted")
             lay.addWidget(note)
 
-        if manifest.get("requires_fit"):
+        if manifest.get("requires_fit") and doc.mode == "live":
             lay.addWidget(self._calibration(strip, node_status, running))
+        elif manifest.get("requires_fit"):
+            note = QLabel(
+                "<b>Calibration</b> &nbsp; offline runs fit this node on the whole "
+                "recording (the fit is reused while the input and the strips "
+                "before it are unchanged)."
+            )
+            note.setWordWrap(True)
+            lay.addWidget(note)
         if advanced and is_processor:
             lay.addWidget(self._channel_types(strip))
         if advanced and manifest["params"]:

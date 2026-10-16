@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame
+from meegxer.core.graph import positions_message
 from meegxer.core.session import is_session, read_session, write_session
 from meegxer.gui.buffers import ProbeBuffer
 from meegxer.gui.chain import ChainView
@@ -141,6 +143,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(splitter, 1)
         self.setCentralWidget(root)
         self.stacked = StackedWindow(self.theme)
+        self.stacked.closed.connect(self._stacked_closed)
         self.recording_window = RecordingWindow(self.call, self.theme)
         self.recording_window.applied.connect(self.apply_recording)
 
@@ -345,16 +348,30 @@ class MainWindow(QMainWindow):
         self.view.set_wheel(wheel_positions(positions))
         self.view.events = list(info["events"]) if self.doc.mode == "offline" else []
 
-    def _describe_input(self) -> None:
+    def _describe_input(self) -> dict[str, Any] | None:
         """Read the input's description before a run (not for LSL, whose stream
-        the run itself opens)."""
+        the run itself opens; the daemon checks it then)."""
         src = self.doc.source
         if src is None or src.node in LIVE_ONLY_SOURCES:
             self.use_recording_info(None)
-            return
-        self.use_recording_info(
-            self.call("describe_source", node=self.doc.source_entry())
+            return None
+        info: dict[str, Any] | None = self.call(
+            "describe_source", node=self.doc.source_entry()
         )
+        self.use_recording_info(info)
+        return info
+
+    def _positions_ready(self, info: dict[str, Any] | None) -> bool:
+        """Strips that need electrode positions (ICA's ICLabel) get them before
+        anything runs: if the input lacks some, say which and open the Recording
+        window on its Channels tab instead of starting."""
+        missing = self.doc.missing_positions(info["channels"]) if info else {}
+        if not missing:
+            return True
+        self.log("Cannot start: " + positions_message(missing))
+        self.open_recording()
+        self.recording_window.tabs.setCurrentIndex(0)  # Channels
+        return False
 
     def change_source(self, node: str) -> None:
         if self.doc.source is not None and node == self.doc.source.node:
@@ -452,7 +469,8 @@ class MainWindow(QMainWindow):
         if problems:
             self.log("Cannot start: " + "; ".join(problems))
             return
-        self._describe_input()
+        if not self._positions_ready(self._describe_input()):
+            return
         if self.doc.mode == "offline":
             pipeline = self.doc.to_pipeline(tap_keep_seconds=0.0)
             result = self.call("run_offline", pipeline=pipeline)
@@ -601,10 +619,13 @@ class MainWindow(QMainWindow):
             elif n.get("pass_uncalibrated") and s != "ready":
                 s = "bypassed"
             statuses[n["id"]] = s
+        offline = status.get("offline")
+        if self.doc.mode == "offline":  # the last offline run, not the live graph
+            fitted = set((offline or {}).get("models", []))
+            statuses = {s.id: "ready" for s in self.doc.strips if s.id in fitted}
         for err in status.get("errors", [])[len(getattr(self, "_errors", [])) :]:
             self.log(f"Daemon error: {err}")
         self._errors = list(status.get("errors", []))
-        offline = status.get("offline")
         if offline:
             self._offline_status(offline)
         if not running and self.running:
@@ -675,28 +696,40 @@ class MainWindow(QMainWindow):
         comps = [tap_id(k) for k, v in self.taps.items() if v == "comparison"]
         return main, comps
 
-    def _live_window(self, probe: str, seconds: float) -> Window | None:
+    def _live_reference(self, buf: ProbeBuffer) -> int:
+        """The newest bin: the Main probe's, so all probes line up by index."""
+        main, _ = self._shown()
+        ref = self.buffers.get(main) if main else None
+        if ref is not None and ref.bin_size == buf.bin_size:
+            return ref.end_bin
+        return buf.end_bin
+
+    def _live_window(
+        self, probe: str, seconds: float, end: int | None = None
+    ) -> Window | None:
+        """The window ending at bin ``end`` (default: the newest); time in
+        seconds before the newest data."""
         buf = self.buffers.get(probe)
         if buf is None or not buf.labels or not buf.bin_rate:
             return None
-        main, _ = self._shown()
-        ref = self.buffers.get(main) if main else None
-        end = (
-            ref.end_bin
-            if ref is not None and ref.bin_size == buf.bin_size
-            else buf.end_bin
-        )
+        newest = self._live_reference(buf)
+        end = newest if end is None else min(end, newest)
         n = max(2, int(seconds * buf.bin_rate))
         mins, maxs, bypassed = buf.window(end, n)
-        t = (np.arange(end - n, end) - end) / buf.bin_rate
+        t = (np.arange(end - n, end) - newest) / buf.bin_rate
         return Window(probe, buf.labels, t, mins, maxs, bypassed, buf.bin_rate)
 
-    def _offline_window(self, probe: str, seconds: float) -> Window | None:
+    def _offline_window(
+        self, probe: str, seconds: float, offset: int | None = None
+    ) -> Window | None:
+        """The window starting ``offset`` samples into the recording (default:
+        where the timeline is)."""
         info = self.offline_probes.get(probe)
         if info is None or not info.get("n_filled"):
             return None
         n = max(2, int(seconds * info["sfreq"]))
-        start = info["first_sample"] + self.timeline.value()
+        offset = self.timeline.value() if offset is None else offset
+        start = info["first_sample"] + offset
         key = (start, n, int(info["n_filled"]))
         cached = self._offline_cache.get(probe)
         if cached is not None and cached[0] == key:
@@ -725,15 +758,48 @@ class MainWindow(QMainWindow):
 
     def redraw(self) -> None:
         main, comps = self._shown()
+        if self.stacked.isVisible():  # the signal view rests meanwhile
+            self.stacked.refresh(self.view, self._stacked_provider(main), main, comps)
+            return
         provider = (
             self._live_window if self.doc.mode == "live" else self._offline_window
         )
         self.view.refresh(provider, main, comps)
-        self.stacked.refresh(self.view, provider, main, comps)
+
+    def _stacked_provider(self, main: str | None) -> Callable[..., Window | None]:
+        """Windows at the stacked window's own scroll position, after setting
+        its range: the whole recording offline, the kept history live."""
+        seconds = self.stacked.seconds()
+        if self.doc.mode == "live":
+            buf = self.buffers.get(main) if main else None
+            buf = buf or next(iter(self.buffers.values()), None)
+            if buf is None or not buf.bin_rate:
+                return self._live_window
+            newest = self._live_reference(buf)
+            n = int(seconds * buf.bin_rate)
+            oldest = max(0, newest - buf.capacity)
+            self.stacked.set_extent(min(oldest + n, newest), newest, n, live=True)
+            end = self.stacked.position()
+            return lambda p, s: self._live_window(p, s, end=end)
+        info = self.offline_probes.get(main) if main else None
+        info = info or next(iter(self.offline_probes.values()), None)
+        if info is None:
+            return self._offline_window
+        span = int(seconds * info["sfreq"])
+        total = int(info.get("n_samples") or 0)
+        self.stacked.set_extent(0, max(0, total - span), span, live=False)
+        offset = self.stacked.position()
+        return lambda p, s: self._offline_window(p, s, offset=offset)
 
     def show_stacked(self) -> None:
         self.stacked.show()
         self.stacked.raise_()
+        self.view.set_active(False)
+        self.timeline.setEnabled(False)
+
+    def _stacked_closed(self) -> None:
+        self.view.set_active(True)
+        self.timeline.setEnabled(True)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._render.stop()

@@ -112,6 +112,9 @@ class BatchScheduler:
         online_only = [n.id for n in graph.nodes if not n.manifest.runs_offline]
         if online_only:
             raise GraphError(f"online-only nodes cannot run in batch: {online_only}")
+        source = graph.source.impl
+        assert isinstance(source, Source)
+        graph.check_positions(source.info)  # before reading or writing anything
         sinks = [n for n in graph.nodes if isinstance(n.impl, Sink)]
         for node in sinks:
             assert isinstance(node.impl, Sink)

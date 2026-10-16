@@ -20,7 +20,7 @@ from typing import Any
 
 import jsonschema
 
-from meegxer.core.block import DEFAULT_PROCESSED_TYPES
+from meegxer.core.block import DEFAULT_PROCESSED_TYPES, SignalInfo
 from meegxer.core.manifest import SPEC_VERSION, Manifest, ParamValue
 from meegxer.core.node import NodeRole, Probe, Processor, Sink, Source
 from meegxer.core.ports import Port, check_connection
@@ -39,6 +39,17 @@ type NodeImpl = Source | Stage | Probe | Sink
 
 class GraphError(ValueError):
     """The pipeline is not a valid graph (ids, inputs, roles or port types)."""
+
+
+def positions_message(missing: Mapping[str, list[str]]) -> str:
+    """Why a pipeline cannot run: which nodes lack positions for which channels."""
+    parts = []
+    for node_id, labels in missing.items():
+        shown = ", ".join(labels[:8]) + (f" and {len(labels) - 8} more"
+                                         if len(labels) > 8 else "")  # fmt: skip
+        parts.append(f"{node_id} needs electrode positions for {shown}")
+    return ("; ".join(parts) + ". Set a montage or positions (Recording window, "
+            "Channels tab; recording.montage in a pipeline file)")  # fmt: skip
 
 
 @cache
@@ -299,6 +310,30 @@ class Graph:
             if node.role is NodeRole.SOURCE:
                 return node
         raise GraphError("pipeline has no source")
+
+    def missing_positions(self, info: SignalInfo) -> dict[str, list[str]]:
+        """Nodes that need electrode positions (manifest ``requires_positions``)
+        and the good channels of ``info`` they process that have none."""
+        positions = dict(zip(info.ch_labels, info.positions, strict=True)) \
+            if info.positions else {}  # fmt: skip
+        found: dict[str, list[str]] = {}
+        for node in self.nodes:
+            if not (node.manifest.requires_positions and isinstance(node.impl, Stage)):
+                continue
+            missing = [
+                label
+                for label in info.labels_of_types(node.impl.channel_types)
+                if label not in info.bads and positions.get(label) is None
+            ]
+            if missing:
+                found[node.id] = missing
+        return found
+
+    def check_positions(self, info: SignalInfo) -> None:
+        """Refuse to run nodes that need electrode positions the input lacks."""
+        missing = self.missing_positions(info)
+        if missing:
+            raise GraphError(positions_message(missing))
 
     def remove(self, node_id: str) -> None:
         """Remove a node that nothing reads from."""

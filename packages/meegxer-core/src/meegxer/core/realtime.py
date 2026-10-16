@@ -33,7 +33,7 @@ import pylsl
 
 from meegxer.core.block import Block, FeatureBlock, SignalInfo, concat_blocks
 from meegxer.core.display import Decimator, DisplayFrame, DisplayPublisher, Envelope
-from meegxer.core.graph import Graph, GraphError, GraphNode
+from meegxer.core.graph import Graph, GraphError, GraphNode, positions_message
 from meegxer.core.node import Probe, Sink, Source, output_blocks
 from meegxer.core.stage import Stage, StageStatus, StaleModelError, signal_fingerprint
 
@@ -297,12 +297,17 @@ class RealtimeScheduler:
         )  # fmt: skip
         self.metrics.started_at = self.clock()
         try:
+            missing = self.graph.missing_positions(source.info)  # LSL: once open
+            if missing:
+                self.metrics.errors.append(positions_message(missing))
+                return
             self._refresh_fingerprints()
             chunk = self.max_block or max(1, int(source.info.sfreq))
             while self._running.is_set():
                 self._drain_commands()
                 block = source.read(chunk)
                 if block is None:
+                    self._report_unfinished_calibration(source.info.sfreq)
                     break
                 if block.n_samples == 0:
                     self._maybe_flush_display()
@@ -335,6 +340,17 @@ class RealtimeScheduler:
             self._running.clear()
             self._update_snapshot(force=True)
             self._finished.set()
+
+    def _report_unfinished_calibration(self, sfreq: float) -> None:
+        """The input ended while a calibration was still collecting: say so
+        (its node stays uncalibrated) instead of stopping without a reason."""
+        for node_id, (blocks, seconds) in self._calibration.items():
+            got = sum(b.n_samples for b in blocks) / sfreq
+            self.metrics.errors.append(
+                f"calibration of {node_id!r} did not finish: the input ended after "
+                f"{got:.1f} of {seconds:g} s; it stays uncalibrated (use a longer "
+                "input or a shorter calibration)"
+            )
 
     def _drain_commands(self) -> None:
         while True:
