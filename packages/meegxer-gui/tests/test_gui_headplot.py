@@ -7,18 +7,19 @@ import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
+from meegxer.gui.colors import channel_style
 from meegxer.gui.headplot import (
     HeadInput,
     HeadMap,
+    PeakHold,
     Smoother,
     band_power,
+    contour_segments,
     electrode_xy,
     layout,
+    nice_step,
     peak_frequency,
     render,
-    spatial_colors,
-    srgb_to_oklab,
-    wheel_oklab,
 )
 from meegxer.gui.signal_view import SignalView, Window
 from meegxer.gui.theme import load_theme
@@ -91,33 +92,52 @@ def test_smoothing_is_an_ema_with_a_time_constant() -> None:
     assert smoother.update("tap", ("Pz",), f, first, now=4.0) is first
 
 
-def test_interpolation_is_linear_inside_and_voronoi_outside() -> None:
-    points = np.array([[0.0, 0.6], [-0.6, -0.3], [0.6, -0.3], [0.0, 0.0]])
+def test_the_scale_top_rises_at_once_and_decays() -> None:
+    hold = PeakHold(tau=2.0)
+    assert hold.update("k", 10.0, now=0.0) == 10.0
+    assert hold.update("k", 4.0, now=2.0) == pytest.approx(4 + 6 * math.exp(-1))
+    assert hold.update("k", 12.0, now=2.5) == 12.0  # up at once
+    assert hold.update("other band", 3.0, now=3.0) == 3.0  # starts again
+    hold.tau = 0.0
+    assert hold.update("other band", 1.0, now=4.0) == 1.0
+
+
+def test_steps_are_round_numbers() -> None:
+    assert [nice_step(x) for x in (0.3, 0.5, 1.6, 2.1, 7.0)] == [0.5, 0.5, 2, 5, 10]
+
+
+def test_the_map_is_smooth_fills_the_head_and_never_overshoots() -> None:
+    labels = ["Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8", "T7", "C3", "Cz",
+              "C4", "T8", "P7", "P3", "Pz", "P4", "P8", "O1", "Oz", "O2"]  # fmt: skip
+    xy = electrode_xy(labels)
+    points = np.array([xy[lb] for lb in labels])
     lay = layout(points)
-    plane = 2 * points[:, 0] - points[:, 1] + 1  # a linear field is reproduced
-    got = lay.interpolate(plane)
-    axis = np.linspace(-lay.extent, lay.extent, lay.inside.shape[0])
+    values = 3 * points[:, 0] - 2 * points[:, 1]
+    grid = lay.interpolate(values)
+    axis = np.linspace(-lay.extent, lay.extent, grid.shape[0])
     gx, gy = np.meshgrid(axis, axis[::-1])
-    px, py = gx[lay.inside], gy[lay.inside]
-    hull = lay.weight[:, 1] != 0  # pixels inside a triangle
-    np.testing.assert_allclose(got[hull], (2 * px - py + 1)[hull], atol=1e-9)
-    # outside the triangulation: the nearest electrode's own value
-    far = ~hull
-    d = np.hypot(px[far, None] - points[:, 0], py[far, None] - points[:, 1])
-    np.testing.assert_allclose(got[far], plane[np.argmin(d, axis=1)])
+    disc = np.hypot(gx, gy) <= lay.radius
+    assert np.isfinite(grid[disc]).all()  # extrapolated to the edge
+    assert grid[disc].min() >= values.min() and grid[disc].max() <= values.max()
+    # exact at the electrodes (to within a pixel's worth of the slope)
+    step = axis[1] - axis[0]
+    for (x, y), v in zip(points, values, strict=True):
+        r, c = round((lay.extent - y) / step), round((x + lay.extent) / step)
+        assert grid[r, c] == pytest.approx(v, abs=4 * step)
+    flat = lay.interpolate(np.full(len(points), 7.0))
+    np.testing.assert_allclose(flat[disc], 7.0)
 
 
-def test_spatial_blend_makes_equal_power_stand_out_equally() -> None:
-    theme = load_theme("light")
-    bg = srgb_to_oklab((251, 251, 250))
-    wheel = wheel_oklab([90.0, 0.0, 200.0], [1.0, 0.0, 0.6], theme)  # rim, Cz, mid
-    floor = float(np.min(np.linalg.norm(wheel - bg, axis=-1)))
-    for s in (0.25, 0.5, 1.0):
-        out = spatial_colors(wheel, np.full(3, s), bg, floor)
-        np.testing.assert_allclose(np.linalg.norm(out - bg, axis=-1), s * floor)
-    full = spatial_colors(wheel, np.ones(3), bg, floor)
-    weakest = int(np.argmin(np.linalg.norm(wheel - bg, axis=-1)))
-    np.testing.assert_allclose(full[weakest], wheel[weakest])  # full colour
+def test_contours_follow_the_level() -> None:
+    n = 101
+    rr, cc = np.indices((n, n), dtype=float)
+    radius = np.hypot(rr - 50, cc - 50)
+    seg = contour_segments(radius, 30.0)
+    assert len(seg) > 100
+    for r, c in ((seg[:, 0], seg[:, 1]), (seg[:, 2], seg[:, 3])):
+        np.testing.assert_allclose(np.hypot(r - 50, c - 50), 30.0, atol=0.2)
+    radius[:50] = np.nan  # no line through missing data
+    assert (contour_segments(radius, 30.0)[:, [0, 2]] >= 50).all()
 
 
 def test_bipolar_channels_sit_between_their_electrodes() -> None:
@@ -134,35 +154,51 @@ def test_bipolar_channels_sit_between_their_electrodes() -> None:
 def head(**kw: object) -> HeadMap | str:
     f, psd = spectra(OCCIPITAL)
     data = HeadInput(labels=LABELS, f=f, psd=psd, band=(8.0, 13.0))
+    hold = kw.pop("hold", None)
     for k, v in kw.items():
         setattr(data, k, v)
-    return render(data, load_theme("dark"))
+    return render(data, load_theme("dark"), hold=hold)  # type: ignore[arg-type]
 
 
-def lightness(m: HeadMap, label: str) -> float:
-    e = next(e for e in m.electrodes if e.label == label)
-    return float(srgb_to_oklab(e.color)[0])
+def test_heat_maps_power_in_contour_bands_below_the_top() -> None:
+    m = head()
+    assert isinstance(m, HeadMap) and m.unplaced == ["EOG"]
+    assert m.rgba[..., 3].any() and m.lines  # filled bands and their lines
+    assert len(m.scale[2]) == 10 and m.scale[:2] == ("−20 dB", "max")  # noqa: RUF001
+    assert m.caption == "Band power, 2 dB steps"
+    narrow = head(db_range=10.0)
+    assert isinstance(narrow, HeadMap) and len(narrow.scale[2]) == 5
+    assert (narrow.rgba[..., 3] > 0).sum() < (m.rgba[..., 3] > 0).sum()
+    # electrodes keep their channel colours whatever the map
+    o1 = next(e for e in m.electrodes if e.label == "O1")
+    assert o1.color == channel_style("O1", load_theme("dark")).color
+    rel = head(relative=True)
+    assert isinstance(rel, HeadMap) and rel.caption.startswith("Relative")
 
 
-def test_every_scheme_maps_where_the_power_is() -> None:
-    for scheme in ("spatial", "heat"):
-        m = head(scheme=scheme)
-        assert isinstance(m, HeadMap) and m.unplaced == ["EOG"]
-        assert m.rgba.shape[2] == 4 and m.rgba[..., 3].any()
-        # on the dark theme, more power is lighter (further from the background)
-        assert lightness(m, "O1") > lightness(m, "Fp1") + 0.2
-    m = head(relative=True)
-    assert isinstance(m, HeadMap) and m.caption.startswith("Relative")
+def test_a_held_top_shows_a_fading_map() -> None:
+    seen: list[float] = []
+
+    def hold(top: float) -> float:
+        seen.append(top)
+        return top + 6.0  # the scale still remembers a stronger moment
+
+    now = head(db_range=10.0)
+    held = head(db_range=10.0, hold=hold)
+    assert isinstance(now, HeadMap) and isinstance(held, HeadMap)
+    assert len(seen) == 1
+    assert (held.rgba[..., 3] > 0).sum() < (now.rgba[..., 3] > 0).sum()
 
 
 def test_change_compares_with_the_first_comparison_tap() -> None:
     assert head(scheme="change") == "Change needs a second tap (click a ◇ in the chain)"
-    _, before = spectra({lb: 50.0 for lb in LABELS})
+    _, before = spectra({lb: 50.0 for lb in LABELS if lb not in ("O1", "O2")})
     m = head(scheme="change", compare_psd=before, compare_labels=LABELS)
     assert isinstance(m, HeadMap)
     text = {e.label: e.text for e in m.electrodes}
     assert text["Fp1"].startswith("Fp1: -") and "dB" in text["Fp1"]  # removed
-    assert text["O1"] == "O1: +0.0 dB"  # unchanged where the alpha stayed
+    assert text["O1"].startswith("O1: +")  # added where the alpha grew
+    assert any(bold for _, bold in m.lines)  # the 0 dB line between them
 
 
 def test_peak_frequency_leaves_out_electrodes_without_a_peak() -> None:
@@ -218,6 +254,11 @@ def test_the_spectrum_view_shows_the_head_and_its_band(qapp: QApplication) -> No
     v.head.clicked.emit("O1")
     assert "O1" not in v.channels.hidden
 
+    assert v.db_range.isEnabled()  # the range is heat's
+    v.scheme.setCurrentIndex(1)
+    assert not v.db_range.isEnabled()
+    v.scheme.setCurrentIndex(0)
+
     v.head_toggle.setChecked(False)
     assert not v.head.isVisible()
     v.head_toggle.setChecked(True)
@@ -239,6 +280,18 @@ def test_live_spectra_are_smoothed_offline_ones_are_not(qapp: QApplication) -> N
     dispose(qapp, v)
 
 
+def test_live_the_heat_scale_top_is_held(qapp: QApplication) -> None:
+    v = view(qapp)
+    strong, weak = window("main", OCCIPITAL), window("main", {"O1": 5.0})
+    v.panner.live = True
+    v.refresh(lambda p, s: strong, "main", [])
+    top = v.peak._held[1] if v.peak._held else None
+    v.refresh(lambda p, s: weak, "main", [])  # a moment later: barely decayed
+    assert top is not None and v.peak._held is not None
+    assert v.peak._held[1] == pytest.approx(top, abs=0.5)
+    dispose(qapp, v)
+
+
 def test_the_hovered_channel_is_drawn_bold(qapp: QApplication) -> None:
     v = view(qapp)
     main = window("main", OCCIPITAL)
@@ -246,4 +299,31 @@ def test_the_hovered_channel_is_drawn_bold(qapp: QApplication) -> None:
     v.refresh(lambda p, s: main, "main", [])
     widths = [c.opts["pen"].widthF() for c in v.plot._curves if c.isVisible()]
     assert max(widths) == pytest.approx(4.0) and widths[-1] == pytest.approx(4.0)
+    dispose(qapp, v)
+
+
+def test_offline_the_same_spectra_are_not_mapped_twice(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import meegxer.gui.signal_view as sv
+
+    calls: list[object] = []
+
+    def counted(*args: object, **kw: object) -> object:
+        calls.append(args)
+        return render(*args, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(sv, "render", counted)
+    v = view(qapp)
+    main = window("main", OCCIPITAL)
+    v.refresh(lambda p, s: main, "main", [])
+    v.refresh(lambda p, s: main, "main", [])  # the timer redraws: nothing changed
+    assert len(calls) == 1
+    v.refresh(lambda p, s: None, "main", [])  # a message in between...
+    v.refresh(lambda p, s: main, "main", [])  # ...then the map is drawn again
+    assert len(calls) == 2 and isinstance(v.head.map, HeadMap)
+    v.band_menu.setCurrentIndex(1)
+    v.band_menu.activated.emit(1)
+    v.refresh(lambda p, s: main, "main", [])  # a new band is a new map
+    assert len(calls) == 3
     dispose(qapp, v)

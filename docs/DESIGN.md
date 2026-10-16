@@ -279,20 +279,26 @@ it never interrupts processing.
   data hatched. A button opens stacked traces (EEGLAB-scroll style) in a separate
   window that follows the same probes.
 - **Spectrum head plot:** spectrum mode puts a square head plot left of the
-  spectra (`gui/headplot.py`), for the Main tap. The band is a shaded region on the
-  spectrum (drag it or its edges, or pick δ/θ/α/β/γ); its power is the integral of
-  the PSD (µV², absolute or relative to 1–45 Hz). Values are interpolated linearly
-  over the electrodes' Delaunay triangulation and taken from the nearest electrode
-  (its Voronoi cell) outside it. Colour schemes: *Spatial* (the scalp wheel's hue at
-  each point; band power over the top 20 dB sets how far it stands out from the
-  background, equalised in OKLab so equal power stands out equally at the vertex
-  and the rim), *Heat* (one sequential ramp), *Change* (Main vs. the first
-  comparison tap in dB, diverging) and *Peak frequency* (where the band peaks;
-  electrodes whose maximum is on a band edge are left out). Hover names an electrode
-  and thickens its spectrum line; a click shows or hides the channel. Live, spectra
-  (lines and head) are smoothed between refreshes by an exponential moving average
-  with a chosen time constant (off, 1–10 s); offline views are not smoothed. These
-  are view settings, kept out of the pipeline and its sessions.
+  spectra (`gui/headplot.py`), for the Main tap, drawn as a topomap: filled contour
+  bands with lines. The band is a shaded region on the spectrum (drag it or its
+  edges, or pick δ/θ/α/β/γ); its power is the integral of the PSD (µV², absolute or
+  relative to 1–45 Hz). The map is a smooth (Clough–Tocher) interpolation over the
+  electrodes, extrapolated to the head's edge through a ring of virtual points
+  (each the mean of its nearest electrodes, like MNE's `extrapolate="head"`) and
+  clipped to the electrodes' range. Schemes: *Heat* (band power in 2 dB bands over
+  10, 20 or 30 dB below the top; live, the top rises at once with the head's
+  maximum and decays with the smoothing time constant, so the map fades instead of
+  flickering), *Change* (Main vs. the first comparison tap in dB, diverging, the
+  0 dB line bold) and *Peak frequency* (where the band peaks; electrodes whose
+  maximum is on a band edge are left out). Electrodes are drawn in their channel
+  colours inside a black-and-white ring, apart from the map's colours; hover names
+  one and thickens its spectrum line, a click shows or hides the channel. (A first
+  "spatial" scheme, the scalp colour wheel with power as opacity, was dropped:
+  opacity shows magnitude poorly and the wheel's own lightness biased it.) Live,
+  spectra (lines and head) are smoothed between refreshes by an exponential moving
+  average with a chosen time constant (off, 1–10 s); offline views are not
+  smoothed, and an unchanged offline view is not mapped again. These are view
+  settings, kept out of the pipeline and its sessions.
 - **Channel colours (colour wheel on the scalp):** electrodes are projected
   azimuthally from Cz. Hue follows the angle around a perceptually uniform OKLCH
   wheel (front magenta-red, right orange, back green, left blue; left and right stay

@@ -1,21 +1,20 @@
-"""Head plot for the spectrum view: band power across the scalp.
+"""Head plot for the spectrum view: band power across the scalp, as a topomap.
 
 Electrodes sit where the channel colours put them (the azimuthal projection from
-Cz of ``colors``). Values are interpolated linearly inside the electrodes' Delaunay
-triangulation and taken from the nearest electrode outside it (its Voronoi cell),
-so the map never invents values beyond the outermost electrodes' own.
+Cz of ``colors``) and are drawn in their channel colour inside a black-and-white
+ring, so they read apart from the map's colours. The map is a smooth (C1,
+Clough-Tocher) interpolation over the electrodes, extrapolated to the head's edge
+through virtual points on a ring outside it (each the mean of its nearest
+electrodes, as MNE's ``extrapolate="head"`` does), and clipped to the electrodes'
+own range so it never overshoots. It is drawn as filled contour bands with lines.
 
 Colour schemes (``SCHEMES``):
 
-- ``spatial``: the hue is the scalp colour wheel at each point (so an electrode
-  has its spectrum line's colour); band power sets how far the colour stands out
-  from the background, over the top ``DB_RANGE`` dB of the map. The blend is
-  equalised in OKLab so equal power stands out equally everywhere: the wheel's
-  vertex and rim differ in contrast with the background, which would otherwise
-  bias the map by position.
-- ``heat``: one sequential ramp over the same dB range (the classic topomap).
+- ``heat``: band power in dB over a range below the top (``RANGES``; 2 dB bands).
+  Live, the top follows the head's maximum: it rises at once and decays with the
+  smoothing time constant (``PeakHold``), so the map does not flicker.
 - ``change``: Main against the first comparison tap, in dB (diverging; negative =
-  this stretch of the chain removed power there).
+  this stretch of the chain removed power there; the 0 dB line is bold).
 - ``peak``: the frequency of the spectral peak inside the band; electrodes whose
   maximum sits on a band edge have no peak and are left out.
 
@@ -28,12 +27,12 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
 import numpy.typing as npt
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QImage,
@@ -44,15 +43,15 @@ from PySide6.QtGui import (
     QPen,
 )
 from PySide6.QtWidgets import QToolTip, QWidget
+from scipy.interpolate import CloughTocher2DInterpolator
 from scipy.spatial import Delaunay, QhullError, cKDTree
 
-from meegxer.gui.colors import RGB, position
+from meegxer.gui.colors import RGB, channel_style, position
 from meegxer.gui.theme import Theme
 
 FloatArray = npt.NDArray[np.float64]
 
 SCHEMES = {
-    "spatial": "Spatial",
     "heat": "Heat",
     "change": "Change",
     "peak": "Peak frequency",
@@ -66,9 +65,12 @@ BANDS: dict[str, tuple[float, float]] = {
 }
 SYMBOLS = dict(zip(BANDS, "δθαβγ", strict=True))
 TOTAL = (1.0, 45.0)  # the reference band of relative power
-DB_RANGE = 20.0  # the map shows the top 20 dB
+RANGES = (10.0, 20.0, 30.0)  # dB below the top that heat shows
+DEFAULT_RANGE = 20.0
+HEAT_STEP = 2.0  # dB per heat band
 MIN_CHANGE_DB = 3.0  # the change scale spans at least ±3 dB
-GRID = 112  # map resolution (pixels per side)
+GRID = 200  # map resolution (pixels per side)
+RING = 24  # virtual points on the extrapolation ring
 
 
 # -- colour -------------------------------------------------------------------------
@@ -114,20 +116,6 @@ def oklab_to_srgb(lab: npt.ArrayLike) -> npt.NDArray[np.uint8]:
     return np.asarray(np.round(enc * 255), dtype=np.uint8)
 
 
-def wheel_oklab(
-    azimuth: npt.ArrayLike, radius: npt.ArrayLike, theme: Theme
-) -> FloatArray:
-    """The scalp colour wheel (``colors.wheel_color``) for arrays of points."""
-    wheel = theme.wheel
-    r = np.clip(np.asarray(radius, dtype=float), 0.0, 1.0)
-    lightness = wheel.vertex_lightness + (
-        wheel.rim_lightness - wheel.vertex_lightness
-    ) * (1 - (1 - r) ** 2)
-    chroma = wheel.chroma * r
-    hue = np.radians((60.0 - np.asarray(azimuth, dtype=float)) % 360.0)
-    return np.stack([lightness, chroma * np.cos(hue), chroma * np.sin(hue)], axis=-1)
-
-
 def _lch(lightness: float, chroma: float, hue_deg: float) -> FloatArray:
     h = math.radians(hue_deg)
     return np.array([lightness, chroma * math.cos(h), chroma * math.sin(h)])
@@ -146,28 +134,14 @@ def _hex(color: str) -> RGB:
     return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
 
 
-def spatial_colors(
-    wheel: FloatArray, strength: FloatArray, background: FloatArray, floor: float
-) -> FloatArray:
-    """Blend wheel colours over the background so that the OKLab distance from
-    the background is ``strength * floor``: equal power stands out equally, and
-    the least contrasting colour reaches full colour at full strength."""
-    full = np.linalg.norm(wheel - background, axis=-1)
-    t = np.clip(strength * floor / np.maximum(full, 1e-9), 0.0, 1.0)
-    return np.asarray(background + t[..., None] * (wheel - background), dtype=float)
-
-
 def heat_colors(s: FloatArray, theme: Theme) -> FloatArray:
-    """A sequential ramp from the background: dim violet to bright yellow on a
-    dark theme, pale yellow to deep violet on a light one."""
-    bg = _background(theme)
+    """Sequential: dim violet to bright yellow on a dark theme, pale yellow to
+    deep violet on a light one (more is further from the background)."""
     s = np.clip(s, 0.0, 1.0)[..., None]
-    lo, hi = (_lch(0.45, 0.12, 300), _lch(0.93, 0.16, 95))
+    lo, hi = (_lch(0.38, 0.11, 300), _lch(0.93, 0.16, 95))
     if not theme.dark:
-        lo, hi = (_lch(0.93, 0.10, 95), _lch(0.32, 0.15, 290))
-    ramp = lo + s * (hi - lo)
-    fade = np.clip(s * 4, 0.0, 1.0)  # the lowest values melt into the background
-    return np.asarray(bg + fade * (ramp - bg), dtype=float)
+        lo, hi = (_lch(0.94, 0.09, 95), _lch(0.32, 0.15, 290))
+    return np.asarray(lo + s * (hi - lo), dtype=float)
 
 
 def diverging_colors(s: FloatArray, theme: Theme) -> FloatArray:
@@ -188,6 +162,14 @@ def peak_colors(s: FloatArray, theme: Theme) -> FloatArray:
     return np.stack(
         [np.full_like(h, light), 0.13 * np.cos(h), 0.13 * np.sin(h)], axis=-1
     )
+
+
+def nice_step(x: float) -> float:
+    """The smallest 1, 2 or 5 x 10^n that is at least ``x``."""
+    if x <= 0:
+        return 1.0
+    base = 10.0 ** math.floor(math.log10(x))
+    return float(next(m * base for m in (1, 2, 5, 10) if m * base >= x * (1 - 1e-9)))
 
 
 # -- spectra ------------------------------------------------------------------------
@@ -262,6 +244,29 @@ class Smoother:
         return out
 
 
+class PeakHold:
+    """The top of a scale: follows a maximum up at once and decays towards it
+    with time constant ``tau`` (0: no hold). Starts again when ``key`` changes."""
+
+    def __init__(self, tau: float = 2.0) -> None:
+        self.tau = tau
+        self._held: tuple[object, float, float] | None = None
+
+    def reset(self) -> None:
+        self._held = None
+
+    def update(self, key: object, value: float, now: float | None = None) -> float:
+        now = time.monotonic() if now is None else now
+        held = self._held
+        if self.tau <= 0 or held is None or held[0] != key or value >= held[1]:
+            self._held = (key, value, now)
+            return value
+        dt = max(0.0, now - held[2])
+        top = value + (held[1] - value) * math.exp(-dt / self.tau)
+        self._held = (key, top, now)
+        return top
+
+
 # -- geometry -----------------------------------------------------------------------
 
 
@@ -299,47 +304,103 @@ def electrode_xy(
 
 @dataclass
 class Layout:
-    """Pixel grid of a map and its interpolation weights for a set of points."""
+    """The map grid for a set of electrodes and how to interpolate onto it."""
 
     extent: float  # the grid spans [-extent, extent] on both axes
     radius: float  # the mapped disc (painted with an antialiased clip)
-    inside: npt.NDArray[np.bool_]  # (GRID, GRID): pixels computed (disc + margin)
-    index: npt.NDArray[np.intp]  # (n_inside, 3): points used per pixel
-    weight: FloatArray  # (n_inside, 3)
-    points: FloatArray  # (n, 2)
+    points: FloatArray  # (n, 2) electrodes
+    ring_from: npt.NDArray[np.intp]  # (RING, k): electrodes each ring point averages
+    tri: Delaunay | None  # electrodes + ring
+    pixels: FloatArray  # (n_pix, 2): the grid points interpolated (disc + margin)
+    inside: npt.NDArray[np.bool_]  # (GRID, GRID): where those pixels are
+    nearest: npt.NDArray[np.intp]  # (n_pix,): nearest electrode (fallback)
 
     def interpolate(self, values: FloatArray) -> FloatArray:
-        """Values at the pixels inside the disc (``inside`` order)."""
-        return np.asarray((values[self.index] * self.weight).sum(axis=1), dtype=float)
+        """The map (``GRID`` x ``GRID``, NaN outside the disc), clipped to the
+        electrodes' range."""
+        grid = np.full(self.inside.shape, np.nan)
+        lo, hi = float(np.min(values)), float(np.max(values))
+        if self.tri is None:
+            got = values[self.nearest]
+        else:
+            ring = values[self.ring_from].mean(axis=1)
+            interp = CloughTocher2DInterpolator(
+                self.tri, np.concatenate([values, ring])
+            )
+            got = interp(self.pixels)
+            got = np.where(np.isfinite(got), got, values[self.nearest])
+        grid[self.inside] = np.clip(got, lo, hi)
+        return grid
 
 
 def layout(points: FloatArray, n: int = GRID) -> Layout:
-    """Linear interpolation over the Delaunay triangulation, nearest point (its
-    Voronoi cell) outside it, on a disc reaching just past the outermost point."""
+    """Smooth interpolation over the electrodes and a ring of virtual points just
+    outside the disc that reaches past the outermost electrode."""
     radius = max(1.0, float(np.max(np.hypot(points[:, 0], points[:, 1])))) + 0.04
     extent = radius + 0.18  # room for the nose and ears
     axis = np.linspace(-extent, extent, n)
     gx, gy = np.meshgrid(axis, axis[::-1])  # row 0 is the front
     margin = 2 * (2 * extent / (n - 1))  # data under the clipped, smoothed edge
     inside = np.hypot(gx, gy) <= radius + margin
-    pix = np.column_stack([gx[inside], gy[inside]])
-    _, nearest = cKDTree(points).query(pix)
-    index = np.repeat(np.asarray(nearest, dtype=np.intp)[:, None], 3, axis=1)
-    weight = np.zeros((len(pix), 3))
-    weight[:, 0] = 1.0
+    pixels = np.column_stack([gx[inside], gy[inside]])
+    tree = cKDTree(points)
+    _, nearest = tree.query(pixels)
+    angle = np.linspace(0, 2 * np.pi, RING, endpoint=False)
+    ring = (radius + 0.15) * np.column_stack([np.cos(angle), np.sin(angle)])
+    k = min(3, len(points))
+    _, ring_from = tree.query(ring, k=k)
+    ring_from = np.asarray(ring_from, dtype=np.intp).reshape(RING, k)
+    tri = None
     if len(points) >= 3:
         try:
-            tri = Delaunay(points)
-        except QhullError:  # all on a line
+            tri = Delaunay(np.vstack([points, ring]))
+        except QhullError:  # degenerate geometry: nearest electrode only
             tri = None
-        if tri is not None:
-            simplex = tri.find_simplex(pix)
-            hit = simplex >= 0
-            trans = tri.transform[simplex[hit]]
-            bary = np.einsum("nij,nj->ni", trans[:, :2], pix[hit] - trans[:, 2])
-            weight[hit] = np.column_stack([bary, 1 - bary.sum(axis=1)])
-            index[hit] = tri.simplices[simplex[hit]]
-    return Layout(extent, radius, inside, index, weight, points)
+    return Layout(extent, radius, points, ring_from, tri, pixels, inside,
+                  np.asarray(nearest, dtype=np.intp))  # fmt: skip
+
+
+_PAIRS = {  # edges joined per case (corner bits: top-left 8 ... bottom-left 1)
+    ("L", "B"): (1, 14, 10), ("B", "R"): (2, 13, 5), ("L", "R"): (3, 12),
+    ("T", "R"): (4, 11, 10), ("T", "B"): (6, 9), ("L", "T"): (7, 8, 5),
+}  # fmt: skip
+_JOINS = [(e0, e1, np.isin(np.arange(16), cases)) for (e0, e1), cases in _PAIRS.items()]
+
+
+def contour_segments(grid: FloatArray, level: float) -> FloatArray:
+    """Line segments of ``grid == level`` by marching squares, as rows of
+    ``(row0, col0, row1, col1)`` in grid coordinates; cells touching NaN skipped."""
+    above = np.nan_to_num(grid, nan=-np.inf) > level
+    case = (above[:-1, :-1].astype(np.int8) * 8 + above[:-1, 1:] * 4
+            + above[1:, 1:] * 2 + above[1:, :-1] * 1)  # fmt: skip
+    finite = np.isfinite(grid)
+    ok = finite[:-1, :-1] & finite[:-1, 1:] & finite[1:, 1:] & finite[1:, :-1]
+    r, c = np.nonzero(ok & (case > 0) & (case < 15))  # cells the level crosses
+    if r.size == 0:
+        return np.empty((0, 4))
+    a, b = grid[r, c], grid[r, c + 1]  # top-left, top-right
+    d_, d = grid[r + 1, c + 1], grid[r + 1, c]  # bottom-right, bottom-left
+    cases = case[r, c]
+    rf, cf = r.astype(float), c.astype(float)
+
+    def cross(v0: FloatArray, v1: FloatArray) -> FloatArray:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t = (level - v0) / (v1 - v0)
+        return np.asarray(np.clip(np.nan_to_num(t, nan=0.5), 0, 1), dtype=float)
+
+    edges = {
+        "T": (rf, cf + cross(a, b)),
+        "R": (rf + cross(b, d_), cf + 1),
+        "B": (rf + 1, cf + cross(d, d_)),
+        "L": (rf + cross(a, d), cf),
+    }
+    out = []
+    for e0, e1, table in _JOINS:
+        hit = table[cases]
+        if hit.any():
+            (r0, c0), (r1, c1) = edges[e0], edges[e1]
+            out.append(np.column_stack([r0[hit], c0[hit], r1[hit], c1[hit]]))
+    return np.vstack(out)
 
 
 # -- the map ------------------------------------------------------------------------
@@ -350,21 +411,23 @@ class Electrode:
     label: str
     x: float
     y: float
-    color: RGB
+    color: RGB  # the channel's own colour
     shown: bool  # in the map (not hidden, has a value)
     text: str  # the hover line
 
 
 @dataclass
 class HeadMap:
-    """What the head plot draws: the map image and the electrodes on it."""
+    """What the head plot draws: the map image, its contour lines and the
+    electrodes on it."""
 
     extent: float
     radius: float
     rgba: npt.NDArray[np.uint8]  # (GRID, GRID, 4)
+    lines: list[tuple[FloatArray, bool]]  # head-coordinate segments, bold?
     electrodes: list[Electrode]
     unplaced: list[str]
-    scale: tuple[str, str, list[RGB]]  # low label, high label, ramp colours
+    scale: tuple[str, str, list[RGB]]  # low label, high label, band colours
     caption: str
 
 
@@ -376,8 +439,9 @@ class HeadInput:
     f: FloatArray
     psd: FloatArray  # (n_channels, n_freqs), µV²/Hz, Main tap
     band: tuple[float, float]
-    scheme: str = "spatial"
+    scheme: str = "heat"
     relative: bool = False
+    db_range: float = DEFAULT_RANGE
     hidden: frozenset[str] = frozenset()
     compare_psd: FloatArray | None = None  # first comparison tap, same channels
     compare_labels: tuple[str, ...] = ()
@@ -399,10 +463,25 @@ def _db(p: FloatArray) -> FloatArray:
         return np.asarray(10 * np.log10(np.where(p > 0, p, np.nan)), dtype=float)
 
 
+def _bands(
+    grid: FloatArray, edges: FloatArray
+) -> tuple[npt.NDArray[np.intp], npt.NDArray[np.bool_]]:
+    """Band index of each pixel for ascending band ``edges`` (n_bands + 1), and
+    which pixels fall inside them."""
+    filled = np.isfinite(grid) & (grid >= edges[0] - 1e-9) & (grid <= edges[-1] + 1e-9)
+    index = np.clip(np.searchsorted(edges, np.nan_to_num(grid), side="right") - 1,
+                    0, len(edges) - 2)  # fmt: skip
+    return np.asarray(index, dtype=np.intp), filled
+
+
 def render(
-    data: HeadInput, theme: Theme, cache: dict[tuple[object, ...], Layout] | None = None
+    data: HeadInput,
+    theme: Theme,
+    cache: dict[tuple[object, ...], Layout] | None = None,
+    hold: Callable[[float], float] | None = None,
 ) -> HeadMap | str:
-    """The head map for one refresh, or why there is none."""
+    """The head map for one refresh, or why there is none. ``hold`` maps the
+    heat map's maximum (dB) to the top of its scale (live: a ``PeakHold``)."""
     xy = electrode_xy(data.labels, data.wheel)
     unplaced = [lb for lb in data.labels if lb not in xy]
     if len(xy) < 3:
@@ -423,14 +502,8 @@ def render(
         cmp_index = {lb: i for i, lb in enumerate(data.compare_labels)}
         main_db = _db(_power(data.f, data.psd, (lo, hi), data.relative))
         cmp_db = _db(_power(data.f, data.compare_psd, (lo, hi), data.relative))
-        value = np.array(
-            [
-                main_db[index[lb]] - cmp_db[cmp_index[lb]]
-                if lb in cmp_index
-                else np.nan
-                for lb in placed
-            ]
-        )
+        value = np.array([main_db[index[lb]] - cmp_db[cmp_index[lb]]
+                          if lb in cmp_index else np.nan for lb in placed])  # fmt: skip
     elif data.scheme == "peak":
         value = peak_frequency(data.f, data.psd, lo, hi)[rows]
     else:
@@ -445,97 +518,86 @@ def render(
     if lay is None:
         lay = layout(points[valid])
         if cache is not None:
-            if len(cache) > 32:
+            if len(cache) > 8:
                 cache.clear()
             cache[key] = lay
     v = value[valid]
-    filled = np.where(np.isfinite(value), value, 0.0)  # left-out dots are grey
-    bg = _background(theme)
+    grid = lay.interpolate(v)
 
+    bold: list[float] = []
     if data.scheme == "change":
         span = max(MIN_CHANGE_DB, float(np.max(np.abs(v))))
-        s_pix, s_el = lay.interpolate(v / span), filled / span
-        lab_pix, lab_el = diverging_colors(s_pix, theme), diverging_colors(s_el, theme)
-        ramp = diverging_colors(np.linspace(-1, 1, 24), theme)
-        scale = (f"−{span:.1f} dB", f"+{span:.1f} dB")  # noqa: RUF001
-        caption = "Change in band power vs. the comparison tap"
+        step = nice_step(span / 5)
+        n = math.ceil(span / step - 1e-9)
+        edges = step * np.arange(-n, n + 1, dtype=float)
+        centres = (edges[:-1] + edges[1:]) / 2 / (n * step)
+        colors = diverging_colors(centres, theme)
+        bold = [0.0]
+        scale = (f"−{n * step:g} dB", f"+{n * step:g} dB")  # noqa: RUF001
+        caption = f"Change vs. the comparison tap, {step:g} dB steps"
     elif data.scheme == "peak":
-        s_pix, s_el = lay.interpolate((v - lo) / (hi - lo)), (filled - lo) / (hi - lo)
-        lab_pix, lab_el = peak_colors(s_pix, theme), peak_colors(s_el, theme)
-        ramp = peak_colors(np.linspace(0, 1, 24), theme)
-        scale = (f"{lo:g} Hz", f"{hi:g} Hz")
-        caption = "Peak frequency in the band"
+        step = nice_step((hi - lo) / 10)
+        start = math.floor(lo / step) * step
+        edges = np.arange(start, hi + step, step, dtype=float)
+        centres = ((edges[:-1] + edges[1:]) / 2 - lo) / (hi - lo)
+        colors = peak_colors(centres, theme)
+        scale = (f"{edges[0]:g} Hz", f"{edges[-1]:g} Hz")
+        caption = f"Peak frequency in the band, {step:g} Hz steps"
     else:
         top = float(np.max(v))
-        s_pix = np.clip((lay.interpolate(v) - top) / DB_RANGE + 1, 0, 1)
-        s_el = np.clip((filled - top) / DB_RANGE + 1, 0, 1)
-        if data.scheme == "heat":
-            lab_pix, lab_el = heat_colors(s_pix, theme), heat_colors(s_el, theme)
-            ramp = heat_colors(np.linspace(0, 1, 24), theme)
-        else:
-            axis = np.linspace(-lay.extent, lay.extent, GRID)
-            gx, gy = np.meshgrid(axis, axis[::-1])
-            px, py = gx[lay.inside], gy[lay.inside]
-            pix_wheel = wheel_oklab(
-                np.degrees(np.arctan2(py, px)), np.hypot(px, py), theme
-            )
-            el_wheel = wheel_oklab(
-                np.degrees(np.arctan2(points[:, 1], points[:, 0])),
-                np.hypot(points[:, 0], points[:, 1]),
-                theme,
-            )
-            floor = float(np.min(np.linalg.norm(el_wheel[valid] - bg, axis=-1)))
-            lab_pix = spatial_colors(pix_wheel, s_pix, bg, floor)
-            lab_el = spatial_colors(el_wheel, s_el, bg, floor)
-            neutral = srgb_to_oklab(_hex(theme.text))
-            ramp = spatial_colors(
-                np.repeat(neutral[None], 24, axis=0), np.linspace(0, 1, 24), bg,
-                float(np.linalg.norm(neutral - bg)),
-            )  # fmt: skip
-        scale = (f"−{DB_RANGE:.0f} dB", "max")  # noqa: RUF001
+        top = max(top, hold(top)) if hold is not None else top
+        n = max(1, round(data.db_range / HEAT_STEP))
+        edges = top - HEAT_STEP * np.arange(n, -1, -1, dtype=float)
+        colors = heat_colors((np.arange(n) + 0.5) / n, theme)
+        scale = (f"−{n * HEAT_STEP:g} dB", "max")  # noqa: RUF001
         what = "Relative band power" if data.relative else "Band power"
-        caption = f"{what}, top {DB_RANGE:.0f} dB"
+        caption = f"{what}, {HEAT_STEP:g} dB steps"
 
-    rgba = np.zeros((GRID, GRID, 4), dtype=np.uint8)
-    rgba[lay.inside, :3] = oklab_to_srgb(lab_pix)
-    rgba[lay.inside, 3] = 255
-    el_rgb = oklab_to_srgb(lab_el)
+    band_index, filled = _bands(grid, edges)
+    band_rgb = oklab_to_srgb(colors)
+    rgba = np.zeros((*grid.shape, 4), dtype=np.uint8)
+    rgba[filled, :3] = band_rgb[band_index[filled]]
+    rgba[filled, 3] = 255
+
+    to_head = 2 * lay.extent / (grid.shape[0] - 1)
+    lines = []
+    for level in edges[1:-1]:
+        seg = contour_segments(grid, float(level))
+        if len(seg):
+            head = np.column_stack([
+                -lay.extent + seg[:, 1] * to_head, lay.extent - seg[:, 0] * to_head,
+                -lay.extent + seg[:, 3] * to_head, lay.extent - seg[:, 2] * to_head,
+            ])  # fmt: skip
+            lines.append((head, any(abs(level - b) < 1e-9 for b in bold)))
+
     electrodes = []
     for i, lb in enumerate(placed):
         x, y = xy[lb]
         if data.scheme == "peak":
-            text = (
-                f"{lb}: {value[i]:.1f} Hz"
-                if np.isfinite(value[i])
-                else f"{lb}: no peak in the band"
-            )
+            text = (f"{lb}: {value[i]:.1f} Hz" if np.isfinite(value[i])
+                    else f"{lb}: no peak in the band")  # fmt: skip
         elif data.scheme == "change":
-            text = (
-                f"{lb}: {value[i]:+.1f} dB"
-                if np.isfinite(value[i])
-                else f"{lb}: not in the comparison tap"
-            )
+            text = (f"{lb}: {value[i]:+.1f} dB" if np.isfinite(value[i])
+                    else f"{lb}: not in the comparison tap")  # fmt: skip
         else:
             p = 10 ** (value[i] / 10) if np.isfinite(value[i]) else float("nan")
             text = f"{lb}: {p:.3g} {unit} ({value[i]:.1f} dB)"
         if lb in data.hidden:
             text += " (hidden)"
-        color = _rgb(el_rgb[i]) if valid[i] else _hex(theme.unknown_channel)
+        color = channel_style(lb, theme, data.wheel).color
         electrodes.append(Electrode(lb, x, y, color, bool(valid[i]), text))
-    ramp_rgb = [_rgb(rgb) for rgb in oklab_to_srgb(ramp)]
-    return HeadMap(
-        lay.extent, lay.radius, rgba, electrodes, unplaced,
-        (scale[0], scale[1], ramp_rgb), caption,
-    )  # fmt: skip
+    ramp = [_rgb(rgb) for rgb in band_rgb]
+    return HeadMap(lay.extent, lay.radius, rgba, lines, electrodes, unplaced,
+                   (scale[0], scale[1], ramp), caption)  # fmt: skip
 
 
 # -- the widget ---------------------------------------------------------------------
 
 
 class HeadPlot(QWidget):
-    """Draws a ``HeadMap``: the map, head outline, electrodes and a colour scale.
-    Hovering an electrode names it (``hovered``); clicking shows or hides its
-    channel (``clicked``)."""
+    """Draws a ``HeadMap``: the map, contour lines, head outline, electrodes and
+    a colour scale. Hovering an electrode names it (``hovered``); clicking shows
+    or hides its channel (``clicked``)."""
 
     hovered = Signal(object)  # label or None
     clicked = Signal(str)
@@ -629,6 +691,12 @@ class HeadPlot(QWidget):
         p.save()
         p.setClipPath(disc)
         p.drawImage(sq, image)
+        # contour lines: dark on a light theme, light on a dark one
+        ink = QColor(0, 0, 0, 110) if not self.theme.dark else QColor(255, 255, 255, 90)
+        for segments, bold in m.lines:
+            p.setPen(QPen(ink, 1.8 if bold else 0.8))
+            p.drawLines([QLineF(self._to_px(s[0], s[1]), self._to_px(s[2], s[3]))
+                         for s in segments])  # fmt: skip
         p.restore()
         # head outline (radius 1), nose and ears
         outline = QPen(QColor(self.theme.text_muted), 1.4)
@@ -645,21 +713,16 @@ class HeadPlot(QWidget):
             ear.cubicTo(self._to_px(side * 1.10, 0.14), self._to_px(side * 1.12, -0.14),
                         self._to_px(side * 0.99, -0.12))  # fmt: skip
             p.drawPath(ear)
-        # electrodes
-        dot = max(2.5, sq.width() / 70)
+        # electrodes: the channel colour inside a black and a white ring, so it
+        # reads apart from the map whatever the colours around it
+        dot = max(3.0, sq.width() / 60)
         for e in m.electrodes:
             at = self._to_px(e.x, e.y)
-            size = dot * (1.6 if e.label == self._hover else 1.0)
-            p.setPen(
-                QPen(
-                    QColor(
-                        self.theme.text
-                        if e.label == self._hover
-                        else self.theme.text_muted
-                    ),
-                    1.0,
-                )
-            )
+            size = dot * (1.5 if e.label == self._hover else 1.0)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(QColor(0, 0, 0), 3.2))
+            p.drawEllipse(at, size, size)
+            p.setPen(QPen(QColor(255, 255, 255), 1.4))
             p.setBrush(QColor(*e.color) if e.shown else Qt.BrushStyle.NoBrush)
             p.drawEllipse(at, size, size)
         # colour scale and notes

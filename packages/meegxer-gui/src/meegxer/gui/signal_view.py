@@ -46,11 +46,14 @@ from PySide6.QtWidgets import (
 from meegxer.gui.colors import ChannelStyle, channel_styles_with
 from meegxer.gui.headplot import (
     BANDS,
+    DEFAULT_RANGE,
+    RANGES,
     SCHEMES,
     SYMBOLS,
     HeadInput,
     HeadPlot,
     Layout,
+    PeakHold,
     Smoother,
     render,
 )
@@ -437,8 +440,10 @@ class SignalView(QWidget):
         self.panner = Panner()
         lay.addWidget(self.panner)
         self.smoother = Smoother(2.0)
+        self.peak = PeakHold(2.0)  # the heat scale's top, live
         self.hover: str | None = None  # channel named on the head plot
         self._layouts: dict[tuple[object, ...], Layout] = {}
+        self._head_inputs: tuple[object, ...] | None = None  # of the shown map
         self.styles: dict[tuple[str, ...], list[ChannelStyle]] = {}
         self.wheel: dict[str, tuple[float, float]] = {}
         self.types: dict[str, str] = {}  # label -> channel type, when known
@@ -485,10 +490,19 @@ class SignalView(QWidget):
         self.scheme = QComboBox()
         for key, text in SCHEMES.items():
             self.scheme.addItem(text, key)
-        labelled("Colour", self.scheme, "Spatial: each electrode's own colour, "
-                 "stronger with more power · Heat: one colour scale · Change: "
-                 "Main vs. the comparison tap · Peak frequency: where the band "
-                 "peaks")  # fmt: skip
+        labelled("Colour", self.scheme, "Heat: band power in dB below the top · "
+                 "Change: Main vs. the comparison tap · Peak frequency: where the "
+                 "band peaks")  # fmt: skip
+        self.db_range = QComboBox()
+        for db in RANGES:
+            self.db_range.addItem(f"{db:g} dB", db)
+        self.db_range.setCurrentIndex(RANGES.index(DEFAULT_RANGE))
+        labelled("Range", self.db_range, "How far below the head's maximum the "
+                 "heat map shows (live, the maximum decays with the "
+                 "smoothing)")  # fmt: skip
+        self.scheme.currentIndexChanged.connect(
+            lambda _: self.db_range.setEnabled(self.scheme.currentData() == "heat")
+        )
         self.smoothing = QComboBox()
         for tau in (0.0, 1.0, 2.0, 5.0, 10.0):
             self.smoothing.addItem("Off" if tau == 0 else f"{tau:g} s", tau)
@@ -536,11 +550,16 @@ class SignalView(QWidget):
         self.band_menu.setCurrentIndex(custom)
 
     def _smoothing_changed(self) -> None:
-        self.smoother.tau = float(self.smoothing.currentData())
+        self.smoother.tau = self.peak.tau = float(self.smoothing.currentData())
         self.smoother.reset()
+        self.peak.reset()
 
     def _hover_channel(self, label: str | None) -> None:
         self.hover = label
+
+    def _head_message(self, text: str) -> None:
+        self._head_inputs = None  # the next map is drawn afresh
+        self.head.show_map(text)
 
     def _show_head(self) -> None:
         self.head.setVisible(self.mode == "spectrum" and self.head_toggle.isChecked())
@@ -588,7 +607,7 @@ class SignalView(QWidget):
             self.plot.draw([])
             self.plot.hatch([])
             self.plot.mark([])
-            self.head.show_map("")
+            self._head_message("")
             self.legend.setText("Shown in the stacked view (close it to return here)")
 
     def _set_mode(self, mode: str) -> None:
@@ -599,6 +618,7 @@ class SignalView(QWidget):
         self.spectrum_bar.setVisible(spectrum)
         self.band.setVisible(spectrum)
         self.smoother.reset()  # spectra from before are stale
+        self.peak.reset()
         self._show_head()
 
     def seconds(self) -> float:
@@ -639,7 +659,7 @@ class SignalView(QWidget):
         if not self.head.isVisible():
             return
         if waiting:
-            self.head.show_map("Main has no data yet")
+            self._head_message("Main has no data yet")
             return
         win, f, p = spectra[-1]
         first = spectra[0] if has_comparison else None
@@ -650,6 +670,7 @@ class SignalView(QWidget):
             band=self.band_range(),
             scheme=str(self.scheme.currentData()),
             relative=bool(self.measure.currentData()),
+            db_range=float(self.db_range.currentData()),
             hidden=frozenset(self.channels.hidden),
             compare_psd=None if first is None or not len(first[1]) else first[2],
             compare_labels=() if first is None else first[0].labels,
@@ -657,7 +678,22 @@ class SignalView(QWidget):
         )
         if first is not None and first[1].shape != f.shape:
             data.compare_psd = None  # taps at different rates: no common grid
-        self.head.show_map(render(data, self.theme, self._layouts))
+        hold = None
+        live = self.panner.live
+        if live:  # the scale's top decays instead of flickering
+            key = (win.probe, data.band, data.relative, data.scheme)
+            hold = lambda top: self.peak.update(key, top)  # noqa: E731
+        else:  # offline the view often redraws the same spectra: skip the work
+            inputs = (data.labels, p.tobytes(), data.band, data.scheme,
+                      data.relative, data.db_range, data.hidden,
+                      None if data.compare_psd is None else data.compare_psd.tobytes(),
+                      id(self.theme), tuple(sorted(self.wheel.items())))  # fmt: skip
+            if inputs == self._head_inputs:
+                return
+            self._head_inputs = inputs
+        if live:
+            self._head_inputs = None
+        self.head.show_map(render(data, self.theme, self._layouts, hold))
 
     def refresh(
         self, provider: Provider, main: str | None, comparisons: list[str]
@@ -678,7 +714,7 @@ class SignalView(QWidget):
             self.plot.hatch([])
             self.plot.mark([])
             self.legend.setText("Nothing shown: click a ◇ tap in the chain")
-            self.head.show_map("Nothing shown: click a ◇ tap in the chain")
+            self._head_message("Nothing shown: click a ◇ tap in the chain")
             return
         self.channels.set_labels(
             main_win.labels,
