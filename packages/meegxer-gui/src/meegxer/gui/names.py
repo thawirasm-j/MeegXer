@@ -13,6 +13,8 @@ TITLES = {
     "meegxer.core.set_writer": "EEGLAB .set",
     "meegxer.core.edf_writer": "EDF",
     "meegxer.core.feature_tsv": "Feature TSV",
+    "meegxer.core.bids_writer": "BIDS writer",
+    "meegxer.core.bids_features": "BIDS features",
     "meegxer.sterile.notch": "Notch",
     "meegxer.sterile.notch_zerophase": "Notch (zero-phase)",
     "meegxer.sterile.rereference": "Re-reference",
