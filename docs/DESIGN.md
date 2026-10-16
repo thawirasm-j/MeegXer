@@ -199,9 +199,14 @@ transform(block, model, state, params)        -> block_out, state, events
   `process(raw, ...)`; `meegxer.plugins.script` builds the manifest from the
   signature (types, defaults, `Literal` choices) and the numpy docstring
   (descriptions, `(unit)`), and runs it through the bundled copy of the Python SDK.
-  First tier: offline only (the whole recording as one block); the result must keep
-  channels, rate and length; added annotations become events. Next: an Octave/EEGLAB
-  `function EEG = process(EEG, ...)` tier and a live fit/transform tier.
+  Offline tier: `process(raw, ...)` sees the whole recording as one block; the
+  result must keep channels, rate and length; added annotations become events.
+  Live tier: `transform(data, state, ...)` block by block (availability both), with
+  optional `info`/`model` and an optional `fit(raw, ...)` (requires_fit); state is
+  host-owned like any plugin's. Adding a script runs the conformance suite (for a
+  live script including acceptance test 1 and a restart mid-stream) and refuses it
+  on failure. Next: the Octave/EEGLAB tier (`function EEG = process(EEG, ...)`,
+  then a live one), committed but after the MNE side.
 - Plugins emit Events only; trusted host Sinks perform actions.
 - **Sterile mode** (planned): one container runs the whole processing chain (built-in
   nodes and plugins) as a single worker over the plugin protocol, so the added

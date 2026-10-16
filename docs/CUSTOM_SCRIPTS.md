@@ -41,9 +41,76 @@ def process(
   description. A trailing `(unit)` such as `(Hz)` becomes its unit.
 - Optional, at module level: `NAME = "lab.my_filter"` (default
   `script.<file name>`), `__version__ = "1.2.0"` (default `0.1.0`).
-- **Offline only for now.** The script sees the whole recording at once, so it
-  runs in offline runs (files, BIDS), not live. Live scripts (fit/transform, block
-  by block) come later.
+- **Offline only.** `process` sees the whole recording at once, so it runs in
+  offline runs (files, BIDS), not live. For live use, write `transform` instead
+  (below).
+
+## Live scripts
+
+A script with `transform` instead of `process` runs block by block, so the same
+code works live and offline:
+
+```python
+"""Causal high-pass designed with MNE."""
+
+import mne
+from scipy import signal
+
+
+def transform(data, state, info, cutoff: float = 1.0, order: int = 4):
+    """High-pass, keeping the filter state between blocks.
+
+    Parameters
+    ----------
+    cutoff : float
+        Cut-off frequency (Hz).
+    order : int
+        Butterworth order.
+    """
+    if state is None:  # the first block
+        iir = mne.filter.construct_iir_filter(
+            {"order": order, "ftype": "butter", "output": "sos"},
+            cutoff,
+            None,
+            info["sfreq"],
+            "highpass",
+            return_copy=False,
+        )
+        sos = iir["sos"]
+        zi = signal.sosfilt_zi(sos)[:, None, :] * data[:, :1][None]
+        state = {"sos": sos, "zi": zi}
+    out, zf = signal.sosfilt(state["sos"], data, axis=-1, zi=state["zi"])
+    return out, {"sos": state["sos"], "zi": zf}
+```
+
+- `data` is one block, `(channels, samples)`, in volts. Return the processed block
+  (same shape) and the new `state`.
+- `state` is `None` on the first block. Put everything that must survive between
+  blocks in it (a dict of numbers and arrays): MeegXer keeps it, saves it and
+  restores it if the script's process restarts. Return a new state rather than
+  changing the old one in place.
+- Optional parameters `info` (channel labels `ch_labels`, `sfreq`, `bads`,
+  `sample_index`) and `model`; all other parameters are settings, as above.
+- **Calibration:** add `fit(raw, ...)`. It gets the calibration recording as an
+  `mne.io.Raw` (live: the seconds you calibrate on; offline: the whole recording)
+  and returns the model as a dict; `transform` receives it as `model`:
+
+  ```python
+  def fit(raw):
+      x = raw.get_data()
+      return {"mean": x.mean(axis=1, keepdims=True), "std": x.std(axis=1, keepdims=True)}
+
+
+  def transform(data, state, model):
+      return (data - model["mean"]) / model["std"], state
+  ```
+- **Block by block must equal one pass.** Live, blocks arrive in whatever sizes the
+  stream delivers; the result must not depend on them (acceptance test 1). A script
+  that, say, removes each block's own mean fails this. `meegxer-plugin check`
+  tests it, and adding a script that fails is refused with the reason.
+- No look-ahead yet: the output covers the same samples as the input.
+
+Octave/EEGLAB scripts (`function EEG = process(EEG, ...)`) are planned next.
 
 ## Add one
 
@@ -52,7 +119,7 @@ From the command line:
 
 ```bash
 meegxer-plugin check --script my_filter.py     # does it follow the conventions?
-meegxer-plugin add --script my_filter.py       # asks you to accept the notice
+meegxer-plugin add --script my_filter.py       # notice, then the same checks
 meegxer-plugin list
 meegxer-plugin remove script.my_filter
 ```

@@ -345,8 +345,10 @@ behaviour (plugins still run in containers).
 Next, in order:
 1. **Local plugins and custom scripts by default.** Done (0.2.1a2): consent in the
    plugin index, notice shared by CLI and GUI, `sha256` provenance, the offline
-   Python tier (`docs/CUSTOM_SCRIPTS.md`), *Custom script…* in the GUI. Still to
-   come: the Octave/EEGLAB tier, the live tier, and "Enable Sterile mode" in the
+   Python tier (`docs/CUSTOM_SCRIPTS.md`), *Custom script…* in the GUI. Live Python
+   tier done (0.2.1a3): `transform(data, state, ...)` + optional `fit(raw, ...)`,
+   conformance checked when added. Committed next: the Octave/EEGLAB tier
+   (`function EEG = process(EEG, ...)`, then live); "Enable Sterile mode" in the
    prompt once Sterile mode exists.
 2. **Sterile mode.** A processing-worker image with the built-in nodes; the whole
    chain runs in one container (one hop per block); the "Sterilize" switch in the

@@ -535,8 +535,9 @@ class ChainView(QScrollArea):
         section.setEnabled(False)
         script = menu.addAction("Custom script…")
         script.setToolTip(
-            "An MNE-Python script with process(raw, ...), run offline on the whole "
-            "recording (runs on your computer, unsandboxed)"
+            "An MNE-Python script: process(raw, ...) for offline runs, or "
+            "transform(data, state, ...) for live and offline (runs on your "
+            "computer, unsandboxed)"
         )
         script.triggered.connect(lambda: self.script_requested.emit(index))
         menu.setToolTipsVisible(True)
