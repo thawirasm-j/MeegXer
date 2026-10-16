@@ -1,7 +1,14 @@
 """Installed plugins: a small JSON index plus the registry node provider.
 
 ``meegxer-plugin add IMAGE`` starts the image once, reads its manifest and records
-it together with the image ID, so later runs use exactly that image. The core finds
+it together with the image ID, so later runs use exactly that image.
+
+Local plugins (``add --local COMMAND`` or ``add --script FILE``) run outside any
+sandbox with the user's permissions (rule 9). They are recorded only after the
+user accepts ``LOCAL_CODE_NOTICE``; the entry keeps that consent, and sessions
+record the SHA-256 of the code files so a changed script is noticed. The
+development switch ``MEEGXER_ALLOW_UNSANDBOXED=1`` still loads local entries
+without recorded consent. The core finds
 the plugins through the ``meegxer.node_providers`` entry point (``node_classes``),
 which only exists when this package is installed (rule 9).
 
@@ -11,13 +18,16 @@ Index location: ``$MEEGXER_PLUGIN_INDEX``, else
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from meegxer.core.notices import LOCAL_CODE_NOTICE_VERSION
 from meegxer.plugins.adapter import PluginProcessor, plugin_class, probe_manifest
 from meegxer.plugins.worker import (
     UNSANDBOXED_ENV,
@@ -81,11 +91,42 @@ def repo_digests(image: str, engine: str | None = None) -> list[str]:
     return [str(d) for d in digests or []]
 
 
+class ConsentRequired(PermissionError):
+    """A local plugin needs the user to accept the local-code notice first."""
+
+
+def code_files(command: list[str]) -> list[Path]:
+    """The files a local command runs: its arguments that are existing files
+    (the interpreter itself excluded)."""
+    files = []
+    for arg in command[1:]:
+        path = Path(arg)
+        if path.suffix and path.is_file():
+            files.append(path.resolve())
+    return files
+
+
+def code_sha256(command: list[str]) -> str:
+    """One SHA-256 over the code files of a local command (in name order), so
+    a session can tell whether the script changed since it was saved."""
+    digest = hashlib.sha256()
+    for path in sorted(code_files(command), key=lambda p: p.name):
+        digest.update(path.name.encode() + b"\0")
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
 def origin_of(entry: dict[str, Any]) -> dict[str, Any]:
     """Where an index entry's plugin comes from, as sessions record it."""
     if "command" in entry:
-        return {"command": list(entry["command"]), "unsandboxed": True}
-    origin: dict[str, Any] = {"image": entry["image"]}
+        command = list(entry["command"])
+        origin: dict[str, Any] = {"command": command, "unsandboxed": True}
+        if code_files(command):
+            origin["sha256"] = code_sha256(command)
+        if entry.get("script"):
+            origin["script"] = Path(entry["script"]).name
+        return origin
+    origin = {"image": entry["image"]}
     for key in ("image_id", "repo_digests", "engine"):
         if entry.get(key):
             origin[key] = entry[key]
@@ -96,7 +137,11 @@ def launcher_for_entry(entry: dict[str, Any]) -> Launcher:
     if "command" in entry:
         if not entry.get("unsandboxed"):
             raise ValueError("local plugin entries must be marked 'unsandboxed'")
-        return LocalLauncher(tuple(entry["command"]), env=entry.get("env", {}))
+        return LocalLauncher(
+            tuple(entry["command"]),
+            allow=bool(entry.get("consent")),
+            env=entry.get("env", {}),
+        )
     return ContainerLauncher(
         entry.get("image_id") or entry["image"], entry.get("engine")
     )
@@ -120,12 +165,38 @@ def add_image(
     return entry
 
 
-def add_local(command: list[str], path: Path | None = None) -> dict[str, Any]:
-    """Register an unsandboxed local plugin (development only)."""
+def script_command(script: Path) -> list[str]:
+    """The command that runs a custom script (``process(raw, ...)``) as a plugin."""
+    return [sys.executable, "-m", "meegxer.plugins.script", str(script.resolve())]
+
+
+def add_local(
+    command: list[str],
+    path: Path | None = None,
+    *,
+    accept_risk: bool = False,
+    script: Path | None = None,
+) -> dict[str, Any]:
+    """Register a local plugin, which runs unsandboxed with the user's
+    permissions. Refused unless the user accepted ``LOCAL_CODE_NOTICE``."""
+    if not accept_risk:
+        raise ConsentRequired(
+            "local plugins run outside any sandbox; accept the notice first"
+        )
     launcher = LocalLauncher(tuple(command), allow=True)
     manifest = probe_manifest(launcher)
     plugin_class(manifest, launcher)
-    entry = {"command": command, "unsandboxed": True, "manifest": manifest}
+    entry: dict[str, Any] = {
+        "command": command,
+        "unsandboxed": True,
+        "consent": {
+            "accepted": datetime.now(UTC).isoformat(timespec="seconds"),
+            "notice": LOCAL_CODE_NOTICE_VERSION,
+        },
+        "manifest": manifest,
+    }
+    if script is not None:
+        entry["script"] = str(script.resolve())
     entries = [e for e in load_index(path) if e["manifest"]["name"] != manifest["name"]]
     save_index([*entries, entry], path)
     return entry
@@ -141,13 +212,15 @@ def remove(name: str, path: Path | None = None) -> bool:
 def node_classes() -> list[type[PluginProcessor]]:
     """Entry point for ``meegxer.node_providers``: one class per installed plugin.
 
-    Unsandboxed entries are skipped unless MEEGXER_ALLOW_UNSANDBOXED=1. A broken
-    entry is reported on stderr and skipped rather than breaking the registry.
+    Local entries load once the user has accepted the notice for them (or with
+    MEEGXER_ALLOW_UNSANDBOXED=1, for development). A broken entry is reported on
+    stderr and skipped rather than breaking the registry.
     """
     classes = []
     for entry in load_index():
         try:
-            if "command" in entry and os.environ.get(UNSANDBOXED_ENV) != "1":
+            allowed = entry.get("consent") or os.environ.get(UNSANDBOXED_ENV) == "1"
+            if "command" in entry and not allowed:
                 continue
             classes.append(
                 plugin_class(

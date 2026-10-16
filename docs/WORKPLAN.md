@@ -343,14 +343,11 @@ stops the feature outlets.
 behaviour (plugins still run in containers).
 
 Next, in order:
-1. **Local plugins and custom scripts by default.** A plugin or script runs as its
-   own local process over the plugin protocol. Adding one shows the risk prompt
-   (runs with your permissions; network and files; HIPAA/GDPR/IRB) with
-   "I understand" and "Enable Sterile mode". Session and BIDS provenance record the
-   mode and each script's content hash. Custom scripts: an offline "recording
-   function" tier (`process(raw, ...)` / `function EEG = process(EEG, ...)`,
-   settings from the signature and docstring) before a live fit/transform tier,
-   compatibility checked by running it (`meegxer-plugin check`).
+1. **Local plugins and custom scripts by default.** Done (0.2.1a2): consent in the
+   plugin index, notice shared by CLI and GUI, `sha256` provenance, the offline
+   Python tier (`docs/CUSTOM_SCRIPTS.md`), *Custom script…* in the GUI. Still to
+   come: the Octave/EEGLAB tier, the live tier, and "Enable Sterile mode" in the
+   prompt once Sterile mode exists.
 2. **Sterile mode.** A processing-worker image with the built-in nodes; the whole
    chain runs in one container (one hop per block); the "Sterilize" switch in the
    GUI and the CLI; delay measured with `tools/stability_test.py`.

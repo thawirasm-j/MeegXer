@@ -63,6 +63,10 @@ class PipelineDoc:
 
     # -- manifests ----------------------------------------------------------------
 
+    def set_manifests(self, manifests: list[Manifest]) -> None:
+        """The installed nodes changed (a plugin was added)."""
+        self.manifests = {m["name"]: m for m in manifests}
+
     def manifest(self, strip: StripNode | str) -> Manifest:
         name = strip if isinstance(strip, str) else strip.node
         return self.manifests[name]

@@ -70,6 +70,10 @@ module = ["mne", "mne.*", "mne_bids", "mne_bids.*", "mne_icalabel", "mne_icalabe
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["meegxer.plugins._sdk"]  # verbatim copy of sdk/python/meegxer_plugin.py
+ignore_errors = true
+
+[[tool.mypy.overrides]]
 module = ["meegxer.gui.signal_view"]
 disallow_subclassing_any = false  # pyqtgraph ships no type information
 

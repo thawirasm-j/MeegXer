@@ -8,6 +8,8 @@ daemon serves from an offline run.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -35,6 +37,7 @@ from PySide6.QtWidgets import (
 from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame
 from meegxer.core.graph import positions_message
+from meegxer.core.notices import LOCAL_CODE_NOTICE
 from meegxer.core.session import is_session, read_session, write_session
 from meegxer.gui.buffers import ProbeBuffer
 from meegxer.gui.chain import ChainView
@@ -115,6 +118,7 @@ class MainWindow(QMainWindow):
         self.chain.selected.connect(self.select)
         self.chain.remove_requested.connect(self.remove_strip)
         self.chain.insert_requested.connect(self.insert_strip)
+        self.chain.script_requested.connect(self.add_script)
         self.chain.move_requested.connect(self.move_strip)
         self.chain.tap_clicked.connect(self.click_tap)
         self.chain.calibrate_requested.connect(lambda sid: self.calibrate(sid, 60.0))
@@ -328,6 +332,53 @@ class MainWindow(QMainWindow):
     def select(self, strip_id: str) -> None:
         self.selected = strip_id
         self.refresh_chain()
+
+    def add_script(self, index: int, path: str | None = None) -> None:
+        """Add a custom script as a strip: pick the file, accept the local-code
+        notice, install it with ``meegxer-plugin`` (a separate process: the GUI
+        never imports plugin code, rule 9), then insert it at ``index``."""
+        if path is None:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Add a custom script", "", "Python scripts (*.py)"
+            )
+            if not path:
+                return
+        if not self._accept_local_code(Path(path).name):
+            self.log("Custom script not added (the notice was not accepted).")
+            return
+        before = set(self.doc.manifests)
+        result = subprocess.run(
+            [sys.executable, "-m", "meegxer.plugins.cli", "add", "--script", path,
+             "--accept-risk"],
+            capture_output=True, text=True, check=False, timeout=120,
+        )  # fmt: skip
+        if result.returncode != 0:
+            reason = (result.stderr.strip().splitlines() or ["unknown error"])[-1]
+            self.log(f"Could not add {Path(path).name}: {reason}")
+            QMessageBox.warning(self, "Custom script", f"Could not add it:\n{reason}")
+            return
+        nodes = self.call("rescan_nodes")
+        if nodes is None:
+            return
+        self.doc.set_manifests(nodes)
+        added = [n for n in self.doc.manifests if n not in before]
+        name = added[0] if added else result.stdout.split()[1]
+        self.log(f"Added custom script {Path(path).name} as {name} (unsandboxed).")
+        if name in self.doc.manifests:
+            self.insert_strip(index, name)
+
+    def _accept_local_code(self, what: str) -> bool:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Run code outside the sandbox?")
+        box.setText(f"<b>{what}</b> will run on your computer.")
+        box.setInformativeText(LOCAL_CODE_NOTICE)
+        accept = box.addButton(
+            "I understand, add it", QMessageBox.ButtonRole.AcceptRole
+        )
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        return box.clickedButton() is accept
 
     def insert_strip(self, index: int, node: str) -> None:
         strip = self.doc.insert(index, node)

@@ -17,6 +17,7 @@ bind it to a non-local interface only on a trusted network.
 | Method | Params | Result |
 |---|---|---|
 | `ping` | – | `{version, spec_version, display}`: `display` is the display endpoint |
+| `rescan_nodes` | – | installed node manifests (as `list_nodes`), after looking again for nodes installed since the daemon started (e.g. a plugin just added). A running pipeline keeps the classes it was built with |
 | `list_nodes` | – | installed node manifests: `name, version, role, type, availability, requires_fit, requires_positions, latency_samples, description, live_params, inputs, outputs, params[]` (each param: `name, type, default, min, max, choices, unit, description, advanced, primary`) |
 | `load_pipeline` | `pipeline` (see `pipeline.schema.json`) | the normalised pipeline. Refused while running, or if any node cannot run live (offline-only, or a band-pass with `phase` `zero`). Fitted models of nodes with the same id, name and version are kept (as on a restart) |
 | `get_pipeline` | – | current pipeline, including live parameter changes |

@@ -1,7 +1,7 @@
 [project]
 name = "meegxer-nodes"
 version = "0.0.0"
-description = "Audited built-in processing nodes (filters, re-referencing, ICA/ICLabel, features)."
+description = "Built-in processing nodes (filters, re-referencing, ICA/ICLabel, features)."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "GPL-3.0-or-later"

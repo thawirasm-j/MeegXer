@@ -327,6 +327,13 @@ def _check_nodes(
                 f"plugin image is {installed.get('image_id') or 'not an image'}, "
                 f"recorded {want} ({recorded['provenance'].get('image', '?')})"
             )
+        code = recorded.get("provenance", {}).get("sha256")  # a local plugin's files
+        if code and installed.get("sha256") != code:
+            problems.append(
+                "plugin code changed since the session was saved "
+                f"(sha256 {str(installed.get('sha256') or 'missing')[:12]}, "
+                f"recorded {code[:12]})"
+            )
         if not problems:
             continue
         text = f"node {node_id!r}: " + "; ".join(problems)
