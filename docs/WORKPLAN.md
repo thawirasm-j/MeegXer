@@ -326,7 +326,8 @@ stops the feature outlets.
 - **Acceptance test 4:** save → reload on a second machine → identical output file.
   **Passing** (`packages/meegxer-cli/tests/test_cli_session.py`, ICA model reused,
   byte-identical `.set`).
-- **Acceptance test 5:** full suite on Linux and Windows (Docker Desktop / WSL2).
+- **Acceptance test 5:** full suite on Linux and Windows (Docker Desktop / WSL2). Procedure and
+  checklist: `docs/TESTING.md` (with the real-data BIDS check).
 - Publish to PyPI: the five `meegxer-*` packages plus the `meegxer` bundle (the
   sterile set; it also carries the CLI and GUI commands so `uv tool install
   meegxer` exposes them). Research builds add the runtime by name
