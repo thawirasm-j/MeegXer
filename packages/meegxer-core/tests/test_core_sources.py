@@ -109,3 +109,96 @@ def test_bids_source(tmp_path: Path) -> None:
     loaded = read_all(source, 500)
     assert loaded.info.ch_labels == original.info.ch_labels
     np.testing.assert_allclose(loaded.data, original.data, atol=2e-9)
+
+
+ARTEFACTS = ("sine", "dc", "blinks", "saccades", "slow_eye", "ecg", "emg", "pops",
+             "drift")  # fmt: skip
+
+
+def test_synthetic_parts_add_up_and_switch_off() -> None:
+    base = {"duration": 3.0, "n_channels": 8, "seed": 2}
+    quiet = {"neural": False, "line": False, "ssvep": False}
+    silent = read_all(SyntheticSource({**base, **quiet}), 1000)
+    assert not silent.data.any()  # every part off: nothing
+    default = read_all(SyntheticSource(base), 1000).data
+    parts = [read_all(SyntheticSource({**base, **quiet, name: True}), 1000).data
+             for name in ("neural", "line", "ssvep")]  # fmt: skip
+    np.testing.assert_allclose(default, sum(parts), rtol=0, atol=1e-18)
+
+
+def test_synthetic_artefacts_are_block_size_invariant() -> None:
+    params = {"duration": 30.0, "n_channels": 20, "seed": 3, "pop_rate": 6.0,
+              "emg_rate": 10.0, **dict.fromkeys(ARTEFACTS, True)}  # fmt: skip
+    whole = read_all(SyntheticSource(params), 100_000)
+    pieces = read_all(SyntheticSource(params), 37)
+    np.testing.assert_array_equal(whole.data, pieces.data)
+
+
+def only(**params: object) -> dict[str, object]:
+    return {"duration": 60.0, "n_channels": 20, "sfreq": 250.0, "seed": 7,
+            "neural": False, "line": False, "ssvep": False, **params}  # fmt: skip
+
+
+def test_blinks_are_frontal_and_marked() -> None:
+    src = SyntheticSource(only(blinks=True))
+    data = read_all(src, 100_000)
+    labels = data.info.ch_labels
+    blinks = [e for e in src.annotations() if e["label"] == "blink"]
+    assert 5 < len(blinks) < 40  # 17 per minute by default
+    for e in blinks[:5]:
+        peak = round((float(e["onset"]) + 0.15) * 250)  # middle of 300 ms
+        fp1 = data.data[labels.index("Fp1"), peak] * 1e6
+        assert fp1 > 100 or any(  # unless another blink overlaps
+            abs(float(o["onset"]) - float(e["onset"])) < 0.3
+            for o in blinks
+            if o is not e
+        )
+        assert abs(data.data[labels.index("O1"), peak]) < 0.1 * abs(
+            data.data[labels.index("Fp1"), peak]
+        )
+
+
+def test_saccades_are_opposite_at_f7_and_f8() -> None:
+    data = read_all(SyntheticSource(only(saccades=True)), 100_000)
+    labels = data.info.ch_labels
+    f7, f8 = data.data[labels.index("F7")], data.data[labels.index("F8")]
+    assert np.std(f7) > 20e-6
+    np.testing.assert_allclose(f7, -f8)
+
+
+def test_ecg_beats_match_the_heart_rate() -> None:
+    src = SyntheticSource(only(ecg=True, ecg_bpm=60.0))
+    beats = [e for e in src.annotations() if e["label"] == "ecg_r"]
+    assert len(beats) == 60  # one per second for 60 s
+    data = read_all(src, 100_000)
+    t7 = data.data[data.info.ch_labels.index("T7")]
+    r = round(float(beats[10]["onset"]) * 250)
+    assert t7[r] == pytest.approx(5e-6, rel=0.05)  # unit R peak x 5 uV
+
+
+def test_emg_is_muscle_band_and_temporal() -> None:
+    src = SyntheticSource(only(emg=True, emg_rate=20.0))
+    data = read_all(src, 100_000)
+    labels = data.info.ch_labels
+    freqs, psd = signal.welch(data.data, fs=250.0, nperseg=500)
+    band = (freqs >= 20) & (freqs <= 80)
+    low = freqs < 10
+    t7 = psd[labels.index("T7")]
+    assert t7[band].mean() > 20 * t7[low].mean()  # 20-80 Hz bursts
+    assert t7[band].mean() > 10 * psd[labels.index("Pz")][band].mean()
+
+
+def test_dc_offsets_differ_per_channel() -> None:
+    data = read_all(SyntheticSource(only(dc=True, dc_mv=10.0)), 100_000)
+    means = data.data.mean(axis=1)
+    assert np.all(np.abs(means) <= 10e-3) and np.std(means) > 1e-3
+
+
+def test_markers_reach_the_recording_events() -> None:
+    from meegxer.core.recording import describe
+
+    src = SyntheticSource(only(blinks=True, pops=True, pop_rate=6.0))
+    labels = {e["label"] for e in describe(src)["events"]}
+    assert labels == {"blink", "pop"}
+    assert SyntheticSource(only(blinks=True, markers=False)).annotations() == []
+    assert SyntheticSource(only(blinks=True, duration=0.0)).annotations() == []

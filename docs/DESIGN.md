@@ -280,8 +280,17 @@ same node interface plugins use so both remain possible.
 ## 5. v1 scope
 
 **In:**
-1. Inputs: LSL inlet, synthetic generator (pink noise + alpha bursts + 50 Hz line
-   noise + SSVEP sine), file playback; BIDS, EDF/BDF, EEGLAB .set.
+1. Inputs: LSL inlet, synthetic generator, file playback; BIDS, EDF/BDF, EEGLAB .set.
+   The synthetic generator (node 0.2.0) is made of parts switched on and off:
+   neural (pink 1/f background + posterior alpha bursts), line noise, SSVEP, a pure
+   sine, DC offset per channel, and artefacts (blinks, saccades, slow eye
+   movements, ECG, EMG bursts, electrode pops, drift). Artefact events come from a
+   seeded schedule in absolute time, so the output is block-size invariant and
+   every event is written to the recording's events as ground truth (`blink`,
+   `saccade`, `ecg_r`, `emg`, `pop`) for scoring cleaning methods. Defaults and
+   their sources (blink rate: Bentivoglio et al. 1997; EMG spectra and topography:
+   Goncharova et al. 2003; EOG ~20 uV per degree) are listed in
+   `meegxer/core/sources.py`; values without a source are marked heuristic.
 2. Engine: DAG core with linear chain view, fit/transform + calibration, sample-index
    alignment, real-time and batch schedulers.
 3. Sterile built-ins: spectral filters, spatial filters, referencing,
