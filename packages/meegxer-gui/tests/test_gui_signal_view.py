@@ -9,7 +9,7 @@ import mne
 import numpy as np
 import pytest
 from PySide6.QtCore import QPointF
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from meegxer.gui.signal_view import SignalView, StackedWindow, TracePlot, Window
 from meegxer.gui.theme import load_theme
@@ -223,3 +223,48 @@ def test_start_without_positions_opens_the_channels_tab(
         win.stop()
     finally:
         win.close()
+
+
+def test_chain_draws_forks_off_the_main_line(qapp: QApplication) -> None:
+    from meegxer.core.control import manifest_to_dict
+    from meegxer.core.registry import Registry
+    from meegxer.gui.chain import ChainView, Fork, Gap, StripWidget
+    from meegxer.gui.pipeline_doc import PipelineDoc
+
+    registry = Registry.from_entry_points()
+    doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
+                       for n in registry.names()])  # fmt: skip
+    doc.set_source("meegxer.core.synthetic")
+    for node in ["meegxer.sterile.rereference", "meegxer.sterile.band_power",
+                 "meegxer.core.lsl_features_out", "meegxer.sterile.ica"]:  # fmt: skip
+        doc.insert(len(doc.strips), node)
+    chain = ChainView()
+    chain.rebuild(doc, load_theme("dark"), statuses={}, taps={}, advanced=False,
+                  selected=None)  # fmt: skip
+    forks = {f.strip.strip_id: f.from_rail for f in chain.findChildren(Fork)}
+    assert forks == {"bandpower1": True, "lslfeature1": False}
+    links = [g.index for g in chain.findChildren(Gap) if g.branch_link]
+    assert links == [3]  # band power -> LSL features
+    labels = {
+        w.strip_id: label.text()
+        for w in chain.findChildren(StripWidget)
+        if (label := w.findChild(QLabel, "group")) is not None
+    }
+    assert labels["bandpower1"] == "◆ FEATURES"
+    assert labels["ica1"] == "● PREPROCESS"
+    chain.deleteLater()
+    qapp.processEvents()
+
+
+def test_themes_without_group_colours_get_the_defaults(tmp_path: Path) -> None:
+    import json
+
+    from meegxer.gui.theme import DEFAULT_GROUPS
+
+    data = json.loads((Path(__file__).parents[1] / "src" / "meegxer" / "gui"
+                       / "themes" / "dark.json").read_text())  # fmt: skip
+    del data["groups"]
+    path = tmp_path / "mine.json"
+    path.write_text(json.dumps(data))
+    assert load_theme(path).group_color("features") == DEFAULT_GROUPS["features"]
+    assert load_theme("light").group_color("features") != DEFAULT_GROUPS["features"]

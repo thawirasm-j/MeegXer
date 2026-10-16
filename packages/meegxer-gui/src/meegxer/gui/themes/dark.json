@@ -23,5 +23,15 @@
   "incompatible_border": "#b8434f",
   "bypass_hatch": "#c79bff",
   "unknown_channel": "#8b92a3",
-  "wheel": {"rim_lightness": 0.74, "vertex_lightness": 0.96, "chroma": 0.15}
+  "wheel": {
+    "rim_lightness": 0.74,
+    "vertex_lightness": 0.96,
+    "chroma": 0.15
+  },
+  "groups": {
+    "input": "#8b92a3",
+    "preprocess": "#5b8def",
+    "features": "#e8a23b",
+    "output": "#2fb89a"
+  }
 }
