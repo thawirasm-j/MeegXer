@@ -116,6 +116,9 @@ uv run meegxer session check sub-01.meegxer.json   # what would be reused or ref
 uv run meegxer run sub-01.meegxer.json             # same output, byte for byte
 ```
 
+In the GUI, *Save session…* saves the chain with the models fitted by the last
+offline run (or calibrated live), and *Open…* reads sessions as well as pipelines.
+
 Run live in the headless daemon and control it (see `spec/control-api.md`):
 
 ```bash

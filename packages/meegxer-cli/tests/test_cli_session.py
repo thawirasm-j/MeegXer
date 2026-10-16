@@ -28,7 +28,7 @@ def recording(path: Path) -> Path:
     data = (mixing @ sources + 0.5 * rng.standard_normal((len(CHANNELS), n))) * 1e-5
     raw = mne.io.RawArray(data, mne.create_info(CHANNELS, sfreq, "eeg"),
                           verbose="error")  # fmt: skip
-    raw.set_montage("standard_1020")
+    raw.set_montage("colin27_1020")
     raw.save(path, verbose="error")
     return path
 

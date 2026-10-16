@@ -25,7 +25,7 @@ from meegxer.core.offline import OfflineJob
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.recording import builtin_montages, describe, lookup_positions
 from meegxer.core.registry import Registry
-from meegxer.core.session import build_session, load_session
+from meegxer.core.session import build_session, load_session, sink_outputs
 from meegxer.core.stage import Stage
 
 DEFAULT_CONTROL = "tcp://127.0.0.1:5555"
@@ -98,6 +98,9 @@ class Daemon:
         self._graph: Graph | None = None
         self._scheduler: RealtimeScheduler | None = None
         self._offline: OfflineJob | None = None
+        # models the next offline run starts from: the previous offline run's, or
+        # those of the session loaded last (fingerprints decide if they are used)
+        self._offline_models: Graph | None = None
         self._stop = threading.Event()
         self._methods: dict[str, Callable[..., Any]] = {
             "ping": self.ping,
@@ -146,13 +149,28 @@ class Daemon:
         self._pipeline, self._graph, self._scheduler = graph.to_dict(), graph, None
         return self._pipeline
 
-    def get_session(self, name: str | None = None) -> dict[str, Any]:
-        """The loaded pipeline as a session (``spec/session.md``), with the
-        models calibrated so far; paths are absolute (the client writes the
-        file and makes them relative to it)."""
-        if self._graph is None:
+    def get_session(
+        self,
+        name: str | None = None,
+        pipeline: dict[str, Any] | None = None,
+        offline: bool = False,
+    ) -> dict[str, Any]:
+        """A session (``spec/session.md``) of the loaded pipeline with the models
+        calibrated live, or with ``offline`` of the last offline run (its fitted
+        models and the files it wrote). With ``pipeline`` (e.g. the GUI's), that
+        pipeline is saved, with the models of nodes it shares. Paths are
+        absolute (the client writes the file and makes them relative to it)."""
+        source = self._offline.graph if offline and self._offline else self._graph
+        if offline and (self._offline is None or self._offline.state != "done"):
+            raise RuntimeError("no finished offline run to save")
+        if source is None:
             raise RuntimeError("no pipeline loaded")
-        return build_session(self._graph, name=name)
+        graph = source
+        if pipeline is not None:
+            graph = Graph.from_dict(pipeline, self.registry)
+            self._carry_models(source, graph)
+        outputs = sink_outputs(graph) if offline else ()
+        return build_session(graph, name=name, outputs=outputs)
 
     def load_session(
         self, session: dict[str, Any], allow_version_mismatch: bool = False
@@ -165,14 +183,15 @@ class Daemon:
         loaded = load_session(
             session, self.registry, allow_version_mismatch=bool(allow_version_mismatch)
         )
-        RealtimeScheduler(loaded.graph)  # validates: no offline-only nodes
         warnings = list(loaded.warnings)
         for node_id in loaded.unpinned_models:
             warnings.append(f"models: {node_id!r} has no fingerprint; not used live")
         if self._graph is not None:
             self._close_processors(self._graph)
         graph = loaded.graph
+        # an offline-only pipeline loads too; start() refuses it with the reason
         self._pipeline, self._graph, self._scheduler = graph.to_dict(), graph, None
+        self._offline_models = graph
         models = [
             n.id
             for n in graph.nodes
@@ -335,7 +354,11 @@ class Daemon:
             raise RuntimeError("stop the live pipeline before an offline run")
         if self._offline is not None and self._offline.state == "running":
             raise RuntimeError("an offline run is already in progress")
-        job = OfflineJob(Graph.from_dict(pipeline, self.registry))
+        graph = Graph.from_dict(pipeline, self.registry)
+        if self._offline_models is not None:
+            self._carry_models(self._offline_models, graph)
+        job = OfflineJob(graph)
+        self._offline_models = graph
         if self._offline is not None:
             self._offline.discard()  # the previous run's files
         self._offline = job
