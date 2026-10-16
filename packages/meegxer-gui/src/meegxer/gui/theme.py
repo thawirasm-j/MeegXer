@@ -8,12 +8,20 @@ stylesheet and the plots, so a new theme needs no code. ``dark`` (default) and
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 from typing import Any
 
 BUILTIN = ("dark", "light")
+# strip groups (input, preprocessing, feature extraction, output) for themes
+# that do not set their own
+DEFAULT_GROUPS = {
+    "input": "#8b92a3",
+    "preprocess": "#5b8def",
+    "features": "#e8a23b",
+    "output": "#2fb89a",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,9 +53,13 @@ class Theme:
     bypass_hatch: str
     unknown_channel: str
     wheel: Wheel
+    groups: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_GROUPS))
 
     def status_color(self, status: str) -> str:
         return self.status.get(status, self.status["stopped"])
+
+    def group_color(self, group: str) -> str:
+        return self.groups.get(group, DEFAULT_GROUPS[group])
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Theme:

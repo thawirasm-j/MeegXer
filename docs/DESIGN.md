@@ -207,6 +207,15 @@ it never interrupts processing.
     pipeline file. The inspector always shows every parameter.
   - **+ Add strip** at the end of the chain and in each gap; strips drag to before or
     after any other strip. Probe taps sit between strips.
+  - **Groups:** each strip's top band, shape and label give its group, from its role
+    and ports: ■ input, ● preprocessing (Signal to Signal), ◆ feature extraction
+    (Signal to Features), ▶ output (sinks). Theme tokens `groups`.
+  - **Forks in one lane:** the main line (input and preprocessing) runs along a
+    rail; feature extraction and outputs sit lower and fork off it with an arrow
+    down from the rail, which passes over them to the next preprocessing strip
+    (they read the nearest earlier node of their input type, spec 0.2.7). A strip
+    reading the forked strip before it (band power into LSL features) is linked at
+    the forked level.
 - **Mode comes from the Input strip:** an LSL source is always live; a file or BIDS
   source is offline by default and a synthetic source live, and either can be
   switched on the Input strip (live playback or offline processing). The transport

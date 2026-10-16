@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 Mode = Literal["live", "offline"]
+Group = Literal["input", "preprocess", "features", "output"]
 Manifest = dict[str, Any]
 
 PROBE = "meegxer.core.probe"
@@ -227,6 +228,38 @@ class PipelineDoc:
             if self.role(s) in ("source", "processor")
             and [p["type"] for p in self.manifest(s)["outputs"][:1]] == ["signal"]
         ]
+
+    def group(self, strip: StripNode | str) -> Group:
+        """Input, preprocessing (Signal in and out), feature extraction (Signal
+        to Features) or output (sinks): from the node's role and ports, so
+        plugins are grouped too."""
+        manifest = self.manifest(strip)
+        role = manifest["role"]
+        if role == "source":
+            return "input"
+        if role in ("sink", "probe"):
+            return "output"
+        outputs = {p["type"] for p in manifest["outputs"]}
+        return "preprocess" if outputs <= {"signal"} else "features"
+
+    def on_main_line(self, strip: StripNode) -> bool:
+        """The signal path: the input and the preprocessing strips. Feature
+        extraction and outputs fork off it; the signal passes them by."""
+        return self.group(strip) in ("input", "preprocess")
+
+    def input_of(self, strip: StripNode) -> str | None:
+        """The strip this one reads from: the nearest earlier strip whose output
+        has the type of its input (spec 0.2.7), as the pipeline resolves it."""
+        inputs = self.manifest(strip)["inputs"]
+        if not inputs:
+            return None
+        wanted = inputs[0]["type"]
+        index = self.strips.index(strip)
+        for earlier in reversed(self.strips[:index]):
+            outputs = self.manifest(earlier)["outputs"]
+            if outputs and outputs[0]["type"] == wanted:
+                return earlier.id
+        return None
 
     # -- what a strip shows -------------------------------------------------------
 

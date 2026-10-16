@@ -142,3 +142,32 @@ def test_strips_that_need_positions_list_the_channels_without_them(
     assert doc.missing_positions(channels) == {"ica1": ["Fp1"]}
     doc.get("ica1").channel_types = ["eeg", "eog"]
     assert doc.missing_positions(channels) == {"ica1": ["Fp1", "VEOG"]}
+
+
+def test_groups_and_what_each_strip_reads_from(doc: PipelineDoc) -> None:
+    """Feature extraction inserted between re-reference and ICA forks off after
+    re-reference; ICA still reads from re-reference (one lane, forks drawn)."""
+    for node in ["meegxer.sterile.rereference", "meegxer.sterile.band_power",
+                 "meegxer.core.lsl_features_out", "meegxer.sterile.ica",
+                 "meegxer.core.lsl_out"]:  # fmt: skip
+        doc.insert(len(doc.strips), node)
+    groups = {s.id: doc.group(s) for s in doc.strips}
+    assert groups == {
+        "input": "input", "iirfilter1": "preprocess", "notch1": "preprocess",
+        "rereferenc1": "preprocess", "bandpower1": "features",
+        "lslfeature1": "output", "ica1": "preprocess", "lslout1": "output",
+    }  # fmt: skip
+    main = [s.id for s in doc.strips if doc.on_main_line(s)]
+    assert main == ["input", "iirfilter1", "notch1", "rereferenc1", "ica1"]
+    reads = {s.id: doc.input_of(s) for s in doc.strips}
+    assert reads["bandpower1"] == "rereferenc1"
+    assert reads["lslfeature1"] == "bandpower1"
+    assert reads["ica1"] == "rereferenc1"  # the main line continues
+    assert reads["lslout1"] == "ica1"
+    assert reads["input"] is None
+    # and the pipeline the core builds agrees
+    from meegxer.core.graph import Graph
+
+    graph = Graph.from_dict(doc.to_pipeline(taps=False), Registry.from_entry_points())
+    for strip in doc.strips[1:]:
+        assert graph[strip.id].input == reads[strip.id], strip.id
