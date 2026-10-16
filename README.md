@@ -74,10 +74,16 @@ On a minimal Linux install the GUI may need the Qt system libraries
 The `meegxer` install includes everything: the built-in nodes, the plugin runtime
 and the `meegxer-plugin` command. Processing runs on your machine.
 
-Plugins currently run in containers, so they need Docker (on Windows,
+**Custom scripts:** your own MNE-Python function `process(raw, ...)` becomes a
+strip (offline runs); see [docs/CUSTOM_SCRIPTS.md](docs/CUSTOM_SCRIPTS.md). In the
+GUI: *+ Add strip → Custom script…*. It runs on your computer with your
+permissions, so MeegXer asks you to accept that first.
+
+Plugin images run in containers, so they need Docker (on Windows,
 [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
-with the WSL 2 backend) or Podman. MeegXer itself, the built-in nodes and LSL do
-not. Then `meegxer-plugin check IMAGE` and `meegxer-plugin add IMAGE`.
+with the WSL 2 backend) or Podman. MeegXer itself, the built-in nodes, custom
+scripts and LSL do not. Then `meegxer-plugin check IMAGE` and
+`meegxer-plugin add IMAGE`.
 
 Planned: **Sterile mode**, one switch that runs all processing in a container cut
 off from the network and the rest of the machine. Sterile means isolation only;

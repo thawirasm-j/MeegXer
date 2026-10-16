@@ -34,8 +34,9 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
    reach plugins only through the node-provider entry point. Outside Sterile mode a
    plugin may run as a local process with the user's permissions (network, files), so
    adding one asks the user to acknowledge that risk (patient data: HIPAA, GDPR, IRB).
-   In a container it runs with `--network none` and read-only mounts. (Today plugins
-   always run in a container; local plugins and the prompt are planned.)
+   In a container it runs with `--network none` and read-only mounts. (Local plugins
+   and custom scripts need the accepted notice: `meegxer-plugin add --local/--script`
+   or *Custom script…* in the GUI; `docs/CUSTOM_SCRIPTS.md`.)
 10. **Sterile = isolation, a runtime mode.** Sterile mode runs all processing (built-in
     nodes and plugins) in a container with no network and read-only mounts; the host
     keeps only trusted I/O (sources, LSL, file writers, device sinks, the GUI). It
@@ -102,7 +103,9 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   Offline runs write to `MEEGXER_OFFLINE_DIR` (default: the system temp folder),
   with a processor-output cache capped by `MEEGXER_OFFLINE_CACHE_GB` (default 5).
 - Plugins: `uv run meegxer-plugin check IMAGE` (conformance),
-  `meegxer-plugin add IMAGE`, `meegxer-plugin list`. SDKs in
+  `meegxer-plugin add IMAGE`, `meegxer-plugin list`. Custom scripts
+  (`process(raw, ...)`, offline): `meegxer-plugin check|add --script FILE`
+  (`add` asks to accept the local-code notice, or `--accept-risk`). SDKs in
   `packages/meegxer-plugins/sdk/`; reference plugins in `packages/meegxer-plugins/plugins/`.
 - New nodes register in the `meegxer.nodes` entry-point group (see package
   pyproject.toml) and declare `availability` (online/offline/both). Stream

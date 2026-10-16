@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from meegxer.core.notices import LOCAL_CODE_NOTICE_VERSION
 from meegxer.core.registry import Registry
 from meegxer.plugins import index
 from meegxer.plugins.cli import main as cli_main
@@ -79,16 +80,27 @@ def test_index_and_node_provider(
     path = tmp_path / "plugins.json"
     monkeypatch.setenv(index.INDEX_ENV, str(path))
     launcher = plugin("ema")
-    entry = index.add_local(list(launcher.argv))
+    with pytest.raises(index.ConsentRequired):  # local code needs the notice accepted
+        index.add_local(list(launcher.argv))
+    assert not path.exists()
+    entry = index.add_local(list(launcher.argv), accept_risk=True)
     assert entry["manifest"]["name"] == "test.ema" and entry["unsandboxed"]
+    assert entry["consent"]["notice"] == LOCAL_CODE_NOTICE_VERSION
     assert json.loads(path.read_text())["plugins"][0]["manifest"]["name"] == "test.ema"
 
     monkeypatch.delenv("MEEGXER_ALLOW_UNSANDBOXED", raising=False)
-    assert index.node_classes() == []  # unsandboxed entries need explicit permission
-    monkeypatch.setenv("MEEGXER_ALLOW_UNSANDBOXED", "1")
-    registry = Registry.from_entry_points()  # runtime's provider entry point
-    assert "test.ema" in registry.names()
+    registry = Registry.from_entry_points()  # the plugins' provider entry point
+    assert "test.ema" in registry.names()  # consented: no development switch needed
     assert "meegxer.nodes.iir_filter" in registry.names()
+
+    # an entry without recorded consent (added by hand, or before 0.2.1) needs
+    # the development switch
+    stored = json.loads(path.read_text())
+    del stored["plugins"][0]["consent"]
+    path.write_text(json.dumps(stored))
+    assert index.node_classes() == []
+    monkeypatch.setenv("MEEGXER_ALLOW_UNSANDBOXED", "1")
+    assert [c.manifest.name for c in index.node_classes()] == ["test.ema"]
 
     path.write_text(
         json.dumps({"plugins": [{"image": "x", "manifest": {"name": "bad"}}]})
@@ -109,7 +121,7 @@ def test_cli_check_and_list(
     bad = plugin("forgetful")
     assert cli_main(["check", "--local", *bad.argv]) == 1
     monkeypatch.setenv(index.INDEX_ENV, str(tmp_path / "i.json"))
-    index.add_local([sys.executable, "-u", launcher.argv[-1]])
+    index.add_local([sys.executable, "-u", launcher.argv[-1]], accept_risk=True)
     capsys.readouterr()
     assert cli_main(["list"]) == 0
     assert "test.ema" in capsys.readouterr().out and cli_main(["remove", "nope"]) == 1

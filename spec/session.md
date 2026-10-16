@@ -83,7 +83,7 @@ Recommended file name: `NAME.meegxer.json` (plain JSON; any `.json` file with a
 |---|---|
 | `meegxer_session` | Format version, `major.minor`. Readers accept their own major version. |
 | `pipeline` | The pipeline document, unchanged. |
-| `nodes` | Per node id: manifest `node` name, `version`, and `provenance` for external plugins: `image`, `image_id` (the local image ID the host recorded at `meegxer-plugin add`), `repo_digests` (registry digests, when the engine reports them), or `command` + `unsandboxed` for a local development plugin. |
+| `nodes` | Per node id: manifest `node` name, `version`, and `provenance` for external plugins: `image`, `image_id` (the local image ID the host recorded at `meegxer-plugin add`), `repo_digests` (registry digests, when the engine reports them), or, for a local plugin (unsandboxed: a custom script or a local command), `command`, `unsandboxed`, `sha256` (one hash over its code files, in name order) and `script` (the script's file name). |
 | `models` | Per node id, for nodes that need calibration: `data` (the model exactly as the node returned it), `fitted_on` (the channels it was fitted on), `fingerprint`, `content_hash`. External plugins' models use the same form: the host owns them (plugin protocol), so they are stored like any other. |
 | `inputs` | Per source node id: the files read, with hashes. |
 | `outputs` | The files the run wrote, with hashes. |
@@ -123,7 +123,7 @@ paths, so a session folder can be moved or zipped as a whole.
 | `meegxer_session` major version, `spec_version` | Refused. |
 | A node is not installed | Refused, naming the node (for a plugin: `meegxer-plugin add IMAGE` with the recorded image). |
 | A built-in recorded under its pre-0.2.1 name (`meegxer.sterile.*`) | Loads as the same node under its current name (`meegxer.nodes.*`); models are reused. |
-| Node `version`, plugin `image_id` | Refused by default. With the override (`--allow-version-mismatch`), that node's model is dropped, so it needs refitting. |
+| Node `version`, plugin `image_id`, local plugin `sha256` (the script changed) | Refused by default. With the override (`--allow-version-mismatch`), that node's model is dropped, so it needs refitting. |
 | Model `content_hash` | Refused: the model was changed after it was saved. |
 | Model `fingerprint` | The model is kept but not used: the node needs refitting (offline runs refit it on their input, live runs wait for calibration). |
 | Input file `sha256` | Warning; refused with `--strict`. |

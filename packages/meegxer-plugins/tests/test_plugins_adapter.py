@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -139,6 +140,7 @@ def test_fitted_plugin_round_trips_through_a_session(
     assert session["nodes"]["c"]["provenance"] == {
         "command": list(launcher.argv),
         "unsandboxed": True,
+        "sha256": origin_of(entry)["sha256"],  # of the plugin's code file
     }
     assert session["models"]["c"]["data"]  # readable JSON of the plugin's model
 
@@ -150,6 +152,17 @@ def test_fitted_plugin_round_trips_through_a_session(
     }
     again = BatchScheduler().run(loaded.graph)
     assert again.fitted == [] and first.fitted == ["c"]
+
+    # the code changed since the session was saved: refused, like another image
+    from meegxer.core.session import SessionError
+
+    script = Path(launcher.argv[-1])
+    script.write_text(script.read_text() + "\n# edited\n")
+    changed = plugin_class(probe_manifest(launcher), launcher, origin=origin_of(entry))
+    other = Registry.from_entry_points()
+    other.add(changed)
+    with pytest.raises(SessionError, match="plugin code changed"):
+        load_session(session, other)
     for g in (graph, loaded.graph):
         impl = g["c"].impl
         assert isinstance(impl, Stage)

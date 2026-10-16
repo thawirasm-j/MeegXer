@@ -187,12 +187,21 @@ transform(block, model, state, params)        -> block_out, state, events
   handshake manifest), discovered through `meegxer-plugin add IMAGE` and a node-provider
   entry point that exists only when `meegxer-plugins` is installed.
 - Unsandboxed local processes are allowed only for plugin development and tests
-  (`MEEGXER_ALLOW_UNSANDBOXED=1`). Planned: local plugins (and custom scripts) by
-  default, each in its own process over the same protocol, with a prompt when one is
-  added: it runs with the user's permissions and can reach the network and files,
-  which can break institutional data rules for identifiable patient data (HIPAA,
-  GDPR, IRB); the prompt offers Sterile mode instead. Session and BIDS provenance
-  record the mode and each plugin's content hash.
+  (`MEEGXER_ALLOW_UNSANDBOXED=1`) without recorded consent. Users add local plugins
+  and custom scripts after accepting a notice (`meegxer.core.notices`, one wording
+  for CLI and GUI): it runs with the user's permissions and can reach the network
+  and files, which can break institutional data rules for identifiable patient data
+  (HIPAA, GDPR, IRB). The plugin index records the acceptance; session provenance
+  records the command and a SHA-256 of the code files, and a changed script refuses
+  the session like another image would. Each runs in its own process over the
+  same protocol.
+- **Custom scripts** (`docs/CUSTOM_SCRIPTS.md`): an MNE-Python file with
+  `process(raw, ...)`; `meegxer.plugins.script` builds the manifest from the
+  signature (types, defaults, `Literal` choices) and the numpy docstring
+  (descriptions, `(unit)`), and runs it through the bundled copy of the Python SDK.
+  First tier: offline only (the whole recording as one block); the result must keep
+  channels, rate and length; added annotations become events. Next: an Octave/EEGLAB
+  `function EEG = process(EEG, ...)` tier and a live fit/transform tier.
 - Plugins emit Events only; trusted host Sinks perform actions.
 - **Sterile mode** (planned): one container runs the whole processing chain (built-in
   nodes and plugins) as a single worker over the plugin protocol, so the added

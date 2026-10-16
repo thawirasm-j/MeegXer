@@ -88,6 +88,7 @@ class Daemon:
         registry: Registry | None = None,
         context: ZmqContext | None = None,
     ) -> None:
+        self._own_registry = registry is None  # rescan_nodes rebuilds only our own
         self.registry = registry or Registry.from_entry_points()
         self._context = context or zmq.Context.instance()
         self._socket = self._context.socket(zmq.REP)
@@ -107,6 +108,7 @@ class Daemon:
         self._methods: dict[str, Callable[..., Any]] = {
             "ping": self.ping,
             "list_nodes": self.list_nodes,
+            "rescan_nodes": self.rescan_nodes,
             "load_pipeline": self.load_pipeline,
             "get_pipeline": self.get_pipeline,
             "get_session": self.get_session,
@@ -138,6 +140,13 @@ class Daemon:
             manifest_to_dict(self.registry.get(n).manifest)
             for n in self.registry.names()
         ]
+
+    def rescan_nodes(self) -> list[dict[str, Any]]:
+        """Find nodes installed since the daemon started (e.g. a plugin just
+        added); a running pipeline keeps the classes it was built with."""
+        if self._own_registry:
+            self.registry = Registry.from_entry_points()
+        return self.list_nodes()
 
     def load_pipeline(self, pipeline: dict[str, Any]) -> dict[str, Any]:
         if self._scheduler is not None and self._scheduler.running:

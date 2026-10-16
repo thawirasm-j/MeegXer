@@ -410,6 +410,7 @@ class ChainView(QScrollArea):
     selected = Signal(str)
     remove_requested = Signal(str)
     insert_requested = Signal(int, str)
+    script_requested = Signal(int)  # add a custom script, then insert it here
     move_requested = Signal(str, int)
     tap_clicked = Signal(str, bool)
     calibrate_requested = Signal(str)
@@ -530,5 +531,13 @@ class ChainView(QScrollArea):
                 action.triggered.connect(
                     lambda _=False, n=m["name"]: self.insert_requested.emit(index, n)
                 )
+        section = menu.addSection("✎ Your own code")
+        section.setEnabled(False)
+        script = menu.addAction("Custom script…")
+        script.setToolTip(
+            "An MNE-Python script with process(raw, ...), run offline on the whole "
+            "recording (runs on your computer, unsandboxed)"
+        )
+        script.triggered.connect(lambda: self.script_requested.emit(index))
         menu.setToolTipsVisible(True)
         menu.exec(self.mapToGlobal(self.rect().center()))
