@@ -203,10 +203,21 @@ def _run_bids(
     from meegxer.core.batch import BatchScheduler, offline_input_fingerprints
     from meegxer.core.bids_out import ensure_writer, find_recordings, target_for
     from meegxer.core.cache import DirectoryCache
+    from meegxer.core.node import Source
+    from meegxer.core.recording import (
+        RecordingOverrides,
+        recording_of,
+        with_recording,
+    )
     from meegxer.core.registry import Registry
     from meegxer.core.session import adopt_models, load_session, read_session
     from meegxer.core.sources import BidsSource
 
+    try:
+        document = read_session(pipeline)  # read once: a bad file stops here
+    except (OSError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     root = root.resolve()
     recordings = find_recordings(
         root, subjects=_split(subjects), tasks=_split(tasks),
@@ -225,18 +236,30 @@ def _run_bids(
         prefix = f"[{i}/{len(recordings)}] {label}"
         try:
             loaded = load_session(
-                read_session(pipeline),
+                document,
                 registry,
                 allow_version_mismatch=allow_version_mismatch,
             )
             graph = loaded.graph
-            graph.replace(graph.source.id, BidsSource(params))
+            # the input's Recording settings (renames, types, montage, bad
+            # channels) apply to every recording
+            first = graph.source.impl
+            assert isinstance(first, Source)
+            settings = recording_of(first)
+            source = (with_recording(BidsSource, params,
+                                     RecordingOverrides.from_dict(settings))
+                      if settings else BidsSource(params))  # fmt: skip
+            graph.replace(graph.source.id, source)
             writer = ensure_writer(graph, bids_out, overwrite)
             target = target_for(graph, writer.params)
-            if target.path("eeg.set").exists() and not overwrite:
+            # the session file is written last: without it the recording is
+            # unfinished (e.g. interrupted while writing) and is done again
+            if target.path("meegxer.json").exists() and not overwrite:
                 skipped.append(label)
                 typer.echo(f"{prefix}: already done, skipped")
                 continue
+            if target.path("eeg.set").exists():
+                ensure_writer(graph, bids_out, True)  # replace the partial files
             adopt_models(loaded, offline_input_fingerprints(graph))
             result = BatchScheduler(block_size=block_size, cache=cache).run(graph)
         except Exception as exc:  # one bad recording does not stop the others

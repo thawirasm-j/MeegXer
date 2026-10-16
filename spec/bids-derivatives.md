@@ -97,7 +97,9 @@ when the input is not in a BIDS dataset). Existing fields are kept; MeegXer's
 
 `meegxer run PIPELINE --bids RAW_ROOT [--subjects 01 02 …] [--task T] [--session S]
 [--run R]` runs the pipeline on every matching EEG recording, one after another,
-each with a fresh graph (models are fitted per recording). A recording whose
-derivative already exists is skipped unless `--overwrite`, so rerunning the same
-command continues an interrupted run. A failing recording is reported and the
+each with a fresh graph (models are fitted per recording). The pipeline input's
+Recording settings (channel renames, types, montage, bad channels) apply to every
+recording. A recording whose session file (`_meegxer.json`, written last) exists is
+skipped unless `--overwrite`, so rerunning the same command continues an
+interrupted run; a recording interrupted while being written is done again. A failing recording is reported and the
 others still run; the command exits with status 1 if any failed.

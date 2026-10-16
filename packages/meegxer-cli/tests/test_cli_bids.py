@@ -73,3 +73,39 @@ def test_bids_refuses_single_recording_options(tmp_path: Path) -> None:
     result = runner.invoke(app, ["run", str(pipeline(tmp_path / "p.json")),
                                  "--bids", str(tmp_path), "-o", "x.set"])  # fmt: skip
     assert result.exit_code == 1 and "no -i, -o or --session" in result.output
+
+
+def test_interrupted_recording_is_redone_not_skipped(tmp_path: Path) -> None:
+    """Ctrl+C while a recording is written leaves a partial .set but no session
+    file (written last): the next run must redo it, not skip or refuse it."""
+    root = dataset(tmp_path / "ds", ("01",))
+    pipe = pipeline(tmp_path / "clean.json")
+    folder = root / "derivatives" / "meegxer" / "sub-01" / "eeg"
+    folder.mkdir(parents=True)
+    partial = folder / "sub-01_task-rest_desc-clean_eeg.set"
+    partial.write_bytes(b"half a file")
+    result = runner.invoke(app, ["run", str(pipe), "--bids", str(root)])
+    assert result.exit_code == 0, result.output
+    assert "done 1, skipped 0, failed 0" in result.output
+    assert partial.read_bytes() != b"half a file"
+    assert (folder / "sub-01_task-rest_desc-clean_meegxer.json").is_file()
+
+
+def test_recording_settings_apply_to_every_recording(tmp_path: Path) -> None:
+    """The pipeline input's Recording settings (renames, types, montage, bad
+    channels) carry over to each recording the loop runs."""
+    root = dataset(tmp_path / "ds", ("01", "02"))
+    pipe = tmp_path / "clean.json"
+    pipe.write_text(json.dumps({"spec_version": SPEC_VERSION, "nodes": [
+        {"id": "input", "node": "meegxer.core.synthetic",
+         "recording": {"channels": {"Fz": {"rename": "FZ"}, "Pz": {"bad": True}}}},
+        {"id": "hp", "node": "meegxer.sterile.iir_filter",
+         "params": {"kind": "highpass", "low": 1.0}},
+    ]}))  # fmt: skip
+    result = runner.invoke(app, ["run", str(pipe), "--bids", str(root)])
+    assert result.exit_code == 0, result.output
+    for subject in ("01", "02"):
+        folder = root / "derivatives" / "meegxer" / f"sub-{subject}" / "eeg"
+        name = f"sub-{subject}_task-rest_desc-clean_channels.tsv"
+        channels = (folder / name).read_text()
+        assert "FZ\tEEG" in channels and "Pz\tEEG\tV\tbad" in channels
