@@ -6,9 +6,11 @@ thick, comparison probes thin and faded. Difference mode shows Main minus the
 first comparison (what that stretch of the chain removed); spectrum mode shows
 power spectra of the same windows. Bypassed data is hatched.
 
-Mouse: the wheel scales the Y axis only, dragging pans X and Y, a double click
-restores the automatic range. While the stacked window is open the signal view
-rests; the stacked window has its own channels, span and scrollbar.
+Time moves only with the panner under each trace area, so the shown span is
+always filled edge to edge (no blank margins). The mouse works on the Y axis only:
+the wheel scales it, dragging moves it, a double click fits it again. While the
+stacked window is open the signal view rests; the stacked window has its own
+channels, span and panner.
 """
 
 from __future__ import annotations
@@ -158,15 +160,87 @@ class ChannelMenu(QToolButton):
 
 
 class TraceViewBox(pg.ViewBox):
-    """The wheel scales the Y axis only; dragging pans X and Y (pyqtgraph's
-    default); a double click restores the automatic range."""
+    """The mouse works on Y only (time belongs to the panner): the wheel scales
+    it, dragging moves it, a double click fits it again."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setMouseEnabled(x=False, y=True)
 
     def wheelEvent(self, ev: Any, axis: int | None = None) -> None:
         super().wheelEvent(ev, axis=1)
 
     def mouseDoubleClickEvent(self, ev: Any) -> None:
-        self.enableAutoRange()
+        self.enableAutoRange(axis=pg.ViewBox.YAxis)
         ev.accept()
+
+
+class Panner(QWidget):
+    """The time control under a trace area: a scrollbar over what can be shown
+    (the whole recording offline, the kept history live). Live, it follows the
+    newest data until moved back; "Latest" returns to it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        caption = QLabel("Time")
+        caption.setObjectName("muted")
+        lay.addWidget(caption)
+        self.bar = QScrollBar(Qt.Orientation.Horizontal)
+        self.bar.setToolTip("Drag to move through time")
+        lay.addWidget(self.bar, 1)
+        self.where = QLabel("")
+        self.where.setObjectName("muted")
+        self.where.setMinimumWidth(130)
+        self.where.setAlignment(Qt.AlignmentFlag.AlignRight)
+        lay.addWidget(self.where)
+        self.latest = QPushButton("Latest ⇥")
+        self.latest.setToolTip("Jump to the newest data and keep following it")
+        self.latest.clicked.connect(self.follow)
+        self.latest.setVisible(False)
+        lay.addWidget(self.latest)
+        self.following = True  # live: the panner sits at the newest data
+        self.live = False
+        self.bar.sliderMoved.connect(self._moved)
+        self.bar.actionTriggered.connect(lambda _: self._moved(None))
+
+    def _moved(self, value: int | None) -> None:
+        pos = self.bar.sliderPosition() if value is None else value
+        self.following = pos >= self.bar.maximum()
+        self.latest.setEnabled(not self.following)
+
+    def follow(self) -> None:
+        self.following = True
+        self.bar.setValue(self.bar.maximum())
+        self.latest.setEnabled(False)
+
+    def set_extent(self, minimum: int, maximum: int, page: int, live: bool) -> None:
+        """Range (samples offline, display bins live). Live, it keeps following
+        the newest data unless moved back from the right end."""
+        maximum = max(minimum, maximum)
+        self.live = live
+        self.bar.blockSignals(True)
+        self.bar.setRange(minimum, maximum)
+        self.bar.setPageStep(max(1, page))
+        self.bar.setSingleStep(max(1, page // 10))
+        if live and self.following:
+            self.bar.setValue(maximum)
+        self.bar.blockSignals(False)
+        self.latest.setVisible(live)
+        self.latest.setEnabled(not self.following)
+
+    def position(self) -> int:
+        return int(self.bar.value())
+
+    def show_span(self, t0: float, t1: float) -> None:
+        """Say where the shown span is (live: how far behind the newest data)."""
+        if not self.live:
+            self.where.setText(f"{t0:.1f} – {t1:.1f} s")  # noqa: RUF001
+        elif self.following:
+            self.where.setText("newest data")
+        else:
+            self.where.setText(f"{-t1:.1f} s behind")
 
 
 class TracePlot(pg.PlotWidget):
@@ -175,7 +249,6 @@ class TracePlot(pg.PlotWidget):
     def __init__(self, theme: Theme) -> None:
         super().__init__(viewBox=TraceViewBox())
         self.theme = theme
-        self._x_key: object = None
         self.showGrid(x=True, y=True, alpha=0.25)
         self.setMenuEnabled(False)
         self.getPlotItem().hideButtons()
@@ -201,11 +274,14 @@ class TracePlot(pg.PlotWidget):
             self._curves.append(item)
         return self._curves[i]
 
-    def follow_x(self, key: object) -> None:
-        """A new stretch of time (or a new axis): fit X again, even after a pan."""
-        if key != self._x_key:
-            self._x_key = key
-            self.getViewBox().enableAutoRange(axis=pg.ViewBox.XAxis)
+    def set_time(self, t0: float, t1: float) -> None:
+        """Show exactly this span: no margins, so nothing blank at the sides."""
+        if t1 > t0:
+            self.getViewBox().setXRange(t0, t1, padding=0)
+
+    def fit_x(self) -> None:
+        """Spectrum: X follows the data."""
+        self.getViewBox().enableAutoRange(axis=pg.ViewBox.XAxis)
 
     def draw(self, layers: list[tuple[FloatArray, FloatArray, QPen]]) -> None:
         for i, (x, y, pen) in enumerate(layers):
@@ -308,10 +384,23 @@ class SignalView(QWidget):
         lay.addLayout(bar)
         self.plot = TracePlot(theme)
         lay.addWidget(self.plot, 1)
+        self.panner = Panner()
+        lay.addWidget(self.panner)
         self.styles: dict[tuple[str, ...], list[ChannelStyle]] = {}
         self.wheel: dict[str, tuple[float, float]] = {}
         self.types: dict[str, str] = {}  # label -> channel type, when known
         self.events: list[dict[str, Any]] = []
+        self.names: dict[str, str] = {}  # probe -> what it shows, e.g. "after Notch"
+        self.delays: dict[str, float] = {}  # live: ms behind the input tap
+        self.delay_note = ""
+
+    def name(self, probe: str | None) -> str:
+        """The probe's name, with its estimated delay when running live."""
+        text = self.names.get(probe or "", probe or "")
+        delay = self.delays.get(probe or "")
+        if delay is not None and delay > 0:
+            text += f" +{delay:.1f} ms" if delay < 10 else f" +{delay:.0f} ms"
+        return text
 
     def apply_theme(self, theme: Theme) -> None:
         self.theme = theme
@@ -321,7 +410,12 @@ class SignalView(QWidget):
     def set_active(self, active: bool) -> None:
         """Rest while the stacked window shows the signal (it is not drawn)."""
         self.active = active
-        widgets: list[QWidget] = [*self.group.buttons(), self.channels, self.span]
+        widgets: list[QWidget] = [
+            *self.group.buttons(),
+            self.channels,
+            self.span,
+            self.panner,
+        ]
         for widget in widgets:
             widget.setEnabled(active)
         self.plot.setEnabled(active)
@@ -367,7 +461,7 @@ class SignalView(QWidget):
             self.plot.draw([])
             self.plot.hatch([])
             self.plot.mark([])
-            self.legend.setText("No probe shown: click a ◇ tap in the chain")
+            self.legend.setText("Nothing shown: click a ◇ tap in the chain")
             return
         self.channels.set_labels(
             main_win.labels,
@@ -379,23 +473,28 @@ class SignalView(QWidget):
         )
         chans = self.channels.selected(main_win.labels)
         styles = self._styles(main_win.labels)
+        self.legend.setToolTip(self.delay_note)
         layers: list[tuple[FloatArray, FloatArray, QPen]] = []
         plot = self.plot.getPlotItem()
-        names = f"Main: {main_win.probe}" + "".join(f" · {w.probe}" for w in comp)
+        names = f"Main: {self.name(main_win.probe)}" + "".join(
+            f" · {self.name(w.probe)}" for w in comp
+        )
         main_pen = (1.0, 80) if waiting else (2.0, 255)
         if waiting:
-            names = f"Main: {main} (no data yet) · " + " · ".join(
-                w.probe for w in [main_win, *comp]
+            names = f"Main: {self.name(main)} (no data yet) · " + " · ".join(
+                self.name(w.probe) for w in [main_win, *comp]
             )
         if self.mode == "difference":
             other = comp[0] if comp else None
             if waiting:
-                self.legend.setText(f"Difference: Main ({main}) has no data yet")
+                self.legend.setText(
+                    f"Difference: Main ({self.name(main)}) has no data yet"
+                )
             elif other is None:
                 self.legend.setText("Difference needs a second tap (click a ◇)")
             else:
                 self.legend.setText(
-                    f"{main_win.probe} − {other.probe} "  # noqa: RUF001
+                    f"{self.name(main_win.probe)} − {self.name(other.probe)} "  # noqa: RUF001
                     "(what this stretch removed)"
                 )
                 mid_a = (main_win.mins + main_win.maxs) / 2 * UV
@@ -443,8 +542,12 @@ class SignalView(QWidget):
             plot.setLabel("left", "µV")
             plot.setLabel("bottom", "time", units="s")
         self.plot.draw(layers)
-        t0, t1 = float(main_win.t[0]), float(main_win.t[-1])
-        self.plot.follow_x((self.mode, t0, t1) if self.mode != "spectrum" else "f")
+        t0, t1 = float(main_win.t[0]), float(main_win.t[-1]) + 1 / main_win.bin_rate
+        self.panner.show_span(t0, t1)
+        if self.mode == "spectrum":
+            self.plot.fit_x()
+        else:
+            self.plot.set_time(t0, t1)
         self.plot.mark(
             []
             if self.mode == "spectrum"
@@ -467,7 +570,7 @@ class SignalView(QWidget):
 class StackedWindow(QWidget):
     """Stacked traces (EEGLAB-scroll style) in their own window, following the
     same probes as the signal view, with its own channel selection (all by
-    default), span and scrollbar: through the whole recording offline, through
+    default), span and panner: through the whole recording offline, through
     the history the GUI keeps live (at the right end it follows the stream)."""
 
     closed = Signal()
@@ -501,11 +604,8 @@ class StackedWindow(QWidget):
         lay.addLayout(bar)
         self.plot = TracePlot(theme)
         lay.addWidget(self.plot, 1)
-        self.scrollbar = QScrollBar(Qt.Orientation.Horizontal)
-        lay.addWidget(self.scrollbar)
-        self.following = True  # live: the scrollbar sits at the newest data
-        self.scrollbar.sliderMoved.connect(self._moved)
-        self.scrollbar.actionTriggered.connect(lambda _: self._moved(None))
+        self.panner = Panner()
+        lay.addWidget(self.panner)
         self.theme = theme
         self._y_key: object = None
 
@@ -515,25 +615,6 @@ class StackedWindow(QWidget):
 
     def seconds(self) -> float:
         return float(self.span.currentData())
-
-    def _moved(self, value: int | None) -> None:
-        pos = self.scrollbar.sliderPosition() if value is None else value
-        self.following = pos >= self.scrollbar.maximum()
-
-    def set_extent(self, minimum: int, maximum: int, page: int, live: bool) -> None:
-        """Scrollbar range (samples offline, display bins live). Live, it keeps
-        following the newest data unless moved back from the right end."""
-        maximum = max(minimum, maximum)
-        self.scrollbar.blockSignals(True)
-        self.scrollbar.setRange(minimum, maximum)
-        self.scrollbar.setPageStep(max(1, page))
-        self.scrollbar.setSingleStep(max(1, page // 10))
-        if live and self.following:
-            self.scrollbar.setValue(maximum)
-        self.scrollbar.blockSignals(False)
-
-    def position(self) -> int:
-        return int(self.scrollbar.value())
 
     def closeEvent(self, event: QCloseEvent) -> None:
         super().closeEvent(event)
@@ -599,7 +680,9 @@ class StackedWindow(QWidget):
                     )
                 )
         self.plot.draw(layers)
-        self.plot.follow_x((float(top.t[0]), float(top.t[-1])))
+        t0, t1 = float(top.t[0]), float(top.t[-1]) + 1 / top.bin_rate
+        self.plot.set_time(t0, t1)
+        self.panner.show_span(t0, t1)
         y_key = (tuple(chans), spacing)
         if y_key != self._y_key:  # other rows: fit Y again, even after a zoom
             self._y_key = y_key

@@ -43,6 +43,7 @@ def test_ica_declares_it_needs_positions() -> None:
     manifest = Registry.from_entry_points().get("meegxer.sterile.ica").manifest
     assert manifest.requires_positions
     assert manifest_to_dict(manifest)["requires_positions"] is True
+    assert manifest_to_dict(manifest)["latency_samples"] == manifest.latency_samples
     other = Registry.from_entry_points().get("meegxer.sterile.notch").manifest
     assert not other.requires_positions
 

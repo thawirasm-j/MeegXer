@@ -24,6 +24,7 @@ class ProbeBuffer:
         self.sfreq = 0.0
         self.bin_size = 0
         self.end_bin = 0  # one past the newest bin received
+        self.start_bin = 0  # the first bin received since the stream (re)started
         self.mins: FloatArray = np.empty((0, capacity_bins))
         self.maxs: FloatArray = np.empty((0, capacity_bins))
         self.bypassed = np.zeros(capacity_bins, dtype=bool)
@@ -38,7 +39,7 @@ class ProbeBuffer:
         self.mins = np.full((n, self.capacity), np.nan)
         self.maxs = np.full((n, self.capacity), np.nan)
         self.bypassed[:] = False
-        self.end_bin = frame.envelope.start_bin
+        self.end_bin = self.start_bin = frame.envelope.start_bin
 
     def add(self, frame: DisplayFrame) -> None:
         env = frame.envelope
@@ -87,6 +88,11 @@ class ProbeBuffer:
             maxs[:, dst] = self.maxs[:, cols]
             bypassed[dst] = self.bypassed[cols]
         return mins, maxs, bypassed
+
+    @property
+    def oldest_bin(self) -> int:
+        """The oldest bin still held (history shorter than the ring at first)."""
+        return max(self.start_bin, self.end_bin - self.capacity)
 
     @property
     def bin_rate(self) -> float:

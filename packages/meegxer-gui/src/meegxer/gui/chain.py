@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from meegxer.gui.labels import param_label
 from meegxer.gui.names import badge, title
 from meegxer.gui.pipeline_doc import PipelineDoc, StripNode
 from meegxer.gui.theme import Theme
@@ -41,7 +42,7 @@ BRANCH_LINK_Y = BRANCH_TOP + 26  # links between forked strips
 TAP_SIZE = 22
 GROUP_LABELS = {
     "input": "■ INPUT",
-    "preprocess": "● PREPROCESS",
+    "preprocess": "● PREPROCESSING",
     "features": "◆ FEATURES",
     "output": "▶ OUTPUT",
 }
@@ -128,9 +129,10 @@ class StripWidget(QFrame):
             head.addWidget(close)
         lay.addLayout(head)
 
-        sub = QLabel(strip.id)
-        sub.setObjectName("muted")
-        lay.addWidget(sub)
+        if advanced:  # the id is for pipeline files and the command line
+            sub = QLabel(strip.id)
+            sub.setObjectName("muted")
+            lay.addWidget(sub)
         note = problem or badge(strip.node, strip.params, doc.mode)
         if not problem and strip.channel_types and strip.channel_types != ["eeg"]:
             types = "+".join(t.upper() for t in strip.channel_types)
@@ -143,11 +145,23 @@ class StripWidget(QFrame):
         lay.addSpacing(4)
         for pname in doc.shown_params(strip, advanced):
             row = QHBoxLayout()
-            key = QLabel(pname.replace("_", " "))
+            pretty = param_label(pname)
+            text = doc.format_param(strip, pname)
+            value = QLabel()
+            value.setText(
+                value.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, 88)
+            )
+            room = STRIP_WIDTH - 28 - value.sizeHint().width()
+            key = QLabel(
+                value.fontMetrics().elidedText(
+                    pretty, Qt.TextElideMode.ElideRight, max(room, 30)
+                )
+            )
             key.setObjectName("muted")
-            row.addWidget(key)
-            row.addStretch(1)
-            row.addWidget(QLabel(doc.format_param(strip, pname)))
+            key.setToolTip(f"{pretty}: {text}")
+            value.setToolTip(f"{pretty}: {text}")
+            row.addWidget(key, 1)
+            row.addWidget(value)
             lay.addLayout(row)
         lay.addStretch(1)
         if manifest.get("requires_fit") and doc.mode == "live":
