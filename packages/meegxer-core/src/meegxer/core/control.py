@@ -54,6 +54,7 @@ def manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
         "availability": manifest.availability,
         "requires_fit": manifest.requires_fit,
         "requires_positions": manifest.requires_positions,
+        "latency_samples": manifest.latency_samples,
         "description": manifest.description,
         "live_params": sorted(manifest.live_params),
         "inputs": [{"name": p.name, "type": p.type.value} for p in manifest.inputs],

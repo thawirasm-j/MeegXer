@@ -171,3 +171,15 @@ def test_groups_and_what_each_strip_reads_from(doc: PipelineDoc) -> None:
     graph = Graph.from_dict(doc.to_pipeline(taps=False), Registry.from_entry_points())
     for strip in doc.strips[1:]:
         assert graph[strip.id].input == reads[strip.id], strip.id
+
+
+def test_tap_delays_add_up_along_each_tap_path(doc: PipelineDoc) -> None:
+    """Live legend estimate: computing time of the strips before a tap plus any
+    declared built-in delay, relative to the input tap."""
+    timing = {"input": 0.3, "iirfilter1": 0.5, "notch1": 0.25}
+    delays = doc.tap_delays(timing, 500.0)
+    assert delays["input"] == 0.0
+    assert delays["iirfilter1"] == pytest.approx(0.5)
+    assert delays["notch1"] == pytest.approx(0.75)
+    doc.manifest(doc.get("iirfilter1"))["latency_samples"] = 50  # look-ahead
+    assert doc.tap_delays(timing, 500.0)["notch1"] == pytest.approx(100.75)

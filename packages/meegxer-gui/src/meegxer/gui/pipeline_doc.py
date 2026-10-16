@@ -263,6 +263,25 @@ class PipelineDoc:
                 return earlier.id
         return None
 
+    def tap_delays(self, timing_ms: dict[str, float], sfreq: float) -> dict[str, float]:
+        """Estimated ms each tappable strip runs behind the input: the measured
+        computing time (``timing_ms``, per strip id) of the strips on its path,
+        plus the built-in delay their manifests declare (``latency_samples``)."""
+        totals: dict[str, float] = {}
+        for strip in self.tappable():
+            total = 0.0
+            sid: str | None = strip.id
+            while sid is not None:
+                on_path = self.get(sid)
+                total += timing_ms.get(sid, 0.0)
+                declared = int(self.manifest(on_path).get("latency_samples") or 0)
+                if declared and sfreq:
+                    total += 1000 * declared / sfreq
+                sid = self.input_of(on_path)
+            totals[strip.id] = total
+        base = totals.get(self.source.id, 0.0) if self.source else 0.0
+        return {sid: max(0.0, t - base) for sid, t in totals.items()}
+
     # -- what a strip shows -------------------------------------------------------
 
     def primary_params(self, strip: StripNode) -> list[str]:

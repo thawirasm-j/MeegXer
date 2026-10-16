@@ -17,7 +17,7 @@ bind it to a non-local interface only on a trusted network.
 | Method | Params | Result |
 |---|---|---|
 | `ping` | – | `{version, spec_version, display}`: `display` is the display endpoint |
-| `list_nodes` | – | installed node manifests: `name, version, role, type, availability, requires_fit, description, live_params, inputs, outputs, params[]` (each param: `name, type, default, min, max, choices, unit, description, advanced, primary`) |
+| `list_nodes` | – | installed node manifests: `name, version, role, type, availability, requires_fit, requires_positions, latency_samples, description, live_params, inputs, outputs, params[]` (each param: `name, type, default, min, max, choices, unit, description, advanced, primary`) |
 | `load_pipeline` | `pipeline` (see `pipeline.schema.json`) | the normalised pipeline. Refused while running, or if any node cannot run live (offline-only, or a band-pass with `phase` `zero`). Fitted models of nodes with the same id, name and version are kept (as on a restart) |
 | `get_pipeline` | – | current pipeline, including live parameter changes |
 | `get_session` | `name`, `pipeline`, `offline` (all optional) | a session (`session.md`) of the loaded pipeline with the models calibrated live, or with `offline` true of the last finished offline run (its fitted models and written files). With `pipeline` (e.g. the GUI's), that pipeline is saved with the models of the nodes it shares. Paths absolute (the client writes the file, making paths relative to it) |

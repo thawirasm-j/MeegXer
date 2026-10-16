@@ -664,8 +664,41 @@ class MainWindow(QMainWindow):
         changed = running != self.running or statuses != self.statuses
         self.running, self.statuses = running, statuses
         self._meters(status)
+        self.view.delays, self.view.delay_note = self._tap_delays(status)
         if changed:
             self.refresh_chain()
+
+    def _tap_delays(self, status: dict[str, Any]) -> tuple[dict[str, float], str]:
+        """Live only: how far each tap runs behind the input tap (ms), estimated
+        from the strips on its path: their measured computing time plus any
+        built-in delay their manifests declare (``latency_samples``). Display
+        only: probes still line up by sample index (rule 8)."""
+        if self.doc.mode != "live" or not status.get("running"):
+            return {}, ""
+        timing = {
+            n["id"]: (n.get("timing") or {}).get("mean_ms", 0.0)
+            for n in status.get("nodes", [])
+        }
+        sfreq = next((b.sfreq for b in self.buffers.values() if b.sfreq), 0.0)
+        delays = {
+            tap_id(sid): ms for sid, ms in self.doc.tap_delays(timing, sfreq).items()
+        }
+        blocks, samples = status.get("blocks") or 0, status.get("samples") or 0
+        note = (
+            "Estimated delay behind the input: computing time of the strips "
+            "before each tap, plus any built-in delay (e.g. look-ahead) they "
+            "declare. Traces still line up by sample."
+        )
+        if blocks and samples and sfreq:
+            per_block = samples / blocks
+            note += (
+                f"\nEvery tap also waits for its block of data: about "
+                f"{1000 * per_block / sfreq:.0f} ms ({per_block:.0f} samples)."
+            )
+        p95 = (status.get("latency") or {}).get("p95_ms")
+        if p95 is not None:
+            note += f"\nInput to output, 95% of blocks: {p95:.0f} ms."
+        return delays, note
 
     def _offline_status(self, offline: dict[str, Any]) -> None:
         """Probes become scrollable as soon as they have data (the run writes

@@ -391,9 +391,16 @@ class SignalView(QWidget):
         self.types: dict[str, str] = {}  # label -> channel type, when known
         self.events: list[dict[str, Any]] = []
         self.names: dict[str, str] = {}  # probe -> what it shows, e.g. "after Notch"
+        self.delays: dict[str, float] = {}  # live: ms behind the input tap
+        self.delay_note = ""
 
     def name(self, probe: str | None) -> str:
-        return self.names.get(probe or "", probe or "")
+        """The probe's name, with its estimated delay when running live."""
+        text = self.names.get(probe or "", probe or "")
+        delay = self.delays.get(probe or "")
+        if delay is not None and delay > 0:
+            text += f" +{delay:.1f} ms" if delay < 10 else f" +{delay:.0f} ms"
+        return text
 
     def apply_theme(self, theme: Theme) -> None:
         self.theme = theme
@@ -466,6 +473,7 @@ class SignalView(QWidget):
         )
         chans = self.channels.selected(main_win.labels)
         styles = self._styles(main_win.labels)
+        self.legend.setToolTip(self.delay_note)
         layers: list[tuple[FloatArray, FloatArray, QPen]] = []
         plot = self.plot.getPlotItem()
         names = f"Main: {self.name(main_win.probe)}" + "".join(

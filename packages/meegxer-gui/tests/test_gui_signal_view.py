@@ -2,6 +2,7 @@
 
 import subprocess
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -303,3 +304,17 @@ def test_themes_without_group_colours_get_the_defaults(tmp_path: Path) -> None:
     path.write_text(json.dumps(data))
     assert load_theme(path).group_color("features") == DEFAULT_GROUPS["features"]
     assert load_theme("light").group_color("features") != DEFAULT_GROUPS["features"]
+
+
+def test_live_legend_shows_each_tap_delay(qapp: QApplication) -> None:
+    view = SignalView(load_theme("dark"))
+    view.names = {"tap": "after Notch", "tap_in": "Input"}
+    view.delays = {"tap": 0.75, "tap_in": 0.0}
+    view.delay_note = "Estimated delay behind the input"
+    view.refresh(lambda p, s: replace(window(), probe=p), "tap", ["tap_in"])
+    assert view.legend.text() == "Main: after Notch +0.8 ms · Input"
+    assert view.legend.toolTip() == "Estimated delay behind the input"
+    view.delays = {}  # offline or stopped: names only
+    view.refresh(lambda p, s: replace(window(), probe=p), "tap", ["tap_in"])
+    assert view.legend.text() == "Main: after Notch · Input"
+    dispose(qapp, view)
