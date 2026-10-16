@@ -36,6 +36,9 @@ define it.
     (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
     with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
     session file next to each recording.
+  - 0.2.13: optional parameter `step` (float and int parameters): how much one
+    step (arrow key, wheel) changes the value in a UI. Hosts choose one when it
+    is absent.
   - 0.2.12: manifest `authors`, `references` (each `citation` with an optional
     `doi` or `url`) and `license`, for credit; hosts show them and gather the
     references into session and BIDS provenance. Optional; nothing is refused for

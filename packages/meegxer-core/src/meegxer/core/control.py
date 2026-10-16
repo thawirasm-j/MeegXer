@@ -74,6 +74,7 @@ def manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
                 "description": p.description,
                 "advanced": p.advanced,
                 "primary": p.primary,
+                "step": p.step,
             }
             for p in manifest.params
         ],

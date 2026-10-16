@@ -9,6 +9,7 @@ processes and the values shown on the strip.
 from __future__ import annotations
 
 import html
+import math
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
@@ -63,6 +64,36 @@ class _Number(QDoubleSpinBox):
         return f"{value:.{self.decimals()}f}".rstrip("0").rstrip(".")
 
 
+def _nice(x: float) -> float:
+    """The nearest of 1, 2 or 5 times a power of ten (0.1, 0.2, 0.5, 1, 2, ...)."""
+    exponent = math.floor(math.log10(x))
+    mantissa = x / 10**exponent
+    nice = min((1, 2, 5, 10), key=lambda m: abs(math.log10(m / mantissa)))
+    return float(nice * 10.0**exponent)
+
+
+def param_step(spec: dict[str, Any], value: Any) -> float:
+    """How much one step (arrow key, wheel) changes a number: the manifest's
+    ``step`` if given, else about a tenth of the value (rounded to 1, 2 or 5 x 10^n),
+    no more than a tenth of the allowed range (a 0-1 threshold steps by 0.1)."""
+    if spec.get("step"):
+        return float(spec["step"])
+    lo, hi = spec.get("min"), spec.get("max")
+    span = hi - lo if lo is not None and hi is not None and hi > lo else None
+    ref = abs(float(value or spec.get("default") or 0))
+    if ref > 0:
+        step = _nice(ref / 10)
+    elif span:
+        step = _nice(span / 10)
+    else:
+        step = 0.1
+    if span:
+        step = min(step, _nice(span / 10))
+    if spec["type"] == "int":
+        return float(max(1, round(step)) if ref >= 100 else 1)
+    return step
+
+
 def _editor(spec: dict[str, Any], value: Any) -> tuple[QWidget, Any]:
     """A control for one parameter and the signal that reports a final value."""
     kind = spec["type"]
@@ -87,6 +118,7 @@ def _editor(spec: dict[str, Any], value: Any) -> tuple[QWidget, Any]:
             int(spec["max"] if spec["max"] is not None else 10**9),
         )
         spin.setValue(int(value))
+        spin.setSingleStep(int(param_step(spec, value)))
     else:
         spin = _Number()
         spin.setDecimals(3)
@@ -95,6 +127,9 @@ def _editor(spec: dict[str, Any], value: Any) -> tuple[QWidget, Any]:
             spec["max"] if spec["max"] is not None else 1e12,
         )
         spin.setValue(float(value))
+        step = param_step(spec, value)
+        spin.setSingleStep(step)
+        spin.setDecimals(max(3, -math.floor(math.log10(step)) + 1))
     if spec.get("unit"):
         spin.setSuffix(f" {unit_label(spec['unit'])}")
     if "0 streams forever" in (spec.get("description") or ""):
@@ -166,12 +201,14 @@ class Inspector(QScrollArea):
         self.theme: Theme | None = None
         self.advanced_open: bool | None = None  # None: follow the mode
         self._advanced_mode = False
+        self._shown: str | None = None  # the strip on show, to keep the scroll
         self.show_empty()
 
     def apply_theme(self, theme: Theme) -> None:
         self.theme = theme
 
     def show_empty(self) -> None:
+        self._shown = None
         hint = QLabel("Select a strip to see all of its settings.")
         hint.setObjectName("muted")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -197,6 +234,9 @@ class Inspector(QScrollArea):
     ) -> None:
         if advanced != self._advanced_mode:  # a mode switch resets the fold
             self._advanced_mode, self.advanced_open = advanced, None
+        # the same strip again (a value changed): stay where the user was
+        keep = self.verticalScrollBar().value() if strip.id == self._shown else 0
+        self._shown = strip.id
         manifest = doc.manifest(strip)
         page = QWidget()
         lay = QVBoxLayout(page)
@@ -245,6 +285,9 @@ class Inspector(QScrollArea):
             lay.addWidget(self._strip_picker(doc, strip))
         lay.addStretch(1)
         self._replace(page)
+        if keep:
+            page.adjustSize()  # lay the new page out now, so the range is known
+            self.verticalScrollBar().setValue(keep)
 
     def _header(
         self,

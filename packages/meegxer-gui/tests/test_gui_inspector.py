@@ -94,3 +94,43 @@ def test_inspector_labels_choices_and_folded_advanced(
     assert "Credits" in texts  # ICA cites MNE, Picard, ICLabel, ...
     assert any("doi.org/10.1016/j.neuroimage.2019.05.026" in t for t in texts)
     dispose(qapp, ins)
+
+
+def test_one_step_changes_a_value_by_a_sensible_amount(doc: PipelineDoc) -> None:
+    from meegxer.gui.inspector import param_step
+
+    def spec(name: str, node: str) -> dict[str, Any]:
+        return next(p for p in doc.manifest(node)["params"] if p["name"] == name)
+
+    ica, hp = "meegxer.nodes.ica", "meegxer.nodes.iir_filter"
+    assert param_step(spec("threshold", ica), 0.9) == pytest.approx(0.1)
+    assert param_step(spec("low", hp), 1.0) == pytest.approx(0.1)
+    assert param_step(spec("high", hp), 40.0) == pytest.approx(5.0)
+    assert param_step(spec("blink_uv", "meegxer.core.synthetic"), 150.0) == 20.0
+    assert param_step(spec("n_channels", "meegxer.core.synthetic"), 16) == 1
+    assert param_step(spec("max_iter", ica), 1000) == 100
+    assert param_step({"type": "float", "step": 0.25, "min": None, "max": None},
+                      3.0) == 0.25  # the manifest's own step wins  # fmt: skip
+
+
+def test_editing_keeps_the_inspector_where_it_was(
+    qapp: QApplication, doc: PipelineDoc
+) -> None:
+    ins = Inspector()
+    ins.resize(500, 250)
+    ins.show()
+
+    def show(strip: str) -> None:
+        ins.show_strip(doc, doc.get(strip), advanced=True, running=True,
+                       node_status={})  # fmt: skip
+        qapp.processEvents()
+
+    show("input")  # many settings: the page scrolls
+    bar = ins.verticalScrollBar()
+    assert bar.maximum() > 200
+    bar.setValue(200)
+    show("input")  # a value changed: same strip, same place
+    assert bar.value() == 200
+    show("ica1")  # another strip starts at the top
+    assert bar.value() == 0
+    dispose(qapp, ins)

@@ -825,15 +825,15 @@ class MainWindow(QMainWindow):
         self, probe: str, seconds: float, end: int | None = None
     ) -> Window | None:
         """The window ending at bin ``end`` (default: the newest); time in
-        seconds before the newest data. Shorter while the history is shorter,
-        so the view never shows time before the data."""
+        seconds before the newest data. Always the full span: while the history
+        is shorter, the part before the first data stays blank."""
         buf = self.buffers.get(probe)
         if buf is None or not buf.labels or not buf.bin_rate:
             return None
         ref = self._live_reference(buf)
         newest = ref.end_bin
         end = newest if end is None else min(end, newest)
-        n = max(2, min(int(seconds * buf.bin_rate), end - ref.oldest_bin))
+        n = max(2, int(seconds * buf.bin_rate))
         mins, maxs, bypassed = buf.window(end, n)
         t = (np.arange(end - n, end) - newest) / buf.bin_rate
         return Window(probe, buf.labels, t, mins, maxs, bypassed, buf.bin_rate)
