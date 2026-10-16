@@ -180,6 +180,21 @@ def test_calibration_gates_downstream_until_fitted() -> None:
     scheduler.stop()
 
 
+def test_input_ending_during_calibration_is_reported() -> None:
+    """A 60 s calibration started on a 60 s input never gets its 60 s: say so
+    rather than stopping without a reason."""
+    scheduler = RealtimeScheduler(Graph.chain([source(1.0), Stage(Center()),
+                                               MemoryProbe()]))  # fmt: skip
+    scheduler.start()
+    scheduler.calibrate("center1", 5.0)
+    assert scheduler.wait(20)
+    errors = scheduler.status()["errors"]
+    assert any("calibration of 'center1' did not finish" in e and "of 5 s" in e
+               for e in errors), errors  # fmt: skip
+    stage = scheduler.graph["center1"].impl
+    assert isinstance(stage, Stage) and stage.model is None
+
+
 def test_overruns_are_counted() -> None:
     scheduler = run(Graph.chain([source(0.5), Stage(Slow()), MemoryProbe()]))
     assert scheduler.metrics.overruns > 0

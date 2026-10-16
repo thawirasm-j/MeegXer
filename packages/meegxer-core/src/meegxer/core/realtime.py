@@ -303,6 +303,7 @@ class RealtimeScheduler:
                 self._drain_commands()
                 block = source.read(chunk)
                 if block is None:
+                    self._report_unfinished_calibration(source.info.sfreq)
                     break
                 if block.n_samples == 0:
                     self._maybe_flush_display()
@@ -335,6 +336,17 @@ class RealtimeScheduler:
             self._running.clear()
             self._update_snapshot(force=True)
             self._finished.set()
+
+    def _report_unfinished_calibration(self, sfreq: float) -> None:
+        """The input ended while a calibration was still collecting: say so
+        (its node stays uncalibrated) instead of stopping without a reason."""
+        for node_id, (blocks, seconds) in self._calibration.items():
+            got = sum(b.n_samples for b in blocks) / sfreq
+            self.metrics.errors.append(
+                f"calibration of {node_id!r} did not finish: the input ended after "
+                f"{got:.1f} of {seconds:g} s; it stays uncalibrated (use a longer "
+                "input or a shorter calibration)"
+            )
 
     def _drain_commands(self) -> None:
         while True:
