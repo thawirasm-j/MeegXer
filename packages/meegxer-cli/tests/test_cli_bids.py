@@ -29,7 +29,7 @@ def dataset(root: Path, subjects: tuple[str, ...]) -> Path:
 def pipeline(path: Path) -> Path:
     path.write_text(json.dumps({"spec_version": SPEC_VERSION, "nodes": [
         {"id": "input", "node": "meegxer.core.synthetic"},
-        {"id": "hp", "node": "meegxer.sterile.iir_filter",
+        {"id": "hp", "node": "meegxer.nodes.iir_filter",
          "params": {"kind": "highpass", "low": 1.0}},
     ]}))  # fmt: skip
     return path
@@ -99,7 +99,7 @@ def test_recording_settings_apply_to_every_recording(tmp_path: Path) -> None:
     pipe.write_text(json.dumps({"spec_version": SPEC_VERSION, "nodes": [
         {"id": "input", "node": "meegxer.core.synthetic",
          "recording": {"channels": {"Fz": {"rename": "FZ"}, "Pz": {"bad": True}}}},
-        {"id": "hp", "node": "meegxer.sterile.iir_filter",
+        {"id": "hp", "node": "meegxer.nodes.iir_filter",
          "params": {"kind": "highpass", "low": 1.0}},
     ]}))  # fmt: skip
     result = runner.invoke(app, ["run", str(pipe), "--bids", str(root)])

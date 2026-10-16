@@ -105,7 +105,7 @@ def main() -> int:
     env = dict(os.environ)
     plugin_nodes = []
     if args.plugin_image:
-        from meegxer.runtime import index
+        from meegxer.plugins import index
 
         env[index.INDEX_ENV] = str(workdir / "plugins.json")
         for i, image in enumerate(args.plugin_image):
@@ -130,9 +130,9 @@ def main() -> int:
             "nodes": [
                 {"id": "input", "node": "meegxer.core.lsl_in",
                  "params": {"stream_name": gen_name, "timeout": 30.0}},
-                {"id": "hp", "node": "meegxer.sterile.iir_filter",
+                {"id": "hp", "node": "meegxer.nodes.iir_filter",
                  "params": {"kind": "highpass", "low": 1.0}},
-                {"id": "notch", "node": "meegxer.sterile.notch"},
+                {"id": "notch", "node": "meegxer.nodes.notch"},
                 *plugin_nodes,
                 {"id": "out", "node": "meegxer.core.lsl_out",
                  "params": {"stream_name": out_name, "include_index": True}},

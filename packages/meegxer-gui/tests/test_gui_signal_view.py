@@ -213,7 +213,7 @@ def test_offline_strips_fit_on_the_whole_recording(qapp: QApplication) -> None:
     doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
                        for n in registry.names()])  # fmt: skip
     doc.set_source("meegxer.core.file")
-    strip = doc.insert(1, "meegxer.sterile.ica")
+    strip = doc.insert(1, "meegxer.nodes.ica")
 
     def texts(mode: str) -> set[str]:
         doc.input_mode = mode  # type: ignore[assignment]
@@ -242,7 +242,7 @@ def test_start_without_positions_opens_the_channels_tab(
     control, _ = daemon
     win = MainWindow(DaemonLink(control))
     try:
-        win.insert_strip(len(win.doc.strips), "meegxer.sterile.ica")
+        win.insert_strip(len(win.doc.strips), "meegxer.nodes.ica")
         win.start()
         assert not win.running
         assert "Cannot start: ica1 needs electrode positions" in (
@@ -271,8 +271,8 @@ def test_chain_draws_forks_off_the_main_line(qapp: QApplication) -> None:
     doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
                        for n in registry.names()])  # fmt: skip
     doc.set_source("meegxer.core.synthetic")
-    for node in ["meegxer.sterile.rereference", "meegxer.sterile.band_power",
-                 "meegxer.core.lsl_features_out", "meegxer.sterile.ica"]:  # fmt: skip
+    for node in ["meegxer.nodes.rereference", "meegxer.nodes.band_power",
+                 "meegxer.core.lsl_features_out", "meegxer.nodes.ica"]:  # fmt: skip
         doc.insert(len(doc.strips), node)
     chain = ChainView()
     chain.rebuild(doc, load_theme("dark"), statuses={}, taps={}, advanced=False,

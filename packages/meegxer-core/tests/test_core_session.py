@@ -100,7 +100,7 @@ def recording(tmp_path: Path) -> Path:
 def pipeline(path: Path, out: Path, node: str = "test.center") -> dict[str, Any]:
     return {"spec_version": SPEC_VERSION, "nodes": [
         {"id": "input", "node": "meegxer.core.file", "params": {"path": str(path)}},
-        {"id": "hp", "node": "meegxer.sterile.iir_filter",
+        {"id": "hp", "node": "meegxer.nodes.iir_filter",
          "params": {"kind": "highpass", "low": 1.0}},
         {"id": "center", "node": node},
         {"id": "out", "node": "meegxer.core.set_writer",
@@ -178,6 +178,19 @@ def test_reload_reuses_the_model_and_rewrites_the_same_file(
     from meegxer.core.session import sha256_file
 
     assert sha256_file(Path(reread["outputs"][0]["path"])) == recorded
+
+
+def test_session_saved_with_old_node_names_loads_and_reuses_models(
+    registry: Registry, recording: Path
+) -> None:
+    """Built-ins were ``meegxer.sterile.*`` before 0.2.1; their sessions still load."""
+    session = run_and_save(registry, pipeline(recording, recording.parent / "o.set"),
+                           recording.parent / "s.meegxer.json")  # fmt: skip
+    text = session.read_text().replace("meegxer.nodes.", "meegxer.sterile.")
+    assert "meegxer.sterile.iir_filter" in text
+    session.write_text(text)
+    loaded, status, fits = rerun(registry, session)
+    assert loaded.warnings == [] and status == {"center": "reused"} and fits == 0
 
 
 def test_version_mismatch_is_refused_unless_allowed(
@@ -361,7 +374,7 @@ def test_offline_only_session_loads_and_live_start_says_why(
     from meegxer.core.control import Daemon
 
     data = pipeline(recording, recording.parent / "o.set")
-    data["nodes"][1]["node"] = "meegxer.sterile.iir_filter_zerophase"
+    data["nodes"][1]["node"] = "meegxer.nodes.iir_filter_zerophase"
     d = Daemon("tcp://127.0.0.1:*", "tcp://127.0.0.1:*", registry=registry)
     try:
         d.load_session({"meegxer_session": "1.0", "pipeline": data})

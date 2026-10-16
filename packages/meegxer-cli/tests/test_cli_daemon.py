@@ -33,7 +33,7 @@ def test_drive_the_daemon_from_the_cli(control: str, tmp_path: Path) -> None:
     pipeline.write_text(json.dumps({"spec_version": "0.2.0", "nodes": [
         {"id": "src", "node": "meegxer.core.synthetic",
          "params": {"duration": 0, "n_channels": 4, "sfreq": 200}},
-        {"id": "hp", "node": "meegxer.sterile.iir_filter",
+        {"id": "hp", "node": "meegxer.nodes.iir_filter",
          "params": {"kind": "highpass", "low": 1.0}},
         {"id": "main", "node": "meegxer.core.probe"},
     ]}))  # fmt: skip

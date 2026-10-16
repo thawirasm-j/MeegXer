@@ -38,15 +38,16 @@ M4 and M5 can run in parallel after M3. M6 offline work can start right after M2
 **Status:** done locally (Linux, 3.13 + 3.14); GitHub Actions unverified until first PR run.
 Linux CI needs `libegl1 libgl1 libxkbcommon0` for Qt/pyqtgraph imports.
 
-- Layout: `packages/meegxer-{core,sterile,runtime,gui,cli}/`, each with its own
-  `pyproject.toml` and `src/meegxer/<subpkg>/` (namespace package `meegxer`).
+- Layout: `packages/meegxer-{core,nodes,plugins,gui,cli}/` (nodes and plugins were
+  sterile and runtime until 0.2.1), each with its own `pyproject.toml` and
+  `src/meegxer/<subpkg>/` (namespace package `meegxer`).
 - `spec/` at repo root: JSON Schemas + protocol docs (language-neutral, rule 11),
   versioned independently with semver.
 - Tooling: ruff (lint + format), mypy (strict on core), pytest, pre-commit.
 - **Import contracts** (import-linter): `meegxer.core` must not import Qt/PySide6,
-  `meegxer.gui`, `meegxer.runtime`; `meegxer.sterile` must not import `meegxer.runtime`.
+  `meegxer.gui`, `meegxer.plugins`; `meegxer.nodes` must not import `meegxer.plugins`.
 - **Sterile packaging check:** CI builds the sterile wheel set and asserts no
-  `meegxer.runtime`/docker module is present (rule 10).
+  `meegxer.plugins`/docker module is present (rule 10).
 - uv workspace at the root; `requires-python = ">=3.13"` in every package.
 - CI matrix: Linux + Windows × Python 3.13, 3.14 (develop on 3.14).
 - Early smoke job: install every third-party dependency on 3.13 and 3.14 (see risks).
@@ -88,7 +89,7 @@ status propagation, manifest validation.
 **Status:** implemented. `meegxer.core`: graph + pipeline format, entry-point registry,
 node-major batch scheduler, per-node cache (memory/directory), synthetic/file/BIDS
 sources, memory probe, .set/EDF/feature-TSV sinks, `conformance` (test 1 harness).
-`meegxer.sterile`: IIR filter, notch, re-reference (test 1 passes for all three).
+`meegxer.nodes`: IIR filter, notch, re-reference (test 1 passes for all three).
 CLI: `meegxer run`, `meegxer nodes`. Spec 0.2.0 (manifest `role`, `live_params`;
 `pipeline.schema.json`).
 
@@ -153,7 +154,7 @@ dropped/duplicated samples; a scripted client can tune params live.
 **Goal:** containerized external nodes behaving like built-ins.
 
 **Status:** implemented. `spec/plugin-protocol.md` (`meegxer.plugin/0.1`);
-`meegxer.runtime` (wire format, worker lifecycle with timeouts/restarts, adapter,
+`meegxer.plugins` (wire format, worker lifecycle with timeouts/restarts, adapter,
 plugin index + node provider, conformance suite, `meegxer-plugin` CLI); Python SDK
 (`sdk/python/meegxer_plugin.py`, numpy only) and Octave SDK (`sdk/octave/`); reference
 plugins `examples.average_reference` (Python) and `examples.octave_iir_bandpass`
@@ -168,7 +169,7 @@ blocks (0.28%, steady rate), daemon latency p95 8.9 ms, end-to-end p95 18.5 ms
 - `spec/plugin-protocol.md` + schemas: framing (header + float32 ch×samples),
   handshake (manifest, spec version), fit/transform/param messages, error and
   shutdown semantics. Semver'd (rule 11).
-- `meegxer-runtime`: Docker/Podman worker lifecycle (`--network none`, read-only
+- `meegxer-plugins`: Docker/Podman worker lifecycle (`--network none`, read-only
   mounts, persistent worker, restart/backoff, timeouts), adapter exposing a plugin as
   a normal Processor node.
 - SDKs: Python package and Octave `.m` template implementing the spec.
@@ -254,7 +255,7 @@ default.
 **Delivery:** three PRs. M6a: ASR plugin plus delayed-output support in the core;
 M6b: ICA, ICLabel and component rejection; M6c: features.
 
-**M6a status:** implemented. `packages/meegxer-runtime/plugins/eeglab_asr/` runs
+**M6a status:** implemented. `packages/meegxer-plugins/plugins/eeglab_asr/` runs
 EEGLAB's `asr_calibrate`/`asr_process` (clean_rawdata, fetched at a pinned commit when
 the image is built, never stored in this repository) in Octave. Octave's signal
 package has no `yulewalk`, so the plugin carries its own modified Yule–Walker
@@ -268,7 +269,7 @@ output equals `clean_asr` run in EEGLAB on `tests/data/m6_eeg.npz` (stored refer
 `tests/data/m6_ref_asr.npz`, made by `tools/make_m6_references.py`); conformance
 (test 1, restart) passes in the sandbox.
 
-**M6b status:** implemented. `meegxer.sterile.ica` ("ICA + ICLabel" strip) fits
+**M6b status:** implemented. `meegxer.nodes.ica` ("ICA + ICLabel" strip) fits
 extended Picard (default) or Extended Infomax through MNE, classifies the components
 with ICLabel (mne-icalabel, ONNX backend) and removes those with eye, muscle, heart,
 line-noise or channel-noise probability ≥ 0.9. Removal is a fixed spatial filter, so
@@ -288,7 +289,7 @@ Not yet: showing the component labels in the GUI.
 **M6c status:** implemented. Analysis processors return the windows a block
 completes as a tuple of FeatureBlocks; both schedulers route them to Features sinks
 (feature TSV and the new `meegxer.core.lsl_features_out`), and acceptance test 1 has
-a windows variant. Nodes in `meegxer.sterile.features`: PSD (Welch, as MATLAB's
+a windows variant. Nodes in `meegxer.nodes.features`: PSD (Welch, as MATLAB's
 pwelch runs it for EEGLAB's spectopo), band power (named bands, absolute or
 relative, optional dB), connectivity (mne-connectivity: coh, imcoh, PLV, wPLI in one
 band, the window cut into 1 s pieces), complexity (antropy: permutation, sample and
@@ -328,12 +329,36 @@ stops the feature outlets.
   byte-identical `.set`).
 - **Acceptance test 5:** full suite on Linux and Windows (Docker Desktop / WSL2). Procedure and
   checklist: `docs/TESTING.md` (with the real-data BIDS check).
-- Publish to PyPI: the five `meegxer-*` packages plus the `meegxer` bundle (the
-  sterile set; it also carries the CLI and GUI commands so `uv tool install
-  meegxer` exposes them). Research builds add the runtime by name
-  (`--with meegxer-runtime`); there is no `[full]` extra, since declaring the
-  runtime even as an optional dependency of the bundle breaks rule 10 (decision 11).
+- Publish to PyPI: the five `meegxer-*` packages plus the `meegxer` bundle (it also
+  carries the CLI, GUI and plugin commands so `uv tool install meegxer` exposes
+  them). Since 0.2.1 the bundle installs every package, plugins included
+  (decision 40; before, it was the "sterile set" without the plugin runtime).
 - v1 tag once tests 1–6 are green.
+
+---
+
+## M8 — Sterile mode and local plugins
+
+0.2.1a1 (done): the rename and rule rewrite of decision 40, with no change in
+behaviour (plugins still run in containers).
+
+Next, in order:
+1. **Local plugins and custom scripts by default.** A plugin or script runs as its
+   own local process over the plugin protocol. Adding one shows the risk prompt
+   (runs with your permissions; network and files; HIPAA/GDPR/IRB) with
+   "I understand" and "Enable Sterile mode". Session and BIDS provenance record the
+   mode and each script's content hash. Custom scripts: an offline "recording
+   function" tier (`process(raw, ...)` / `function EEG = process(EEG, ...)`,
+   settings from the signature and docstring) before a live fit/transform tier,
+   compatibility checked by running it (`meegxer-plugin check`).
+2. **Sterile mode.** A processing-worker image with the built-in nodes; the whole
+   chain runs in one container (one hop per block); the "Sterilize" switch in the
+   GUI and the CLI; delay measured with `tools/stability_test.py`.
+3. Later: "sterilize at startup" in the options.
+
+**Exit:** a pipeline with a custom script runs locally after the prompt, and the
+same pipeline runs in Sterile mode with no network inside the container and
+identical output.
 
 ---
 
@@ -365,7 +390,7 @@ stops the feature outlets.
 | 8 | Param change vs streaming state | Reset by default; opt-in carry-over in M2 | M2 |
 | 9 | Manifest additions | Typed `inputs`/`outputs`, `spec_version`, enum `choices` | M1 |
 | 10 | Initial streaming state | `state` is `None` on first block; no `initial_state()` | M1 |
-| 11 | Distribution | Five `meegxer-*` names + `meegxer` sterile bundle; research builds install `meegxer-runtime` by name (no `[full]` extra: rule 10 forbids the bundle declaring the runtime) | M7 |
+| 11 | Distribution (superseded by 40) | Five `meegxer-*` names + `meegxer` sterile bundle; research builds install `meegxer-plugins` by name (no `[full]` extra: rule 10 forbids the bundle declaring the runtime) | M7 |
 | 12 | Filter start-up | Steady-state initialisation from the first sample | M2 |
 | 13 | Offline filtering | Zero-phase (forward-backward) nodes; every node declares `availability` | M2 |
 | 14 | Friendly/advanced UI | Per-parameter `advanced` flag; friendly mode uses defaults | M2, M5 |
@@ -394,3 +419,4 @@ stops the feature outlets.
 | 37 | Hilbert envelope | Signal strip, piecewise analytic signal with look-ahead (delayed output), one implementation live and offline | M6c |
 | 38 | First feature measures | Connectivity: coh, imcoh, PLV, wPLI; complexity: permutation/sample/spectral entropy, Hjorth, Lempel-Ziv | M6c |
 | 39 | PyPI releases | Six projects (five packages + `meegxer` bundle = sterile build), one shared version from a `v*` tag, Trusted Publishing; tag → TestPyPI, PyPI by manual approved run (`docs/RELEASING.md`) | — |
+| 40 | Sterile = isolation (0.2.1) | "Sterile" names a runtime mode, never a package: Sterile mode runs all processing (built-ins and plugins) in one no-network container, the host keeps trusted I/O; auditing stays the user's responsibility. Packages renamed `meegxer-sterile` → `meegxer-nodes`, `meegxer-runtime` → `meegxer-plugins`; the `meegxer` bundle installs everything; `meegxer.sterile.*` node names still resolve. Rules 9 and 10 rewritten; the sterile wheel check is gone, an import-linter contract keeps plugins reachable only through entry points | M8 |

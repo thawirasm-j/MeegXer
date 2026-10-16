@@ -46,7 +46,6 @@ fails with "DLL load failed … The parameter is incorrect".
 - [ ] `uv run ruff format --check .` reports all files formatted
 - [ ] `uv run mypy` prints "Success: no issues found"
 - [ ] `uv run lint-imports` prints "Contracts: 3 kept, 0 broken."
-- [ ] `uv run python tools/check_sterile.py` prints "Sterile build OK: …"
 
 ### A3. Test suite without Docker
 
@@ -63,7 +62,7 @@ uv run pytest
 ### A4. Build the reference plugin images
 
 ```powershell
-cd packages\meegxer-runtime
+cd packages\meegxer-plugins
 docker build -f plugins/average_reference/Dockerfile -t meegxer/example-average-reference:0.1.0 .
 docker build -f plugins/octave_iir_bandpass/Dockerfile -t meegxer/example-octave-iir-bandpass:0.1.0 .
 docker build -f plugins/eeglab_asr/Dockerfile -t meegxer/eeglab-asr:0.1.0 .
@@ -88,7 +87,7 @@ uv run meegxer-plugin check meegxer/eeglab-asr:0.1.0
 
 ```powershell
 $env:MEEGXER_TEST_IMAGES = "meegxer/example-average-reference:0.1.0,meegxer/example-octave-iir-bandpass:0.1.0,meegxer/eeglab-asr:0.1.0"
-uv run pytest packages/meegxer-runtime -rs
+uv run pytest packages/meegxer-plugins -rs
 ```
 
 - [ ] No failures. The "set MEEGXER_TEST_IMAGES" and "needs the meegxer/eeglab-asr
@@ -165,11 +164,11 @@ Save as `clean.json` (set the notch to your mains frequency, 50 or 60 Hz):
 ```json
 {"spec_version": "0.2.10", "nodes": [
   {"id": "input", "node": "meegxer.core.synthetic"},
-  {"id": "hp", "node": "meegxer.sterile.iir_filter", "params": {"kind": "highpass", "low": 1.0}},
-  {"id": "notch", "node": "meegxer.sterile.notch", "params": {"freq": 50.0}},
-  {"id": "car", "node": "meegxer.sterile.rereference"},
+  {"id": "hp", "node": "meegxer.nodes.iir_filter", "params": {"kind": "highpass", "low": 1.0}},
+  {"id": "notch", "node": "meegxer.nodes.notch", "params": {"freq": 50.0}},
+  {"id": "car", "node": "meegxer.nodes.rereference"},
   {"id": "out", "node": "meegxer.core.bids_writer"},
-  {"id": "bp", "node": "meegxer.sterile.band_power"},
+  {"id": "bp", "node": "meegxer.nodes.band_power"},
   {"id": "feat", "node": "meegxer.core.bids_features"}
 ]}
 ```
@@ -244,7 +243,7 @@ Insert after `car` (positions needed: from `electrodes.tsv`, or a montage in the
 input's `recording`, e.g. `"recording": {"montage": "colin27_1005"}`):
 
 ```json
-  {"id": "ica", "node": "meegxer.sterile.ica"},
+  {"id": "ica", "node": "meegxer.nodes.ica"},
 ```
 
 ```powershell

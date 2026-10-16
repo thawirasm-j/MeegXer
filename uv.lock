@@ -22,8 +22,8 @@ members = [
     "meegxer-cli",
     "meegxer-core",
     "meegxer-gui",
-    "meegxer-runtime",
-    "meegxer-sterile",
+    "meegxer-nodes",
+    "meegxer-plugins",
     "meegxer-workspace",
 ]
 
@@ -1132,7 +1132,8 @@ dependencies = [
     { name = "meegxer-cli" },
     { name = "meegxer-core" },
     { name = "meegxer-gui" },
-    { name = "meegxer-sterile" },
+    { name = "meegxer-nodes" },
+    { name = "meegxer-plugins" },
 ]
 
 [package.metadata]
@@ -1140,7 +1141,8 @@ requires-dist = [
     { name = "meegxer-cli", editable = "packages/meegxer-cli" },
     { name = "meegxer-core", editable = "packages/meegxer-core" },
     { name = "meegxer-gui", editable = "packages/meegxer-gui" },
-    { name = "meegxer-sterile", editable = "packages/meegxer-sterile" },
+    { name = "meegxer-nodes", editable = "packages/meegxer-nodes" },
+    { name = "meegxer-plugins", editable = "packages/meegxer-plugins" },
 ]
 
 [[package]]
@@ -1149,14 +1151,14 @@ version = "0.0.0"
 source = { editable = "packages/meegxer-cli" }
 dependencies = [
     { name = "meegxer-core" },
-    { name = "meegxer-sterile" },
+    { name = "meegxer-nodes" },
     { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "meegxer-core", editable = "packages/meegxer-core" },
-    { name = "meegxer-sterile", editable = "packages/meegxer-sterile" },
+    { name = "meegxer-nodes", editable = "packages/meegxer-nodes" },
     { name = "typer", specifier = ">=0.12" },
 ]
 
@@ -1207,20 +1209,9 @@ requires-dist = [
 ]
 
 [[package]]
-name = "meegxer-runtime"
+name = "meegxer-nodes"
 version = "0.0.0"
-source = { editable = "packages/meegxer-runtime" }
-dependencies = [
-    { name = "meegxer-core" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "meegxer-core", editable = "packages/meegxer-core" }]
-
-[[package]]
-name = "meegxer-sterile"
-version = "0.0.0"
-source = { editable = "packages/meegxer-sterile" }
+source = { editable = "packages/meegxer-nodes" }
 dependencies = [
     { name = "antropy" },
     { name = "meegxer-core" },
@@ -1247,6 +1238,17 @@ requires-dist = [
 ]
 
 [[package]]
+name = "meegxer-plugins"
+version = "0.0.0"
+source = { editable = "packages/meegxer-plugins" }
+dependencies = [
+    { name = "meegxer-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "meegxer-core", editable = "packages/meegxer-core" }]
+
+[[package]]
 name = "meegxer-workspace"
 version = "0.0.0"
 source = { virtual = "." }
@@ -1257,8 +1259,8 @@ dev = [
     { name = "meegxer-cli" },
     { name = "meegxer-core" },
     { name = "meegxer-gui" },
-    { name = "meegxer-runtime" },
-    { name = "meegxer-sterile" },
+    { name = "meegxer-nodes" },
+    { name = "meegxer-plugins" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -1276,8 +1278,8 @@ dev = [
     { name = "meegxer-cli", editable = "packages/meegxer-cli" },
     { name = "meegxer-core", editable = "packages/meegxer-core" },
     { name = "meegxer-gui", editable = "packages/meegxer-gui" },
-    { name = "meegxer-runtime", editable = "packages/meegxer-runtime" },
-    { name = "meegxer-sterile", editable = "packages/meegxer-sterile" },
+    { name = "meegxer-nodes", editable = "packages/meegxer-nodes" },
+    { name = "meegxer-plugins", editable = "packages/meegxer-plugins" },
     { name = "mypy", specifier = ">=1.13" },
     { name = "pre-commit", specifier = ">=4.0" },
     { name = "pytest", specifier = ">=8.3" },

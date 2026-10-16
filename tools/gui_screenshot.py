@@ -132,7 +132,7 @@ def main() -> int:
         pump(app, 1.0)
         win.grab().save(str(out / "04-live-light-advanced.png"))
         win.stop()
-        win.insert_strip(3, "meegxer.sterile.iir_filter_zerophase")
+        win.insert_strip(3, "meegxer.nodes.iir_filter_zerophase")
         win.apply_theme(load_theme("dark"))
         pump(app, 0.5)
         win.grab().save(str(out / "05-incompatible-dark.png"))

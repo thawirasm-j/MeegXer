@@ -108,7 +108,7 @@ def test_source_detects_gaps_and_duplicates() -> None:
 @pytest.mark.timeout(60)
 def test_short_stability_lsl_in_to_lsl_out() -> None:
     """Acceptance test 2, short: 64 ch / 1 kHz through LSL in -> filter -> LSL out."""
-    sterile = pytest.importorskip("meegxer.sterile.filters")
+    nodes = pytest.importorskip("meegxer.nodes.filters")
     from meegxer.core.stage import Stage
 
     gen_name, out_name = unique("mx-gen"), unique("mx-out")
@@ -120,7 +120,7 @@ def test_short_stability_lsl_in_to_lsl_out() -> None:
     generator.start()
     pipeline = RealtimeScheduler(Graph.chain([
         LslSource({"stream_name": gen_name, "timeout": 10.0}),
-        Stage(sterile.IIRFilter(), {"kind": "highpass", "low": 1.0}),
+        Stage(nodes.IIRFilter(), {"kind": "highpass", "low": 1.0}),
         MemoryProbe(),
         LslSink({"stream_name": out_name, "include_index": True}),
     ]))  # fmt: skip

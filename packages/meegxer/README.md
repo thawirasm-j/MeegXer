@@ -8,11 +8,12 @@ pip install meegxer
 meegxer-gui
 ```
 
-This installs the sterile build: `meegxer-core` (engine, schedulers, I/O, control
-API), `meegxer-sterile` (filters, re-referencing, ICA/ICLabel, features),
-`meegxer-gui` and `meegxer-cli`. Containerized research plugins (EEGLAB ASR, your
-own Octave or Python plugins) need the separate `meegxer-runtime` package and
-Docker or Podman.
+This installs everything: `meegxer-core` (engine, schedulers, I/O, control API),
+`meegxer-nodes` (built-in filters, re-referencing, ICA/ICLabel, features),
+`meegxer-plugins` (Python/Octave plugins as strips, e.g. EEGLAB ASR),
+`meegxer-gui` and `meegxer-cli`. Processing runs on your machine. Plugins currently
+run in Docker or Podman; a one-click Sterile mode that isolates all processing in
+a container is planned.
 
 Status: pre-release. Source, documentation and issues:
 https://github.com/thawirasm-j/MeegXer

@@ -40,9 +40,9 @@ def test_session_reruns_byte_identical_on_another_machine(tmp_path: Path) -> Non
     pipeline = study / "clean.json"
     pipeline.write_text(json.dumps({"spec_version": SPEC_VERSION, "nodes": [
         {"id": "input", "node": "meegxer.core.file", "params": {"path": str(rec)}},
-        {"id": "hp", "node": "meegxer.sterile.iir_filter",
+        {"id": "hp", "node": "meegxer.nodes.iir_filter",
          "params": {"kind": "highpass", "low": 1.0}},
-        {"id": "ica", "node": "meegxer.sterile.ica", "params": {"max_iter": 200}},
+        {"id": "ica", "node": "meegxer.nodes.ica", "params": {"max_iter": 200}},
     ]}))  # fmt: skip
 
     args = ["run", str(pipeline), "-o", str(study / "clean.set"),

@@ -40,16 +40,16 @@ Recommended file name: `NAME.meegxer.json` (plain JSON; any `.json` file with a
 
   "pipeline": {"spec_version": "0.2.9", "nodes": [
     {"id": "input", "node": "meegxer.core.file", "params": {"path": "sub-01_rest.set"}},
-    {"id": "hp", "node": "meegxer.sterile.iir_filter",
+    {"id": "hp", "node": "meegxer.nodes.iir_filter",
      "params": {"kind": "highpass", "low": 1.0}},
-    {"id": "ica", "node": "meegxer.sterile.ica", "params": {"threshold": 0.8}},
+    {"id": "ica", "node": "meegxer.nodes.ica", "params": {"threshold": 0.8}},
     {"id": "asr", "node": "lab.asr", "params": {"cutoff": 20.0}}
   ]},
 
   "nodes": {
     "input": {"node": "meegxer.core.file", "version": "0.1.0"},
-    "hp":    {"node": "meegxer.sterile.iir_filter", "version": "0.1.0"},
-    "ica":   {"node": "meegxer.sterile.ica", "version": "0.1.0"},
+    "hp":    {"node": "meegxer.nodes.iir_filter", "version": "0.1.0"},
+    "ica":   {"node": "meegxer.nodes.ica", "version": "0.1.0"},
     "asr":   {"node": "lab.asr", "version": "1.2.0", "provenance": {
                "image": "ghcr.io/lab/asr:1.2.0", "image_id": "sha256:…",
                "repo_digests": ["ghcr.io/lab/asr@sha256:…"]}}
@@ -122,6 +122,7 @@ paths, so a session folder can be moved or zipped as a whole.
 |---|---|
 | `meegxer_session` major version, `spec_version` | Refused. |
 | A node is not installed | Refused, naming the node (for a plugin: `meegxer-plugin add IMAGE` with the recorded image). |
+| A built-in recorded under its pre-0.2.1 name (`meegxer.sterile.*`) | Loads as the same node under its current name (`meegxer.nodes.*`); models are reused. |
 | Node `version`, plugin `image_id` | Refused by default. With the override (`--allow-version-mismatch`), that node's model is dropped, so it needs refitting. |
 | Model `content_hash` | Refused: the model was changed after it was saved. |
 | Model `fingerprint` | The model is kept but not used: the node needs refitting (offline runs refit it on their input, live runs wait for calibration). |

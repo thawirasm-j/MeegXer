@@ -69,20 +69,24 @@ meegxer-gui
 On a minimal Linux install the GUI may need the Qt system libraries
 (Debian/Ubuntu: `sudo apt install libegl1 libgl1 libxkbcommon0 libfontconfig1`).
 
-### Research build (containerized plugins)
+### Plugins and Sterile mode
 
-The `meegxer` install is the sterile build: the audited built-in nodes, no plugin
-runtime. Research builds add the runtime by name, which also installs the
-`meegxer-plugin` command:
+The `meegxer` install includes everything: the built-in nodes, the plugin runtime
+and the `meegxer-plugin` command. Processing runs on your machine.
 
-```bash
-uv tool install --python 3.14 --prerelease allow meegxer --with meegxer-runtime --with-executables-from meegxer-runtime
-```
-
-Plugins run in containers, so they need Docker (on Windows,
+Plugins currently run in containers, so they need Docker (on Windows,
 [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
-with the WSL 2 backend). MeegXer itself, the built-in nodes and LSL do not. Then
-`meegxer-plugin check IMAGE` and `meegxer-plugin add IMAGE`.
+with the WSL 2 backend) or Podman. MeegXer itself, the built-in nodes and LSL do
+not. Then `meegxer-plugin check IMAGE` and `meegxer-plugin add IMAGE`.
+
+Planned: **Sterile mode**, one switch that runs all processing in a container cut
+off from the network and the rest of the machine. Sterile means isolation only;
+auditing the pipeline for compliance (HIPAA, GDPR, IRB) stays your responsibility.
+
+Upgrading from 0.2.0 or earlier: `meegxer-sterile` is now `meegxer-nodes` and
+`meegxer-runtime` is now `meegxer-plugins`. Old pipelines and sessions still load.
+The old packages can be removed (`pip uninstall meegxer-sterile meegxer-runtime`;
+a `uv tool install` reinstall drops them by itself).
 
 ## Development
 
@@ -95,7 +99,6 @@ uv run pytest                   # tests, including architecture guard self-tests
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 uv run lint-imports             # architecture rules (CLAUDE.md)
-uv run python tools/check_sterile.py   # sterile build has no plugin runtime
 uv run pre-commit install       # optional: run the checks on commit
 ```
 
@@ -140,8 +143,8 @@ uv run meegxer set hp low=0.5
 | Package | Role |
 |---|---|
 | `packages/meegxer-core` | headless engine (no GUI) |
-| `packages/meegxer-sterile` | audited built-in nodes |
-| `packages/meegxer-runtime` | containerized plugin runtime (research builds only) |
+| `packages/meegxer-nodes` | built-in nodes |
+| `packages/meegxer-plugins` | plugin runtime and SDKs |
 | `packages/meegxer-gui` | PySide6 + pyqtgraph client |
 | `packages/meegxer-cli` | command-line interface (`meegxer`) |
 

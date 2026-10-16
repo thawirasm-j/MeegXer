@@ -1,5 +1,5 @@
 # Virtual workspace root: not a package itself. Members live in packages/.
-# Sterile build = core + sterile + gui + cli; meegxer-runtime is never part of it.
+# Packages: core, nodes (built-ins), plugins, gui, cli, and the meegxer bundle.
 [project]
 name = "meegxer-workspace"
 version = "0.0.0"
@@ -13,8 +13,8 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 meegxer-core = { workspace = true }
-meegxer-sterile = { workspace = true }
-meegxer-runtime = { workspace = true }
+meegxer-nodes = { workspace = true }
+meegxer-plugins = { workspace = true }
 meegxer-gui = { workspace = true }
 meegxer-cli = { workspace = true }
 meegxer = { workspace = true }
@@ -22,8 +22,8 @@ meegxer = { workspace = true }
 [dependency-groups]
 dev = [
     "meegxer-core",
-    "meegxer-sterile",
-    "meegxer-runtime",
+    "meegxer-nodes",
+    "meegxer-plugins",
     "meegxer-gui",
     "meegxer-cli",
     "pytest>=8.3",
@@ -54,8 +54,8 @@ namespace_packages = true
 explicit_package_bases = true
 mypy_path = [
     "packages/meegxer-core/src",
-    "packages/meegxer-sterile/src",
-    "packages/meegxer-runtime/src",
+    "packages/meegxer-nodes/src",
+    "packages/meegxer-plugins/src",
     "packages/meegxer-gui/src",
     "packages/meegxer-cli/src",
 ]
@@ -82,21 +82,21 @@ timeout = 120
 [tool.importlinter]
 root_packages = [
     "meegxer.core",
-    "meegxer.sterile",
-    "meegxer.runtime",
+    "meegxer.nodes",
+    "meegxer.plugins",
     "meegxer.gui",
     "meegxer.cli",
 ]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Rule 1: core is headless (no GUI toolkit, no GUI or runtime package)"
+name = "Rule 1: core is headless (no GUI toolkit, no GUI, node or plugin package)"
 type = "forbidden"
 source_modules = ["meegxer.core"]
 forbidden_modules = [
     "meegxer.gui",
-    "meegxer.runtime",
-    "meegxer.sterile",
+    "meegxer.plugins",
+    "meegxer.nodes",
     "meegxer.cli",
     "PySide6",
     "PyQt5",
@@ -104,14 +104,16 @@ forbidden_modules = [
     "pyqtgraph",
 ]
 
+# Plugins (and the container engine) are optional extensions: everything else
+# reaches them only through the node-provider entry point.
 [[tool.importlinter.contracts]]
-name = "Rule 10: sterile-build packages never import the plugin runtime or Docker"
+name = "Plugins load only through entry points (no direct plugin or Docker imports)"
 type = "forbidden"
-source_modules = ["meegxer.core", "meegxer.sterile", "meegxer.gui", "meegxer.cli"]
-forbidden_modules = ["meegxer.runtime", "docker"]
+source_modules = ["meegxer.core", "meegxer.nodes", "meegxer.gui", "meegxer.cli"]
+forbidden_modules = ["meegxer.plugins", "docker"]
 
 [[tool.importlinter.contracts]]
-name = "Built-ins stay headless (no GUI toolkit in sterile nodes)"
+name = "Built-ins stay headless (no GUI toolkit in built-in nodes)"
 type = "forbidden"
-source_modules = ["meegxer.sterile"]
+source_modules = ["meegxer.nodes"]
 forbidden_modules = ["meegxer.gui", "meegxer.cli", "PySide6", "PyQt5", "PyQt6", "pyqtgraph"]

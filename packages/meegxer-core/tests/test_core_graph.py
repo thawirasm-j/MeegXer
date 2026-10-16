@@ -123,8 +123,8 @@ def test_replace_keeps_wiring(tmp_path: Path) -> None:
 def test_installed_entry_points_resolve() -> None:
     registry = Registry.from_entry_points()
     for name in ("meegxer.core.synthetic", "meegxer.core.file", "meegxer.core.probe",
-                 "meegxer.core.set_writer", "meegxer.sterile.iir_filter",
-                 "meegxer.sterile.notch", "meegxer.sterile.rereference"):  # fmt: skip
+                 "meegxer.core.set_writer", "meegxer.nodes.iir_filter",
+                 "meegxer.nodes.notch", "meegxer.nodes.rereference"):  # fmt: skip
         assert registry.get(name).manifest.name == name
 
 

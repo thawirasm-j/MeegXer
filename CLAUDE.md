@@ -1,8 +1,9 @@
 # MeegXer
 
 MeegXer (pronounced "Meek-Ser") — a user-friendly mixer for EEG processing.
-Voicemeeter/VST-style live and offline EEG pipelines, with built-in audited
-processing nodes and containerized research plugins (Octave/EEGLAB or MNE-Python).
+Voicemeeter/VST-style live and offline EEG pipelines, with built-in processing
+nodes and plugins (Octave/EEGLAB or MNE-Python). Sterile mode isolates processing
+in a container, away from the machine and the network.
 
 Status: pre-MVP. Full design and rationale: `docs/DESIGN.md` — read it before
 making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
@@ -27,11 +28,20 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
    models "needs refit"; never silently reuse a stale model.
 8. **Align by sample index, match channels by label.** Every block carries a sample
    index and LSL timestamp. Probes overlay by index, never by arrival time.
-9. **Plugins never touch devices or the network.** External plugins run in Docker/Podman
-   with `--network none`, read-only mounts, stdin/stdout framed binary protocol. They emit
-   Events only; trusted host-side Sinks perform actions (keyboard, gamepad, serial).
-10. **Sterile build is a packaging property.** Sterile = core + sterile + gui + cli.
-    `meegxer-runtime` (Docker plugins, SDKs) is never shipped in it, not merely disabled.
+9. **Plugins are untrusted code; only host Sinks act.** A plugin runs in its own
+   process and speaks the stdin/stdout framed binary protocol. It emits Events only;
+   trusted host-side Sinks perform actions (keyboard, gamepad, serial). Other packages
+   reach plugins only through the node-provider entry point. Outside Sterile mode a
+   plugin may run as a local process with the user's permissions (network, files), so
+   adding one asks the user to acknowledge that risk (patient data: HIPAA, GDPR, IRB).
+   In a container it runs with `--network none` and read-only mounts. (Today plugins
+   always run in a container; local plugins and the prompt are planned.)
+10. **Sterile = isolation, a runtime mode.** Sterile mode runs all processing (built-in
+    nodes and plugins) in a container with no network and read-only mounts; the host
+    keeps only trusted I/O (sources, LSL, file writers, device sinks, the GUI). It
+    means isolation only: which code is trusted (auditing) is the user's
+    responsibility. Every install ships every package; "sterile" never names a
+    package or a build. (Planned; needs Docker or Podman.)
 11. **The plugin spec is language-neutral** (JSON Schema + protocol doc), versioned with
     semver. Python/Octave SDKs implement the spec; they do not define it.
 
@@ -40,11 +50,15 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
 | Package | Contents |
 |---|---|
 | `meegxer-core` | engine, graph, schedulers, plugin spec, I/O, control API (no GUI) |
-| `meegxer-sterile` | audited built-ins: filters, re-ref, ICA/ICLabel, features, action sinks |
-| `meegxer-runtime` | Docker plugin runtime + Python/Octave SDKs, EEGLAB ASR plugin (research builds only) |
+| `meegxer-nodes` | built-in nodes: filters, re-ref, ICA/ICLabel, features, action sinks |
+| `meegxer-plugins` | plugin runtime (container runner) + Python/Octave SDKs, EEGLAB ASR plugin |
 | `meegxer-gui` | PySide6 + pyqtgraph client |
 | `meegxer-cli` | headless runs, batch jobs, Pi deployment |
-| `meegxer` | bundle: installs the sterile build (core + sterile + gui + cli); no code of its own |
+| `meegxer` | bundle: installs every package (core + nodes + plugins + gui + cli); no code of its own |
+
+Renamed in 0.2.1: `meegxer-sterile` → `meegxer-nodes`, `meegxer-runtime` →
+`meegxer-plugins`. Node names `meegxer.sterile.*` still load as `meegxer.nodes.*`
+(`meegxer.core.registry.canonical_name`).
 
 Canonical code name is lowercase `meegxer` everywhere (imports, repo, image prefixes).
 
@@ -56,7 +70,7 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   behind the same protocol.
 - Core: numpy, scipy, jsonschema, pylsl, pyzmq (JSON-RPC control and display both over
   ZeroMQ); file I/O through MNE (mne-bids, eeglabio, edfio). Signals are in volts. Built-ins: MNE, SciPy, python-picard, mne-icalabel,
-  mne-connectivity, antropy (ASR is the EEGLAB plugin, research builds only). GUI: PySide6, pyqtgraph. CLI: Typer or Click.
+  mne-connectivity, antropy (ASR is the EEGLAB plugin). GUI: PySide6, pyqtgraph. CLI: Typer or Click.
 - I/O: BIDS (mne-bids), EDF/BDF, EEGLAB .set in; .set (eeglabio), EDF, BIDS-derivatives out.
 - Performance escalation order: vectorize (preallocated ring buffers, no per-sample
   loops) → Numba → PyO3 Rust extension → full Rust core. Measure before escalating.
@@ -71,7 +85,6 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 
 - `uv sync --all-packages`, then `uv run pytest`, `uv run ruff check .`,
   `uv run ruff format --check .`, `uv run mypy`, `uv run lint-imports`.
-- `uv run python tools/check_sterile.py`: sterile wheels contain no runtime (rule 10).
 - `python tools/smoke_deps.py --python 3.14`: planned third-party deps install/import.
 - `uv run meegxer nodes`; `uv run meegxer run pipeline.json -i rec.set -o out.set`.
 - Sessions (`spec/session.md`): `meegxer run … --session out.meegxer.json`,
@@ -88,9 +101,9 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   starts one); `uv run python tools/gui_screenshot.py OUT_DIR` renders it offscreen.
   Offline runs write to `MEEGXER_OFFLINE_DIR` (default: the system temp folder),
   with a processor-output cache capped by `MEEGXER_OFFLINE_CACHE_GB` (default 5).
-- Plugins (research builds): `uv run meegxer-plugin check IMAGE` (conformance),
+- Plugins: `uv run meegxer-plugin check IMAGE` (conformance),
   `meegxer-plugin add IMAGE`, `meegxer-plugin list`. SDKs in
-  `packages/meegxer-runtime/sdk/`; reference plugins in `packages/meegxer-runtime/plugins/`.
+  `packages/meegxer-plugins/sdk/`; reference plugins in `packages/meegxer-plugins/plugins/`.
 - New nodes register in the `meegxer.nodes` entry-point group (see package
   pyproject.toml) and declare `availability` (online/offline/both). Stream
   processors that run online must pass
@@ -98,7 +111,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - Releases: push a `v*` tag (TestPyPI), then run the Release workflow from the
   tag with target `pypi`; see `docs/RELEASING.md`. `tools/set_version.py`
   stamps one version on every package and pins siblings exactly.
-- Architecture rules 1 and 10 are import-linter contracts in the root `pyproject.toml`;
+- Architecture rules 1 and 9 (plugins only through entry points) are import-linter
+  contracts in the root `pyproject.toml`;
   `tests/test_architecture.py` proves each contract catches a violation.
 
 ## Working style

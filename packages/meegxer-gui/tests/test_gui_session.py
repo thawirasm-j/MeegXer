@@ -46,7 +46,7 @@ def session_file(tmp_path: Path) -> Path:
     raw.save(rec, verbose="error")
     pipeline = {"spec_version": SPEC_VERSION, "nodes": [
         {"id": "input", "node": "meegxer.core.file", "params": {"path": str(rec)}},
-        {"id": "ica", "node": "meegxer.sterile.ica", "params": {"max_iter": 200}},
+        {"id": "ica", "node": "meegxer.nodes.ica", "params": {"max_iter": 200}},
     ]}  # fmt: skip
     graph = Graph.from_dict(pipeline, Registry.from_entry_points())
     BatchScheduler().run(graph)
@@ -72,7 +72,7 @@ def test_open_a_session_run_it_and_save_it_again(
         monkeypatch.setattr(QFileDialog, "getOpenFileName",
                             lambda *a, **k: (str(session_file), ""))  # fmt: skip
         win.open_pipeline()
-        assert [s.node for s in win.doc.strips][-1] == "meegxer.sterile.ica"
+        assert [s.node for s in win.doc.strips][-1] == "meegxer.nodes.ica"
         assert win.doc.mode == "offline"
         log = win.logbox.toPlainText()
         assert "fitted models: ica" in log, log
@@ -129,7 +129,7 @@ def test_version_mismatch_asks_before_loading(
         monkeypatch.setattr(QMessageBox, "question",
                             lambda *a, **k: QMessageBox.StandardButton.Yes)  # fmt: skip
         win.open_session(str(session_file))
-        assert [s.node for s in win.doc.strips][-1] == "meegxer.sterile.ica"
+        assert [s.node for s in win.doc.strips][-1] == "meegxer.nodes.ica"
         ica = next(n for n in win.link.call("status")["nodes"] if n["id"] == "ica")
         assert ica["calibrated"] is False  # its model was dropped: calibrate again
     finally:

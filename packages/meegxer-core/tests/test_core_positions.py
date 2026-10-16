@@ -25,7 +25,7 @@ def pipeline(recording: dict[str, Any] | None = None) -> dict[str, Any]:
         source["recording"] = recording
     return {"spec_version": SPEC_VERSION, "nodes": [
         source,
-        {"id": "ica", "node": "meegxer.sterile.ica", "params": {"max_iter": 50}},
+        {"id": "ica", "node": "meegxer.nodes.ica", "params": {"max_iter": 50}},
     ]}  # fmt: skip
 
 
@@ -40,11 +40,11 @@ def info_of(g: Graph) -> SignalInfo:
 
 
 def test_ica_declares_it_needs_positions() -> None:
-    manifest = Registry.from_entry_points().get("meegxer.sterile.ica").manifest
+    manifest = Registry.from_entry_points().get("meegxer.nodes.ica").manifest
     assert manifest.requires_positions
     assert manifest_to_dict(manifest)["requires_positions"] is True
     assert manifest_to_dict(manifest)["latency_samples"] == manifest.latency_samples
-    other = Registry.from_entry_points().get("meegxer.sterile.notch").manifest
+    other = Registry.from_entry_points().get("meegxer.nodes.notch").manifest
     assert not other.requires_positions
 
 

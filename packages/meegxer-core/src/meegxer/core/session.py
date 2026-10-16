@@ -35,15 +35,15 @@ from meegxer.core.block import SignalInfo
 from meegxer.core.graph import Graph, GraphError
 from meegxer.core.manifest import SPEC_VERSION
 from meegxer.core.node import Sink, Source
-from meegxer.core.registry import Registry
+from meegxer.core.registry import Registry, canonical_name
 from meegxer.core.serialization import State, hash_state
 from meegxer.core.stage import FittedModel, Stage
 
 SESSION_FORMAT = "1.0"
 PATH_PARAMS = ("path", "root")  # parameters holding file or folder locations
 PACKAGES = (
-    "meegxer-core", "meegxer-sterile", "meegxer-gui", "meegxer-cli",
-    "meegxer-runtime", "numpy", "scipy", "mne", "mne-bids", "eeglabio", "edfio",
+    "meegxer-core", "meegxer-nodes", "meegxer-gui", "meegxer-cli",
+    "meegxer-plugins", "numpy", "scipy", "mne", "mne-bids", "eeglabio", "edfio",
     "python-picard", "mne-icalabel", "onnxruntime", "mne-connectivity", "antropy",
     "pylsl",
 )  # fmt: skip
@@ -312,7 +312,7 @@ def _check_nodes(
             continue
         node = graph[node_id]
         problems = []
-        if recorded["node"] != node.manifest.name:
+        if canonical_name(recorded["node"]) != node.manifest.name:
             problems.append(f"is {node.manifest.name}, recorded {recorded['node']}")
         elif recorded["version"] != node.manifest.version:
             problems.append(

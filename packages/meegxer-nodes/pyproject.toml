@@ -1,0 +1,61 @@
+[project]
+name = "meegxer-nodes"
+version = "0.0.0"
+description = "Audited built-in processing nodes (filters, re-referencing, ICA/ICLabel, features)."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+keywords = ["EEG", "BCI", "signal processing", "EEGLAB", "MNE", "LSL"]
+authors = [
+    { name = "Thawirasm Jungrungrueang" },
+    { name = "TrimLAB, Prince of Songkla University" },
+]
+dependencies = [
+    "meegxer-core",
+    "numpy>=2.1",
+    "scipy>=1.14.1",
+    "mne>=1.8",
+    "python-picard>=0.8",
+    "mne-icalabel>=0.7",
+    "onnxruntime>=1.20",
+    "mne-connectivity>=0.7",
+    "antropy>=0.1.9",
+]
+
+[project.entry-points."meegxer.nodes"]
+"meegxer.nodes.iir_filter" = "meegxer.nodes.filters:IIRFilter"
+"meegxer.nodes.notch" = "meegxer.nodes.filters:NotchFilter"
+"meegxer.nodes.iir_filter_zerophase" = "meegxer.nodes.filters:IIRFilterZeroPhase"
+"meegxer.nodes.notch_zerophase" = "meegxer.nodes.filters:NotchFilterZeroPhase"
+"meegxer.nodes.rereference" = "meegxer.nodes.reference:Rereference"
+"meegxer.nodes.ica" = "meegxer.nodes.ica:ICAClean"
+"meegxer.nodes.psd" = "meegxer.nodes.features:PSD"
+"meegxer.nodes.band_power" = "meegxer.nodes.features:BandPower"
+"meegxer.nodes.connectivity" = "meegxer.nodes.features:Connectivity"
+"meegxer.nodes.complexity" = "meegxer.nodes.features:Complexity"
+"meegxer.nodes.hilbert_envelope" = "meegxer.nodes.features:HilbertEnvelope"
+
+[project.urls]
+Homepage = "https://github.com/thawirasm-j/MeegXer"
+Documentation = "https://github.com/thawirasm-j/MeegXer/blob/main/docs/DESIGN.md"
+Issues = "https://github.com/thawirasm-j/MeegXer/issues"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "meegxer.nodes"
+
+[tool.uv.sources]
+meegxer-core = { workspace = true }
