@@ -28,7 +28,7 @@ SYNTHETIC = "meegxer.core.synthetic"
 # the GUI's defaults where they differ from the node's: synthetic input played
 # live runs until stopped (a live calibration never runs out of it)
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
-SPEC_VERSION = "0.2.10"
+SPEC_VERSION = "0.2.11"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.sterile.iir_filter", "meegxer.sterile.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -129,6 +129,26 @@ class PipelineDoc:
             issues.insert(0, "the synthetic input runs forever: set its duration "
                              "to process it offline")  # fmt: skip
         return issues
+
+    def missing_positions(self, channels: list[dict[str, Any]]) -> dict[str, list[str]]:
+        """Strips that need electrode positions (manifest ``requires_positions``)
+        and the good channels they process that have none, given the input's
+        channels as ``describe_source`` reports them (after the Recording edits)."""
+        found: dict[str, list[str]] = {}
+        for strip in self.strips:
+            if not self.manifest(strip).get("requires_positions"):
+                continue
+            types = strip.channel_types or ["eeg"]
+            missing = [
+                c["label"]
+                for c in channels
+                if (c.get("type") or "eeg") in types
+                and not c.get("bad")
+                and c.get("position") is None
+            ]
+            if missing:
+                found[strip.id] = missing
+        return found
 
     # -- strips -------------------------------------------------------------------
 

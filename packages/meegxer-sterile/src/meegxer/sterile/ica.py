@@ -175,15 +175,8 @@ class ICAClean(Processor):
         live_params=["threshold", "reject_eye", "reject_muscle", "reject_heart",
                      "reject_line_noise", "reject_channel_noise"],
         requires_fit=True,
+        requires_positions=True,  # ICLabel
     )  # fmt: skip
-
-    def check_fit(self, info: SignalInfo, params: Params) -> None:
-        """Before a live calibration collects data: enough good channels, all
-        with positions (ICLabel)."""
-        good = [lb for lb in info.ch_labels if lb not in info.bads]
-        if len(good) < 2:
-            raise ValueError("ICA needs at least two good channels")
-        require_positions(info.subset(good))
 
     def fit(self, calibration: Block, params: Params) -> State:
         info = calibration.info

@@ -168,20 +168,3 @@ def test_bad_channels_are_left_out_and_pass_through() -> None:
 def test_iclabel_needs_positions() -> None:
     with pytest.raises(ValueError, match="electrode positions"):
         Stage(ICAClean()).fit(recording(positions=()), FP)
-
-
-def test_check_fit_needs_positions_and_two_good_channels() -> None:
-    """A live calibration checks these before collecting its data."""
-    ica = ICAClean()
-    params = ica.manifest.resolve_params({})
-    info = recording().info
-    ica.check_fit(info, params)  # positions for every channel: fine
-    first = info.ch_labels[0]
-    with pytest.raises(ValueError, match="ICLabel needs electrode positions"):
-        ica.check_fit(dataclasses.replace(info, positions=()), params)
-    # a bad channel without a position is left out, so it does not matter
-    positions = (None, *info.positions[1:])
-    ica.check_fit(dataclasses.replace(info, positions=positions, bads=(first,)),
-                  params)  # fmt: skip
-    with pytest.raises(ValueError, match="two good channels"):
-        ica.check_fit(dataclasses.replace(info, bads=info.ch_labels[1:]), params)

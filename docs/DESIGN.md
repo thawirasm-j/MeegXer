@@ -128,11 +128,12 @@ transform(block, model, state, params)        -> block_out, state, events
   the stream (the batch scheduler and the conformance helper call it). The stage
   delays the channels it does not process by the same amount, so every channel and
   probe stays aligned by sample index (rule 8); online, the delay is plain latency.
-- **Early fit check:** a processor may implement `check_fit(info, params)`, raising
-  `ValueError` when fitting on data like `info` cannot succeed (ICA: electrode
-  positions for ICLabel). A live calibration calls it on its first block and fails
-  at once instead of after collecting its data. Optional; external plugins do not
-  have it (the plugin protocol is unchanged) and report problems from `fit`.
+- **Electrode positions (spec 0.2.11):** a node that needs them declares
+  `requires_positions` in its manifest (ICA, for ICLabel). Both schedulers check
+  the input before running: every good channel such a node processes needs a
+  position, or the run refuses to start and names the node and channels (live:
+  once the stream is open). The GUI checks on Start and opens the Recording
+  window on its Channels tab instead of starting.
 - Schema: `spec/manifest.schema.json`. `state` is `None` on the first block of a
   stream and after a parameter change or refit; the processor initialises it then.
   Model and state must be serializable (arrays, scalars, strings, lists, dicts).

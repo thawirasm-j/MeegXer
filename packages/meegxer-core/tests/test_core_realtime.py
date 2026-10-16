@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from meegxer.core.batch import BatchScheduler
-from meegxer.core.block import Block, SignalInfo
+from meegxer.core.block import Block
 from meegxer.core.graph import Graph, GraphError
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, Processor, TransformResult
@@ -193,34 +193,6 @@ def test_input_ending_during_calibration_is_reported() -> None:
                for e in errors), errors  # fmt: skip
     stage = scheduler.graph["center1"].impl
     assert isinstance(stage, Stage) and stage.model is None
-
-
-class NeedsTen(Center):
-    """Fits only on ten channels or more: says so before collecting data."""
-
-    manifest: ClassVar[Manifest] = manifest("needsten", requires_fit=True)
-
-    def check_fit(self, info: SignalInfo, params: Params) -> None:
-        if info.n_channels < 10:
-            raise ValueError("needs ten channels")
-
-
-def test_calibration_that_cannot_succeed_fails_at_once() -> None:
-    scheduler = RealtimeScheduler(Graph.chain([source(30.0), Stage(NeedsTen()),
-                                               MemoryProbe()]))  # fmt: skip
-    scheduler.start()
-    scheduler.calibrate("needsten1", 20.0)
-    deadline = time.monotonic() + 5
-    while not scheduler.status()["errors"] and time.monotonic() < deadline:
-        time.sleep(0.05)
-    errors = scheduler.status()["errors"]
-    assert errors == ["calibration of 'needsten1' cannot start: needs ten channels"]
-    assert scheduler.status()["running"]  # the pipeline keeps running
-    status = scheduler.submit(
-        lambda: scheduler.node_status(scheduler.graph["needsten1"])
-    ).result()
-    assert str(status) == "uncalibrated"  # not stuck "calibrating"
-    scheduler.stop()
 
 
 def test_overruns_are_counted() -> None:

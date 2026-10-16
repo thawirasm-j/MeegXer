@@ -196,3 +196,30 @@ def test_offline_strips_fit_on_the_whole_recording(qapp: QApplication) -> None:
     assert "Calibrate" not in texts("offline")
     assert "fits on the whole recording" in texts("offline")
     assert "Calibrate" in texts("live")
+
+
+def test_start_without_positions_opens_the_channels_tab(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]]
+) -> None:
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.insert_strip(len(win.doc.strips), "meegxer.sterile.ica")
+        win.start()
+        assert not win.running
+        assert "Cannot start: ica1 needs electrode positions" in (
+            win.logbox.toPlainText()
+        )
+        assert win.recording_window.isVisible()
+        assert win.recording_window.tabs.currentIndex() == 0  # Channels
+        win.recording_window.close()
+        assert win.doc.source is not None
+        win.doc.source.recording = {"montage": "colin27_1020"}
+        win.start()
+        assert win.running
+        win.stop()
+    finally:
+        win.close()

@@ -126,3 +126,19 @@ def test_synthetic_input_runs_forever_live_and_needs_a_duration_offline(
     # an opened pipeline keeps the node's own default (60 s) when it omits it
     doc.load_pipeline({"nodes": [{"id": "input", "node": "meegxer.core.synthetic"}]})
     assert doc.source.params["duration"] == 60.0
+
+
+def test_strips_that_need_positions_list_the_channels_without_them(
+    doc: PipelineDoc,
+) -> None:
+    channels = [
+        {"label": "Fp1", "type": "eeg", "bad": False, "position": None},
+        {"label": "Cz", "type": "eeg", "bad": False, "position": [0, 0, 0.1]},
+        {"label": "O1", "type": "eeg", "bad": True, "position": None},
+        {"label": "VEOG", "type": "eog", "bad": False, "position": None},
+    ]
+    assert doc.missing_positions(channels) == {}  # no strip needs them yet
+    doc.insert(3, "meegxer.sterile.ica")
+    assert doc.missing_positions(channels) == {"ica1": ["Fp1"]}
+    doc.get("ica1").channel_types = ["eeg", "eog"]
+    assert doc.missing_positions(channels) == {"ica1": ["Fp1", "VEOG"]}

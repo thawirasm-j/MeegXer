@@ -33,7 +33,7 @@ import pylsl
 
 from meegxer.core.block import Block, FeatureBlock, SignalInfo, concat_blocks
 from meegxer.core.display import Decimator, DisplayFrame, DisplayPublisher, Envelope
-from meegxer.core.graph import Graph, GraphError, GraphNode
+from meegxer.core.graph import Graph, GraphError, GraphNode, positions_message
 from meegxer.core.node import Probe, Sink, Source, output_blocks
 from meegxer.core.stage import Stage, StageStatus, StaleModelError, signal_fingerprint
 
@@ -297,6 +297,10 @@ class RealtimeScheduler:
         )  # fmt: skip
         self.metrics.started_at = self.clock()
         try:
+            missing = self.graph.missing_positions(source.info)  # LSL: once open
+            if missing:
+                self.metrics.errors.append(positions_message(missing))
+                return
             self._refresh_fingerprints()
             chunk = self.max_block or max(1, int(source.info.sfreq))
             while self._running.is_set():
@@ -419,16 +423,6 @@ class RealtimeScheduler:
         pending = self._calibration.get(node.id)
         if pending is not None:
             blocks, seconds = pending
-            if not blocks:  # fail at once, not after collecting the data
-                try:
-                    stage.check_fit(block.info)
-                except ValueError as exc:
-                    del self._calibration[node.id]
-                    stage.cancel_calibration()
-                    self.metrics.errors.append(
-                        f"calibration of {node.id!r} cannot start: {exc}"
-                    )
-                    return self._without_model(node, block)
             blocks.append(block)
             if sum(b.n_samples for b in blocks) >= seconds * block.info.sfreq:
                 del self._calibration[node.id]

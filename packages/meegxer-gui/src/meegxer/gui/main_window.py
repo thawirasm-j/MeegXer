@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame
+from meegxer.core.graph import positions_message
 from meegxer.core.session import is_session, read_session, write_session
 from meegxer.gui.buffers import ProbeBuffer
 from meegxer.gui.chain import ChainView
@@ -347,16 +348,30 @@ class MainWindow(QMainWindow):
         self.view.set_wheel(wheel_positions(positions))
         self.view.events = list(info["events"]) if self.doc.mode == "offline" else []
 
-    def _describe_input(self) -> None:
+    def _describe_input(self) -> dict[str, Any] | None:
         """Read the input's description before a run (not for LSL, whose stream
-        the run itself opens)."""
+        the run itself opens; the daemon checks it then)."""
         src = self.doc.source
         if src is None or src.node in LIVE_ONLY_SOURCES:
             self.use_recording_info(None)
-            return
-        self.use_recording_info(
-            self.call("describe_source", node=self.doc.source_entry())
+            return None
+        info: dict[str, Any] | None = self.call(
+            "describe_source", node=self.doc.source_entry()
         )
+        self.use_recording_info(info)
+        return info
+
+    def _positions_ready(self, info: dict[str, Any] | None) -> bool:
+        """Strips that need electrode positions (ICA's ICLabel) get them before
+        anything runs: if the input lacks some, say which and open the Recording
+        window on its Channels tab instead of starting."""
+        missing = self.doc.missing_positions(info["channels"]) if info else {}
+        if not missing:
+            return True
+        self.log("Cannot start: " + positions_message(missing))
+        self.open_recording()
+        self.recording_window.tabs.setCurrentIndex(0)  # Channels
+        return False
 
     def change_source(self, node: str) -> None:
         if self.doc.source is not None and node == self.doc.source.node:
@@ -454,7 +469,8 @@ class MainWindow(QMainWindow):
         if problems:
             self.log("Cannot start: " + "; ".join(problems))
             return
-        self._describe_input()
+        if not self._positions_ready(self._describe_input()):
+            return
         if self.doc.mode == "offline":
             pipeline = self.doc.to_pipeline(tap_keep_seconds=0.0)
             result = self.call("run_offline", pipeline=pipeline)
