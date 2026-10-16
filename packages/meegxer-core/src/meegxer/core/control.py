@@ -140,6 +140,8 @@ class Daemon:
         graph = Graph.from_dict(pipeline, self.registry)
         RealtimeScheduler(graph)  # validates: no offline-only nodes
         if self._graph is not None:
+            # the GUI loads the pipeline again on every start: keep calibration
+            self._carry_models(self._graph, graph)
             self._close_processors(self._graph)
         self._pipeline, self._graph, self._scheduler = graph.to_dict(), graph, None
         return self._pipeline
