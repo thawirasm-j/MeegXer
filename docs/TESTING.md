@@ -199,11 +199,19 @@ uv run meegxer run clean.json -i DS\sub-01\eeg\sub-01_task-TASK_eeg.EXT --bids-o
 - [ ] **MNE-BIDS** (Python):
       ```python
       import mne_bids
-      p = mne_bids.BIDSPath(root=r"DS\derivatives\meegxer", subject="01", task="TASK",
-                            description="clean", datatype="eeg", suffix="eeg", extension=".set")
+
+      p = mne_bids.BIDSPath(
+          root=r"DS\derivatives\meegxer",
+          subject="01",
+          task="TASK",
+          description="clean",
+          datatype="eeg",
+          suffix="eeg",
+          extension=".set",
+      )
       raw = mne_bids.read_raw_bids(p)
       print(raw, raw.info["bads"], raw.annotations)
-      raw.compute_psd().plot()   # mains peak gone, below 1 Hz attenuated
+      raw.compute_psd().plot()  # mains peak gone, below 1 Hz attenuated
       ```
 - [ ] `_eeg.json`: `Sources` points at the raw file; `Description` lists the
       chain; `PowerLineFrequency` and other fields came over from the raw sidecar.
