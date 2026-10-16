@@ -186,6 +186,22 @@ class Stage:
             raise RuntimeError(f"{self.manifest.name} does not require fitting")
         self._calibrating = True
 
+    def cancel_calibration(self) -> None:
+        """Stop collecting calibration data (the model, if any, stays)."""
+        self._calibrating = False
+
+    def check_fit(self, info: SignalInfo) -> None:
+        """Raise ``ValueError`` if fitting on data like ``info`` cannot succeed
+        (the processor's ``check_fit`` on the channels this stage processes)."""
+        labels = info.labels_of_types(self.channel_types)
+        if not labels:
+            raise ValueError(
+                f"{self.manifest.name}: no channels of types {self.channel_types} "
+                "to fit on"
+            )
+        selected = info if labels == info.ch_labels else info.subset(list(labels))
+        self.processor.check_fit(selected, self.params)
+
     def fit(self, calibration: Block, input_fp: str) -> FittedModel:
         """Fit on ``calibration`` for the input identified by ``input_fp``."""
         if not self.manifest.requires_fit:

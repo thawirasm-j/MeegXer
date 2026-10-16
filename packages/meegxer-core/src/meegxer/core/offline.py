@@ -35,6 +35,7 @@ from meegxer.core.display import Decimator
 from meegxer.core.graph import Graph, GraphError
 from meegxer.core.node import AnyBlock, Probe
 from meegxer.core.probes import MemoryProbe
+from meegxer.core.stage import Stage
 
 MAX_WINDOW_BINS = 20000
 BINS_PER_SECOND = 250.0
@@ -227,6 +228,14 @@ class OfflineJob:
             "error": self.error,
             "elapsed_s": round(end - self.started, 3) if self.started else 0.0,
             "n_samples": self.n_total,
+            # nodes with a fitted model after the run (fitted now or reused)
+            "models": [
+                n.id
+                for n in self.graph.nodes
+                if isinstance(n.impl, Stage) and n.impl.model is not None
+            ]
+            if self.state == "done"
+            else [],
             "probes": {
                 pid: {
                     "ch_labels": list(p.info.ch_labels),

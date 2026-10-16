@@ -82,6 +82,12 @@ class Processor(ABC):
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult: ...
 
+    def check_fit(self, info: SignalInfo, params: Params) -> None:  # noqa: B027
+        """Optional: raise ``ValueError`` if ``fit`` cannot succeed on data that
+        ``info`` describes (e.g. missing electrode positions), so a live
+        calibration fails at once instead of after collecting its data. Default:
+        no check (``fit`` reports problems itself)."""
+
     def flush(
         self, info: SignalInfo, model: State, state: State | None, params: Params
     ) -> TransformResult | None:

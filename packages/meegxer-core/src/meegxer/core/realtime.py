@@ -419,6 +419,16 @@ class RealtimeScheduler:
         pending = self._calibration.get(node.id)
         if pending is not None:
             blocks, seconds = pending
+            if not blocks:  # fail at once, not after collecting the data
+                try:
+                    stage.check_fit(block.info)
+                except ValueError as exc:
+                    del self._calibration[node.id]
+                    stage.cancel_calibration()
+                    self.metrics.errors.append(
+                        f"calibration of {node.id!r} cannot start: {exc}"
+                    )
+                    return self._without_model(node, block)
             blocks.append(block)
             if sum(b.n_samples for b in blocks) >= seconds * block.info.sfreq:
                 del self._calibration[node.id]

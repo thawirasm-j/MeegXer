@@ -26,7 +26,7 @@ bind it to a non-local interface only on a trusted network.
 | `stop` | – | status |
 | `status` | – | see below |
 | `set_params` | `node`, `params` | the node's full parameter set after the change. Processors only while running. Parameters in the node's `live_params` keep streaming state; others restart it |
-| `calibrate` | `node`, `seconds` | status. Buffers `seconds` of the node's input, fits, then the node runs |
+| `calibrate` | `node`, `seconds` | status. Buffers `seconds` of the node's input, fits, then the node runs. A node that can tell from its first input block that the fit cannot succeed (e.g. ICA without electrode positions) refuses at once; that, and an input that ends before `seconds`, are reported in `errors` and leave the node uncalibrated |
 | `clear_calibration` | `node` (optional) | `{cleared, status}`: drops the fitted model of one node, or of every node when `node` is omitted |
 | `set_pass_uncalibrated` | `node`, `enabled` | status. Per-node opt-in: while the node has no valid model, pass data through unprocessed (marked as bypassed) instead of blocking |
 | `set_strip_params` | `node`, `params` (up to 3 names) | the pipeline. Display only: which parameters the node's strip shows in the UI's advanced mode |
@@ -63,8 +63,9 @@ bind it to a non-local interface only on a trusted network.
 - `latency`: clock at the sinks minus the LSL timestamp of the block's last sample.
 - `source_*`: present when the source stream carries a `SAMPLE_INDEX` channel.
 - `offline`: present after `run_offline`: `{state, error, elapsed_s, n_samples,
-  probes}`, where `state` is `running`, `done` or `error`, `n_samples` is the length
-  of the input, and `probes` maps each probe id that has data to `{ch_labels, sfreq,
+  models, probes}`, where `state` is `running`, `done` or `error`, `n_samples` is the
+  length of the input, `models` lists the nodes with a fitted model once the run is
+  done (offline runs fit on the whole input, or reuse a matching model), and `probes` maps each probe id that has data to `{ch_labels, sfreq,
   first_sample, n_filled, n_samples, bypassed}`; `n_filled` grows while the run goes.
 
 ## Errors

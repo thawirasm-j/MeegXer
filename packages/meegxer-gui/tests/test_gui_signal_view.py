@@ -141,3 +141,55 @@ def test_stacked_rests_the_signal_view_and_scrolls_the_recording(
         assert win.view.active and win.timeline.isEnabled()
     finally:
         win.close()
+
+
+def test_comparison_stays_a_comparison_while_main_has_no_data(
+    qapp: QApplication,
+) -> None:
+    """Main still calibrating (no data), a comparison tap has data: draw it
+    thin and faded and say Main has no data yet, never as the Main trace."""
+    view = SignalView(load_theme("dark"))
+    windows = {"tap_hp": window()}
+    view.refresh(lambda p, s: windows.get(p), "tap_ica", ["tap_hp"])
+    curves = [c for c in view.plot._curves if c.isVisible()]
+    assert curves and all(c.opts["pen"].widthF() == 1.0 for c in curves)
+    assert "Main: tap_ica (no data yet)" in view.legend.text()
+    windows["tap_ica"] = window()  # Main arrives: drawn thick
+    view.refresh(lambda p, s: windows.get(p), "tap_ica", ["tap_hp"])
+    widths = {c.opts["pen"].widthF() for c in view.plot._curves if c.isVisible()}
+    assert widths == {1.0, 2.0}
+
+    stacked = StackedWindow(load_theme("dark"))
+    stacked.show()
+    del windows["tap_ica"]
+    stacked.refresh(view, lambda p, s: windows.get(p), "tap_ica", ["tap_hp"])
+    curves = [c for c in stacked.plot._curves if c.isVisible()]
+    assert curves and all(c.opts["pen"].widthF() == 1.0 for c in curves)
+    stacked.close()
+
+
+def test_offline_strips_fit_on_the_whole_recording(qapp: QApplication) -> None:
+    from meegxer.core.control import manifest_to_dict
+    from meegxer.core.registry import Registry
+    from meegxer.gui.chain import StripWidget
+    from meegxer.gui.pipeline_doc import PipelineDoc
+
+    registry = Registry.from_entry_points()
+    doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
+                       for n in registry.names()])  # fmt: skip
+    doc.set_source("meegxer.core.file")
+    strip = doc.insert(1, "meegxer.sterile.ica")
+
+    def texts(mode: str) -> set[str]:
+        doc.input_mode = mode  # type: ignore[assignment]
+        widget = StripWidget(doc, strip, load_theme("dark"), status="stopped",
+                             advanced=False, selected=False)  # fmt: skip
+        from PySide6.QtWidgets import QLabel, QPushButton
+
+        return {w.text() for w in widget.findChildren(QPushButton)} | {
+            w.text() for w in widget.findChildren(QLabel)
+        }
+
+    assert "Calibrate" not in texts("offline")
+    assert "fits on the whole recording" in texts("offline")
+    assert "Calibrate" in texts("live")

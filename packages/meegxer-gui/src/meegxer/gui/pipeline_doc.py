@@ -24,6 +24,10 @@ PROBE = "meegxer.core.probe"
 TAP_PREFIX = "tap_"
 LIVE_ONLY_SOURCES = {"meegxer.core.lsl_in"}
 DEFAULT_OFFLINE_SOURCES = {"meegxer.core.file", "meegxer.core.bids"}
+SYNTHETIC = "meegxer.core.synthetic"
+# the GUI's defaults where they differ from the node's: synthetic input played
+# live runs until stopped (a live calibration never runs out of it)
+SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
 SPEC_VERSION = "0.2.10"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.sterile.iir_filter", "meegxer.sterile.iir_filter_zerophase"}
@@ -117,6 +121,13 @@ class PipelineDoc:
         ]
         if self.source is None:
             issues.insert(0, "no input")
+        elif (
+            self.mode == "offline"
+            and self.source.node == SYNTHETIC
+            and not float(self.source.params.get("duration") or 0)
+        ):
+            issues.insert(0, "the synthetic input runs forever: set its duration "
+                             "to process it offline")  # fmt: skip
         return issues
 
     # -- strips -------------------------------------------------------------------
@@ -136,7 +147,8 @@ class PipelineDoc:
         """Replace the Input strip (keeps its id, so taps stay where they are)."""
         if self.role(node) != "source":
             raise ValueError(f"{node} is not a source")
-        strip = StripNode("input", node, {**self._defaults(node), **(params or {})})
+        defaults = {**self._defaults(node), **SOURCE_DEFAULTS.get(node, {})}
+        strip = StripNode("input", node, {**defaults, **(params or {})})
         if self.strips and self.role(self.strips[0]) == "source":
             self.strips[0] = strip
         else:

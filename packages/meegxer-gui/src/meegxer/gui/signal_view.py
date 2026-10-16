@@ -358,7 +358,10 @@ class SignalView(QWidget):
         comp = [
             w for p in comparisons if (w := provider(p, self.seconds())) is not None
         ]
-        if main_win is None and comp:
+        # Main has no data yet (e.g. a strip still calibrating): show the
+        # comparisons as comparisons; the first one only lends its channels/time
+        waiting = main_win is None and bool(comp)
+        if waiting:
             main_win, comp = comp[0], comp[1:]
         if main_win is None:
             self.plot.draw([])
@@ -379,9 +382,16 @@ class SignalView(QWidget):
         layers: list[tuple[FloatArray, FloatArray, QPen]] = []
         plot = self.plot.getPlotItem()
         names = f"Main: {main_win.probe}" + "".join(f" · {w.probe}" for w in comp)
+        main_pen = (1.0, 80) if waiting else (2.0, 255)
+        if waiting:
+            names = f"Main: {main} (no data yet) · " + " · ".join(
+                w.probe for w in [main_win, *comp]
+            )
         if self.mode == "difference":
             other = comp[0] if comp else None
-            if other is None:
+            if waiting:
+                self.legend.setText(f"Difference: Main ({main}) has no data yet")
+            elif other is None:
                 self.legend.setText("Difference needs a second tap (click a ◇)")
             else:
                 self.legend.setText(
@@ -405,7 +415,7 @@ class SignalView(QWidget):
         elif self.mode == "spectrum":
             self.legend.setText(names)
             for win, width, alpha in [(w, 1.0, 90) for w in comp] + [
-                (main_win, 2.0, 255)
+                (main_win, *((1.0, 90) if waiting else main_pen))
             ]:
                 mid = (win.mins + win.maxs) / 2 * UV
                 for c in chans:
@@ -424,7 +434,7 @@ class SignalView(QWidget):
         else:
             self.legend.setText(names)
             for win, width, alpha in [(w, 1.0, 80) for w in comp] + [
-                (main_win, 2.0, 255)
+                (main_win, *main_pen)
             ]:
                 for c in chans:
                     st = styles[c]
@@ -539,11 +549,15 @@ class StackedWindow(QWidget):
         if not self.isVisible():
             return
         seconds = self.seconds()
-        wins = [w for p in [*comparisons, main] if p and (w := provider(p, seconds))]
+        main_win = provider(main, seconds) if main else None
+        wins = [w for p in comparisons if (w := provider(p, seconds)) is not None]
+        has_main = main_win is not None  # else comparisons stay comparisons
+        if main_win is not None:
+            wins.append(main_win)
         if not wins:
             self.plot.draw([])
             return
-        top = wins[-1]
+        top = wins[-1]  # Main, or a comparison lending its channels and time
         self.channels.set_labels(top.labels)
         chans = self.channels.selected(top.labels)
         styles = view._styles(top.labels)
@@ -563,7 +577,7 @@ class StackedWindow(QWidget):
             spacing = max(spacing, 1.0)
         layers: list[tuple[FloatArray, FloatArray, QPen]] = []
         for k, win in enumerate(wins):
-            is_main = k == len(wins) - 1
+            is_main = has_main and k == len(wins) - 1
             same = win.labels == top.labels
             for row, c in enumerate(chans):
                 offset = (len(chans) - 1 - row) * spacing

@@ -111,3 +111,18 @@ def test_feature_strips_branch_off_untapped_and_build_a_graph(doc: PipelineDoc) 
     inputs = {node.id: node.input for node in graph.nodes}
     assert inputs[tsv.id] == psd.id
     assert inputs[reref.id] == "notch1"  # the signal chain goes on
+
+
+def test_synthetic_input_runs_forever_live_and_needs_a_duration_offline(
+    doc: PipelineDoc,
+) -> None:
+    assert doc.source is not None
+    assert doc.source.params["duration"] == 0.0  # the GUI's default: endless
+    assert doc.problems() == []
+    doc.input_mode = "offline"
+    assert any("runs forever" in p for p in doc.problems())
+    doc.source.params["duration"] = 30.0
+    assert doc.problems() == []
+    # an opened pipeline keeps the node's own default (60 s) when it omits it
+    doc.load_pipeline({"nodes": [{"id": "input", "node": "meegxer.core.synthetic"}]})
+    assert doc.source.params["duration"] == 60.0

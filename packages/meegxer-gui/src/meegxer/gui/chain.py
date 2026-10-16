@@ -124,10 +124,14 @@ class StripWidget(QFrame):
             row.addWidget(QLabel(doc.format_param(strip, pname)))
             lay.addLayout(row)
         lay.addStretch(1)
-        if manifest.get("requires_fit"):
+        if manifest.get("requires_fit") and doc.mode == "live":
             calib = QPushButton("Calibrate")
             calib.clicked.connect(lambda: self.calibrate_requested.emit(self.strip_id))
             lay.addWidget(calib)
+        elif manifest.get("requires_fit"):
+            fit_note = QLabel("fits on the whole recording")
+            fit_note.setObjectName("muted")
+            lay.addWidget(fit_note)
         if problem:
             self.setToolTip(
                 f"{problem}: this strip cannot run in "

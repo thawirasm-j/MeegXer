@@ -603,10 +603,13 @@ class MainWindow(QMainWindow):
             elif n.get("pass_uncalibrated") and s != "ready":
                 s = "bypassed"
             statuses[n["id"]] = s
+        offline = status.get("offline")
+        if self.doc.mode == "offline":  # the last offline run, not the live graph
+            fitted = set((offline or {}).get("models", []))
+            statuses = {s.id: "ready" for s in self.doc.strips if s.id in fitted}
         for err in status.get("errors", [])[len(getattr(self, "_errors", [])) :]:
             self.log(f"Daemon error: {err}")
         self._errors = list(status.get("errors", []))
-        offline = status.get("offline")
         if offline:
             self._offline_status(offline)
         if not running and self.running:
