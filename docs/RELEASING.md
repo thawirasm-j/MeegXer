@@ -6,12 +6,12 @@ that workflow in this repository directly, so no API token exists anywhere.
 
 | Project | What `pip install` gives |
 |---|---|
-| `meegxer` | the sterile build: core + sterile + gui + cli (the usual install) |
+| `meegxer` | everything: core + nodes + plugins + gui + cli (the usual install) |
 | `meegxer-core` | engine, schedulers, I/O, control API, `meegxer` daemon |
-| `meegxer-sterile` | audited built-in nodes |
+| `meegxer-nodes` | built-in nodes (named `meegxer-sterile` up to 0.2.0) |
 | `meegxer-gui` | the `meegxer-gui` client |
 | `meegxer-cli` | the `meegxer` command |
-| `meegxer-runtime` | Docker/Podman plugin runtime (research builds; opt-in, never pulled in by `meegxer`) |
+| `meegxer-plugins` | plugin runtime, SDKs and the `meegxer-plugin` command (named `meegxer-runtime` up to 0.2.0) |
 
 ## One-time setup
 
@@ -29,7 +29,7 @@ the next one can be added. So the six projects are created **one per round**:
 
 | Field | Value |
 |---|---|
-| PyPI Project Name | one of `meegxer`, `meegxer-core`, `meegxer-sterile`, `meegxer-gui`, `meegxer-cli`, `meegxer-runtime` |
+| PyPI Project Name | one of `meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-gui`, `meegxer-cli`, `meegxer-plugins` |
 | Owner | `thawirasm-j` |
 | Repository name | `MeegXer` |
 | Workflow name | `release.yml` |
@@ -48,6 +48,12 @@ the next one can be added. So the six projects are created **one per round**:
 After that, nothing here is needed again: every project has its publisher, and
 each release publishes all six. A pending publisher expires if unused for a while;
 just add it again.
+
+**The 0.2.1 rename** creates two new projects, `meegxer-nodes` and
+`meegxer-plugins`. Before releasing 0.2.1a1, bootstrap them as above (one pending
+publisher at a time, on TestPyPI and then on PyPI). The old `meegxer-sterile` and
+`meegxer-runtime` projects stay on PyPI at 0.2.0 and get no new releases; they can
+be marked as superseded in their PyPI descriptions.
 
 ### 2. GitHub environments
 

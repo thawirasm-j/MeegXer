@@ -19,8 +19,8 @@ _spec.loader.exec_module(set_version)
 
 def test_every_package_is_found_and_stamped() -> None:
     found = set_version.packages()
-    assert set(found) == {"meegxer", "meegxer-core", "meegxer-sterile",
-                          "meegxer-runtime", "meegxer-gui", "meegxer-cli"}  # fmt: skip
+    assert set(found) == {"meegxer", "meegxer-core", "meegxer-nodes",
+                          "meegxer-plugins", "meegxer-gui", "meegxer-cli"}  # fmt: skip
     for name, path in found.items():
         text = set_version.stamp(path.read_text(encoding="utf-8"), "1.2.0rc1",
                                  set(found) - {name})  # fmt: skip

@@ -47,8 +47,6 @@ jobs:
           uvx twine check --strict dist/*/*
           test "$(ls dist/*/*.whl | wc -l)" -eq 6
           test "$(ls dist/*/*.tar.gz | wc -l)" -eq 6
-      - name: Sterile set contains no plugin runtime (rule 10)
-        run: uv run --no-project --python 3.14 python tools/check_sterile.py
       - uses: actions/upload-artifact@v6
         with:
           name: dist
@@ -63,8 +61,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [meegxer-core, meegxer-sterile, meegxer-gui, meegxer-cli,
-                  meegxer-runtime, meegxer]
+        package: [meegxer-core, meegxer-nodes, meegxer-gui, meegxer-cli,
+                  meegxer-plugins, meegxer]
     environment:
       name: testpypi
       url: https://test.pypi.org/project/meegxer/
@@ -89,8 +87,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [meegxer-core, meegxer-sterile, meegxer-gui, meegxer-cli,
-                  meegxer-runtime, meegxer]
+        package: [meegxer-core, meegxer-nodes, meegxer-gui, meegxer-cli,
+                  meegxer-plugins, meegxer]
     environment:
       name: pypi
       url: https://pypi.org/project/meegxer/

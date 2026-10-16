@@ -21,7 +21,7 @@ PIPELINE: dict[str, Any] = {
     "nodes": [
         {"id": "src", "node": "meegxer.core.synthetic",
          "params": {"duration": 0, "n_channels": 4, "sfreq": 200}},
-        {"id": "hp", "node": "meegxer.sterile.iir_filter",
+        {"id": "hp", "node": "meegxer.nodes.iir_filter",
          "params": {"kind": "highpass", "low": 1.0}},
         {"id": "main", "node": "meegxer.core.probe"},
     ],
@@ -46,11 +46,11 @@ def test_ping_and_node_catalogue(daemon: tuple[Daemon, ControlClient]) -> None:
     d, client = daemon
     assert client.call("ping")["display"] == d.display_endpoint
     nodes = {n["name"]: n for n in client.call("list_nodes")}
-    iir = nodes["meegxer.sterile.iir_filter"]
+    iir = nodes["meegxer.nodes.iir_filter"]
     assert iir["availability"] == "both"
     order = next(p for p in iir["params"] if p["name"] == "order")
     assert order["advanced"] is True and order["max"] == 10
-    assert nodes["meegxer.sterile.iir_filter_zerophase"]["availability"] == "offline"
+    assert nodes["meegxer.nodes.iir_filter_zerophase"]["availability"] == "offline"
     assert nodes["meegxer.core.lsl_in"]["availability"] == "online"
 
 
@@ -89,7 +89,7 @@ def test_lifecycle_and_live_params(daemon: tuple[Daemon, ControlClient]) -> None
 def test_offline_pipeline_rejected(daemon: tuple[Daemon, ControlClient]) -> None:
     _, client = daemon
     offline = json.loads(json.dumps(PIPELINE))
-    offline["nodes"][1]["node"] = "meegxer.sterile.iir_filter_zerophase"
+    offline["nodes"][1]["node"] = "meegxer.nodes.iir_filter_zerophase"
     with pytest.raises(RpcError, match="offline-only") as info:
         client.call("load_pipeline", pipeline=offline)
     assert info.value.code == SERVER_ERROR

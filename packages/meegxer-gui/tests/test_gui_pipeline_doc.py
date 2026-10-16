@@ -12,8 +12,8 @@ def doc() -> PipelineDoc:
         [manifest_to_dict(registry.get(n).manifest) for n in registry.names()]
     )
     d.set_source("meegxer.core.synthetic")
-    d.insert(1, "meegxer.sterile.iir_filter")
-    d.insert(2, "meegxer.sterile.notch")
+    d.insert(1, "meegxer.nodes.iir_filter")
+    d.insert(2, "meegxer.nodes.notch")
     return d
 
 
@@ -23,7 +23,7 @@ def test_chain_edits_keep_the_input_first(doc: PipelineDoc) -> None:
     assert [s.id for s in doc.strips] == ["input", "notch1", "iirfilter1"]
     doc.move("notch1", 3)
     assert [s.id for s in doc.strips] == ["input", "iirfilter1", "notch1"]
-    doc.insert(0, "meegxer.sterile.notch")  # cannot go before the input
+    doc.insert(0, "meegxer.nodes.notch")  # cannot go before the input
     assert doc.strips[1].id == "notch2"
     with pytest.raises(ValueError):
         doc.move("input", 2)
@@ -46,7 +46,7 @@ def test_mode_comes_from_the_input(doc: PipelineDoc) -> None:
 
 
 def test_strict_compatibility_with_the_adaptable_band_pass(doc: PipelineDoc) -> None:
-    zero = doc.insert(3, "meegxer.sterile.iir_filter_zerophase")
+    zero = doc.insert(3, "meegxer.nodes.iir_filter_zerophase")
     out = doc.insert(4, "meegxer.core.lsl_out")
     assert doc.incompatibility(zero) == "Offline only"
     assert doc.incompatibility(doc.get("iirfilter1")) is None
@@ -102,10 +102,10 @@ def test_strip_shows_crucial_or_picked_params(doc: PipelineDoc) -> None:
 def test_feature_strips_branch_off_untapped_and_build_a_graph(doc: PipelineDoc) -> None:
     from meegxer.core.graph import Graph
 
-    psd = doc.insert(3, "meegxer.sterile.band_power")
+    psd = doc.insert(3, "meegxer.nodes.band_power")
     tsv = doc.insert(4, "meegxer.core.feature_tsv")
     tsv.params["path"] = "bands.tsv"
-    reref = doc.insert(5, "meegxer.sterile.rereference")
+    reref = doc.insert(5, "meegxer.nodes.rereference")
     assert psd.id not in {s.id for s in doc.tappable()}
     graph = Graph.from_dict(doc.to_pipeline(), Registry.from_entry_points())
     inputs = {node.id: node.input for node in graph.nodes}
@@ -138,7 +138,7 @@ def test_strips_that_need_positions_list_the_channels_without_them(
         {"label": "VEOG", "type": "eog", "bad": False, "position": None},
     ]
     assert doc.missing_positions(channels) == {}  # no strip needs them yet
-    doc.insert(3, "meegxer.sterile.ica")
+    doc.insert(3, "meegxer.nodes.ica")
     assert doc.missing_positions(channels) == {"ica1": ["Fp1"]}
     doc.get("ica1").channel_types = ["eeg", "eog"]
     assert doc.missing_positions(channels) == {"ica1": ["Fp1", "VEOG"]}
@@ -147,8 +147,8 @@ def test_strips_that_need_positions_list_the_channels_without_them(
 def test_groups_and_what_each_strip_reads_from(doc: PipelineDoc) -> None:
     """Feature extraction inserted between re-reference and ICA forks off after
     re-reference; ICA still reads from re-reference (one lane, forks drawn)."""
-    for node in ["meegxer.sterile.rereference", "meegxer.sterile.band_power",
-                 "meegxer.core.lsl_features_out", "meegxer.sterile.ica",
+    for node in ["meegxer.nodes.rereference", "meegxer.nodes.band_power",
+                 "meegxer.core.lsl_features_out", "meegxer.nodes.ica",
                  "meegxer.core.lsl_out"]:  # fmt: skip
         doc.insert(len(doc.strips), node)
     groups = {s.id: doc.group(s) for s in doc.strips}
@@ -183,3 +183,14 @@ def test_tap_delays_add_up_along_each_tap_path(doc: PipelineDoc) -> None:
     assert delays["notch1"] == pytest.approx(0.75)
     doc.manifest(doc.get("iirfilter1"))["latency_samples"] = 50  # look-ahead
     assert doc.tap_delays(timing, 500.0)["notch1"] == pytest.approx(100.75)
+
+
+def test_a_pipeline_saved_with_old_node_names_loads(doc: PipelineDoc) -> None:
+    saved = doc.to_pipeline(taps=False)
+    for entry in saved["nodes"]:
+        entry["node"] = entry["node"].replace("meegxer.nodes.", "meegxer.sterile.")
+    doc.load_pipeline(saved)
+    assert [s.node for s in doc.strips][1:] == [
+        "meegxer.nodes.iir_filter",
+        "meegxer.nodes.notch",
+    ]

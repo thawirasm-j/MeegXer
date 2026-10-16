@@ -3,11 +3,15 @@
 Packages register node classes under their manifest name, e.g. in pyproject.toml::
 
     [project.entry-points."meegxer.nodes"]
-    "meegxer.sterile.iir_filter" = "meegxer.sterile.filters:IIRFilter"
+    "meegxer.nodes.iir_filter" = "meegxer.nodes.filters:IIRFilter"
 
 The core never imports another meegxer package directly; whatever is installed is
-what is available. That keeps the sterile build free of the plugin runtime
-(CLAUDE.md rule 10) without the core knowing about it.
+what is available, and plugins arrive the same way (CLAUDE.md rule 9).
+
+Built-in nodes were named ``meegxer.sterile.*`` before 0.2.1; those names still
+resolve (``canonical_name``), so older pipelines and sessions load. Entry points
+from the old ``meegxer-sterile``/``meegxer-runtime`` distributions, if still
+installed next to the new ones, are ignored.
 
 Packages whose node classes are only known at run time (the plugin runtime builds
 one class per installed plugin image) register a provider instead: a callable in
@@ -27,6 +31,26 @@ ENTRY_POINT_GROUP = "meegxer.nodes"
 PROVIDER_GROUP = "meegxer.node_providers"
 
 
+# node-name prefixes before the 0.2.1 package rename -> current prefixes
+LEGACY_PREFIXES = {"meegxer.sterile.": "meegxer.nodes."}
+# modules of the pre-0.2.1 distributions (meegxer-sterile, meegxer-runtime)
+LEGACY_MODULES = ("meegxer.sterile", "meegxer.runtime")
+
+
+def canonical_name(name: str) -> str:
+    """The current name of a node, e.g. ``meegxer.sterile.notch`` ->
+    ``meegxer.nodes.notch``."""
+    for old, new in LEGACY_PREFIXES.items():
+        if name.startswith(old):
+            return new + name[len(old) :]
+    return name
+
+
+def _legacy(ep: EntryPoint) -> bool:
+    module = ep.value.split(":", 1)[0]
+    return any(module == m or module.startswith(m + ".") for m in LEGACY_MODULES)
+
+
 class UnknownNodeError(LookupError):
     """No installed package provides a node with this name."""
 
@@ -43,8 +67,11 @@ class Registry:
     def from_entry_points(cls) -> Registry:
         registry = cls()
         for ep in entry_points(group=ENTRY_POINT_GROUP):
-            registry._add_entry_point(ep)
+            if not _legacy(ep):
+                registry._add_entry_point(ep)
         for ep in entry_points(group=PROVIDER_GROUP):
+            if _legacy(ep):
+                continue
             for node_cls in ep.load()():
                 registry.add(node_cls)
         return registry
@@ -68,7 +95,7 @@ class Registry:
 
     def get(self, name: str) -> NodeClass:
         try:
-            return self._classes[name]
+            return self._classes[canonical_name(name)]
         except KeyError:
             raise UnknownNodeError(
                 f"no installed node named {name!r}; available: {sorted(self._classes)}"

@@ -50,8 +50,8 @@ from meegxer.gui.theme import Theme, load_theme, stylesheet
 from meegxer.gui.wheel import install_wheel_guard
 
 DEFAULT_CHAIN: list[tuple[str, dict[str, Any]]] = [
-    ("meegxer.sterile.iir_filter", {"kind": "highpass", "low": 1.0}),
-    ("meegxer.sterile.notch", {}),
+    ("meegxer.nodes.iir_filter", {"kind": "highpass", "low": 1.0}),
+    ("meegxer.nodes.notch", {}),
 ]
 
 

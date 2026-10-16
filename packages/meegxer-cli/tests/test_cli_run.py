@@ -19,7 +19,7 @@ def write_json(path: Path, nodes: list[dict[str, object]]) -> Path:
 def test_nodes_lists_builtins() -> None:
     result = runner.invoke(app, ["nodes"])
     assert result.exit_code == 0
-    assert "meegxer.sterile.iir_filter" in result.output
+    assert "meegxer.nodes.iir_filter" in result.output
 
 
 def test_run_filters_a_set_file(tmp_path: Path) -> None:
@@ -33,10 +33,10 @@ def test_run_filters_a_set_file(tmp_path: Path) -> None:
 
     pipeline = write_json(tmp_path / "pipeline.json", [
         {"id": "input", "node": "meegxer.core.file"},
-        {"id": "hp", "node": "meegxer.sterile.iir_filter",
+        {"id": "hp", "node": "meegxer.nodes.iir_filter",
          "params": {"kind": "highpass", "low": 1.0}},
-        {"id": "notch", "node": "meegxer.sterile.notch"},
-        {"id": "car", "node": "meegxer.sterile.rereference"},
+        {"id": "notch", "node": "meegxer.nodes.notch"},
+        {"id": "car", "node": "meegxer.nodes.rereference"},
     ])  # fmt: skip
     out = tmp_path / "sub-01_clean.set"
     result = runner.invoke(

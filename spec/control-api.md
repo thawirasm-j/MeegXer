@@ -47,7 +47,7 @@ bind it to a non-local interface only on a trusted network.
   "display": {"sent": 370, "dropped": 0},
   "source_gaps": 0, "source_duplicates": 0, "source_first_index": 1223,
   "nodes": [
-    {"id": "hp", "node": "meegxer.sterile.iir_filter", "role": "processor",
+    {"id": "hp", "node": "meegxer.nodes.iir_filter", "role": "processor",
      "status": "ready", "params": {"low": 1.0}, "timing": {"blocks": 1180, "mean_ms": 0.15, "max_ms": 2.1}}
   ]
 }

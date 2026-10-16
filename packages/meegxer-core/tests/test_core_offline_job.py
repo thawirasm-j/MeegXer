@@ -36,7 +36,7 @@ PIPELINE = {
          "params": {"duration": 6.0, "n_channels": 4, "sfreq": 500.0}},
         {"id": "tap_input", "node": "meegxer.core.probe", "input": "input",
          "params": {"keep_seconds": 0.0}},
-        {"id": "bp", "node": "meegxer.sterile.iir_filter",
+        {"id": "bp", "node": "meegxer.nodes.iir_filter",
          "params": {"kind": "highpass", "low": 1.0}},
         {"id": "tap_bp", "node": "meegxer.core.probe", "input": "bp",
          "params": {"keep_seconds": 0.0}},
@@ -110,7 +110,7 @@ def test_status_lists_the_models_the_run_fitted(daemon: Daemon) -> None:
         {"id": "input", "node": "meegxer.core.synthetic",
          "params": {"duration": 20.0, "n_channels": 8, "sfreq": 250.0},
          "recording": {"montage": "colin27_1020"}},
-        {"id": "ica", "node": "meegxer.sterile.ica", "params": {"max_iter": 100}},
+        {"id": "ica", "node": "meegxer.nodes.ica", "params": {"max_iter": 100}},
         {"id": "tap_ica", "node": "meegxer.core.probe", "input": "ica",
          "params": {"keep_seconds": 0.0}},
     ]}  # fmt: skip

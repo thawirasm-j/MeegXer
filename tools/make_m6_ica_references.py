@@ -34,7 +34,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "tests" / "data" / "m6_ica.npz"
-sys.path.insert(0, str(ROOT / "packages" / "meegxer-sterile" / "src"))
+sys.path.insert(0, str(ROOT / "packages" / "meegxer-nodes" / "src"))
 
 SCRIPT = r"""
 addpath(genpath(fullfile(EEGLAB, "functions"))); addpath(ICL); addpath(FIRFILT);
@@ -186,7 +186,7 @@ fclose(fid);
 
 
 def main() -> None:
-    from meegxer.sterile.ica import data_rank, decompose
+    from meegxer.nodes.ica import data_rank, decompose
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--eeglab", type=Path, required=True)

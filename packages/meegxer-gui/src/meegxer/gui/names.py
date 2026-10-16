@@ -15,16 +15,16 @@ TITLES = {
     "meegxer.core.feature_tsv": "Features table",
     "meegxer.core.bids_writer": "BIDS dataset",
     "meegxer.core.bids_features": "BIDS features table",
-    "meegxer.sterile.notch": "Notch",
-    "meegxer.sterile.notch_zerophase": "Notch (zero-phase)",
-    "meegxer.sterile.rereference": "Re-reference",
-    "meegxer.sterile.iir_filter_zerophase": "Filter (zero-phase)",
-    "meegxer.sterile.ica": "ICA + ICLabel",
-    "meegxer.sterile.psd": "Power spectrum",
-    "meegxer.sterile.band_power": "Band power",
-    "meegxer.sterile.connectivity": "Connectivity",
-    "meegxer.sterile.complexity": "Complexity",
-    "meegxer.sterile.hilbert_envelope": "Amplitude envelope",
+    "meegxer.nodes.notch": "Notch",
+    "meegxer.nodes.notch_zerophase": "Notch (zero-phase)",
+    "meegxer.nodes.rereference": "Re-reference",
+    "meegxer.nodes.iir_filter_zerophase": "Filter (zero-phase)",
+    "meegxer.nodes.ica": "ICA + ICLabel",
+    "meegxer.nodes.psd": "Power spectrum",
+    "meegxer.nodes.band_power": "Band power",
+    "meegxer.nodes.connectivity": "Connectivity",
+    "meegxer.nodes.complexity": "Complexity",
+    "meegxer.nodes.hilbert_envelope": "Amplitude envelope",
     "meegxer.core.lsl_features_out": "LSL features output",
     "eeglab.asr": "ASR cleaning (EEGLAB)",
 }
@@ -37,7 +37,7 @@ FILTER_KINDS = {
 
 
 def title(node: str, params: dict[str, Any] | None = None) -> str:
-    if node == "meegxer.sterile.iir_filter":
+    if node == "meegxer.nodes.iir_filter":
         return FILTER_KINDS.get(str((params or {}).get("kind")), "Band-pass")
     if node in TITLES:
         return TITLES[node]
@@ -46,7 +46,7 @@ def title(node: str, params: dict[str, Any] | None = None) -> str:
 
 def badge(node: str, params: dict[str, Any], mode: str) -> str:
     """Small note under a strip title, e.g. which filter variant runs."""
-    if node == "meegxer.sterile.iir_filter":
+    if node == "meegxer.nodes.iir_filter":
         phase = params.get("phase", "auto")
         if phase == "zero" or (phase == "auto" and mode == "offline"):
             return "zero-phase"

@@ -28,10 +28,18 @@ turn knobs, and see the effect live — on a streaming amp or on a recorded data
 - **Online** = live processing on the local machine (LSL in → pipeline → outputs).
   Nothing is streamed over the internet.
 - **Offline** = the same pipeline run on recorded files / BIDS datasets.
-- **Research build:** includes containerized external plugins.
-- **Sterile build:** built-in audited nodes only, run uncontainerized; no plugin runtime
-  shipped. Intended for environments where unvalidated code must never run
-  (e.g., future hospital use). Research plugins must not reach hospital computers by design.
+- **One install:** every package ships in every install (core, built-in nodes,
+  plugins, GUI, CLI). Processing runs on the local machine.
+- **Sterile mode** (planned, 0.2.1 decision): a runtime switch, not a package or a
+  build. All processing (built-in nodes and plugins) runs inside a container with no
+  network and read-only mounts; the host keeps only trusted I/O (sources and LSL,
+  file writers, device sinks, the GUI). Turned on with a "Sterilize" button, later
+  optionally at startup; needs Docker or Podman. See §3.5.
+- **Sterile means isolation only.** It keeps patient data away from the network and
+  the rest of the machine; it does not certify which code runs. Auditing the
+  pipeline (and compliance: HIPAA, GDPR, IRB, clinical validation) stays the user's
+  responsibility. Until 0.2.1 "sterile" named a package set (audited built-ins, no
+  plugin runtime); that meaning is retired.
 - Target: research environments first, not hospitals.
 
 ## 3. Architecture
@@ -74,7 +82,8 @@ turn knobs, and see the effect live — on a streaming amp or on a recorded data
   block-major over the same nodes.
 - **Pipeline file:** `spec/pipeline.schema.json`, an ordered node list where each
   node's input names an earlier node. Nodes are discovered through the
-  `meegxer.nodes` entry-point group, so the core never imports sterile or runtime code.
+  `meegxer.nodes` entry-point group, so the core never imports node or plugin code.
+  Built-ins were named `meegxer.sterile.*` before 0.2.1; those names still resolve.
 - **Units:** signals are in volts (SI, as in MNE) throughout the core.
 - **Real-time scheduling is block-major:** each loop pulls what the source has ready
   and pushes it through the graph; parameter changes and calibration requests are
@@ -163,8 +172,9 @@ transform(block, model, state, params)        -> block_out, state, events
 - Aligned by **sample index**, channels matched by **label**.
 - Feature-domain probes: overlay PSDs across probes.
 
-### 3.5 External plugins
-- Run in Docker/Podman: `docker run -i --network none --read-only --cap-drop ALL`
+### 3.5 Plugins and Sterile mode
+- Plugins are untrusted code (rule 9). Today they run in Docker/Podman:
+  `docker run -i --network none --read-only --cap-drop ALL`
   (no network, devices or writable filesystem except a small `/tmp`); data arrives on
   stdin only. Protocol: `spec/plugin-protocol.md`.
 - Transport: framed binary over stdin/stdout (JSON header + typed arrays; signal as
@@ -175,10 +185,19 @@ transform(block, model, state, params)        -> block_out, state, events
   and relaunched with bounded backoff and continues exactly where it stopped.
 - Plugins appear as ordinary Processor nodes (an adapter class built from the
   handshake manifest), discovered through `meegxer-plugin add IMAGE` and a node-provider
-  entry point that exists only when `meegxer-runtime` is installed.
+  entry point that exists only when `meegxer-plugins` is installed.
 - Unsandboxed local processes are allowed only for plugin development and tests
-  (`MEEGXER_ALLOW_UNSANDBOXED=1`).
-- Plugins emit Events only; they never access devices or networks.
+  (`MEEGXER_ALLOW_UNSANDBOXED=1`). Planned: local plugins (and custom scripts) by
+  default, each in its own process over the same protocol, with a prompt when one is
+  added: it runs with the user's permissions and can reach the network and files,
+  which can break institutional data rules for identifiable patient data (HIPAA,
+  GDPR, IRB); the prompt offers Sterile mode instead. Session and BIDS provenance
+  record the mode and each plugin's content hash.
+- Plugins emit Events only; trusted host Sinks perform actions.
+- **Sterile mode** (planned): one container runs the whole processing chain (built-in
+  nodes and plugins) as a single worker over the plugin protocol, so the added
+  delay is one hop per block; the host keeps sources, LSL, file writers, device
+  sinks and the GUI. Measure the delay with the stability test before shipping.
 - Base images: Octave with pinned EEGLAB; slim Python with pinned MNE. Multi-arch
   (amd64 + arm64) eventually.
 - Host and LSL run natively; only plugin workers are containerized (LSL multicast
@@ -265,8 +284,8 @@ it never interrupts processing.
 | Package | Language now | Later |
 |---|---|---|
 | meegxer-core | Python (numpy, pylsl, pyzmq) | Rust behind the same protocol, if measured need |
-| meegxer-sterile | Python (MNE, SciPy, python-picard, mne-icalabel, mne-connectivity, antropy) | stays Python |
-| meegxer-runtime | Python (docker SDK; Podman-compatible) | follows core |
+| meegxer-nodes | Python (MNE, SciPy, python-picard, mne-icalabel, mne-connectivity, antropy) | stays Python |
+| meegxer-plugins | Python (docker SDK; Podman-compatible) | follows core |
 | Plugin SDKs | Python package + Octave `.m` template | MATLAB-compatible variant |
 | meegxer-gui | PySide6 + pyqtgraph | stays Python |
 | meegxer-cli | Typer/Click | stays Python |
@@ -293,11 +312,11 @@ same node interface plugins use so both remain possible.
    `meegxer/core/sources.py`; values without a source are marked heuristic.
 2. Engine: DAG core with linear chain view, fit/transform + calibration, sample-index
    alignment, real-time and batch schedulers.
-3. Sterile built-ins: spectral filters, spatial filters, referencing,
+3. Built-in nodes (`meegxer-nodes`): spectral filters, spatial filters, referencing,
    ICA → ICLabel; features: PSD, band power, Hilbert, connectivity, complexity.
-   ASR is the EEGLAB plugin `eeglab.asr` (research builds only): EEGLAB's ASR code
-   is licensed for non-commercial use only, so no copy of it lives in MeegXer and
-   the sterile build has no ASR.
+   ASR is the EEGLAB plugin `eeglab.asr`: EEGLAB's ASR code is licensed for
+   non-commercial use only, so no copy of it lives in MeegXer and the built-in
+   nodes have no ASR.
 4. External plugin runtime + two reference plugins (Octave/EEGLAB stateful IIR
    bandpass; MNE notch or re-ref).
 5. GUI: drag-and-drop chain, probes (overlay + difference), auto-generated parameter

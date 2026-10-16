@@ -17,6 +17,7 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from meegxer.core.registry import canonical_name
 from meegxer.gui.labels import choice_label, unit_label
 
 Mode = Literal["live", "offline"]
@@ -33,7 +34,7 @@ SYNTHETIC = "meegxer.core.synthetic"
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
 SPEC_VERSION = "0.2.11"
 MAX_STRIP_PARAMS = 3
-FILTER_NODES = {"meegxer.sterile.iir_filter", "meegxer.sterile.iir_filter_zerophase"}
+FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
 
 
@@ -363,13 +364,14 @@ class PipelineDoc:
         for entry in nodes:
             if entry["node"] == PROBE:
                 continue
-            if entry["node"] not in self.manifests:
+            node = canonical_name(entry["node"])  # names before 0.2.1 still load
+            if node not in self.manifests:
                 raise KeyError(f"node {entry['node']!r} is not installed")
             strips.append(
                 StripNode(
-                    entry.get("id") or self._new_id(entry["node"]),
-                    entry["node"],
-                    {**self._defaults(entry["node"]), **entry.get("params", {})},
+                    entry.get("id") or self._new_id(node),
+                    node,
+                    {**self._defaults(node), **entry.get("params", {})},
                     bool(entry.get("pass_uncalibrated", False)),
                     list(entry.get("strip_params", [])),
                     dict(entry.get("recording", {})),

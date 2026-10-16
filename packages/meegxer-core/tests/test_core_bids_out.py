@@ -39,10 +39,10 @@ def bids_pipeline(root: Path, **writer: Any) -> dict[str, Any]:
         {"id": "input", "node": "meegxer.core.bids",
          "params": {"root": str(root), "subject": "01", "task": "rest"},
          "recording": {"channels": {"Pz": {"bad": True}}}},
-        {"id": "hp", "node": "meegxer.sterile.iir_filter",
+        {"id": "hp", "node": "meegxer.nodes.iir_filter",
          "params": {"kind": "highpass", "low": 1.0}},
         {"id": "out", "node": "meegxer.core.bids_writer", "params": writer},
-        {"id": "bp", "node": "meegxer.sterile.band_power"},
+        {"id": "bp", "node": "meegxer.nodes.band_power"},
         {"id": "feat", "node": "meegxer.core.bids_features", "params": writer},
     ]}  # fmt: skip
 
@@ -86,7 +86,7 @@ def test_derivative_is_readable_by_bids_tools(tmp_path: Path) -> None:
     sidecar = json.loads((folder / f"{stem}_eeg.json").read_text())
     assert sidecar["Sources"] == ["bids:raw:sub-01/eeg/sub-01_task-rest_eeg.edf"]
     assert sidecar["EEGChannelCount"] == 5 and sidecar["EOGChannelCount"] == 1
-    assert "meegxer.sterile.iir_filter" in sidecar["Description"]
+    assert "meegxer.nodes.iir_filter" in sidecar["Description"]
 
     rows = tsv(folder / f"{stem}_bp_features.tsv")
     assert rows and {"window_start", "window_stop", "onset"} <= set(rows[0])

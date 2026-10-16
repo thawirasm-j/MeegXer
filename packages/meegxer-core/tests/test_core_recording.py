@@ -189,7 +189,7 @@ def test_recording_changes_are_not_served_from_the_cache(
     from meegxer.core.cache import MemoryCache
 
     def pipeline(**rec: object) -> dict[str, object]:
-        hp = {"id": "hp", "node": "meegxer.sterile.iir_filter",
+        hp = {"id": "hp", "node": "meegxer.nodes.iir_filter",
               "params": {"kind": "highpass", "low": 1.0}}  # fmt: skip
         return {"spec_version": SPEC_VERSION, "nodes": [source(recording, **rec), hp]}
 

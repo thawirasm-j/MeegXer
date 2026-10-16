@@ -34,8 +34,8 @@ def test_difference_mode_shows_the_removed_50_hz_line(
     try:
         assert [s.node for s in win.doc.strips] == [
             "meegxer.core.synthetic",
-            "meegxer.sterile.iir_filter",
-            "meegxer.sterile.notch",
+            "meegxer.nodes.iir_filter",
+            "meegxer.nodes.notch",
         ]
         win.start()
         win.click_tap("notch1", make_main=True)

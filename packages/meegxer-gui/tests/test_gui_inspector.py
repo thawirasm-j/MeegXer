@@ -18,8 +18,8 @@ def doc() -> PipelineDoc:
         [manifest_to_dict(registry.get(n).manifest) for n in registry.names()]
     )
     d.set_source("meegxer.core.synthetic")
-    d.insert(1, "meegxer.sterile.iir_filter")
-    d.insert(2, "meegxer.sterile.ica")
+    d.insert(1, "meegxer.nodes.iir_filter")
+    d.insert(2, "meegxer.nodes.ica")
     return d
 
 

@@ -12,7 +12,7 @@ REPO = Path(__file__).resolve().parents[3]
 
 VALID: dict[str, Any] = {
     "spec_version": "0.2.0",
-    "name": "meegxer.sterile.iir_bandpass",
+    "name": "meegxer.nodes.iir_bandpass",
     "version": "1.0.0",
     "type": "stream",
     "inputs": [{"name": "in", "type": "signal"}],
