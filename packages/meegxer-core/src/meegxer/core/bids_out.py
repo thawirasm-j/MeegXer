@@ -23,6 +23,8 @@ from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Sink, Source
 from meegxer.core.ports import PortTypeError
 from meegxer.core.recording import describe
+from meegxer.core.references import as_text, collect, credits
+from meegxer.core.registry import node_origin
 from meegxer.core.sinks import SetSink, feature_columns
 
 BIDS_VERSION = "1.10.0"
@@ -55,6 +57,7 @@ def _manifest(name: str, input_type: str, description: str) -> Manifest:
             {"name": "run", "type": "string", "default": "", "advanced": True},
             {"name": "overwrite", "type": "bool", "default": False},
         ],
+        **credits(name),
     })  # fmt: skip
 
 
@@ -148,8 +151,32 @@ def _relative(path: Path, start: Path) -> str:
     return Path(os.path.relpath(path, start)).as_posix()
 
 
-def write_dataset_files(target: Target) -> None:
-    """Create or update dataset_description.json and .bidsignore."""
+def _pipeline_credits(graph: Any) -> tuple[list[str], list[dict[str, Any]]]:
+    """What a pipeline's nodes ask to be cited (``ReferencesAndLinks``) and
+    ``GeneratedBy`` entries for its plugins and custom scripts."""
+    references = collect(
+        r.as_dict() for n in graph.nodes for r in n.manifest.references
+    )
+    generated = []
+    for node in graph.nodes:
+        impl = node.impl.processor if hasattr(node.impl, "processor") else node.impl
+        origin = node_origin(type(impl))
+        if origin == "builtin":
+            continue
+        entry: dict[str, Any] = {"Name": node.manifest.name,
+                                 "Version": node.manifest.version}  # fmt: skip
+        what = "Custom script (unsandboxed)" if origin == "custom" else "Plugin"
+        entry["Description"] = f"{what}: {node.manifest.description}".rstrip(": ")
+        image = type(impl).provenance().get("image")
+        if image:
+            entry["Container"] = {"Type": "docker", "Tag": image}
+        generated.append(entry)
+    return [as_text(r) for r in references], generated
+
+
+def write_dataset_files(target: Target, graph: Any = None) -> None:
+    """Create or update dataset_description.json and .bidsignore; with the
+    pipeline's ``graph``, also what to cite and which plugins made it."""
     target.root.mkdir(parents=True, exist_ok=True)
     desc_path = target.root / "dataset_description.json"
     data: dict[str, Any] = {}
@@ -158,9 +185,15 @@ def write_dataset_files(target: Target) -> None:
     data.setdefault("Name", "MeegXer derivatives")
     data.setdefault("BIDSVersion", BIDS_VERSION)
     data["DatasetType"] = "derivative"
-    others = [g for g in data.get("GeneratedBy", []) if g.get("Name") != "MeegXer"]
+    cite, extra = _pipeline_credits(graph) if graph is not None else ([], [])
+    ours = {"MeegXer", *(g["Name"] for g in extra)}
+    others = [g for g in data.get("GeneratedBy", []) if g.get("Name") not in ours]
     data["GeneratedBy"] = [{"Name": "MeegXer", "Version": _version(),
-                            "CodeURL": CODE_URL}, *others]  # fmt: skip
+                            "CodeURL": CODE_URL}, *extra, *others]  # fmt: skip
+    links = list(data.get("ReferencesAndLinks", []))
+    links += [c for c in cite if c not in links]
+    if links:
+        data["ReferencesAndLinks"] = links
     if target.raw_root is not None:
         data.setdefault("DatasetLinks", {})["raw"] = _relative(target.raw_root,
                                                                target.root)  # fmt: skip
@@ -252,7 +285,7 @@ class BidsWriter(_BidsSink):
         target = self.target = self._target()
         signal_path = self._claim(target.path("eeg.set"))
         target.folder.mkdir(parents=True, exist_ok=True)
-        write_dataset_files(target)
+        write_dataset_files(target, self._graph)
         whole = concat_blocks(self._blocks)
         sink = SetSink({"path": str(signal_path), "overwrite": True})
         sink.write(whole)
@@ -366,7 +399,7 @@ class BidsFeatures(_BidsSink):
         upstream = self._graph[self._node_id].input
         table = self._claim(target.path(f"{upstream}_features.tsv"))
         target.folder.mkdir(parents=True, exist_ok=True)
-        write_dataset_files(target)
+        write_dataset_files(target, self._graph)
         sfreq = self._graph.source.impl.info.sfreq
         columns = feature_columns(self._blocks[0])
         rows = []

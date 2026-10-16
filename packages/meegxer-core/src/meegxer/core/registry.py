@@ -51,6 +51,15 @@ def _legacy(ep: EntryPoint) -> bool:
     return any(module == m or module.startswith(m + ".") for m in LEGACY_MODULES)
 
 
+def node_origin(cls: object) -> str:
+    """Where a node comes from: ``builtin``, ``plugin`` (a container image) or
+    ``custom`` (a local plugin or custom script, unsandboxed)."""
+    provenance: dict[str, object] = getattr(cls, "provenance", dict)()
+    if provenance.get("unsandboxed"):
+        return "custom"
+    return "plugin" if provenance.get("image") else "builtin"
+
+
 class UnknownNodeError(LookupError):
     """No installed package provides a node with this name."""
 

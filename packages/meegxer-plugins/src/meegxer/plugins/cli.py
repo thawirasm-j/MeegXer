@@ -95,6 +95,16 @@ def main(argv: list[str] | None = None) -> int:
         if not _accepted(args):
             return 1
         command = index.script_command(args.script) if args.script else args.local
+        if args.script:  # a script must pass the conformance suite to be added
+            checks = run_conformance(LocalLauncher(tuple(command), allow=True))
+            if not all(c.passed for c in checks):
+                print(format_report(checks), file=sys.stderr)
+                print(
+                    f"\n{args.script.name} was not added: fix what failed above "
+                    "(docs/CUSTOM_SCRIPTS.md)",
+                    file=sys.stderr,
+                )
+                return 1
         entry = index.add_local(
             command, accept_risk=True, script=args.script if args.script else None
         )

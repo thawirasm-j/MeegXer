@@ -97,7 +97,10 @@ class StripWidget(QFrame):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(10, 6, 10, 8)
         lay.setSpacing(3)
-        label = QLabel(GROUP_LABELS[group])
+        text = GROUP_LABELS[group]
+        if doc.is_custom(strip):  # "● CUSTOM PREPROCESSING"
+            text = f"{text[:2]}CUSTOM {text[2:]}"
+        label = QLabel(text)
         label.setObjectName("group")
         label.setStyleSheet(
             f"color: {band}; font-size: 7pt; font-weight: 700; letter-spacing: 1px;"
@@ -517,12 +520,13 @@ class ChainView(QScrollArea):
             "features": "◆ Feature extraction",
             "output": "▶ Outputs",
         }
-        for group, heading in groups.items():
+
+        def add(heading: str, nodes: list[dict[str, Any]]) -> None:
+            if not nodes:
+                return
             section = menu.addSection(heading)
             section.setEnabled(False)
-            for m in doc.nodes_for_palette():
-                if doc.group(m["name"]) != group:
-                    continue
+            for m in nodes:
                 problem = doc.incompatibility(m["name"])
                 label = title(m["name"])
                 action = menu.addAction(label + (f"   ({problem})" if problem else ""))
@@ -531,12 +535,21 @@ class ChainView(QScrollArea):
                 action.triggered.connect(
                     lambda _=False, n=m["name"]: self.insert_requested.emit(index, n)
                 )
-        section = menu.addSection("✎ Your own code")
-        section.setEnabled(False)
-        script = menu.addAction("Custom script…")
+
+        palette = doc.nodes_for_palette()
+        for custom in (False, True):  # built-ins first, then scripts and plugins
+            for group, heading in groups.items():
+                nodes = [m for m in palette if doc.group(m["name"]) == group
+                         and doc.is_custom(m["name"]) == custom]  # fmt: skip
+                if custom:  # "✎ Custom preprocessing"
+                    heading = f"✎ Custom {heading[2:].lower()}"
+                add(heading, nodes)
+        menu.addSeparator()
+        script = menu.addAction("✎ Add a custom script…")
         script.setToolTip(
-            "An MNE-Python script with process(raw, ...), run offline on the whole "
-            "recording (runs on your computer, unsandboxed)"
+            "An MNE-Python script: process(raw, ...) for offline runs, or "
+            "transform(data, state, ...) for live and offline (runs on your "
+            "computer, unsandboxed)"
         )
         script.triggered.connect(lambda: self.script_requested.emit(index))
         menu.setToolTipsVisible(True)

@@ -85,13 +85,22 @@ Created on the first write and updated after:
   "GeneratedBy": [{"Name": "MeegXer", "Version": "0.1.0a6",
                    "CodeURL": "https://github.com/thawirasm-j/MeegXer"}],
   "SourceDatasets": [{"URL": "bids:raw:"}],
-  "DatasetLinks": {"raw": "../.."}
+  "DatasetLinks": {"raw": "../.."},
+  "ReferencesAndLinks": [
+    "Gramfort A, Luessi M, Larson E, et al. (2013). MEG and EEG data analysis with MNE-Python. Front Neurosci 7:267. https://doi.org/10.3389/fnins.2013.00267"
+  ]
 }
 ```
 
 `DatasetLinks.raw` is the raw dataset relative to the derivatives folder (absent
 when the input is not in a BIDS dataset). Existing fields are kept; MeegXer's
 `GeneratedBy` entry is replaced with the current version.
+
+`ReferencesAndLinks` gathers the `references` of every node in the pipeline
+(manifest, spec 0.2.12), each once, as text with its DOI link; references already
+listed are kept. Plugins and custom scripts in the pipeline get their own
+`GeneratedBy` entries (`Name`, `Version`, `Description`, and `Container` for a
+plugin image), after MeegXer's.
 
 ## Many recordings
 

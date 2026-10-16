@@ -18,6 +18,7 @@ from scipy import signal
 from meegxer.core.block import Block, FloatArray, SignalInfo
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Source
+from meegxer.core.references import credits
 
 if TYPE_CHECKING:
     import mne
@@ -48,6 +49,7 @@ def _source_manifest(
             "inputs": [],
             "outputs": [{"name": "out", "type": "signal"}],
             "params": params,
+            **credits(name),
         }
     )
 

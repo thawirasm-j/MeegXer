@@ -8,10 +8,12 @@ processes and the values shown on the strip.
 
 from __future__ import annotations
 
+import html
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -42,12 +44,6 @@ CHANNEL_TYPE_NAMES = {
     "ecg": "Heart (ECG)",
     "resp": "Breathing",
     "misc": "Other",
-}
-GROUP_NAMES = {
-    "input": "Input",
-    "preprocess": "Preprocessing",
-    "features": "Feature extraction",
-    "output": "Output",
 }
 STATUS_NAMES = {
     "ready": "calibrated and running",
@@ -117,6 +113,14 @@ def _value(widget: QWidget) -> Any:
     if isinstance(widget, QSpinBox | QDoubleSpinBox):
         return widget.value()
     raise TypeError(widget)
+
+
+def _reference_text(ref: dict[str, str]) -> str:
+    if ref.get("doi"):
+        return f"{ref['citation']} https://doi.org/{ref['doi']}"
+    if ref.get("url"):
+        return f"{ref['citation']} {ref['url']}"
+    return ref["citation"]
 
 
 def _card(heading: str, note: str = "") -> tuple[QFrame, QVBoxLayout]:
@@ -233,6 +237,8 @@ class Inspector(QScrollArea):
                 "reused while the input and the strips before it stay the same.",
             )
             lay.addWidget(card)
+        if manifest.get("authors") or manifest.get("references"):
+            lay.addWidget(self._credits(manifest))
         if advanced and is_processor:
             lay.addWidget(self._channel_types(strip))
         if advanced and manifest["params"]:
@@ -263,7 +269,7 @@ class Inspector(QScrollArea):
         )
         name.setObjectName("heading")
         lay.addWidget(name)
-        sub = GROUP_NAMES[group]
+        sub = doc.group_label(strip)
         if advanced:
             sub += f" · {strip.id} · {strip.node} {manifest['version']}"
         else:
@@ -410,6 +416,59 @@ class Inspector(QScrollArea):
             lambda on: self.pass_uncalibrated_changed.emit(strip.id, on)
         )
         lay.addWidget(passthrough)
+        return card
+
+    def _credits(self, manifest: dict[str, Any]) -> QWidget:
+        """Who made the strip and what to cite when using it."""
+        card, lay = _card("Credits")
+        refs = manifest.get("references") or []
+        lines = []
+        if manifest.get("authors"):
+            lines.append("By " + html.escape(", ".join(manifest["authors"])))
+        if manifest.get("license"):
+            lines.append("Licence: " + html.escape(manifest["license"]))
+        if lines:
+            who = QLabel("<br>".join(lines))
+            who.setWordWrap(True)
+            lay.addWidget(who)
+        if refs:
+            heading = QLabel("Please cite:")
+            heading.setObjectName("muted")
+            lay.addWidget(heading)
+            colour = f" style='color:{self.theme.accent}'" if self.theme else ""
+            items = []
+            for ref in refs:
+                text = html.escape(ref["citation"])
+                if ref.get("doi"):
+                    link, shown = f"https://doi.org/{ref['doi']}", f"doi:{ref['doi']}"
+                elif ref.get("url"):
+                    link = shown = ref["url"]
+                else:
+                    link = shown = ""
+                if link:
+                    href = html.escape(link)
+                    text += f' <a href="{href}"{colour}>{html.escape(shown)}</a>'
+                items.append(f"<li>{text}</li>")
+            listing = QLabel(
+                "<ol style='margin-left:-20px'>" + "".join(items) + "</ol>"
+            )
+            listing.setWordWrap(True)
+            listing.setOpenExternalLinks(True)
+            listing.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextBrowserInteraction
+            )
+            lay.addWidget(listing)
+            copy = QPushButton("Copy references")
+            copy.setToolTip("Copy the references as text, for a methods section")
+            copy.clicked.connect(
+                lambda: QApplication.clipboard().setText(
+                    "\n".join(_reference_text(r) for r in refs)
+                )
+            )
+            row = QHBoxLayout()
+            row.addWidget(copy)
+            row.addStretch(1)
+            lay.addLayout(row)
         return card
 
     def _channel_types(self, strip: StripNode) -> QWidget:
