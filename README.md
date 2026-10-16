@@ -116,6 +116,16 @@ uv run meegxer session check sub-01.meegxer.json   # what would be reused or ref
 uv run meegxer run sub-01.meegxer.json             # same output, byte for byte
 ```
 
+Write processed recordings into a BIDS derivatives dataset (`<dataset>/derivatives/meegxer`,
+layout in `spec/bids-derivatives.md`), one recording or a whole dataset; finished
+recordings are skipped on a rerun, so an interrupted run continues:
+
+```bash
+uv run meegxer run pipeline.json -i ds/sub-01/eeg/sub-01_task-rest_eeg.set --bids-out ds/derivatives/meegxer
+uv run meegxer run pipeline.json --bids ds --task rest            # every subject
+uv run meegxer run pipeline.json --bids ds --subjects 01,02,05    # some of them
+```
+
 In the GUI, *Save session…* saves the chain with the models fitted by the last
 offline run (or calibrated live), and *Open…* reads sessions as well as pipelines.
 

@@ -279,7 +279,8 @@ same node interface plugins use so both remain possible.
 5. GUI: drag-and-drop chain, probes (overlay + difference), auto-generated parameter
    controls from manifests, PSD/feature views, per-stage status, CPU/latency/overrun meters.
 6. Outputs: LSL outlet, .set/EDF export, feature tables (BIDS-derivatives layout),
-   session JSON (the unit of reproducibility; format in `spec/session.md`).
+   session JSON (the unit of reproducibility; format in `spec/session.md`);
+   BIDS derivatives layout in `spec/bids-derivatives.md`.
 
 **Out (later):** markers/epoching, buses/routing matrix, sidechains, node editor,
 provenance cards, plugin registry/signing, multi-stream sync, action sinks, Rust core,

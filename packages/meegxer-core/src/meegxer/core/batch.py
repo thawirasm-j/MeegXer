@@ -112,6 +112,10 @@ class BatchScheduler:
         online_only = [n.id for n in graph.nodes if not n.manifest.runs_offline]
         if online_only:
             raise GraphError(f"online-only nodes cannot run in batch: {online_only}")
+        sinks = [n for n in graph.nodes if isinstance(n.impl, Sink)]
+        for node in sinks:
+            assert isinstance(node.impl, Sink)
+            node.impl.bind(graph, node.id)
 
         for node in graph.nodes:
             if node.role is NodeRole.SOURCE:
@@ -134,6 +138,9 @@ class BatchScheduler:
                 remaining[node.input] -= 1
                 self._release(graph, node.input, remaining, streams, keep_ids, result)
             self._release(graph, node.id, remaining, streams, keep_ids, result)
+        for node in sinks:
+            assert isinstance(node.impl, Sink)
+            node.impl.finish()
         return result
 
     def _read_source(self, source: Source) -> Iterable[Block]:
