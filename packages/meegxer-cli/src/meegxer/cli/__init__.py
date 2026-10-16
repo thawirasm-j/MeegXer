@@ -61,8 +61,36 @@ def run(
     strict: Annotated[
         bool, typer.Option(help="Refuse a session whose input files changed.")
     ] = False,
+    bids_out: Annotated[
+        Path | None,
+        typer.Option(help="Write BIDS derivatives here (adds a BIDS writer)."),
+    ] = None,
+    bids: Annotated[
+        Path | None,
+        typer.Option(help="Run every matching recording of this raw BIDS dataset."),
+    ] = None,
+    subjects: Annotated[
+        list[str] | None,
+        typer.Option("--subjects", help="With --bids: subjects (repeat or 01,02)."),
+    ] = None,
+    task: Annotated[list[str] | None, typer.Option(help="With --bids: tasks.")] = None,
+    ses: Annotated[
+        list[str] | None, typer.Option(help="With --bids: sessions.")
+    ] = None,
+    run_label: Annotated[
+        list[str] | None, typer.Option("--run-label", help="With --bids: runs.")
+    ] = None,
 ) -> None:
-    """Run a pipeline or session offline over one recording."""
+    """Run a pipeline or session offline over one recording, or with --bids over
+    many (BIDS derivatives, one after another; done ones are skipped)."""
+    if bids is not None:
+        if input is not None or output is not None or session is not None:
+            typer.echo("error: --bids runs many recordings; it writes BIDS "
+                       "derivatives (no -i, -o or --session)", err=True)  # fmt: skip
+            raise typer.Exit(code=1)
+        _run_bids(pipeline, bids, bids_out, overwrite, allow_version_mismatch,
+                  block_size, cache_dir, subjects, task, ses, run_label)  # fmt: skip
+        return
     from meegxer.core.batch import BatchScheduler, offline_input_fingerprints
     from meegxer.core.cache import DirectoryCache
     from meegxer.core.graph import GraphError
@@ -100,8 +128,13 @@ def run(
             sink_cls = registry.get(sink_name)
             assert issubclass(sink_cls, Sink)
             graph.add(sink_cls({"path": str(output), "overwrite": overwrite}))
+        if bids_out is not None:
+            from meegxer.core.bids_out import ensure_writer
+
+            ensure_writer(graph, bids_out, overwrite)
         if (
             output is None
+            and bids_out is None
             and input is None
             and not any(n.role.value == "sink" for n in graph.nodes)
         ):
@@ -146,6 +179,77 @@ def run(
         typer.echo(f"wrote {output}")
     if session is not None:
         typer.echo(f"wrote {session}")
+
+
+def _split(values: list[str] | None) -> list[str]:
+    return [v for item in values or [] for v in item.split(",") if v]
+
+
+def _run_bids(
+    pipeline: Path,
+    root: Path,
+    bids_out: Path | None,
+    overwrite: bool,
+    allow_version_mismatch: bool,
+    block_size: int | None,
+    cache_dir: Path | None,
+    subjects: list[str] | None,
+    tasks: list[str] | None,
+    sessions: list[str] | None,
+    runs: list[str] | None,
+) -> None:
+    """One pipeline over many recordings of a BIDS dataset, one after another,
+    each with a fresh graph (models fitted per recording)."""
+    from meegxer.core.batch import BatchScheduler, offline_input_fingerprints
+    from meegxer.core.bids_out import ensure_writer, find_recordings, target_for
+    from meegxer.core.cache import DirectoryCache
+    from meegxer.core.registry import Registry
+    from meegxer.core.session import adopt_models, load_session, read_session
+    from meegxer.core.sources import BidsSource
+
+    root = root.resolve()
+    recordings = find_recordings(
+        root, subjects=_split(subjects), tasks=_split(tasks),
+        sessions=_split(sessions), runs=_split(runs),
+    )  # fmt: skip
+    if not recordings:
+        typer.echo(f"error: no matching EEG recordings in {root}", err=True)
+        raise typer.Exit(code=1)
+    registry = Registry.from_entry_points()
+    cache = DirectoryCache(cache_dir) if cache_dir else None
+    done, skipped, failed = [], [], []
+    for i, params in enumerate(recordings, 1):
+        short = {"subject": "sub", "session": "ses", "task": "task", "run": "run"}
+        label = "_".join(f"{short[k]}-{v}" for k, v in params.items()
+                         if v and k in short)  # fmt: skip
+        prefix = f"[{i}/{len(recordings)}] {label}"
+        try:
+            loaded = load_session(
+                read_session(pipeline),
+                registry,
+                allow_version_mismatch=allow_version_mismatch,
+            )
+            graph = loaded.graph
+            graph.replace(graph.source.id, BidsSource(params))
+            writer = ensure_writer(graph, bids_out, overwrite)
+            target = target_for(graph, writer.params)
+            if target.path("eeg.set").exists() and not overwrite:
+                skipped.append(label)
+                typer.echo(f"{prefix}: already done, skipped")
+                continue
+            adopt_models(loaded, offline_input_fingerprints(graph))
+            result = BatchScheduler(block_size=block_size, cache=cache).run(graph)
+        except Exception as exc:  # one bad recording does not stop the others
+            failed.append(label)
+            typer.echo(f"{prefix}: FAILED: {exc}", err=True)
+            continue
+        done.append(label)
+        fitted = f" (fitted: {', '.join(result.fitted)})" if result.fitted else ""
+        typer.echo(f"{prefix}: wrote {target.path('eeg.set')}{fitted}")
+    typer.echo(f"done {len(done)}, skipped {len(skipped)}, failed {len(failed)}"
+               + (f": {', '.join(failed)}" if failed else ""))  # fmt: skip
+    if failed:
+        raise typer.Exit(code=1)
 
 
 session_app = typer.Typer(no_args_is_help=True, help="Session files (reproducibility).")

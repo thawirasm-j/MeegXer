@@ -174,5 +174,13 @@ class Sink(_ConfiguredNode):
     @abstractmethod
     def write(self, block: AnyBlock) -> None: ...
 
+    def bind(self, graph: Any, node_id: str) -> None:
+        """Batch runs call this before running, with the graph the sink is in and
+        its id: for writers that need the input's identity (BIDS derivatives)."""
+
+    def finish(self) -> None:
+        """Batch runs call this once every node has run (after ``close``): for
+        writers that record the whole run (e.g. its session file)."""
+
     def close(self) -> None:
         """Flush and release resources."""

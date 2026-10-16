@@ -32,6 +32,10 @@ define it.
     session file, the unit of reproducibility: a pipeline plus node versions and
     provenance (external plugins: image, image ID, registry digests), fitted
     models as readable JSON, input/output file hashes and the environment.
+  - `bids-derivatives.md` (0.2.10): the BIDS-derivatives layout MeegXer writes
+    (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
+    with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
+    session file next to each recording.
   - `control-api.md`: JSON-RPC 2.0 methods between the daemon and clients.
   - `display-protocol.md`: decimated min/max envelope frames on the display stream.
   - `plugin-protocol.md` (`meegxer.plugin/0.2`): framed stdin/stdout protocol for

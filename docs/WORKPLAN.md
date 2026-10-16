@@ -316,7 +316,13 @@ stops the feature outlets.
   `.set` writer; CLI `run --session`, `session check/save`; daemon
   `get_session`/`load_session`; GUI *Open…* reads sessions and *Save session…*
   writes them (offline runs reuse the previous run's or the session's models).
-- BIDS-derivatives output layout with provenance.
+- BIDS-derivatives output layout with provenance. **Done:**
+  `spec/bids-derivatives.md` (spec 0.2.10): `meegxer.core.bids_writer` and
+  `meegxer.core.bids_features` (offline sinks; entities from a BIDS input or a
+  BIDS-style file name), sidecars, `dataset_description.json` with `GeneratedBy`,
+  the run's session file per recording; CLI `--bids-out` and a sequential
+  `--bids` loop over a dataset (skips finished recordings, continues past
+  failures). Parallel workers, a job queue and QC reports: roadmap item 2.
 - **Acceptance test 4:** save → reload on a second machine → identical output file.
   **Passing** (`packages/meegxer-cli/tests/test_cli_session.py`, ICA model reused,
   byte-identical `.set`).

@@ -77,6 +77,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - Sessions (`spec/session.md`): `meegxer run … --session out.meegxer.json`,
   `meegxer run out.meegxer.json`, `meegxer session check FILE`,
   `meegxer session save FILE` (from the daemon, with calibrated models).
+- BIDS derivatives (`spec/bids-derivatives.md`): `meegxer run … --bids-out DIR`,
+  `meegxer run PIPELINE --bids RAW_ROOT [--subjects 01,02] [--task T] [--overwrite]`.
 - Live: `uv run meegxer daemon --pipeline live.json --start`, then `meegxer status`,
   `meegxer set hp low=0.5`, `meegxer calibrate NODE --seconds 60`, `meegxer stop`,
   `meegxer clear-calibration [NODE]`, `meegxer passthrough NODE --on/--off`.
