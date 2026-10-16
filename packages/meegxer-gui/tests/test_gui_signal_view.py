@@ -186,9 +186,12 @@ def test_offline_strips_fit_on_the_whole_recording(qapp: QApplication) -> None:
                              advanced=False, selected=False)  # fmt: skip
         from PySide6.QtWidgets import QLabel, QPushButton
 
-        return {w.text() for w in widget.findChildren(QPushButton)} | {
+        found = {w.text() for w in widget.findChildren(QPushButton)} | {
             w.text() for w in widget.findChildren(QLabel)
         }
+        widget.deleteLater()  # parentless: delete while the app runs, not at exit
+        qapp.processEvents()
+        return found
 
     assert "Calibrate" not in texts("offline")
     assert "fits on the whole recording" in texts("offline")
