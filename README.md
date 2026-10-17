@@ -2,7 +2,16 @@
 
 Explore brain signals with a user-friendly EEG mixer.
 
-Alpha (0.1.0a). Design: [`docs/DESIGN.md`](docs/DESIGN.md). Plan: [`docs/WORKPLAN.md`](docs/WORKPLAN.md).
+Pre-release: 0.2.1a8 is the latest alpha; 0.3.0b1, the first beta, comes once the
+manual release checks pass ([`docs/TESTING.md`](docs/TESTING.md)). What is new:
+[`docs/RELEASE_NOTES.md`](docs/RELEASE_NOTES.md). Design: [`docs/DESIGN.md`](docs/DESIGN.md).
+Plan: [`docs/WORKPLAN.md`](docs/WORKPLAN.md).
+
+MeegXer runs EEG processing as a chain of strips, like a mixing desk: live from
+an LSL stream or a recording played back, or offline over whole recordings and
+BIDS datasets, with the same nodes either way. Tap the chain anywhere to see the
+signal, its spectrum and head plot, the features a strip computes, or the ICA
+components with their ICLabel classes.
 
 ## Install
 
@@ -21,7 +30,7 @@ PATH; nothing else on the system changes.
 
    Close and reopen PowerShell so `uv` is found.
 3. Install MeegXer (the first run downloads Python and the packages, a few hundred
-   MB; `--prerelease allow` is needed while MeegXer is in alpha):
+   MB; `--prerelease allow` is needed while MeegXer is a pre-release):
 
    ```powershell
    uv tool install --python 3.14 --prerelease allow meegxer
@@ -69,7 +78,41 @@ meegxer-gui
 On a minimal Linux install the GUI may need the Qt system libraries
 (Debian/Ubuntu: `sudo apt install libegl1 libgl1 libxkbcommon0 libfontconfig1`).
 
-### Plugins and Sterile mode
+## Quickstart
+
+A first look in the GUI, about five minutes, no EEG hardware needed:
+
+1. **Start it:** `meegxer-gui`. The window opens with a synthetic EEG input, a
+   high-pass and a notch in the chain, and the input set to *live*.
+2. **Run live:** click **▶ Start**. The signal view shows the newest seconds;
+   each ◇ between strips is a tap. Click one to show it (◆ Main), click another
+   to compare; right-click makes a tap Main. *Difference* shows what the strips
+   between two taps removed, *Spectrum* the power spectra with a head plot.
+3. **Change it while it runs:** click a strip and edit its parameters in the
+   inspector; processing goes on. **+** between strips adds one (filters,
+   re-referencing, ICA + ICLabel, features, outputs).
+4. **Look at features:** add *Power spectrum* or *Band power*. Its rail appears
+   above the chain; click the rail's name to see a spectrum per channel, or each
+   channel's band power over time.
+5. **Process a recording offline:** on the Input strip pick *Recording file*
+   (EEGLAB `.set`, EDF/BDF, BrainVision, FIF) or *BIDS recording*, check
+   channels and positions under *Recording…*, then **▶ Run offline**. Strips that learn (ICA) fit on the
+   whole recording; scroll through it with the time bar. Click the ICs rail's
+   name to see the components coloured by ICLabel class.
+6. **Keep it:** *Save…* writes the chain as a pipeline file; *Save session…* also
+   keeps the fitted models (ICA) so a rerun gives the same output.
+
+The same pipeline runs without the GUI:
+
+```bash
+meegxer run pipeline.json -i sub-01.set -o sub-01_clean.set   # one recording
+meegxer run pipeline.json --bids ds --task rest              # a BIDS dataset
+```
+
+More in [Development](#development) below and in `spec/` (pipeline, session,
+control API and plugin formats).
+
+## Plugins and Sterile mode
 
 The `meegxer` install includes everything: the built-in nodes, the plugin runtime
 and the `meegxer-plugin` command. Processing runs on your machine.

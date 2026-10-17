@@ -446,8 +446,15 @@ same node interface plugins use so both remain possible.
 
 ## 5. v1 scope
 
+Status: everything under **In** has shipped (0.2.1a8); the first beta (0.3.0b1)
+follows the manual release checks (`docs/TESTING.md`), then 1.0.0. What each
+release added: `docs/RELEASE_NOTES.md`.
+
 **In:**
-1. Inputs: LSL inlet, synthetic generator, file playback; BIDS, EDF/BDF, EEGLAB .set.
+1. Inputs: LSL inlet (with an LSL marker stream for events), synthetic generator,
+   file playback; BIDS, EDF/BDF, BrainVision, FIF, EEGLAB .set. A Recording window
+   edits channel names, types, bad channels, positions (montage or per channel)
+   and events without touching the file.
    The synthetic generator (node 0.2.0) is made of parts switched on and off:
    neural (pink 1/f background + posterior alpha bursts), line noise, SSVEP, a pure
    sine, DC offset per channel, and artefacts (blinks, saccades, slow eye
@@ -458,26 +465,40 @@ same node interface plugins use so both remain possible.
    their sources (blink rate: Bentivoglio et al. 1997; EMG spectra and topography:
    Goncharova et al. 2003; EOG ~20 uV per degree) are listed in
    `meegxer/core/sources.py`; values without a source are marked heuristic.
-2. Engine: DAG core with linear chain view, fit/transform + calibration, sample-index
-   alignment, real-time and batch schedulers.
-3. Built-in nodes (`meegxer-nodes`): spectral filters, spatial filters, referencing,
-   ICA → ICLabel; features: PSD and band power (Welch or multitaper), spectral
-   parameterization (specparam), Morlet wavelet power, Hilbert, connectivity,
-   complexity, SSVEP detection (CCA, filter-bank CCA).
+2. Engine: DAG core with linear chain view, fit/transform + calibration (labelled
+   calibration on events), sample-index alignment, real-time and batch
+   schedulers. Rails (`docs/RAILS.md`): the Events rail (the input's events and
+   LSL markers, plus what strips emit), the ICs rail, one rail per feature strip;
+   extra ports read and write them.
+3. Built-in nodes (`meegxer-nodes`): IIR and FIR filters (causal, or zero-phase
+   offline), notch, re-referencing, bad-channel interpolation, CSD, EOG
+   regression, ICA → ICLabel (writing the ICs rail); features: PSD and band power
+   (Welch or multitaper), spectral parameterization (specparam), Morlet wavelet
+   power, Hilbert envelope, connectivity, complexity, SSVEP detection (CCA,
+   filter-bank CCA), CSP. Each node lists its references (*Credits*).
    ASR is the EEGLAB plugin `eeglab.asr`: EEGLAB's ASR code is licensed for
    non-commercial use only, so no copy of it lives in MeegXer and the built-in
    nodes have no ASR.
-4. External plugin runtime + two reference plugins (Octave/EEGLAB stateful IIR
-   bandpass; MNE notch or re-ref).
-5. GUI: drag-and-drop chain, probes (overlay + difference), auto-generated parameter
-   controls from manifests, PSD/feature views, per-stage status, CPU/latency/overrun meters.
-6. Outputs: LSL outlet, .set/EDF export, feature tables (BIDS-derivatives layout),
-   session JSON (the unit of reproducibility; format in `spec/session.md`);
-   BIDS derivatives layout in `spec/bids-derivatives.md`.
+4. Plugins: the container runtime + two reference plugins (Octave/EEGLAB stateful
+   IIR bandpass; MNE notch or re-ref), and local plugins and custom MNE-Python
+   scripts (offline `process`, live `transform`/`fit`, windowed `features`) after
+   the user accepts the local-code notice (`docs/CUSTOM_SCRIPTS.md`).
+5. GUI: drag-and-drop chain with rails, probe taps (overlay, difference, spectrum
+   with a head plot), feature views (a spectrum or values over time) and the ICs
+   by ICLabel class, auto-generated parameter controls from manifests, per-stage
+   status, CPU/latency/overrun meters, settings and a remembered view
+   (`docs/SETTINGS.md`).
+6. Outputs: LSL outlet (signal and features), .set/EDF export, feature tables
+   (BIDS-derivatives layout), session JSON (the unit of reproducibility; format in
+   `spec/session.md`); BIDS derivatives layout in `spec/bids-derivatives.md`, one
+   recording or a whole dataset from the CLI.
 
-**Out (later):** markers/epoching, buses/routing matrix, sidechains, node editor,
-provenance cards, plugin registry/signing, multi-stream sync, action sinks, Rust core,
-CLAP native plugins, installers.
+**Out (later):** Sterile mode (planned next, `docs/WORKPLAN.md` M8), EEGLAB
+decompositions read from files onto the ICs rail, an LDA classifier, the Sources
+rail, event outputs (keyboard sink, events writer, epoching), an events strip,
+the Octave script tier, buses/routing matrix, sidechains, node editor, provenance
+cards, plugin registry/signing, multi-stream sync, action sinks, Rust core, CLAP
+native plugins, installers.
 
 ## 6. Acceptance tests
 
