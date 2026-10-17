@@ -57,7 +57,9 @@ uv run pytest
 - [x] Ends with `N passed, M skipped` and **no failures or errors**.
 - [x] The skips are only these (`uv run pytest -rs` lists the reasons):
       "set MEEGXER_TEST_IMAGES …", "needs the meegxer/eeglab-asr image …",
-      "GNU Octave not installed". Any other skip reason: note it.
+      "GNU Octave not installed", and on Windows "POSIX signals" (a Linux/macOS
+      test that hard-kills the GUI; CI runs it there). Any other skip reason:
+      note it.
 
 ### A4. Build the reference plugin images
 
@@ -91,7 +93,9 @@ uv run pytest packages/meegxer-plugins -rs
 ```
 
 - [x] No failures. The "set MEEGXER_TEST_IMAGES" and "needs the meegxer/eeglab-asr
-      image" skips are gone (ASR concordance against EEGLAB ran).
+      image" skips are gone (ASR concordance against EEGLAB ran). "GNU Octave not
+      installed" may remain: that test runs the Octave plugin with Octave on the
+      host, and the same plugin was just checked inside its image.
 
 ### A7. Stability and latency with a plugin (acceptance tests 2 and 3 on Windows)
 
