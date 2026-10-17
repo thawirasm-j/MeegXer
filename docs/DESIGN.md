@@ -307,10 +307,10 @@ it never interrupts processing.
   relative to 1–45 Hz). The map is a smooth (Clough–Tocher) interpolation over the
   electrodes, extrapolated to the head's edge through a ring of virtual points
   (each the mean of its nearest electrodes, like MNE's `extrapolate="head"`) and
-  clipped to the electrodes' range. Schemes: *Heat* (band power in 2 dB bands over
+  clipped to the electrodes' range. Maps: *Band power* (in 2 dB bands over
   10, 20 or 30 dB below the top; live, the top rises at once with the head's
   maximum and decays with the smoothing time constant, so the map fades instead of
-  flickering), *Change* (Main vs. the first comparison tap in dB, diverging, the
+  flickering), *Power change* (Main vs. the first comparison tap in dB, diverging, the
   0 dB line bold) and *Peak frequency* (where the band peaks; electrodes whose
   maximum is on a band edge are left out). Electrodes are drawn in their channel
   colours inside a black-and-white ring, apart from the map's colours; hover names

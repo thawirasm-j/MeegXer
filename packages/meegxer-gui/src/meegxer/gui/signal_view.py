@@ -468,7 +468,7 @@ class SignalView(QWidget):
             widget.setToolTip(tip)
             row.addWidget(widget)
 
-        self.head_toggle = QPushButton("Head")
+        self.head_toggle = QPushButton("Head plot")
         self.head_toggle.setCheckable(True)
         self.head_toggle.setChecked(True)
         self.head_toggle.setToolTip("Show the head plot of band power")
@@ -476,7 +476,7 @@ class SignalView(QWidget):
         row.addWidget(self.head_toggle)
         self.band_menu = QComboBox()
         for name, (lo, hi) in BANDS.items():
-            text = f"{SYMBOLS[name]} {name} {lo:g}–{hi:g} Hz"  # noqa: RUF001
+            text = f"{SYMBOLS[name]} {name.capitalize()} ({lo:g}–{hi:g} Hz)"  # noqa: RUF001
             self.band_menu.addItem(text, (lo, hi))
         self.band_menu.addItem("Custom", None)
         self.band_menu.setCurrentIndex(2)
@@ -492,15 +492,15 @@ class SignalView(QWidget):
         self.scheme = QComboBox()
         for key, text in SCHEMES.items():
             self.scheme.addItem(text, key)
-        labelled("Colour", self.scheme, "Heat: band power in dB below the top · "
-                 "Change: Main vs. the comparison tap · Peak frequency: where the "
-                 "band peaks")  # fmt: skip
+        labelled("Map", self.scheme, "Band power: dB below the head's maximum · "
+                 "Power change: Main vs. the comparison tap · Peak frequency: "
+                 "where the band peaks")  # fmt: skip
         self.db_range = QComboBox()
         for db in RANGES:
             self.db_range.addItem(f"{db:g} dB", db)
         self.db_range.setCurrentIndex(RANGES.index(DEFAULT_RANGE))
         labelled("Range", self.db_range, "How far below the head's maximum the "
-                 "heat map shows (live, the maximum decays with the "
+                 "band-power map shows (live, the maximum decays with the "
                  "smoothing)")  # fmt: skip
         self.scheme.currentIndexChanged.connect(
             lambda _: self.db_range.setEnabled(self.scheme.currentData() == "heat")
@@ -548,7 +548,7 @@ class SignalView(QWidget):
             if abs(a - lo) < 0.05 and abs(b - hi) < 0.05:
                 self.band_menu.setCurrentIndex(i)
                 return
-        self.band_menu.setItemText(custom, f"Custom {lo:.1f}–{hi:.1f} Hz")  # noqa: RUF001
+        self.band_menu.setItemText(custom, f"Custom ({lo:.1f}–{hi:.1f} Hz)")  # noqa: RUF001
         self.band_menu.setCurrentIndex(custom)
 
     def _smoothing_changed(self) -> None:

@@ -126,7 +126,8 @@ def test_changes_preview_at_once_and_cancel_goes_back(qapp: QApplication) -> Non
     from PySide6.QtWidgets import QComboBox
 
     seq = next(c for c in d.findChildren(QComboBox)
-               if c.findData("cividis") >= 0 and "heat" in c.toolTip())  # fmt: skip
+               if c.findData("cividis") >= 0
+               and "band-power" in c.toolTip())  # fmt: skip
     seq.setCurrentIndex(seq.findData("cividis"))
     assert seen[-1]["visualization"]["sequential"] == "cividis"
     assert d.settings()["visualization"]["sequential"] == "cividis"

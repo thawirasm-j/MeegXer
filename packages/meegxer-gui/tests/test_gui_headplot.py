@@ -244,7 +244,7 @@ def test_the_spectrum_view_shows_the_head_and_its_band(qapp: QApplication) -> No
     assert v.band_range() == (8.0, 13.0)
 
     v.band.setRegion((9.0, 12.0))  # dragged
-    assert v.band_menu.currentText() == "Custom 9.0–12.0 Hz"  # noqa: RUF001
+    assert v.band_menu.currentText() == "Custom (9.0–12.0 Hz)"  # noqa: RUF001
     v.band_menu.setCurrentIndex(1)
     v.band_menu.activated.emit(1)  # theta chosen
     assert v.band_range() == (4.0, 8.0)

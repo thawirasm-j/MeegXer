@@ -145,6 +145,15 @@ def test_csd_matches_mne_and_keeps_bad_channels() -> None:
 
 
 @pytest.mark.parametrize("proc", [InterpolateBads(), CSD()])
+def test_spatial_nodes_pass_empty_blocks(proc: object) -> None:
+    """A delaying node upstream may emit empty blocks (spec 0.2.5)."""
+    params = {} if isinstance(proc, InterpolateBads) else {
+        "lambda2": 1e-5, "stiffness": 4.0, "n_legendre_terms": 50}  # fmt: skip
+    empty = Block(np.zeros((len(EEG) + 1, 0)), info(("Cz",)), 0, 0.0)
+    assert run(proc, empty, **params).n_samples == 0
+
+
+@pytest.mark.parametrize("proc", [InterpolateBads(), CSD()])
 def test_spatial_nodes_are_the_same_block_by_block(proc: object) -> None:
     b = block(eeg_data(800), info(("Cz",)))
     params = {} if isinstance(proc, InterpolateBads) else {

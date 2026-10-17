@@ -366,7 +366,7 @@ class SettingsDialog(QDialog):
         sequential = self._combo(
             "visualization.sequential",
             SEQUENTIAL,
-            "Magnitudes: the head plot's heat map",
+            "Magnitudes: the head plot's band-power map",
         )
         peak = self._combo(
             "visualization.peak",
@@ -376,7 +376,7 @@ class SettingsDialog(QDialog):
         diverging = self._combo(
             "visualization.diverging",
             DIVERGING,
-            "Signed changes: the head plot's change map",
+            "Signed changes: the head plot's power-change map",
         )
         ramp = np.linspace(0, 1, 64)
         for box in (sequential, peak, diverging):
@@ -408,7 +408,7 @@ class SettingsDialog(QDialog):
         row.setContentsMargins(0, 0, 0, 0)
         preset = QComboBox()
         for name, (lo, hi) in BANDS.items():
-            text = f"{SYMBOLS[name]} {name} {lo:g}–{hi:g} Hz"  # noqa: RUF001
+            text = f"{SYMBOLS[name]} {name.capitalize()} ({lo:g}–{hi:g} Hz)"  # noqa: RUF001
             preset.addItem(text, [lo, hi])
         preset.addItem("Custom", None)
         low, high = QDoubleSpinBox(), QDoubleSpinBox()
@@ -450,7 +450,7 @@ class SettingsDialog(QDialog):
         row.addWidget(low)
         row.addWidget(QLabel("to"))
         row.addWidget(high)
-        form.addRow("Head-plot band", band)
+        form.addRow("Head plot band", band)
         form.addRow(
             "Power",
             self._combo(
@@ -459,10 +459,10 @@ class SettingsDialog(QDialog):
             ),
         )
         form.addRow(
-            "Head-plot colour", self._combo("visualization.spectrum.scheme", SCHEMES)
+            "Head plot map", self._combo("visualization.spectrum.scheme", SCHEMES)
         )
         form.addRow(
-            "Heat range",
+            "Power range",
             self._combo(
                 "visualization.spectrum.range", {int(r): f"{r:g} dB" for r in RANGES}
             ),

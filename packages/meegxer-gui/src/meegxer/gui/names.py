@@ -18,7 +18,7 @@ TITLES = {
     "meegxer.nodes.notch": "Notch",
     "meegxer.nodes.notch_zerophase": "Notch (zero-phase)",
     "meegxer.nodes.rereference": "Re-reference",
-    "meegxer.nodes.iir_filter_zerophase": "Filter (zero-phase)",
+    "meegxer.nodes.iir_filter_zerophase": "IIR filter (zero-phase)",
     "meegxer.nodes.ica": "ICA + ICLabel",
     "meegxer.nodes.psd": "Power spectrum",
     "meegxer.nodes.band_power": "Band power",
@@ -43,12 +43,15 @@ FILTER_KINDS = {
 
 def title(node: str, params: dict[str, Any] | None = None) -> str:
     if node == "meegxer.nodes.iir_filter":
-        return FILTER_KINDS.get(str((params or {}).get("kind")), "Band-pass")
+        if params is None:  # the node itself (menus), not a strip
+            return "IIR filter"
+        return FILTER_KINDS.get(str(params.get("kind")), "Band-pass")
     if node == "meegxer.nodes.fir_filter" and params and params.get("kind"):
         return f"FIR {FILTER_KINDS.get(str(params['kind']), 'filter').lower()}"
     if node in TITLES:
         return TITLES[node]
-    return node.rsplit(".", 1)[-1].replace("_", " ").capitalize()
+    text = node.rsplit(".", 1)[-1].replace("_", " ")
+    return text[:1].upper() + text[1:]  # keep the node's own case (e.g. FOOOF)
 
 
 def badge(node: str, params: dict[str, Any], mode: str) -> str:

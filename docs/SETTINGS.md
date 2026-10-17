@@ -40,12 +40,12 @@ reported (in the log) and use their defaults. The format is checked against
 | | Engine address (used at the next start) | `general.daemon` | `tcp://127.0.0.1:5555` |
 | Appearance | Theme: `dark`, `light`, `system`, or a theme file | `appearance.theme` | `dark` |
 | | Text size (%) | `appearance.scale` | `100` |
-| Visualization | Sequential map (heat map) | `visualization.sequential` | `viridis` |
-| | Diverging map (change map) | `visualization.diverging` | `blue-white-red` |
+| Visualization | Sequential map (band-power map) | `visualization.sequential` | `viridis` |
+| | Diverging map (power-change map) | `visualization.diverging` | `blue-white-red` |
 | | Frequency map (peak frequency) | `visualization.peak` | `plasma` |
 | | Reverse sequential maps on a light theme | `visualization.flip_on_light` | `false` |
 | | Time span (s) | `visualization.span` | `10` |
-| | Head-plot band, power, colour, heat range, live smoothing | `visualization.spectrum.*` | α 8–13 Hz, absolute, heat, 20 dB, 2 s |
+| | Head plot band, power, map, power range, live smoothing | `visualization.spectrum.*` | α (8–13 Hz), absolute, band power, 20 dB, 2 s |
 | Data & storage | Offline run files (empty: system temp folder) | `storage.offline_dir` | `""` |
 | | Offline cache cap (GB) | `storage.cache_gb` | `5` |
 | | Pipelines and sessions folder (file dialogs) | `storage.output_dir` | `""` |

@@ -54,8 +54,8 @@ from meegxer.gui.theme import Theme
 FloatArray = npt.NDArray[np.float64]
 
 SCHEMES = {
-    "heat": "Heat",
-    "change": "Change",
+    "heat": "Band power",
+    "change": "Power change",
     "peak": "Peak frequency",
 }
 BANDS: dict[str, tuple[float, float]] = {
@@ -451,7 +451,7 @@ def render(
         band_rgb = maps.diverging_rgb(centres, theme)
         bold = [0.0]
         scale = (f"−{n * step:g} dB", f"+{n * step:g} dB")  # noqa: RUF001
-        caption = f"Change vs. the comparison tap, {step:g} dB steps"
+        caption = f"Power change vs. the comparison tap, {step:g} dB steps"
     elif data.scheme == "peak":
         step = nice_step((hi - lo) / 10)
         start = math.floor(lo / step) * step

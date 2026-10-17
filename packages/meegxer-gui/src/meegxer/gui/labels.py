@@ -97,6 +97,10 @@ PARAMS: dict[str, str] = {
     "n_components": "Number of components",
     "max_iter": "Maximum iterations",
     "lookahead": "Look-ahead",
+    "eog": "EOG channels",
+    "lambda2": "Spline regularization",
+    "stiffness": "Spline stiffness",
+    "n_legendre_terms": "Legendre terms",
     # features
     "window": "Window length",
     "step": "Step between windows",
