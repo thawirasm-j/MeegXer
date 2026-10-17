@@ -132,7 +132,8 @@ def transform(data, state, info, cutoff: float = 1.0, order: int = 4):
   events in `raw.annotations` (onset in seconds from the start of `raw`,
   duration, label), e.g. for a classifier trained on cued trials. The fit is
   refused when the calibration has no events (offline: the recording's events or
-  an events file; live markers come later).
+  an events file; live: the LSL input's marker stream, or a recording played
+  live).
 - **Block by block must equal one pass.** Live, blocks arrive in whatever sizes the
   stream delivers; the result must not depend on them (acceptance test 1). A script
   that, say, removes each block's own mean fails this. `meegxer-plugin check`

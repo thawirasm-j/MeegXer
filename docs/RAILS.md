@@ -1,7 +1,8 @@
 # Rails (design)
 
 Status: the chain view draws rails for what the pipeline has today (feature rails,
-the input's events). The rest is a proposal; points marked **[rule]** change an
+the input's events), and the core carries the Events rail in both schedulers
+(step 2). The rest is a proposal; points marked **[rule]** change an
 architecture rule and need approval before they are built.
 
 ## 1. The idea
@@ -49,6 +50,25 @@ output strip chooses which line it draws from.
    type unless it names one (the inspector's *Reads*; the node's `input` in the
    pipeline file).
 8. **Only the producer writes a rail**, except Events, which any strip may add to.
+
+## Events rail in the core (built)
+
+- **Where it starts:** the input.
+  - Offline, and for a recording played live: the recording's events (annotations
+    or an events file, after the recording overrides).
+  - Live LSL: the input's marker stream (`marker_stream`, with `marker_type` under
+    Advanced). Each marker is placed once, at the inlet, on the signal's sample
+    index from its LSL timestamp (rule 8); both inlets use clock sync and
+    dejitter, and the signal's recent chunks anchor timestamps to indices.
+- **Who adds to it:** any strip, through the events its transform emits.
+- **Who sees what:** a strip sees the input's events and those of the strips
+  upstream of it, in sample-index order (`meegxer.core.events.EventsRail`).
+- **Live labelled calibration:** `calibrate NODE --seconds N` collects N s, then
+  waits `marker_wait` (default 0.5 s) for markers still on their way, while
+  processing goes on, and fits on the events inside the stretch.
+- **Status:** `input_events`, `events_late` (markers that landed in a stretch
+  already fitted on: missed trials), and the LSL input's `markers` and
+  `markers_dropped` (before the first sample, or without a label).
 
 ## 4. Display (built)
 
@@ -100,9 +120,14 @@ Strips and plugins need a way to say which lines they read and write.
 ## 6. Build order (one PR each)
 
 1. Rail drawing in the chain view, named feature rails, *Reads* choice (this PR).
-2. Events rail in the core, and an LSL marker inlet (live CSP calibration follows).
+2. Events rail in the core, and an LSL marker inlet on the input (done: live
+   labelled calibration, e.g. CSP).
 3. Rail ports and `TransformResult.rails` [rules 6, 7]; plugin protocol and SDKs.
 4. ICs rail from ICA and from EEGLAB files; IC rejection and IC features read it.
 5. LDA classifier reading a feature rail and adding events.
 6. Sources rail: inverse on a template head (cached ahead for Sterile mode).
 7. Event outputs: keyboard sink, events writer, epoching.
+8. An events strip (e.g. "LSL markers") for an external event source: it adds to
+   the Events rail (○) rather than starting it. Its markers are still placed on
+   the input's sample index; its place in the chain only decides which strips
+   see them.

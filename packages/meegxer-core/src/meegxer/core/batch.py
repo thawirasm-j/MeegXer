@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 from meegxer.core.block import Block, Event, EventBlock, FeatureBlock, concat_blocks
 from meegxer.core.cache import Cache, CachedOutput
+from meegxer.core.events import EventsRail
 from meegxer.core.graph import Graph, GraphError, GraphNode
 from meegxer.core.node import NodeRole, Output, Probe, Sink, Source, output_blocks
 from meegxer.core.recording import recording_events
@@ -111,6 +112,8 @@ class BatchScheduler:
         self.cache = cache
         self.calibration_seconds = calibration_seconds
         self._events: tuple[Event, ...] = ()  # the recording's, for labelled fits
+        self._rail = EventsRail()  # those plus what strips emit (docs/RAILS.md)
+        self._graph: Graph | None = None
 
     def run(self, graph: Graph, *, keep: Iterable[str] = ()) -> BatchResult:
         result = BatchResult()
@@ -127,6 +130,9 @@ class BatchScheduler:
         labelled = any(isinstance(n.impl, Stage) and n.manifest.fit_events
                        for n in graph.nodes)  # fmt: skip
         self._events = recording_events(source) if labelled else ()
+        self._rail = EventsRail()
+        self._rail.add(self._events)
+        self._graph = graph
         sinks = [n for n in graph.nodes if isinstance(n.impl, Sink)]
         for node in sinks:
             assert isinstance(node.impl, Sink)
@@ -183,7 +189,11 @@ class BatchScheduler:
             raise GraphError(f"{node.id}: processors take Signal input in v1")
 
         if stage.status(input_fp) is not StageStatus.READY:
-            stage.fit(self._calibration(signal_in), input_fp, self._events)
+            # upstream strips' events follow from input_fp, so it names the
+            # recording's only; the fit sees everything on the rail to its left
+            assert self._graph is not None
+            trials = self._rail.visible_to(self._graph, node.id)
+            stage.fit(self._calibration(signal_in), input_fp, trials)
             result.fitted.append(node.id)
         output_fp = stage.output_fingerprint(input_fp)
         result.fingerprints[node.id] = output_fp
@@ -194,6 +204,7 @@ class BatchScheduler:
             if hit is not None:
                 result.cached.append(node.id)
                 result.events[node.id] = hit.events
+                self._rail.add(hit.events, node.id)
                 return list(split_block(hit.block, self.block_size))
 
         if stage.manifest.availability == "offline" and len(signal_in) > 1:
@@ -210,6 +221,7 @@ class BatchScheduler:
             out.extend(_non_empty(tail.block))
             events.extend(tail.events)
         result.events[node.id] = tuple(events)
+        self._rail.add(events, node.id)
         result.computed.append(node.id)
         if cacheable and self.cache is not None and out:
             joined = concat_blocks([b for b in out if isinstance(b, Block)])

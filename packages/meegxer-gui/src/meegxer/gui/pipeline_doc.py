@@ -420,12 +420,22 @@ class PipelineDoc:
             rail.lane = len(rails) - 1 - i
         labelled = [s.id for s in self.strips[1:] if self.manifest(s).get("fit_events")]
         source = self.source
-        if source is not None and self.input_events:
+        if source is not None and self.carries_events():
             rails.append(Rail("events", "events", "Events", source.id, labelled,
                               lane=len(rails)))  # fmt: skip
         else:
             needs.update({sid: "Events" for sid in labelled})
         return rails, needs
+
+    def carries_events(self) -> bool:
+        """The input starts the Events rail: a recording with events (offline or
+        played live), or an LSL input with a marker stream."""
+        source = self.source
+        if source is None:
+            return False
+        if source.node == "meegxer.core.lsl_in":
+            return bool(source.params.get("marker_stream"))
+        return self.input_events > 0
 
     def lowered(self, strip: StripNode) -> bool:
         """Feature and output strips sit below the signal line and draw from it

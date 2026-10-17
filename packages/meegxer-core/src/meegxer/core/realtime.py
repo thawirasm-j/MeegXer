@@ -13,7 +13,13 @@ of the block's last sample.
 
 Calibration (one-shot, online): a stage that needs fitting passes nothing
 downstream until it is calibrated. ``calibrate(node, seconds)`` buffers that many
-seconds of the stage's input, fits, and from then on the stage runs.
+seconds of the stage's input, fits, and from then on the stage runs. A node that
+learns from labelled trials (``fit_events``) fits on the events of the Events rail
+inside that stretch, after waiting ``event_wait`` seconds (the LSL input's
+``marker_wait``) for markers still on their way; processing goes on meanwhile.
+
+Events rail (docs/RAILS.md): the input's events (a played recording's, or LSL
+markers placed on the signal's sample index) and the events strips emit.
 """
 
 from __future__ import annotations
@@ -23,6 +29,7 @@ import queue
 import threading
 import time
 import traceback
+from collections import deque
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
@@ -33,11 +40,14 @@ import pylsl
 
 from meegxer.core.block import Block, FeatureBlock, SignalInfo, concat_blocks
 from meegxer.core.display import Decimator, DisplayFrame, DisplayPublisher, Envelope
+from meegxer.core.events import EventsRail
 from meegxer.core.graph import Graph, GraphError, GraphNode, positions_message
 from meegxer.core.node import Probe, Sink, Source, output_blocks
+from meegxer.core.recording import recording_events
 from meegxer.core.stage import Stage, StageStatus, StaleModelError, signal_fingerprint
 
 Clock = Callable[[], float]
+EVENTS_KEEP_SECONDS = 60.0  # live Events rail kept beyond open calibrations
 
 
 class _Readable(Protocol):
@@ -114,7 +124,9 @@ class Metrics:
     blocks: int = 0
     samples: int = 0
     overruns: int = 0
-    events: int = 0
+    events: int = 0  # emitted by strips
+    input_events: int = 0  # the input's (a played recording's, or markers)
+    events_late: int = 0  # input events inside a stretch already fitted on
     errors: list[str] = field(default_factory=list)
     stages: dict[str, StageMetrics] = field(default_factory=dict)
     latencies: list[float] = field(default_factory=list)
@@ -170,6 +182,10 @@ class RealtimeScheduler:
         self._running = threading.Event()
         self._finished = threading.Event()
         self._calibration: dict[str, tuple[list[Block], float]] = {}
+        self._fits: dict[str, tuple[Block, float]] = {}  # labelled: waiting markers
+        self._rail = EventsRail()
+        self._stop_index = 0  # end of the last block processed
+        self._fitted: deque[tuple[int, int]] = deque(maxlen=32)  # labelled stretches
         self._input_fps: dict[str, str] = {}
         self._decimators: dict[str, Decimator] = {}
         self._pending: dict[str, list[Any]] = {}
@@ -236,6 +252,7 @@ class RealtimeScheduler:
                 raise GraphError(f"{node_id}: {exc}") from exc
             node.impl.set_params(**params)
             self._calibration.pop(node_id, None)
+            self._fits.pop(node_id, None)
             self._refresh_fingerprints()
             return dict(node.impl.params)
 
@@ -250,6 +267,7 @@ class RealtimeScheduler:
             if seconds <= 0:
                 raise ValueError("seconds must be positive")
             node.impl.begin_calibration()
+            self._fits.pop(node_id, None)  # a new stretch replaces one still waiting
             self._calibration[node_id] = ([], seconds)
 
         self.submit(apply).result(timeout=10)
@@ -273,6 +291,7 @@ class RealtimeScheduler:
                 if isinstance(node.impl, Stage) and node.impl.manifest.requires_fit:
                     node.impl.clear_model()
                     self._calibration.pop(node.id, None)
+                    self._fits.pop(node.id, None)
                     cleared.append(node.id)
             if node_id and not cleared:
                 raise GraphError(f"{node_id!r} does not need calibration")
@@ -302,11 +321,18 @@ class RealtimeScheduler:
                 self.metrics.errors.append(positions_message(missing))
                 return
             self._refresh_fingerprints()
+            assert isinstance(source_node.impl, Source)
+            played = recording_events(source_node.impl)  # a played recording's
+            self._rail.add(played)
+            self.metrics.input_events += len(played)
             chunk = self.max_block or max(1, int(source.info.sfreq))
             while self._running.is_set():
                 self._drain_commands()
                 block = source.read(chunk)
+                self._take_input_events(source_node.impl)
+                self._finish_fits()
                 if block is None:
+                    self._finish_fits(now=True)
                     self._report_unfinished_calibration(source.info.sfreq)
                     break
                 if block.n_samples == 0:
@@ -315,6 +341,7 @@ class RealtimeScheduler:
                     time.sleep(self.idle_sleep)
                     continue
                 started = time.perf_counter()
+                self._stop_index = block.stop_index
                 self._process(block)
                 elapsed = time.perf_counter() - started
                 self.metrics.blocks += 1
@@ -351,6 +378,52 @@ class RealtimeScheduler:
                 f"{got:.1f} of {seconds:g} s; it stays uncalibrated (use a longer "
                 "input or a shorter calibration)"
             )
+
+    def _take_input_events(self, source: Source) -> None:
+        """Live events from the input onto the rail; count the late ones (inside a
+        stretch a labelled calibration already fitted on: a missed trial) and
+        forget old ones."""
+        sfreq = source.info.sfreq
+        events = source.new_events()
+        if events:
+            self.metrics.events_late += sum(
+                any(a <= e.sample_index < b for a, b in self._fitted) for e in events
+            )
+            self.metrics.input_events += len(events)
+            self._rail.add(events)
+        keep = self._stop_index - round(EVENTS_KEEP_SECONDS * sfreq)
+        for blocks, _ in self._calibration.values():
+            if blocks:
+                keep = min(keep, blocks[0].sample_index)
+        for calibration, _ in self._fits.values():
+            keep = min(keep, calibration.sample_index)
+        self._rail.trim(keep)
+
+    def _finish_fits(self, now: bool = False) -> None:
+        """Fit the labelled calibrations whose wait for late markers is over (all
+        of them when the input has ended: no more can come)."""
+        for node_id, (calibration, due) in list(self._fits.items()):
+            if now or time.monotonic() >= due:
+                del self._fits[node_id]
+                self._fit(self.graph[node_id], calibration)
+
+    def _fit(self, node: GraphNode, calibration: Block) -> None:
+        stage = node.impl
+        assert isinstance(stage, Stage)
+        events = (
+            self._rail.visible_to(
+                self.graph, node.id, calibration.sample_index, calibration.stop_index
+            )
+            if stage.manifest.fit_events
+            else ()
+        )
+        if stage.manifest.fit_events:
+            self._fitted.append((calibration.sample_index, calibration.stop_index))
+        try:
+            stage.fit(calibration, self._input_fps[node.id], events)
+        except ValueError as exc:  # e.g. too few trials: say so, stay uncalibrated
+            self.metrics.errors.append(f"calibration of {node.id!r} failed: {exc}")
+        self._refresh_fingerprints()
 
     def _drain_commands(self) -> None:
         while True:
@@ -426,8 +499,16 @@ class RealtimeScheduler:
             blocks.append(block)
             if sum(b.n_samples for b in blocks) >= seconds * block.info.sfreq:
                 del self._calibration[node.id]
-                stage.fit(concat_blocks(blocks), input_fp)
-                self._refresh_fingerprints()
+                calibration = concat_blocks(blocks)
+                if stage.manifest.fit_events:  # wait for markers still on their way
+                    source = self.graph.source.impl
+                    assert isinstance(source, Source)
+                    due = time.monotonic() + source.event_wait
+                    self._fits[node.id] = (calibration, due)
+                else:
+                    self._fit(node, calibration)
+            return self._without_model(node, block)
+        if node.id in self._fits:
             return self._without_model(node, block)
         if stage.status(input_fp) is not StageStatus.READY:
             return self._without_model(node, block)
@@ -436,6 +517,7 @@ class RealtimeScheduler:
         except StaleModelError:
             return self._without_model(node, block)
         self.metrics.events += len(result.events)
+        self._rail.add(result.events, node.id)
         if isinstance(result.block, FeatureBlock):
             return (result.block,)
         if isinstance(result.block, Block) and result.block.n_samples == 0:
@@ -505,7 +587,7 @@ class RealtimeScheduler:
 
     def node_status(self, node: GraphNode) -> str:
         if isinstance(node.impl, Stage):
-            if node.id in self._calibration:
+            if node.id in self._calibration or node.id in self._fits:
                 return StageStatus.CALIBRATING.value
             return node.impl.status(self._input_fps.get(node.id, "")).value
         return "ready"
@@ -524,6 +606,8 @@ class RealtimeScheduler:
             "samples": m.samples,
             "overruns": m.overruns,
             "events": m.events,
+            "input_events": m.input_events,
+            "events_late": m.events_late,
             "errors": list(m.errors[-5:]),
             "latency": m.latency_summary(),
             "display": (
@@ -549,7 +633,8 @@ class RealtimeScheduler:
             ],
         }
         source = self.graph.source.impl
-        for attr in ("gaps", "duplicates", "first_index"):
+        for attr in ("gaps", "duplicates", "first_index", "markers",
+                     "markers_dropped"):  # fmt: skip
             if hasattr(source, attr):
                 snapshot[f"source_{attr}"] = getattr(source, attr)
         with self._lock:
