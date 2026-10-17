@@ -45,6 +45,7 @@ reported (in the log) and use their defaults. The format is checked against
 | | Frequency map (peak frequency) | `visualization.peak` | `plasma` |
 | | Reverse sequential maps on a light theme | `visualization.flip_on_light` | `false` |
 | | Time span (s) | `visualization.span` | `10` |
+| | Live time axis: seconds before now, or time since start | `visualization.time_axis` | `before_now` |
 | | Head plot band, power, map, power range, live smoothing | `visualization.spectrum.*` | α (8–13 Hz), absolute, band power, 20 dB, 2 s |
 | Data & storage | Offline run files (empty: system temp folder) | `storage.offline_dir` | `""` |
 | | Offline cache cap (GB) | `storage.cache_gb` | `5` |
