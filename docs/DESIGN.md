@@ -493,12 +493,17 @@ release added: `docs/RELEASE_NOTES.md`.
    `spec/session.md`); BIDS derivatives layout in `spec/bids-derivatives.md`, one
    recording or a whole dataset from the CLI.
 
-**Out (later):** Sterile mode (planned next, `docs/WORKPLAN.md` M8), EEGLAB
-decompositions read from files onto the ICs rail, an LDA classifier, the Sources
-rail, event outputs (keyboard sink, events writer, epoching), an events strip,
-the Octave script tier, buses/routing matrix, sidechains, node editor, provenance
-cards, plugin registry/signing, multi-stream sync, action sinks, Rust core, CLAP
-native plugins, installers.
+**Added for 1.0** (decided 2026-10-17, plan in `docs/ROADMAP.md`): Sterile mode;
+resample and channel-pick strips; epoching, an events writer and an ERP view;
+bad-segment marking; XDF input; EEGLAB decompositions onto the ICs rail; a
+Python API over the batch scheduler for MNE users; parallel batch workers with QC
+reports; templates and undo; an LDA classifier and an armed keyboard sink; the
+Octave script tier; shortcut creation; a frozen 1.0 spec and a published
+validation report.
+
+**Out (after 1.0):** the Sources rail, an events strip, buses/routing matrix,
+sidechains, node editor, provenance cards, plugin registry/signing, multi-stream
+sync, device sources beyond LSL, Rust core, CLAP native plugins, full installers.
 
 ## 6. Acceptance tests
 
