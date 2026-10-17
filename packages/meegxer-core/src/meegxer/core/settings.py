@@ -51,6 +51,7 @@ DEFAULTS: dict[str, Any] = {
         "spectrum": {
             "band": [8.0, 13.0],
             "relative": False,
+            "aperiodic": False,
             "scheme": "heat",
             "range": 20,
             "smoothing": 2,

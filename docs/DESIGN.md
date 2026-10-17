@@ -329,7 +329,12 @@ it never interrupts processing.
   maximum and decays with the smoothing time constant, so the map fades instead of
   flickering), *Power change* (Main vs. the first comparison tap in dB, diverging, the
   0 dB line bold) and *Peak frequency* (where the band peaks; electrodes whose
-  maximum is on a band edge are left out). Electrodes are drawn in their channel
+  maximum is on a band edge are left out). **Remove 1/f** divides each channel's
+  spectrum by its aperiodic fit over 1–45 Hz (specparam's robust fixed-mode fit,
+  vectorized: a least-squares line in log-log, then one through the points below
+  it): the spectrum shows dB above the fit, *Band power* the band's mean dB above
+  it from 0 dB (on the 1/f line) up to the held top, *Power change* compares those
+  values and *Peak frequency* finds the peak above the slope. Electrodes are drawn in their channel
   colours inside a black-and-white ring, apart from the map's colours; hover names
   one and thickens its spectrum line, a click shows or hides the channel. (A first
   "spatial" scheme, the scalp colour wheel with power as opacity, was dropped:
