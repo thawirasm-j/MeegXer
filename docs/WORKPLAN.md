@@ -369,6 +369,19 @@ identical output.
 
 ---
 
+## Beta to 1.0: M9–M12
+
+Full plan, decisions and item lists: `docs/ROADMAP.md`. One PR per item, by ID.
+
+| Version | Milestone | Exit |
+|---|---|---|
+| 0.3.0bN | **M9 Fix and harden**: beta triage, Windows type check in CI, control-channel token, supply-chain checks, share-safe sessions, feature units, robustness, project hygiene | No known data-loss or crash bugs; security basics done |
+| 0.4.0bN | **M10 Research workflows**: resample and pick, epoching, events writer, ERP view, bad segments, XDF input, EEGLAB decompositions (4b), MNE Python API, batch workers and QC reports, templates, undo | An ERP and a resting-state study end to end, GUI and CLI |
+| 0.5.0bN | **M11 Isolation and BCI**: Sterile mode (M8 item 2), plugin hardening, LDA, armed keyboard sink, Octave script tier, shortcut creation | Sterile output identical to local; SSVEP → keypress demo |
+| 1.0.0rcN | **M12 Freeze and validate**: spec freeze, validation report, ERP CORE replication, interoperability and soak tests, cross-OS reproducibility, test 5 in CI, docs site, usability round, JOSS | Acceptance tests 1–6 green on Linux and Windows |
+
+---
+
 ## Risks to watch
 
 | Risk | Where | Mitigation |
@@ -428,3 +441,4 @@ identical output.
 | 39 | PyPI releases | Six projects (five packages + `meegxer` bundle = sterile build), one shared version from a `v*` tag, Trusted Publishing; tag → TestPyPI, PyPI by manual approved run (`docs/RELEASING.md`) | — |
 | 40 | Sterile = isolation (0.2.1) | "Sterile" names a runtime mode, never a package: Sterile mode runs all processing (built-ins and plugins) in one no-network container, the host keeps trusted I/O; auditing stays the user's responsibility. Packages renamed `meegxer-sterile` → `meegxer-nodes`, `meegxer-runtime` → `meegxer-plugins`; the `meegxer` bundle installs everything; `meegxer.sterile.*` node names still resolve. Rules 9 and 10 rewritten; the sterile wheel check is gone, an import-linter contract keeps plugins reachable only through entry points | M8 |
 | 41 | Credit and custom grouping (0.2.12) | Manifest `authors`, `references` (citation + DOI or URL), `license`; built-ins cite methods and software with checked DOIs; shown in the inspector, recorded in sessions, gathered into BIDS `ReferencesAndLinks`; informative, never a gate. Plugins and scripts are grouped as "Custom <group>" by their data types (`origin` in `list_nodes`) | M8 |
+| 42 | Scope of 1.0 (`docs/ROADMAP.md`) | Sterile mode and epoching/ERPs are in 1.0; install is shortcut creation only; LSL is the only device path; a JOSS paper with 1.0, aiming for a methods paper; versions 0.3.0bN → 0.4.0bN → 0.5.0bN → 1.0.0rcN | M9–M12 |

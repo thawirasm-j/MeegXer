@@ -5,7 +5,7 @@ Explore brain signals with a user-friendly EEG mixer.
 Pre-release: 0.2.1a8 is the latest alpha; 0.3.0b1, the first beta, comes once the
 manual release checks pass ([`docs/TESTING.md`](docs/TESTING.md)). What is new:
 [`docs/RELEASE_NOTES.md`](docs/RELEASE_NOTES.md). Design: [`docs/DESIGN.md`](docs/DESIGN.md).
-Plan: [`docs/WORKPLAN.md`](docs/WORKPLAN.md).
+Plan: [`docs/WORKPLAN.md`](docs/WORKPLAN.md); the road to 1.0: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 MeegXer runs EEG processing as a chain of strips, like a mixing desk: live from
 an LSL stream or a recording played back, or offline over whole recordings and
