@@ -9,7 +9,9 @@ FeatureBlock with ``window`` = its sample range and ``timestamp`` = the LSL time
 its first sample. Bad channels are kept, so the feature layout stays fixed.
 
 Spectra follow MATLAB's ``pwelch`` as EEGLAB's ``spectopo`` calls it: symmetric
-Hamming (or Hann) segments, no detrending, one-sided density in V^2/Hz.
+Hamming (or Hann) segments, no detrending, one-sided density in V^2/Hz. The
+multitaper option is MNE's ``psd_array_multitaper`` (DPSS tapers, mean removed,
+same density units).
 """
 
 from __future__ import annotations
@@ -33,6 +35,13 @@ WINDOW_PARAMS: list[dict[str, object]] = [
      "description": "Time from one window to the next"},
 ]  # fmt: skip
 SPECTRUM_PARAMS: list[dict[str, object]] = [
+    {"name": "method", "type": "enum", "default": "welch",
+     "choices": ["welch", "multitaper"],
+     "description": "Welch (averaged tapered segments) or multitaper (DPSS tapers "
+                    "over the whole window)"},
+    {"name": "bandwidth", "type": "float", "default": 0.0, "min": 0.0, "unit": "Hz",
+     "advanced": True,
+     "description": "Multitaper bandwidth; 0 uses 8 / window (MNE's default)"},
     {"name": "segment", "type": "float", "default": 1.0, "min": 0.05, "unit": "s",
      "advanced": True, "description": "Welch segment length (spectopo winsize)"},
     {"name": "overlap", "type": "float", "default": 0.5, "min": 0.0, "max": 0.95,
@@ -82,6 +91,30 @@ def welch(x: np.ndarray, sfreq: float, params: Params) -> tuple[np.ndarray, np.n
     freqs, psd = sps.welch(x, sfreq, window=taper, nperseg=nper, noverlap=noverlap,
                            detrend=False, scaling="density", axis=-1)  # fmt: skip
     return freqs, psd
+
+
+def multitaper(
+    x: np.ndarray, sfreq: float, params: Params
+) -> tuple[np.ndarray, np.ndarray]:
+    """One-sided multitaper PSD (V^2/Hz) of each row (MNE, DPSS tapers)."""
+    import mne
+    from mne.time_frequency import psd_array_multitaper
+
+    bandwidth = float(params.get("bandwidth", 0.0)) or None
+    with mne.utils.use_log_level("error"):
+        psd, freqs = psd_array_multitaper(
+            x, sfreq, bandwidth=bandwidth, normalization="full", verbose=False
+        )
+    return freqs, psd
+
+
+def spectrum(
+    x: np.ndarray, sfreq: float, params: Params
+) -> tuple[np.ndarray, np.ndarray]:
+    """(freqs, PSD in V^2/Hz) of each row by the node's ``method``."""
+    if params.get("method", "welch") == "multitaper":
+        return multitaper(x, sfreq, params)
+    return welch(x, sfreq, params)
 
 
 class WindowedFeatures(Processor):
@@ -135,7 +168,8 @@ class WindowedFeatures(Processor):
 
 
 class PSD(WindowedFeatures):
-    """Power spectral density per channel and window (Welch, pwelch-compatible)."""
+    """Power spectral density per channel and window (Welch, pwelch-compatible, or
+    multitaper)."""
 
     manifest: ClassVar[Manifest] = analysis_manifest(
         "meegxer.nodes.psd",
@@ -148,13 +182,13 @@ class PSD(WindowedFeatures):
             {"name": "db", "type": "bool", "default": False,
              "description": "Report 10*log10(power) instead of V^2/Hz"},
         ],
-        "Power spectral density per channel (Welch).",
+        "Power spectral density per channel (Welch or multitaper).",
     )  # fmt: skip
 
     def features(
         self, x: np.ndarray, info: SignalInfo, params: Params
     ) -> tuple[np.ndarray, tuple[str, ...], dict[str, tuple[Any, ...]]]:
-        freqs, psd = welch(x, info.sfreq, params)
+        freqs, psd = spectrum(x, info.sfreq, params)
         keep = (freqs >= float(params["fmin"])) & (freqs <= float(params["fmax"]))
         values = psd[:, keep]
         if params["db"]:
@@ -187,7 +221,7 @@ def parse_bands(text: str) -> list[tuple[str, float, float]]:
 
 
 class BandPower(WindowedFeatures):
-    """Power in named bands per channel and window: the Welch PSD summed over the
+    """Power in named bands per channel and window: the PSD summed over the
     band's bins [low, high) times the bin width. ``relative`` divides by the power
     over all the bands' span; ``db`` reports 10*log10."""
 
@@ -207,7 +241,7 @@ class BandPower(WindowedFeatures):
         self, x: np.ndarray, info: SignalInfo, params: Params
     ) -> tuple[np.ndarray, tuple[str, ...], dict[str, tuple[Any, ...]]]:
         bands = parse_bands(str(params["bands"]))
-        freqs, psd = welch(x, info.sfreq, params)
+        freqs, psd = spectrum(x, info.sfreq, params)
         df = freqs[1] - freqs[0]
         values = np.stack(
             [psd[:, (freqs >= lo) & (freqs < hi)].sum(axis=1) * df

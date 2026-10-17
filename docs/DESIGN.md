@@ -233,6 +233,17 @@ transform(block, model, state, params)        -> block_out, state, events
   Laplacian (CSD) as channel-mixing matrices computed once from the positions
   (spherical splines, sphere fitted to the electrodes), EOG regression (fit on
   calibration, linear subtraction). All are exact block by block.
+- **More feature built-ins:** PSD, band power and spectral parameterization take a
+  spectrum `method`: Welch (pwelch-compatible, the default) or multitaper (MNE,
+  DPSS). Spectral parameterization (specparam 2.0) reports the aperiodic offset,
+  exponent (and knee) and the strongest peak per named band (NaN when a band has
+  none; feature tables write `n/a`). Morlet wavelet power averages |x * w|^2 over
+  the samples where the whole wavelet fits in the window (no zero padding). SSVEP
+  detection scores each stimulus frequency by CCA or filter-bank CCA with sine and
+  cosine references, no calibration; bad channels are left out. The conformance
+  check counts NaNs in the same place as equal. CSP and other classifiers that fit
+  on labelled trials need labels in calibration, which `fit(calibration, params)`
+  does not carry yet (proposed separately).
 - Plugins emit Events only; trusted host Sinks perform actions.
 - **Sterile mode** (planned): one container runs the whole processing chain (built-in
   nodes and plugins) as a single worker over the plugin protocol, so the added
@@ -384,7 +395,9 @@ same node interface plugins use so both remain possible.
 2. Engine: DAG core with linear chain view, fit/transform + calibration, sample-index
    alignment, real-time and batch schedulers.
 3. Built-in nodes (`meegxer-nodes`): spectral filters, spatial filters, referencing,
-   ICA → ICLabel; features: PSD, band power, Hilbert, connectivity, complexity.
+   ICA → ICLabel; features: PSD and band power (Welch or multitaper), spectral
+   parameterization (specparam), Morlet wavelet power, Hilbert, connectivity,
+   complexity, SSVEP detection (CCA, filter-bank CCA).
    ASR is the EEGLAB plugin `eeglab.asr`: EEGLAB's ASR code is licensed for
    non-commercial use only, so no copy of it lives in MeegXer and the built-in
    nodes have no ASR.

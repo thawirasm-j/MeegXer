@@ -30,9 +30,13 @@ TITLES = {
     "meegxer.nodes.interpolate_bads": "Interpolate bad channels",
     "meegxer.nodes.csd": "Surface Laplacian (CSD)",
     "meegxer.nodes.eog_regression": "EOG regression",
+    "meegxer.nodes.specparam": "Spectral parameterization",
+    "meegxer.nodes.morlet": "Wavelet power (Morlet)",
+    "meegxer.nodes.ssvep_cca": "SSVEP detection",
     "meegxer.core.lsl_features_out": "LSL features output",
     "eeglab.asr": "ASR cleaning (EEGLAB)",
 }
+SPECTRAL = ("meegxer.nodes.psd", "meegxer.nodes.band_power", "meegxer.nodes.specparam")
 FILTER_KINDS = {
     "highpass": "High-pass",
     "lowpass": "Low-pass",
@@ -63,4 +67,8 @@ def badge(node: str, params: dict[str, Any], mode: str) -> str:
         return "causal" if node.endswith("iir_filter") else "minimum-phase"
     if node.endswith("_zerophase"):
         return "zero-phase"
+    if node in SPECTRAL and params.get("method") == "multitaper":
+        return "multitaper"
+    if node == "meegxer.nodes.ssvep_cca":
+        return "CCA" if params.get("method") == "cca" else "filter-bank CCA"
     return ""

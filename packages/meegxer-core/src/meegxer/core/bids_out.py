@@ -25,7 +25,7 @@ from meegxer.core.ports import PortTypeError
 from meegxer.core.recording import describe
 from meegxer.core.references import as_text, collect, credits
 from meegxer.core.registry import node_origin
-from meegxer.core.sinks import SetSink, feature_columns
+from meegxer.core.sinks import SetSink, feature_columns, tsv_value
 
 BIDS_VERSION = "1.10.0"
 CODE_URL = "https://github.com/thawirasm-j/MeegXer"
@@ -408,7 +408,7 @@ class BidsFeatures(_BidsSink):
                 raise ValueError("feature layout changed between windows")
             start, stop = block.window
             rows.append([str(start), str(stop), repr(start / sfreq),
-                         *(repr(float(v)) for v in block.data.ravel())])  # fmt: skip
+                         *(tsv_value(v) for v in block.data.ravel())])  # fmt: skip
         _write_tsv(table, ["window_start", "window_stop", "onset", *columns], rows)
         node = self._graph[upstream]
         first = self._blocks[0]

@@ -38,6 +38,16 @@ def test_feature_tsv(tmp_path: Path) -> None:
         again.close()
 
 
+def test_feature_tsv_writes_missing_values_as_n_a(tmp_path: Path) -> None:
+    path = tmp_path / "features.tsv"
+    sink = FeatureTsvSink({"path": str(path)})
+    sink.write(features(0, float("nan")))
+    sink.close()
+    with path.open() as fh:
+        rows = list(csv.reader(fh, delimiter="\t"))
+    assert rows[1][3:] == ["n/a"] * 6
+
+
 def test_feature_tsv_rejects_layout_change(tmp_path: Path) -> None:
     sink = FeatureTsvSink({"path": str(tmp_path / "f.tsv")})
     sink.write(features(0, 1.0))
