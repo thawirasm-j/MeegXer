@@ -401,13 +401,14 @@ class PipelineDoc:
         return bool(outputs) and outputs[0]["type"] == "features"
 
     def rails(self) -> tuple[list[Rail], dict[str, str]]:
-        """The parallel rails of this chain, with lanes packed so they stay low,
-        and the strips that need a rail that is not there (strip id -> rail).
+        """The parallel rails of this chain and the strips that need a rail that
+        is not there (strip id -> rail).
 
         Events: the input's events, read by strips that fit on labelled trials.
         Features: one rail per feature strip, read by the strips that take it
-        as input. A rail ends at its last reader."""
-        index = {s.id: i for i, s in enumerate(self.strips)}
+        as input. Every rail runs on to the end of the chain, so each has its
+        own row: Events on top, then the feature rails, earliest highest (a
+        strip pushing up into its rail crosses no earlier rail)."""
         needs: dict[str, str] = {}
         rails: list[Rail] = []
         for strip in self.strips[1:]:
@@ -415,24 +416,25 @@ class PipelineDoc:
                 readers = [s.id for s in self.strips if self.input_of(s) == strip.id]
                 rails.append(Rail(strip.id, "features", self.rail_name(strip),
                                   strip.id, readers))  # fmt: skip
-        # feature rails: lowest free lane, by where they start
-        ends: list[int] = []  # last strip index per lane
-        for rail in sorted(rails, key=lambda r: index[r.producer]):
-            start = index[rail.producer]
-            end = max([index[r] for r in rail.readers] + [start])
-            lane = next((i for i, e in enumerate(ends) if e < start), len(ends))
-            if lane == len(ends):
-                ends.append(end)
-            ends[lane] = end
-            rail.lane = lane
+        for i, rail in enumerate(rails):  # in chain order
+            rail.lane = len(rails) - 1 - i
         labelled = [s.id for s in self.strips[1:] if self.manifest(s).get("fit_events")]
         source = self.source
         if source is not None and self.input_events:
             rails.append(Rail("events", "events", "Events", source.id, labelled,
-                              lane=len(ends)))  # fmt: skip
+                              lane=len(rails)))  # fmt: skip
         else:
             needs.update({sid: "Events" for sid in labelled})
         return rails, needs
+
+    def lowered(self, strip: StripNode) -> bool:
+        """Feature and output strips sit below the signal line and draw from it
+        (or from a rail); the signal passes over them."""
+        return self.group(strip) in ("features", "output")
+
+    def reads_signal(self, strip: StripNode) -> bool:
+        inputs = self.manifest(strip)["inputs"]
+        return bool(inputs) and inputs[0]["type"] == "signal"
 
     def rail_lanes(self) -> int:
         """Rows the rails take above the signal (a missing rail keeps one)."""

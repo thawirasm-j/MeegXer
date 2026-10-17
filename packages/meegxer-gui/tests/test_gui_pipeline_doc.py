@@ -240,11 +240,9 @@ def test_a_node_can_process_more_than_eeg_by_default(doc: PipelineDoc) -> None:
     assert doc.to_pipeline(taps=False)["nodes"][-1]["channel_types"] == ["eeg"]
 
 
-def test_rails_start_at_feature_strips_and_pack_into_low_lanes(
-    doc: PipelineDoc,
-) -> None:
-    """docs/RAILS.md: each feature strip starts a named rail that ends at its last
-    reader; rails share a lane where they do not overlap."""
+def test_rails_start_at_feature_strips_one_lane_each(doc: PipelineDoc) -> None:
+    """docs/RAILS.md: each feature strip starts a named rail on its own lane, the
+    earliest highest, and feature and output strips sit below the signal."""
     psd = doc.insert(len(doc.strips), "meegxer.nodes.psd")
     tsv = doc.insert(len(doc.strips), "meegxer.core.feature_tsv")
     bp = doc.insert(len(doc.strips), "meegxer.nodes.band_power")
@@ -255,12 +253,15 @@ def test_rails_start_at_feature_strips_and_pack_into_low_lanes(
     assert needs == {}
     by = {r.producer: r for r in rails}
     assert (by[psd.id].label, by[psd.id].readers, by[psd.id].lane) == (
-        "PSD", [tsv.id], 0)  # fmt: skip
+        "PSD", [tsv.id], 2)  # fmt: skip
     assert by[bp.id].label == "Band power" and by[bp.id].readers == [lsl.id]
-    assert by[bp.id].lane == 0  # PSD's rail ended before it: same lane
+    assert by[bp.id].lane == 1
     assert by[bp2.id].label == "Band power·2" and by[bp2.id].readers == []
-    assert by[bp2.id].lane == 1  # band power's rail passes over it
-    assert doc.rail_lanes() == 2
+    assert by[bp2.id].lane == 0
+    assert doc.rail_lanes() == 3
+    assert [doc.lowered(s) for s in (doc.strips[1], psd, tsv, lsl)] == [
+        False, True, True, True]  # fmt: skip
+    assert doc.reads_signal(psd) and not doc.reads_signal(tsv)
 
 
 def test_events_rail_comes_from_the_input_and_csp_needs_it(doc: PipelineDoc) -> None:

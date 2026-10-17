@@ -297,12 +297,14 @@ it never interrupts processing.
     and ports: ■ input, ● preprocessing (Signal to Signal), ◆ feature extraction
     (Signal to Features), ▶ output (sinks). Theme tokens `groups`.
   - **One chain, rails above it** (`docs/RAILS.md`): every strip sits on the
-    signal, a thick line; a feature strip passes the signal on unchanged. Thinner
-    parallel rails above the strips show what else travels with it: each feature
-    strip starts a rail named after it (PSD, Band power·2), the input's events
-    start the Events rail, and a strip that reads a rail draws from it (a filled
-    dot where a rail starts, a hollow one where it is read). A rail ends at its
-    last reader and rails share rows where they do not overlap. A strip that needs
+    signal, a thick line; a feature strip passes the signal on unchanged. Feature
+    and output strips hang below the signal, with a down arrow for each line they
+    pull (the signal, a rail). Thinner parallel rails above the strips show what
+    else travels with it: each feature strip pushes up into a rail named after it
+    (PSD, Band power·2; a filled dot where it starts, a hollow one where a strip
+    adds to an existing rail), and the input's events start the Events rail. Each
+    rail has its own row, solid to its last reader, then dashed and fainter to the
+    end of the chain with an arrow: it is still there for later strips. A strip that needs
     a rail the chain lacks (CSP without events) shows "needs Events". By default a
     strip reads the nearest earlier node of its input type (spec 0.2.7); an output
     can pick another feature rail in the inspector (*Reads*), saved as the node's

@@ -54,6 +54,7 @@ SIGNAL_WIDTH = 6  # the signal is the thick main line
 LANE_H = 15  # rows of the parallel rails above the strips
 TOP = 6  # margin above the rails
 PORT = 22  # a strip reads a rail near its left edge, writes near its right
+LOWER = 52  # feature and output strips sit this far below the others
 TAP_SIZE = 22
 GROUP_LABELS = {
     "input": "■ INPUT",
@@ -369,11 +370,61 @@ def rail_colour(theme: Theme, kind: str) -> str:
     return theme.group_color("features")
 
 
+def _toward_text(colour: str, theme: Theme, amount: float = 0.45) -> QColor:
+    """A rail's colour moved toward the text colour (whiter on dark themes,
+    darker on light ones): its continuation past the last reader."""
+    a, b = QColor(colour), QColor(theme.text)
+    mix = [round(x + (y - x) * amount) for x, y in
+           zip((a.red(), a.green(), a.blue()), (b.red(), b.green(), b.blue()),
+               strict=True)]  # fmt: skip
+    return QColor(*mix)
+
+
+def _head(
+    painter: QPainter, colour: QColor, tip: QPointF, ux: float, uy: float
+) -> None:
+    """An arrowhead at ``tip`` pointing along (ux, uy)."""
+    head = QPainterPath(tip)
+    head.lineTo(tip - QPointF(7 * ux - 4 * uy, 7 * uy + 4 * ux))
+    head.lineTo(tip - QPointF(7 * ux + 4 * uy, 7 * uy - 4 * ux))
+    head.closeSubpath()
+    painter.fillPath(head, colour)
+
+
+class Lowered(QWidget):
+    """A feature or output strip, set below the signal line: the signal passes
+    over it (the rail board draws the arrows into and out of it)."""
+
+    def __init__(self, strip: StripWidget, theme: Theme) -> None:
+        super().__init__()
+        self.strip = strip
+        self.signal = QColor(theme.group_color("preprocess"))
+        self.setFixedWidth(STRIP_WIDTH)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, LOWER, 0, 0)
+        lay.addWidget(strip)
+
+    def paintEvent(self, event: Any) -> None:
+        painter = QPainter(self)
+        pen = QPen(self.signal, SIGNAL_WIDTH)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        painter.setPen(pen)
+        painter.drawLine(0, RAIL_Y, self.width(), RAIL_Y)
+        painter.end()
+
+
 class RailBoard(QWidget):
-    """Holds the chain and paints the parallel rails above it: a filled dot
-    where a strip starts a rail, a hollow one where a strip reads it, the
-    rail's name on the line, and a hop where a connector crosses a lower rail.
-    A strip that needs a rail the chain does not have gets a red dot."""
+    """Holds the chain and paints the parallel rails above it (docs/RAILS.md).
+
+    - A feature strip, set below the signal, gets a down arrow from the signal
+      (and from each rail it reads) and an up arrow into the rail it starts,
+      whose start is a solid node.
+    - An output strip, also below, gets a down arrow from what it reads: the
+      signal or a feature rail.
+    - Each rail is solid up to its last reader, then runs on, thinner, dashed
+      and in a fainter colour, to the end of the chain with an arrow.
+    - A strip that needs a rail the chain lacks gets a red dashed arrow."""
 
     def __init__(self, doc: PipelineDoc, theme: Theme) -> None:
         super().__init__()
@@ -381,6 +432,9 @@ class RailBoard(QWidget):
         self.rails, self.needs = doc.rails()
         self.lanes = doc.rail_lanes()
         self.strips: dict[str, QWidget] = {}
+        self.lowered = {s.id for s in doc.strips if doc.lowered(s)}
+        self.pull_signal = {s.id for s in doc.strips
+                            if doc.lowered(s) and doc.reads_signal(s)}  # fmt: skip
         self.font_ = QFont(self.font())
         self.font_.setPointSizeF(max(7.0, self.font_.pointSizeF() * 0.82))
         self.font_.setBold(True)
@@ -391,92 +445,138 @@ class RailBoard(QWidget):
         """Height of the rails above the strips."""
         return TOP + self.lanes * LANE_H + (4 if self.lanes else 0)
 
+    @property
+    def signal_y(self) -> float:
+        return float(self.band + 2 + RAIL_Y)
+
     def lane_y(self, lane: int) -> float:
         return TOP + (self.lanes - 1 - lane) * LANE_H + LANE_H / 2
 
-    def _x(self, strip_id: str, *, write: bool) -> float | None:
+    def _rect(self, strip_id: str) -> QRectF | None:
         w = self.strips.get(strip_id)
         if w is None:
             return None
-        return float(w.x() + (w.width() - PORT if write else PORT))
+        return QRectF(w.mapTo(self, QPoint(0, 0)).toPointF(), w.size().toSizeF())
 
-    def spans(self) -> list[tuple[Rail, float, float, list[float]]]:
-        """Each drawn rail: where it starts and ends, and its readers' x."""
+    def _reads(self, strip_id: str) -> list[str]:
+        """The rails a strip reads, left to right as their arrows are drawn."""
+        return [r.id for r in self.rails if strip_id in r.readers]
+
+    def _read_x(self, strip_id: str, rail_id: str | None) -> float | None:
+        """Where a strip's arrow from the signal (None) or a rail comes in."""
+        rect = self._rect(strip_id)
+        if rect is None:
+            return None
+        slots: list[str | None] = [None] if strip_id in self.pull_signal else []
+        slots += self._reads(strip_id)
+        slots += [f"needs:{n}" for s, n in self.needs.items() if s == strip_id]
+        return rect.left() + PORT + 14 * slots.index(rail_id)
+
+    def end_x(self) -> float:
+        rights = [r.right() for sid in self.strips if (r := self._rect(sid))]
+        return (max(rights) if rights else 0.0) + 28
+
+    def spans(self) -> list[tuple[Rail, float, float]]:
+        """Each drawn rail: where it starts and where its solid part ends."""
         out = []
         for rail in self.rails:
-            x0 = self._x(rail.producer, write=True)
-            if x0 is None:
+            rect = self._rect(rail.producer)
+            if rect is None:
                 continue
-            xs = [x for r in rail.readers if (x := self._x(r, write=False)) is not None]
-            x1 = max(xs) if xs else x0 + 18  # nothing reads it yet: a stub
-            out.append((rail, x0, x1, xs))
+            x0 = rect.right() - PORT
+            xs = [x for r in rail.readers if (x := self._read_x(r, rail.id))]
+            out.append((rail, x0, max([x0, *xs])))
         return out
 
-    def _vertical(self, painter: QPainter, x: float, y: float, top: float,
+    def _vertical(self, painter: QPainter, x: float, y0: float, y1: float,
                   crossings: list[float]) -> None:  # fmt: skip
-        """From a rail at ``y`` down to a strip's top, hopping over ``crossings``."""
-        path = QPainterPath(QPointF(x, y))
-        for c in sorted(c for c in crossings if y + 5 < c < top - 5):
+        """A line from ``y0`` to ``y1``, hopping over ``crossings``."""
+        lo, hi = min(y0, y1), max(y0, y1)
+        path = QPainterPath(QPointF(x, lo))
+        for c in sorted(c for c in crossings if lo + 5 < c < hi - 5):
             path.lineTo(x, c - 4)
             path.arcTo(QRectF(x - 4, c - 4, 8, 8), 90, -180)
-        path.lineTo(x, top)
+        path.lineTo(x, hi)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
 
     def paintEvent(self, event: Any) -> None:
-        if not self.lanes:
-            return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setFont(self.font_)
         fm = QFontMetrics(self.font_)
-        top = float(self.band)
         spans = self.spans()
+        end = self.end_x()
+        sig = QColor(self.theme.group_color("preprocess"))
+        signal_y = self.signal_y
 
-        def crossings(x: float, lane: int) -> list[float]:
-            return [self.lane_y(r.lane) for r, a, b, _ in spans
-                    if r.lane < lane and a < x < b]  # fmt: skip
+        def crossings(x: float, below_lane: int) -> list[float]:
+            """Rails under ``below_lane`` that a vertical at ``x`` passes."""
+            return [self.lane_y(r.lane) for r, x0, _ in spans
+                    if r.lane < below_lane and x0 < x]  # fmt: skip
 
-        for rail, x0, x1, xs in spans:
+        # down arrows from the signal into lowered strips
+        for sid in self.pull_signal:
+            rect, x = self._rect(sid), self._read_x(sid, None)
+            if rect is None or x is None:
+                continue
+            painter.setPen(QPen(sig, 1.6))
+            painter.drawLine(QPointF(x, signal_y + SIGNAL_WIDTH / 2),
+                             QPointF(x, rect.top() - 6))  # fmt: skip
+            _head(painter, sig, QPointF(x, rect.top() - 1), 0, 1)
+
+        for rail, x0, x1 in spans:
             colour = QColor(rail_colour(self.theme, rail.kind))
             y = self.lane_y(rail.lane)
+            # solid to the last reader, then dashed and fainter to the end
             painter.setPen(QPen(colour, 2))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawLine(QPointF(x0, y), QPointF(x1, y))
-            pen = QPen(colour, 1.5)
-            painter.setPen(pen)
-            self._vertical(painter, x0, y, top, crossings(x0, rail.lane))
-            for x in xs:
-                self._vertical(painter, x, y, top, crossings(x, rail.lane))
-            # the name above its own strip, between the strip's two ports
-            room = x0 - (x0 - STRIP_WIDTH + 2 * PORT) - 12
-            label = fm.elidedText(rail.label, Qt.TextElideMode.ElideRight, int(room))
+            faint = _toward_text(colour.name(), self.theme)
+            painter.setPen(QPen(faint, 1.2, Qt.PenStyle.DashLine))
+            painter.drawLine(QPointF(x1, y), QPointF(end - 6, y))
+            _head(painter, faint, QPointF(end, y), 1, 0)
+            # up arrow from the producer into its start
+            prod = self._rect(rail.producer)
+            assert prod is not None
+            painter.setPen(QPen(colour, 1.6))
+            self._vertical(painter, x0, y + 9, prod.top(), crossings(x0, rail.lane))
+            _head(painter, colour, QPointF(x0, y + 4), 0, -1)
+            painter.setPen(QPen(colour, 2))
+            painter.setBrush(colour)
+            painter.drawEllipse(QPointF(x0, y), 3.5, 3.5)
+            # down arrows into the readers
+            for reader in rail.readers:
+                rect, x = self._rect(reader), self._read_x(reader, rail.id)
+                if rect is None or x is None:
+                    continue
+                painter.setPen(QPen(colour, 1.6))
+                self._vertical(painter, x, y, rect.top() - 6, crossings(x, rail.lane))
+                _head(painter, colour, QPointF(x, rect.top() - 1), 0, 1)
+            # its name above its producer
+            room = STRIP_WIDTH - 2 * PORT - 30
+            label = fm.elidedText(rail.label, Qt.TextElideMode.ElideRight, room)
             box = QRectF(x0 - 8 - room, y - fm.height() / 2, room, fm.height())
             painter.setPen(colour)
             painter.drawText(
                 box, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, label
             )
-            painter.setPen(QPen(colour, 2))
-            painter.setBrush(colour)
-            painter.drawEllipse(QPointF(x0, y), 3.5, 3.5)
-            painter.setBrush(QColor(self.theme.background))
-            for x in xs:
-                painter.drawEllipse(QPointF(x, y), 3.5, 3.5)
+
         warn = QColor(self.theme.incompatible_border)
         for strip_id, needed in self.needs.items():
-            at = self._x(strip_id, write=False)
-            if at is None:
+            rect = self._rect(strip_id)
+            x = self._read_x(strip_id, f"needs:{needed}")
+            if rect is None or x is None:
                 continue
-            x, y = at, self.lane_y(self.lanes - 1)
-            pen = QPen(warn, 1.5, Qt.PenStyle.DashLine)
-            painter.setPen(pen)
-            painter.drawLine(QPointF(x, y + 4), QPointF(x, top))
+            y = self.lane_y(self.lanes - 1)
+            painter.setPen(QPen(warn, 1.5, Qt.PenStyle.DashLine))
+            painter.drawLine(QPointF(x, y + 4), QPointF(x, rect.top() - 6))
+            _head(painter, warn, QPointF(x, rect.top() - 1), 0, 1)
             painter.setPen(QPen(warn, 2))
             painter.setBrush(QColor(self.theme.background))
             painter.drawEllipse(QPointF(x, y), 3.5, 3.5)
             text = f"needs {needed}"
-            box = QRectF(
-                x + 8, y - fm.height() / 2, STRIP_WIDTH - 2 * PORT, fm.height()
-            )
+            box = QRectF(x + 8, y - fm.height() / 2, fm.horizontalAdvance(text) + 4,
+                         fm.height())  # fmt: skip
             painter.setPen(warn)
             painter.drawText(
                 box, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text
@@ -484,11 +584,10 @@ class RailBoard(QWidget):
         painter.end()
 
     def rail_at(self, point: QPointF) -> Rail | None:
-        for rail, x0, x1, _ in self.spans():
-            if (
-                x0 - 4 <= point.x() <= x1 + 4
-                and abs(point.y() - self.lane_y(rail.lane)) <= 5
-            ):
+        end = self.end_x()
+        for rail, x0, _ in self.spans():
+            y = self.lane_y(rail.lane)
+            if x0 - 4 <= point.x() <= end and abs(point.y() - y) <= 5:
                 return rail
         return None
 
@@ -566,7 +665,7 @@ class ChainView(QScrollArea):
             widget.clicked.connect(self.selected)
             widget.remove_requested.connect(self.remove_requested)
             widget.calibrate_requested.connect(self.calibrate_requested)
-            lay.addWidget(widget)
+            lay.addWidget(Lowered(widget, theme) if doc.lowered(strip) else widget)
             inner.strips[strip.id] = widget
             tap_of = strip.id if strip.id in tappable else None
             gap = Gap(i + 1, theme, tap_of, taps.get(strip.id, "off"))

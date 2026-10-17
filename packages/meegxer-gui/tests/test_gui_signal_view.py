@@ -9,7 +9,7 @@ from typing import Any
 import mne
 import numpy as np
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QPointF
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF
 from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from meegxer.gui.signal_view import (
@@ -286,11 +286,18 @@ def test_chain_puts_every_strip_on_the_signal_and_rails_above(
     assert isinstance(board, RailBoard)
     strips = chain.findChildren(StripWidget)
     assert len(strips) == len(doc.strips)
-    assert len({w.y() for w in strips}) == 1  # all on one line, none forked
+    chain.resize(1800, 400)
+    chain.show()
+    qapp.processEvents()
+    tops = {w.strip_id: w.mapTo(board, QPoint(0, 0)).y() for w in strips}
+    on_signal = {tops[s] for s in ("input", "rereferenc1", "ica1")}
+    lowered = {tops[s] for s in ("bandpower1", "lslfeature1", "csp1")}
+    assert len(on_signal) == 1 and len(lowered) == 1  # one chain, none forked
+    assert min(lowered) > max(on_signal)  # features and outputs sit lower
     assert [(r.label, r.readers, r.lane) for r in board.rails] == [
-        ("Band power", ["lslfeature1"], 0), ("CSP", [], 0)]  # fmt: skip
+        ("Band power", ["lslfeature1"], 1), ("CSP", [], 0)]  # fmt: skip
     assert board.needs == {"csp1": "Events"}
-    assert board.lanes == 2  # the feature rails share a row; one for Events
+    assert board.lanes == 3  # a row per rail, one for Events
     labels = {
         w.strip_id: label.text()
         for w in strips
