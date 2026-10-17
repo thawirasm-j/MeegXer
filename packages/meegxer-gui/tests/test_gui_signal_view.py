@@ -261,10 +261,14 @@ def test_start_without_positions_opens_the_channels_tab(
         dispose(qapp, win.stacked, win.recording_window, win)
 
 
-def test_chain_draws_forks_off_the_main_line(qapp: QApplication) -> None:
+def test_chain_puts_every_strip_on_the_signal_and_rails_above(
+    qapp: QApplication,
+) -> None:
+    """docs/RAILS.md: one chain; a feature strip starts a rail, the output that
+    reads it draws from it; CSP without events is marked."""
     from meegxer.core.control import manifest_to_dict
     from meegxer.core.registry import Registry
-    from meegxer.gui.chain import ChainView, Fork, Gap, StripWidget
+    from meegxer.gui.chain import ChainView, RailBoard, StripWidget
     from meegxer.gui.pipeline_doc import PipelineDoc
 
     registry = Registry.from_entry_points()
@@ -272,18 +276,24 @@ def test_chain_draws_forks_off_the_main_line(qapp: QApplication) -> None:
                        for n in registry.names()])  # fmt: skip
     doc.set_source("meegxer.core.synthetic")
     for node in ["meegxer.nodes.rereference", "meegxer.nodes.band_power",
-                 "meegxer.core.lsl_features_out", "meegxer.nodes.ica"]:  # fmt: skip
+                 "meegxer.core.lsl_features_out", "meegxer.nodes.ica",
+                 "meegxer.nodes.csp"]:  # fmt: skip
         doc.insert(len(doc.strips), node)
     chain = ChainView()
     chain.rebuild(doc, load_theme("dark"), statuses={}, taps={}, advanced=False,
                   selected=None)  # fmt: skip
-    forks = {f.strip.strip_id: f.from_rail for f in chain.findChildren(Fork)}
-    assert forks == {"bandpower1": True, "lslfeature1": False}
-    links = [g.index for g in chain.findChildren(Gap) if g.branch_link]
-    assert links == [3]  # band power -> LSL features
+    board = chain.widget()
+    assert isinstance(board, RailBoard)
+    strips = chain.findChildren(StripWidget)
+    assert len(strips) == len(doc.strips)
+    assert len({w.y() for w in strips}) == 1  # all on one line, none forked
+    assert [(r.label, r.readers, r.lane) for r in board.rails] == [
+        ("Band power", ["lslfeature1"], 0), ("CSP", [], 0)]  # fmt: skip
+    assert board.needs == {"csp1": "Events"}
+    assert board.lanes == 2  # the feature rails share a row; one for Events
     labels = {
         w.strip_id: label.text()
-        for w in chain.findChildren(StripWidget)
+        for w in strips
         if (label := w.findChild(QLabel, "group")) is not None
     }
     assert labels["bandpower1"] == "◆ FEATURES"

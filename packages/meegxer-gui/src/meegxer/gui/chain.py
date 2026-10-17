@@ -1,19 +1,31 @@
 """The chain of strips: Input strip, processor and sink strips, taps and gaps.
 
-One lane. The main line is the signal path (input and preprocessing strips) and
-runs along the rail; feature extraction and outputs fork off it: they sit lower,
-with an arrow down from the rail, and the rail passes over them to the next
-preprocessing strip (a feature strip between re-reference and ICA reads from
-re-reference, and ICA still does too). Each strip's top band, shape and label
-give its group: ■ input, ● preprocessing, ◆ feature extraction, ▶ output.
+One chain on one thick line, the signal (docs/RAILS.md). Every strip sits on it in
+order; a feature strip passes the signal on unchanged. Above the strips, thinner
+parallel rails show what else travels with the signal: each feature strip starts
+a rail named after it, the input's events start the Events rail, and the strips
+that read a rail (an output, a classifier, CSP) draw from it. A rail ends at its
+last reader, and rails share rows where they do not overlap, so the band stays
+low. Each strip's top band, shape and label give its group: ■ input,
+● preprocessing, ◆ feature extraction, ▶ output.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, Signal
-from PySide6.QtGui import QColor, QDrag, QMouseEvent, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QEvent, QMimeData, QPoint, QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import (
+    QColor,
+    QDrag,
+    QFont,
+    QFontMetrics,
+    QHelpEvent,
+    QMouseEvent,
+    QPainter,
+    QPainterPath,
+    QPen,
+)
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -24,21 +36,24 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QToolButton,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
 
 from meegxer.gui.labels import param_label
 from meegxer.gui.names import badge, title
-from meegxer.gui.pipeline_doc import PipelineDoc, StripNode
+from meegxer.gui.pipeline_doc import PipelineDoc, Rail, StripNode
 from meegxer.gui.theme import Theme
 
 MIME = "application/x-meegxer-strip"
 STRIP_WIDTH = 158
 TAP_STATES = ("off", "comparison", "main")
-RAIL_Y = 26  # the main line's height in the chain, px from the top
-BRANCH_TOP = 50  # where forked strips start
-BRANCH_LINK_Y = BRANCH_TOP + 26  # links between forked strips
+RAIL_Y = 26  # the signal line's height in the chain, px below the strips' top
+SIGNAL_WIDTH = 6  # the signal is the thick main line
+LANE_H = 15  # rows of the parallel rails above the strips
+TOP = 6  # margin above the rails
+PORT = 22  # a strip reads a rail near its left edge, writes near its right
 TAP_SIZE = 22
 GROUP_LABELS = {
     "input": "■ INPUT",
@@ -259,9 +274,7 @@ class InputStrip(StripWidget):
 
 
 class Gap(QWidget):
-    """Between two strips: the main line (rail), a probe tap and an insert
-    button; a link at the forked level when the next strip reads from the
-    previous forked one (band power into LSL features)."""
+    """Between two strips: the signal line, a probe tap and an insert button."""
 
     insert_requested = Signal(int)
     moved_here = Signal(str, int)
@@ -273,13 +286,11 @@ class Gap(QWidget):
         theme: Theme,
         tap_of: str | None,
         tap_state: str,
-        branch_link: str | None = None,
     ) -> None:
         super().__init__()
         self.index = index
         self.theme = theme
-        self.rail = theme.text_muted
-        self.branch_link = branch_link  # colour of the forked link, if any
+        self.rail = theme.group_color("preprocess")
         self.setAcceptDrops(True)
         self.setFixedWidth(34)
         lay = QVBoxLayout(self)
@@ -326,12 +337,10 @@ class Gap(QWidget):
     def paintEvent(self, event: Any) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor(self.rail), 2))
+        pen = QPen(QColor(self.rail), SIGNAL_WIDTH)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        painter.setPen(pen)
         painter.drawLine(0, RAIL_Y, self.width(), RAIL_Y)
-        if self.branch_link:
-            start = QPointF(0, BRANCH_LINK_Y)
-            end = QPointF(self.width(), BRANCH_LINK_Y)
-            _arrow(painter, QColor(self.branch_link), start, end)
         painter.end()
 
     def _line_colour(self, colour: str) -> None:
@@ -344,67 +353,158 @@ class Gap(QWidget):
             event.acceptProposedAction()
 
     def dragLeaveEvent(self, event: Any) -> None:
-        self._line_colour(self.theme.text_muted)
+        self._line_colour(self.theme.group_color("preprocess"))
 
     def dropEvent(self, event: Any) -> None:
-        self._line_colour(self.theme.text_muted)
+        self._line_colour(self.theme.group_color("preprocess"))
         strip_id = bytes(event.mimeData().data(MIME)).decode()
         self.moved_here.emit(strip_id, self.index)
         event.acceptProposedAction()
 
 
-def _arrow(painter: QPainter, colour: QColor, start: QPointF, end: QPointF) -> None:
-    """A straight arrow from ``start`` to ``end`` (horizontal or vertical)."""
-    painter.setPen(QPen(colour, 2))
-    painter.drawLine(start, end)
-    d = end - start
-    length = max(1.0, (d.x() ** 2 + d.y() ** 2) ** 0.5)
-    ux, uy = d.x() / length, d.y() / length
-    head = QPainterPath(end)
-    head.lineTo(end - QPointF(7 * ux - 4 * uy, 7 * uy + 4 * ux))
-    head.lineTo(end - QPointF(7 * ux + 4 * uy, 7 * uy - 4 * ux))
-    head.closeSubpath()
-    painter.fillPath(head, colour)
+def rail_colour(theme: Theme, kind: str) -> str:
+    """Events violet, feature rails in the feature strips' colour."""
+    if kind == "events":
+        return "#b18cff" if theme.dark else "#7448c2"
+    return theme.group_color("features")
 
 
-class Fork(QWidget):
-    """A forked strip (feature extraction or output): the rail passes over it,
-    and an arrow comes down from the rail into it when it reads from the main
-    line (rather than from the forked strip before it)."""
+class RailBoard(QWidget):
+    """Holds the chain and paints the parallel rails above it: a filled dot
+    where a strip starts a rail, a hollow one where a strip reads it, the
+    rail's name on the line, and a hop where a connector crosses a lower rail.
+    A strip that needs a rail the chain does not have gets a red dot."""
 
-    def __init__(
-        self, strip: StripWidget, theme: Theme, colour: str, from_rail: bool
-    ) -> None:
+    def __init__(self, doc: PipelineDoc, theme: Theme) -> None:
         super().__init__()
-        self.strip = strip
-        self.rail = QColor(theme.text_muted)
-        self.colour = QColor(colour)
-        self.from_rail = from_rail
-        self.setFixedWidth(STRIP_WIDTH)
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, BRANCH_TOP, 0, 0)
-        lay.addWidget(strip)
-        self.setToolTip(
-            "Forks off the main line: reads the signal here, the main line "
-            "continues past it"
-            if from_rail
-            else "Reads the strip before it"
-        )
+        self.theme = theme
+        self.rails, self.needs = doc.rails()
+        self.lanes = doc.rail_lanes()
+        self.strips: dict[str, QWidget] = {}
+        self.font_ = QFont(self.font())
+        self.font_.setPointSizeF(max(7.0, self.font_.pointSizeF() * 0.82))
+        self.font_.setBold(True)
+        self.setMouseTracking(True)
+
+    @property
+    def band(self) -> int:
+        """Height of the rails above the strips."""
+        return TOP + self.lanes * LANE_H + (4 if self.lanes else 0)
+
+    def lane_y(self, lane: int) -> float:
+        return TOP + (self.lanes - 1 - lane) * LANE_H + LANE_H / 2
+
+    def _x(self, strip_id: str, *, write: bool) -> float | None:
+        w = self.strips.get(strip_id)
+        if w is None:
+            return None
+        return float(w.x() + (w.width() - PORT if write else PORT))
+
+    def spans(self) -> list[tuple[Rail, float, float, list[float]]]:
+        """Each drawn rail: where it starts and ends, and its readers' x."""
+        out = []
+        for rail in self.rails:
+            x0 = self._x(rail.producer, write=True)
+            if x0 is None:
+                continue
+            xs = [x for r in rail.readers if (x := self._x(r, write=False)) is not None]
+            x1 = max(xs) if xs else x0 + 18  # nothing reads it yet: a stub
+            out.append((rail, x0, x1, xs))
+        return out
+
+    def _vertical(self, painter: QPainter, x: float, y: float, top: float,
+                  crossings: list[float]) -> None:  # fmt: skip
+        """From a rail at ``y`` down to a strip's top, hopping over ``crossings``."""
+        path = QPainterPath(QPointF(x, y))
+        for c in sorted(c for c in crossings if y + 5 < c < top - 5):
+            path.lineTo(x, c - 4)
+            path.arcTo(QRectF(x - 4, c - 4, 8, 8), 90, -180)
+        path.lineTo(x, top)
+        painter.drawPath(path)
 
     def paintEvent(self, event: Any) -> None:
+        if not self.lanes:
+            return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(self.rail, 2))
-        painter.drawLine(0, RAIL_Y, self.width(), RAIL_Y)
-        if self.from_rail:  # ↘: from the rail down into the strip
-            x = 14.0
-            painter.setBrush(self.colour)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(QPointF(x, RAIL_Y), 4, 4)
-            _arrow(painter, self.colour, QPointF(x, RAIL_Y + 4),
-                   QPointF(x, BRANCH_TOP - 1))  # fmt: skip
+        painter.setFont(self.font_)
+        fm = QFontMetrics(self.font_)
+        top = float(self.band)
+        spans = self.spans()
+
+        def crossings(x: float, lane: int) -> list[float]:
+            return [self.lane_y(r.lane) for r, a, b, _ in spans
+                    if r.lane < lane and a < x < b]  # fmt: skip
+
+        for rail, x0, x1, xs in spans:
+            colour = QColor(rail_colour(self.theme, rail.kind))
+            y = self.lane_y(rail.lane)
+            painter.setPen(QPen(colour, 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawLine(QPointF(x0, y), QPointF(x1, y))
+            pen = QPen(colour, 1.5)
+            painter.setPen(pen)
+            self._vertical(painter, x0, y, top, crossings(x0, rail.lane))
+            for x in xs:
+                self._vertical(painter, x, y, top, crossings(x, rail.lane))
+            # the name above its own strip, between the strip's two ports
+            room = x0 - (x0 - STRIP_WIDTH + 2 * PORT) - 12
+            label = fm.elidedText(rail.label, Qt.TextElideMode.ElideRight, int(room))
+            box = QRectF(x0 - 8 - room, y - fm.height() / 2, room, fm.height())
+            painter.setPen(colour)
+            painter.drawText(
+                box, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, label
+            )
+            painter.setPen(QPen(colour, 2))
+            painter.setBrush(colour)
+            painter.drawEllipse(QPointF(x0, y), 3.5, 3.5)
+            painter.setBrush(QColor(self.theme.background))
+            for x in xs:
+                painter.drawEllipse(QPointF(x, y), 3.5, 3.5)
+        warn = QColor(self.theme.incompatible_border)
+        for strip_id, needed in self.needs.items():
+            at = self._x(strip_id, write=False)
+            if at is None:
+                continue
+            x, y = at, self.lane_y(self.lanes - 1)
+            pen = QPen(warn, 1.5, Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.drawLine(QPointF(x, y + 4), QPointF(x, top))
+            painter.setPen(QPen(warn, 2))
+            painter.setBrush(QColor(self.theme.background))
+            painter.drawEllipse(QPointF(x, y), 3.5, 3.5)
+            text = f"needs {needed}"
+            box = QRectF(
+                x + 8, y - fm.height() / 2, STRIP_WIDTH - 2 * PORT, fm.height()
+            )
+            painter.setPen(warn)
+            painter.drawText(
+                box, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text
+            )
         painter.end()
+
+    def rail_at(self, point: QPointF) -> Rail | None:
+        for rail, x0, x1, _ in self.spans():
+            if (
+                x0 - 4 <= point.x() <= x1 + 4
+                and abs(point.y() - self.lane_y(rail.lane)) <= 5
+            ):
+                return rail
+        return None
+
+    def event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.ToolTip:
+            assert isinstance(event, QHelpEvent)
+            rail = self.rail_at(QPointF(event.pos()))
+            if rail is None:
+                QToolTip.hideText()
+            else:
+                readers = ", ".join(rail.readers) or "nothing yet"
+                QToolTip.showText(event.globalPos(),
+                                  f"{rail.label} rail, from {rail.producer}\n"
+                                  f"Read by: {readers}", self)  # fmt: skip
+            return True
+        return super().event(event)
 
 
 class ChainView(QScrollArea):
@@ -426,7 +526,7 @@ class ChainView(QScrollArea):
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setMinimumHeight(220 + BRANCH_TOP)
+        self.setMinimumHeight(240)
         self._doc: PipelineDoc | None = None
 
     def rebuild(
@@ -442,12 +542,12 @@ class ChainView(QScrollArea):
         self._doc = doc
         self._theme = theme
         scroll = self.horizontalScrollBar().value()
-        inner = QWidget()
+        inner = RailBoard(doc, theme)
         lay = QHBoxLayout(inner)
-        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setContentsMargins(8, inner.band + 2, 8, 8)
         lay.setSpacing(0)
+        self.setMinimumHeight(232 + inner.band)
         tappable = {s.id for s in doc.tappable()}
-        main_line = {s.id for s in doc.strips if doc.on_main_line(s)}
         for i, strip in enumerate(doc.strips):
             status = statuses.get(strip.id, "stopped")
             chosen = strip.id == selected
@@ -466,26 +566,10 @@ class ChainView(QScrollArea):
             widget.clicked.connect(self.selected)
             widget.remove_requested.connect(self.remove_requested)
             widget.calibrate_requested.connect(self.calibrate_requested)
-            colour = theme.group_color(doc.group(strip))
-            if strip.id in main_line:
-                lay.addWidget(widget)
-            else:
-                source = doc.input_of(strip)
-                lay.addWidget(Fork(widget, theme, colour, source in main_line))
+            lay.addWidget(widget)
+            inner.strips[strip.id] = widget
             tap_of = strip.id if strip.id in tappable else None
-            after = doc.strips[i + 1] if i + 1 < len(doc.strips) else None
-            linked = (
-                after is not None
-                and strip.id not in main_line
-                and doc.input_of(after) == strip.id
-            )
-            gap = Gap(
-                i + 1,
-                theme,
-                tap_of,
-                taps.get(strip.id, "off"),
-                theme.group_color(doc.group(strip)) if linked else None,
-            )
+            gap = Gap(i + 1, theme, tap_of, taps.get(strip.id, "off"))
             gap.insert_requested.connect(self._palette)
             gap.moved_here.connect(self.move_requested)
             gap.tap_clicked.connect(self.tap_clicked)

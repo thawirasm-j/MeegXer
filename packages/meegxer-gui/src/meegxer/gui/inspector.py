@@ -189,6 +189,7 @@ def _grid(widgets: list[QWidget], columns: int = 2) -> QGridLayout:
 class Inspector(QScrollArea):
     param_changed = Signal(str, str, object)  # strip id, name, value
     strip_params_changed = Signal(str, list)
+    input_changed = Signal(str, str)  # strip id, the strip it reads ("" = nearest)
     channel_types_changed = Signal(str, list)
     pass_uncalibrated_changed = Signal(str, bool)
     clear_calibration = Signal(str)
@@ -257,6 +258,8 @@ class Inspector(QScrollArea):
                 return "Changing this restarts this strip's filter state."
             return ""
 
+        if manifest["inputs"] and manifest["inputs"][0]["type"] == "features":
+            lay.addWidget(self._reads(doc, strip))
         if main_specs:
             card, card_lay = _card("Settings")
             self._fill(card_lay, strip, main_specs, restart_note)
@@ -534,6 +537,27 @@ class Inspector(QScrollArea):
             b.toggled.connect(lambda _: changed())
             boxes.append((kind, b))
         lay.addLayout(_grid([b for _, b in boxes], columns=3))
+        return card
+
+    def _reads(self, doc: PipelineDoc, strip: StripNode) -> QWidget:
+        """The feature rail this strip draws from (docs/RAILS.md)."""
+        card, lay = _card("Reads", "The feature rail this strip draws from.")
+        choices = doc.input_choices(strip)
+        box = QComboBox()
+        box.setObjectName("reads")
+        if not choices:
+            box.addItem("No feature rail before this strip", "")
+            box.setEnabled(False)
+        else:
+            nearest = doc.rail_name(doc.get(choices[0]))
+            box.addItem(f"Nearest ({nearest})", "")
+            for sid in choices:
+                box.addItem(doc.rail_name(doc.get(sid)), sid)
+            box.setCurrentIndex(max(0, box.findData(strip.input)) if strip.input else 0)
+        box.currentIndexChanged.connect(
+            lambda _: self.input_changed.emit(strip.id, str(box.currentData()))
+        )
+        lay.addWidget(box)
         return card
 
     def _strip_picker(self, doc: PipelineDoc, strip: StripNode) -> QWidget:

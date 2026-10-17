@@ -1,6 +1,7 @@
 import pytest
 
 from meegxer.core.control import manifest_to_dict
+from meegxer.core.graph import Graph
 from meegxer.core.registry import Registry
 from meegxer.gui.pipeline_doc import PipelineDoc, tap_id
 
@@ -157,8 +158,6 @@ def test_groups_and_what_each_strip_reads_from(doc: PipelineDoc) -> None:
         "rereferenc1": "preprocess", "bandpower1": "features",
         "lslfeature1": "output", "ica1": "preprocess", "lslout1": "output",
     }  # fmt: skip
-    main = [s.id for s in doc.strips if doc.on_main_line(s)]
-    assert main == ["input", "iirfilter1", "notch1", "rereferenc1", "ica1"]
     reads = {s.id: doc.input_of(s) for s in doc.strips}
     assert reads["bandpower1"] == "rereferenc1"
     assert reads["lslfeature1"] == "bandpower1"
@@ -239,3 +238,60 @@ def test_a_node_can_process_more_than_eeg_by_default(doc: PipelineDoc) -> None:
     assert "channel_types" not in doc.to_pipeline(taps=False)["nodes"][-1]  # default
     strip.channel_types = ["eeg"]  # narrower than the node's default: saved
     assert doc.to_pipeline(taps=False)["nodes"][-1]["channel_types"] == ["eeg"]
+
+
+def test_rails_start_at_feature_strips_and_pack_into_low_lanes(
+    doc: PipelineDoc,
+) -> None:
+    """docs/RAILS.md: each feature strip starts a named rail that ends at its last
+    reader; rails share a lane where they do not overlap."""
+    psd = doc.insert(len(doc.strips), "meegxer.nodes.psd")
+    tsv = doc.insert(len(doc.strips), "meegxer.core.feature_tsv")
+    bp = doc.insert(len(doc.strips), "meegxer.nodes.band_power")
+    bp2 = doc.insert(len(doc.strips), "meegxer.nodes.band_power")
+    lsl = doc.insert(len(doc.strips), "meegxer.core.lsl_features_out")
+    doc.set_input(lsl.id, bp.id)  # reads the first band power, past the second
+    rails, needs = doc.rails()
+    assert needs == {}
+    by = {r.producer: r for r in rails}
+    assert (by[psd.id].label, by[psd.id].readers, by[psd.id].lane) == (
+        "PSD", [tsv.id], 0)  # fmt: skip
+    assert by[bp.id].label == "Band power" and by[bp.id].readers == [lsl.id]
+    assert by[bp.id].lane == 0  # PSD's rail ended before it: same lane
+    assert by[bp2.id].label == "Band power·2" and by[bp2.id].readers == []
+    assert by[bp2.id].lane == 1  # band power's rail passes over it
+    assert doc.rail_lanes() == 2
+
+
+def test_events_rail_comes_from_the_input_and_csp_needs_it(doc: PipelineDoc) -> None:
+    csp = doc.insert(len(doc.strips), "meegxer.nodes.csp")
+    rails, needs = doc.rails()
+    assert needs == {csp.id: "Events"}
+    assert doc.rail_lanes() == 2  # CSP's own features rail, a row for Events
+    doc.input_events = 12
+    rails, needs = doc.rails()
+    events = next(r for r in rails if r.kind == "events")
+    assert (events.producer, events.readers, needs) == ("input", [csp.id], {})
+
+
+def test_a_chosen_input_is_saved_loaded_and_dropped_with_its_strip(
+    doc: PipelineDoc,
+) -> None:
+    bp = doc.insert(len(doc.strips), "meegxer.nodes.band_power")
+    psd = doc.insert(len(doc.strips), "meegxer.nodes.psd")
+    tsv = doc.insert(len(doc.strips), "meegxer.core.feature_tsv")
+    tsv.params["path"] = "features.tsv"
+    assert doc.input_choices(tsv) == [psd.id, bp.id]
+    assert doc.input_of(tsv) == psd.id  # nearest by default
+    doc.set_input(tsv.id, bp.id)
+    entry = next(e for e in doc.to_pipeline()["nodes"] if e["id"] == tsv.id)
+    assert entry["input"] == bp.id
+    graph = Graph.from_dict(doc.to_pipeline(), Registry.from_entry_points())
+    assert {n.id: n.input for n in graph.nodes}[tsv.id] == bp.id
+    other = PipelineDoc(list(doc.manifests.values()))
+    other.load_pipeline(doc.to_pipeline())
+    assert other.get(tsv.id).input == bp.id
+    with pytest.raises(ValueError, match="cannot read"):
+        doc.set_input(tsv.id, doc.strips[1].id)  # a signal strip
+    doc.remove(bp.id)
+    assert doc.get(tsv.id).input == "" and doc.input_of(tsv) == psd.id
