@@ -977,7 +977,8 @@ class MainWindow(QMainWindow):
         self, probe: str, seconds: float, end: int | None = None
     ) -> Window | None:
         """The window ending at bin ``end`` (default: the newest); time in
-        seconds before the newest data. Always the full span: while the history
+        seconds before the newest data, or since the stream started (setting
+        ``visualization.time_axis``). Always the full span: while the history
         is shorter, the part before the first data stays blank."""
         buf = self.buffers.get(probe)
         if buf is None or not buf.labels or not buf.bin_rate:
@@ -987,7 +988,8 @@ class MainWindow(QMainWindow):
         end = newest if end is None else min(end, newest)
         n = max(2, int(seconds * buf.bin_rate))
         mins, maxs, bypassed = buf.window(end, n)
-        t = (np.arange(end - n, end) - newest) / buf.bin_rate
+        origin = 0 if self._since_start() else newest  # bin 0 = the source's sample 0
+        t = (np.arange(end - n, end) - origin) / buf.bin_rate
         return Window(probe, buf.labels, t, mins, maxs, bypassed, buf.bin_rate)
 
     def _offline_window(
@@ -1038,6 +1040,9 @@ class MainWindow(QMainWindow):
     def _stacked_provider(self, main: str | None) -> Callable[..., Window | None]:
         return self._panned_provider(self.stacked.panner, self.stacked.seconds(), main)
 
+    def _since_start(self) -> bool:
+        return bool(self.settings["visualization"].get("time_axis") == "since_start")
+
     def _panned_provider(
         self, panner: Panner, seconds: float, main: str | None
     ) -> Callable[..., Window | None]:
@@ -1051,6 +1056,7 @@ class MainWindow(QMainWindow):
             ref = self._live_reference(buf)
             newest, oldest = ref.end_bin, ref.oldest_bin
             n = int(seconds * buf.bin_rate)
+            panner.since_start = self._since_start()
             panner.set_extent(min(oldest + n, newest), newest, n, live=True)
             end = panner.position()
             return lambda p, s: self._live_window(p, s, end=end)

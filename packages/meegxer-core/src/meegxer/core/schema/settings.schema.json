@@ -73,6 +73,10 @@
           "description": "Default time span of the signal view, in seconds.",
           "enum": [2, 5, 10, 20, 30]
         },
+        "time_axis": {
+          "description": "Live time axis: seconds before the newest data (fixed ticks, 0 at the right edge) or time since the stream started (sample index on the source's clock).",
+          "enum": ["before_now", "since_start"]
+        },
         "spectrum": {
           "type": "object",
           "additionalProperties": false,

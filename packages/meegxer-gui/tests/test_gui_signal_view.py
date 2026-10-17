@@ -332,8 +332,41 @@ def test_the_live_window_is_always_the_full_span(qapp: QApplication) -> None:
     buf = ProbeBuffer()
     mins = np.zeros((2, 250))  # 2 s at 125 bins per second
     buf.add(DisplayFrame("tap", 0, ("Cz", "Pz"), 250.0, Envelope(0, 2, mins, mins)))
-    host = SimpleNamespace(buffers={"tap": buf}, _live_reference=lambda b: b)
+    host = SimpleNamespace(buffers={"tap": buf}, _live_reference=lambda b: b,
+                           _since_start=lambda: False)  # fmt: skip
     win = MainWindow._live_window(host, "tap", 10.0)  # type: ignore[arg-type]
     assert win is not None
     assert win.t[0] == pytest.approx(-10.0) and len(win.t) == 1250
     assert np.isnan(win.mins[:, :1000]).all() and not np.isnan(win.mins[:, -250:]).any()
+
+
+def test_the_live_time_axis_can_count_from_the_stream_start(
+    qapp: QApplication,
+) -> None:
+    """Setting ``time_axis: since_start``: time is the sample index on the
+    source's clock, so the ticks run on; the default counts back from now."""
+    from types import SimpleNamespace
+
+    from meegxer.core.display import DisplayFrame, Envelope
+    from meegxer.gui.buffers import ProbeBuffer
+    from meegxer.gui.main_window import MainWindow
+
+    buf = ProbeBuffer()
+    mins = np.zeros((1, 1500))  # bins 1000-2500 at 125 per second: 8 s to 20 s
+    buf.add(DisplayFrame("tap", 0, ("Cz",), 250.0, Envelope(1000, 2, mins, mins)))
+    for since, first, last in ((False, -10.0, -0.008), (True, 10.0, 19.992)):
+        host = SimpleNamespace(buffers={"tap": buf}, _live_reference=lambda b: b,
+                               _since_start=lambda since=since: since)  # fmt: skip
+        win = MainWindow._live_window(host, "tap", 10.0)  # type: ignore[arg-type]
+        assert win is not None
+        assert win.t[0] == pytest.approx(first) and win.t[-1] == pytest.approx(last)
+
+    panner = Panner()
+    panner.set_extent(0, 100, 10, live=True)
+    panner.following = False
+    panner.show_span(-6.0, -1.0)
+    assert panner.where.text() == "1.0 s behind"
+    panner.since_start = True
+    panner.show_span(12.0, 17.0)
+    assert panner.where.text() == "12.0 – 17.0 s"  # noqa: RUF001
+    panner.deleteLater()

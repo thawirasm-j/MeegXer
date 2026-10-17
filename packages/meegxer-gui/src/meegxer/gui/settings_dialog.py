@@ -402,6 +402,15 @@ class SettingsDialog(QDialog):
         form.addRow(
             "Time span", self._combo("visualization.span", {s: f"{s} s" for s in SPANS})
         )
+        form.addRow(
+            "Live time axis",
+            self._combo(
+                "visualization.time_axis",
+                {"before_now": "Seconds before now", "since_start": "Time since start"},
+                "Seconds before now keeps the ticks still (0 is the newest data); "
+                "time since start counts from the stream's first sample, as offline",
+            ),
+        )
 
         band = QWidget()
         row = QHBoxLayout(band)

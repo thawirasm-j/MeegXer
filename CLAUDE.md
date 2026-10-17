@@ -27,7 +27,10 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
    empty; full manifest in `docs/DESIGN.md` §3.3). Upstream changes mark downstream
    models "needs refit"; never silently reuse a stale model.
 8. **Align by sample index, match channels by label.** Every block carries a sample
-   index and LSL timestamp. Probes overlay by index, never by arrival time.
+   index, counted on the source's clock from its first sample, and an LSL timestamp.
+   A node that changes the rate maps indices by the exact ratio of the rates, so
+   index / rate is the same time on both sides. Probes overlay by index, never by
+   arrival time; the GUI shows time (live: seconds before now, or since the start).
 9. **Plugins are untrusted code; only host Sinks act.** A plugin runs in its own
    process and speaks the stdin/stdout framed binary protocol. It emits Events only;
    trusted host-side Sinks perform actions (keyboard, gamepad, serial). Other packages

@@ -240,6 +240,7 @@ class Panner(QWidget):
         lay.addWidget(self.latest)
         self.following = True  # live: the panner sits at the newest data
         self.live = False
+        self.since_start = False  # live: label times since the stream started
         self.bar.sliderMoved.connect(self._moved)
         self.bar.actionTriggered.connect(lambda _: self._moved(None))
 
@@ -273,7 +274,7 @@ class Panner(QWidget):
 
     def show_span(self, t0: float, t1: float) -> None:
         """Say where the shown span is (live: how far behind the newest data)."""
-        if not self.live:
+        if not self.live or (self.since_start and not self.following):
             self.where.setText(f"{t0:.1f} – {t1:.1f} s")  # noqa: RUF001
         elif self.following:
             self.where.setText("newest data")

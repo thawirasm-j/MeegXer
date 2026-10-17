@@ -47,6 +47,7 @@ DEFAULTS: dict[str, Any] = {
         "peak": "plasma",
         "flip_on_light": False,
         "span": 10,
+        "time_axis": "before_now",
         "spectrum": {
             "band": [8.0, 13.0],
             "relative": False,

@@ -170,7 +170,13 @@ transform(block, model, state, params)        -> block_out, state, events
   `Input > Highpass > Probe R1 > ASR > Probe R2 > ICA > ICLabel > ICA rejection > Probe Main`
 - Viewer shows Main as solid and selected comparison probes as faded background.
 - **Display modes:** overlay; difference (e.g., Main − R1 = what was removed).
-- Aligned by **sample index**, channels matched by **label**.
+- Aligned by **sample index**, channels matched by **label**. The index counts the
+  source's samples from its first (rule 8); a rate-changing node maps it by the
+  exact ratio of the rates, so index / rate is the same time on either side and
+  probes at different rates still line up.
+- **Time axis:** offline, time since the recording's start; live, seconds before
+  the newest data (fixed ticks, 0 at the right edge; the default) or time since
+  the stream started (setting `visualization.time_axis`).
 - Feature-domain probes: overlay PSDs across probes.
 
 ### 3.5 Plugins and Sterile mode
