@@ -4,7 +4,9 @@ One trace area shows every selected channel (all by default, i.e. a butterfly
 plot), one colour per channel from the scalp colour wheel. The Main probe is drawn
 thick, comparison probes thin and faded. Difference mode shows Main minus the
 first comparison (what that stretch of the chain removed); spectrum mode shows
-power spectra of the same windows. Bypassed data is hatched.
+power spectra of the same windows, with a head plot of the power in a band (the
+shaded, draggable region; ``headplot``) and, live, spectra smoothed between
+refreshes. Bypassed data is hatched.
 
 Time moves only with the panner under each trace area, and the shown span is
 always the chosen one (e.g. 10 s): no margins beyond it, and while a live stream
@@ -17,6 +19,7 @@ channels, span and panner.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -41,6 +44,19 @@ from PySide6.QtWidgets import (
 )
 
 from meegxer.gui.colors import ChannelStyle, channel_styles_with
+from meegxer.gui.headplot import (
+    BANDS,
+    DEFAULT_RANGE,
+    RANGES,
+    SCHEMES,
+    SYMBOLS,
+    HeadInput,
+    HeadPlot,
+    Layout,
+    PeakHold,
+    Smoother,
+    render,
+)
 from meegxer.gui.theme import Theme
 
 FloatArray = npt.NDArray[np.float64]
@@ -87,16 +103,29 @@ def _psd(
     series: FloatArray, rate: float, seg: int = 256
 ) -> tuple[FloatArray, FloatArray]:
     """Welch power spectrum (µV²/Hz) of an envelope mid-line."""
-    x = series[np.isfinite(series)]
-    if len(x) < 32:
-        return np.empty(0), np.empty(0)
-    seg = min(seg, len(x))
+    f, p = _psd_rows(series[None, :], rate, seg)
+    return f, (p[0] if len(f) else p.reshape(-1))
+
+
+def _psd_rows(
+    series: FloatArray, rate: float, seg: int = 256
+) -> tuple[FloatArray, FloatArray]:
+    """Welch power spectra (µV²/Hz) of each row of envelope mid-lines, over the
+    bins where every row has data (live, the start of the span may be blank)."""
+    rows = np.any(np.isfinite(series), axis=1)  # a channel without data stays NaN
+    x = series[rows][:, np.all(np.isfinite(series[rows]), axis=0)]
+    if x.shape[1] < 32:
+        return np.empty(0), np.empty((series.shape[0], 0))
+    seg = min(seg, x.shape[1])
     step = seg // 2
     win = np.hanning(seg)
     scale = rate * (win**2).sum()
-    frames = [x[i : i + seg] for i in range(0, len(x) - seg + 1, step)]
-    spectra = [np.abs(np.fft.rfft((f - f.mean()) * win)) ** 2 for f in frames]
-    psd = 2 * np.mean(spectra, axis=0) / scale
+    starts = range(0, x.shape[1] - seg + 1, step)
+    frames = np.stack([x[:, i : i + seg] for i in starts], axis=1)  # ch, frame, seg
+    frames = frames - frames.mean(axis=-1, keepdims=True)
+    spectra = np.abs(np.fft.rfft(frames * win, axis=-1)) ** 2
+    psd = np.full((series.shape[0], seg // 2 + 1), np.nan)
+    psd[rows] = 2 * spectra.mean(axis=1) / scale
     return np.fft.rfftfreq(seg, 1 / rate), psd
 
 
@@ -156,6 +185,12 @@ class ChannelMenu(QToolButton):
             if not self.hidden
             else f"Channels: {shown}/{len(self.labels)}"
         )
+
+    def toggle_channel(self, label: str) -> None:
+        """Show or hide one channel (e.g. clicked on the head plot)."""
+        hidden = set(self.hidden)
+        (hidden.discard if label in hidden else hidden.add)(label)
+        self._set(hidden)
 
     def selected(self, labels: tuple[str, ...]) -> list[int]:
         return [i for i, lb in enumerate(labels) if lb not in self.hidden]
@@ -384,10 +419,31 @@ class SignalView(QWidget):
         stacked.clicked.connect(self.stacked_requested)
         bar.addWidget(stacked)
         lay.addLayout(bar)
+        lay.addWidget(self._spectrum_bar())
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        self.head = HeadPlot(theme)
+        self.head.setVisible(False)
+        self.head.hovered.connect(self._hover_channel)
+        self.head.clicked.connect(self.channels.toggle_channel)
+        body.addWidget(self.head)
         self.plot = TracePlot(theme)
-        lay.addWidget(self.plot, 1)
+        body.addWidget(self.plot, 1)
+        lay.addLayout(body, 1)
+        self.band = pg.LinearRegionItem(values=BANDS["alpha"], movable=True)
+        self.band.setZValue(-5)
+        self.band.setVisible(False)
+        self.band.setToolTip("The band the head plot shows: drag it or its edges")
+        self.band.sigRegionChanged.connect(self._band_dragged)
+        self.plot.addItem(self.band, ignoreBounds=True)
+        self._style_band()
         self.panner = Panner()
         lay.addWidget(self.panner)
+        self.smoother = Smoother(2.0)
+        self.peak = PeakHold(2.0)  # the heat scale's top, live
+        self.hover: str | None = None  # channel named on the head plot
+        self._layouts: dict[tuple[object, ...], Layout] = {}
+        self._head_inputs: tuple[object, ...] | None = None  # of the shown map
         self.styles: dict[tuple[str, ...], list[ChannelStyle]] = {}
         self.wheel: dict[str, tuple[float, float]] = {}
         self.types: dict[str, str] = {}  # label -> channel type, when known
@@ -395,6 +451,129 @@ class SignalView(QWidget):
         self.names: dict[str, str] = {}  # probe -> what it shows, e.g. "after Notch"
         self.delays: dict[str, float] = {}  # live: ms behind the input tap
         self.delay_note = ""
+
+    def _spectrum_bar(self) -> QWidget:
+        """Spectrum settings: the head plot's band, measure and colours, and the
+        smoothing of live spectra. Shown in spectrum mode only."""
+        self.spectrum_bar = QWidget()
+        row = QHBoxLayout(self.spectrum_bar)
+        row.setContentsMargins(0, 0, 0, 0)
+
+        def labelled(text: str, widget: QWidget, tip: str) -> None:
+            caption = QLabel(text)
+            caption.setObjectName("muted")
+            row.addWidget(caption)
+            widget.setToolTip(tip)
+            row.addWidget(widget)
+
+        self.head_toggle = QPushButton("Head")
+        self.head_toggle.setCheckable(True)
+        self.head_toggle.setChecked(True)
+        self.head_toggle.setToolTip("Show the head plot of band power")
+        self.head_toggle.toggled.connect(lambda _: self._show_head())
+        row.addWidget(self.head_toggle)
+        self.band_menu = QComboBox()
+        for name, (lo, hi) in BANDS.items():
+            text = f"{SYMBOLS[name]} {name} {lo:g}–{hi:g} Hz"  # noqa: RUF001
+            self.band_menu.addItem(text, (lo, hi))
+        self.band_menu.addItem("Custom", None)
+        self.band_menu.setCurrentIndex(2)
+        self.band_menu.activated.connect(self._band_chosen)
+        labelled("Band", self.band_menu, "The band the head plot shows (or drag the "
+                 "shaded region on the spectrum)")  # fmt: skip
+        self.measure = QComboBox()
+        self.measure.addItem("Absolute", False)
+        self.measure.addItem("Relative", True)
+        labelled("Power", self.measure, "Absolute band power, or relative to the "
+                 "power over 1–45 Hz (cancels broadband differences between "  # noqa: RUF001
+                 "electrodes, such as impedance)")  # fmt: skip
+        self.scheme = QComboBox()
+        for key, text in SCHEMES.items():
+            self.scheme.addItem(text, key)
+        labelled("Colour", self.scheme, "Heat: band power in dB below the top · "
+                 "Change: Main vs. the comparison tap · Peak frequency: where the "
+                 "band peaks")  # fmt: skip
+        self.db_range = QComboBox()
+        for db in RANGES:
+            self.db_range.addItem(f"{db:g} dB", db)
+        self.db_range.setCurrentIndex(RANGES.index(DEFAULT_RANGE))
+        labelled("Range", self.db_range, "How far below the head's maximum the "
+                 "heat map shows (live, the maximum decays with the "
+                 "smoothing)")  # fmt: skip
+        self.scheme.currentIndexChanged.connect(
+            lambda _: self.db_range.setEnabled(self.scheme.currentData() == "heat")
+        )
+        self.smoothing = QComboBox()
+        for tau in (0.0, 1.0, 2.0, 5.0, 10.0):
+            self.smoothing.addItem("Off" if tau == 0 else f"{tau:g} s", tau)
+        self.smoothing.setCurrentIndex(2)
+        self.smoothing.currentIndexChanged.connect(self._smoothing_changed)
+        labelled("Smoothing", self.smoothing, "Live: average spectra over time "
+                 "(exponential moving average with this time constant), for the "
+                 "spectrum and the head plot")  # fmt: skip
+        row.addStretch(1)
+        self.spectrum_bar.setVisible(False)
+        return self.spectrum_bar
+
+    def _style_band(self) -> None:
+        accent = QColor(self.theme.accent)
+        fill = QColor(accent)
+        fill.setAlpha(40)
+        self.band.setBrush(fill)
+        hover = QColor(accent)
+        hover.setAlpha(70)
+        self.band.setHoverBrush(hover)
+        for line in self.band.lines:
+            line.setPen(pg.mkPen(accent, width=1.5))
+            line.setHoverPen(pg.mkPen(accent, width=3))
+
+    def band_range(self) -> tuple[float, float]:
+        lo, hi = self.band.getRegion()
+        return float(min(lo, hi)), float(max(lo, hi))
+
+    def _band_chosen(self, index: int) -> None:
+        band = self.band_menu.itemData(index)
+        if band is not None:
+            self.band.blockSignals(True)
+            self.band.setRegion(band)
+            self.band.blockSignals(False)
+
+    def _band_dragged(self) -> None:
+        lo, hi = self.band_range()
+        custom = self.band_menu.count() - 1
+        for i in range(custom):
+            a, b = self.band_menu.itemData(i)
+            if abs(a - lo) < 0.05 and abs(b - hi) < 0.05:
+                self.band_menu.setCurrentIndex(i)
+                return
+        self.band_menu.setItemText(custom, f"Custom {lo:.1f}–{hi:.1f} Hz")  # noqa: RUF001
+        self.band_menu.setCurrentIndex(custom)
+
+    def _smoothing_changed(self) -> None:
+        self.smoother.tau = self.peak.tau = float(self.smoothing.currentData())
+        self.smoother.reset()
+        self.peak.reset()
+
+    def _hover_channel(self, label: str | None) -> None:
+        self.hover = label
+
+    def _head_message(self, text: str) -> None:
+        self._head_inputs = None  # the next map is drawn afresh
+        self.head.show_map(text)
+
+    def _show_head(self) -> None:
+        self.head.setVisible(self.mode == "spectrum" and self.head_toggle.isChecked())
+        self._size_head()
+
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        self._size_head()
+
+    def _size_head(self) -> None:
+        """The head plot is square beside the spectrum: as tall as the trace
+        area, at most 40 % of the width."""
+        side = int(min(self.plot.height() + 44, 0.4 * self.width()))
+        self.head.setFixedWidth(max(140, side))
 
     def name(self, probe: str | None) -> str:
         """The probe's name, with its estimated delay when running live."""
@@ -408,6 +587,8 @@ class SignalView(QWidget):
         self.theme = theme
         self.styles.clear()
         self.plot.apply_theme(theme)
+        self.head.apply_theme(theme)
+        self._style_band()
 
     def set_active(self, active: bool) -> None:
         """Rest while the stacked window shows the signal (it is not drawn)."""
@@ -417,6 +598,7 @@ class SignalView(QWidget):
             self.channels,
             self.span,
             self.panner,
+            self.spectrum_bar,
         ]
         for widget in widgets:
             widget.setEnabled(active)
@@ -425,12 +607,19 @@ class SignalView(QWidget):
             self.plot.draw([])
             self.plot.hatch([])
             self.plot.mark([])
+            self._head_message("")
             self.legend.setText("Shown in the stacked view (close it to return here)")
 
     def _set_mode(self, mode: str) -> None:
         self.mode = mode
         for button in self.group.buttons():
             button.setChecked(button.text().lower() == mode)
+        spectrum = mode == "spectrum"
+        self.spectrum_bar.setVisible(spectrum)
+        self.band.setVisible(spectrum)
+        self.smoother.reset()  # spectra from before are stale
+        self.peak.reset()
+        self._show_head()
 
     def seconds(self) -> float:
         return float(self.span.currentData())
@@ -444,6 +633,67 @@ class SignalView(QWidget):
         if labels not in self.styles:
             self.styles[labels] = channel_styles_with(labels, self.theme, self.wheel)
         return self.styles[labels]
+
+    def _spectra(
+        self, windows: list[Window]
+    ) -> list[tuple[Window, FloatArray, FloatArray]]:
+        """Each window's spectra (channels x frequencies), smoothed between
+        refreshes while live."""
+        out = []
+        live = self.panner.live
+        for win in windows:
+            f, p = _psd_rows((win.mins + win.maxs) / 2 * UV, win.bin_rate)
+            if live and len(f):
+                p = self.smoother.update(win.probe, win.labels, f, p, time.monotonic())
+            out.append((win, f, p))
+        if not live:
+            self.smoother.reset()
+        return out
+
+    def _draw_head(
+        self,
+        spectra: list[tuple[Window, FloatArray, FloatArray]],
+        has_comparison: bool,
+        waiting: bool,
+    ) -> None:
+        if not self.head.isVisible():
+            return
+        if waiting:
+            self._head_message("Main has no data yet")
+            return
+        win, f, p = spectra[-1]
+        first = spectra[0] if has_comparison else None
+        data = HeadInput(
+            labels=win.labels,
+            f=f,
+            psd=p,
+            band=self.band_range(),
+            scheme=str(self.scheme.currentData()),
+            relative=bool(self.measure.currentData()),
+            db_range=float(self.db_range.currentData()),
+            hidden=frozenset(self.channels.hidden),
+            compare_psd=None if first is None or not len(first[1]) else first[2],
+            compare_labels=() if first is None else first[0].labels,
+            wheel=self.wheel,
+        )
+        if first is not None and first[1].shape != f.shape:
+            data.compare_psd = None  # taps at different rates: no common grid
+        hold = None
+        live = self.panner.live
+        if live:  # the scale's top decays instead of flickering
+            key = (win.probe, data.band, data.relative, data.scheme)
+            hold = lambda top: self.peak.update(key, top)  # noqa: E731
+        else:  # offline the view often redraws the same spectra: skip the work
+            inputs = (data.labels, p.tobytes(), data.band, data.scheme,
+                      data.relative, data.db_range, data.hidden,
+                      None if data.compare_psd is None else data.compare_psd.tobytes(),
+                      id(self.theme), tuple(sorted(self.wheel.items())))  # fmt: skip
+            if inputs == self._head_inputs:
+                return
+            self._head_inputs = inputs
+        if live:
+            self._head_inputs = None
+        self.head.show_map(render(data, self.theme, self._layouts, hold))
 
     def refresh(
         self, provider: Provider, main: str | None, comparisons: list[str]
@@ -464,6 +714,7 @@ class SignalView(QWidget):
             self.plot.hatch([])
             self.plot.mark([])
             self.legend.setText("Nothing shown: click a ◇ tap in the chain")
+            self._head_message("Nothing shown: click a ◇ tap in the chain")
             return
         self.channels.set_labels(
             main_win.labels,
@@ -515,21 +766,19 @@ class SignalView(QWidget):
             plot.setLogMode(False, False)
         elif self.mode == "spectrum":
             self.legend.setText(names)
-            for win, width, alpha in [(w, 1.0, 90) for w in comp] + [
-                (main_win, *((1.0, 90) if waiting else main_pen))
-            ]:
-                mid = (win.mins + win.maxs) / 2 * UV
-                for c in chans:
-                    f, p = _psd(mid[c], win.bin_rate)
-                    if len(f) > 1:
-                        st = styles[c]
-                        layers.append(
-                            (
-                                f[1:],
-                                10 * np.log10(p[1:] + 1e-12),
-                                _pen(st.color, width, alpha, st.dashed),
-                            )
-                        )
+            spectra = self._spectra([*comp, main_win])
+            pens = [(1.0, 90)] * len(comp) + [(1.0, 90) if waiting else main_pen]
+            for (win, f, p), (width, alpha) in zip(spectra, pens, strict=True):
+                if len(f) < 2:
+                    continue
+                hovered = [c for c in chans if win.labels[c] == self.hover]
+                for c in [c for c in chans if c not in hovered] + hovered:
+                    st = styles[c]
+                    bold = bool(hovered) and c == hovered[0] and win is main_win
+                    pen = _pen(st.color, width + 2 if bold else width,
+                               255 if bold else alpha, st.dashed)  # fmt: skip
+                    layers.append((f[1:], 10 * np.log10(p[c, 1:] + 1e-12), pen))
+            self._draw_head(spectra, has_comparison=bool(comp), waiting=waiting)
             plot.setLabel("left", "power (dB µV²/Hz)")
             plot.setLabel("bottom", "frequency", units="Hz")
         else:
