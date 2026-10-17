@@ -3,7 +3,6 @@ the 50 Hz line in difference mode, and kill the GUI without interrupting
 processing."""
 
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -75,7 +74,7 @@ def test_killing_the_gui_does_not_interrupt_processing(
         while not client.call("status").get("running"):
             assert time.monotonic() < deadline, "the GUI did not start the pipeline"
             time.sleep(0.2)
-        os.kill(gui.pid, signal.SIGKILL)
+        gui.kill()  # SIGKILL on POSIX: no chance to clean up
         gui.wait(5)
         before = client.call("status")["samples"]
         time.sleep(1.0)
