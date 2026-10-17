@@ -136,6 +136,12 @@ def _windows(data: RailInput) -> tuple[FeatureBlock, ...]:
     return tuple(w for w in data if isinstance(w, FeatureBlock))
 
 
+def rail_fingerprint(output_fp: str, port: str) -> str:
+    """What a node's rail output carries: its output fingerprint plus the port
+    (a node reading ``"ica1:ics"`` as its main input depends on this)."""
+    return fingerprint("rail", output_fp, port)
+
+
 def with_rails(input_fp: str, producers: Mapping[str, str]) -> str:
     """A reader's input fingerprint: its main input plus each rail's producer
     output, so a change upstream of any rail it reads asks for a refit."""

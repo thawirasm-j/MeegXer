@@ -8,6 +8,12 @@ threshold: ``x - winv[:, r] @ weights[r] @ x``. That is a fixed spatial filter, 
 streams block by block with no state. The threshold and the classes act in
 ``transform`` only (live parameters), so changing them needs no refit.
 
+The strip also writes the **ICs rail** (docs/RAILS.md): the component activations
+``weights @ x``, one channel per component (``IC01``...), in the component space,
+each carrying the class ICLabel finds most likely and that probability as channel
+attributes (``SignalInfo.ch_classes``, ``ch_scores``). Later strips read it, e.g.
+a spectrum of the components (``input: "ica1:ics"``).
+
 Conventions follow EEGLAB so the ICLabel features match it: ``weights`` apply to
 data in microvolts (``icaweights * icasphere`` with an identity sphere) and the
 components are scaled to RMS microvolts the way ``eeg_checkset`` does. ICLabel was
@@ -126,6 +132,21 @@ def iclabel(x: np.ndarray, info: SignalInfo, weights: np.ndarray) -> np.ndarray:
     return np.asarray(proba, dtype=np.float64)
 
 
+def component_info(model: State, info: SignalInfo) -> SignalInfo:
+    """The ICs rail's channels: one per component, with ICLabel's most likely
+    class and its probability as attributes."""
+    proba = np.asarray(model["probabilities"])
+    best = proba.argmax(axis=1)
+    width = max(2, len(str(proba.shape[0])))
+    return SignalInfo(
+        tuple(f"IC{i + 1:0{width}d}" for i in range(proba.shape[0])),
+        info.sfreq,
+        info.stream_id,
+        ch_classes=tuple(CLASSES[int(b)] for b in best),
+        ch_scores=tuple(float(proba[i, b]) for i, b in enumerate(best)),
+    )
+
+
 def rejected(model: State, params: Params) -> list[int]:
     """Components to remove: any selected class at or above the threshold."""
     proba = np.asarray(model["probabilities"])
@@ -176,6 +197,8 @@ class ICAClean(Processor):
                      "reject_line_noise", "reject_channel_noise"],
         requires_fit=True,
         requires_positions=True,  # ICLabel
+        rail_outputs=[{"name": "ics", "type": "signal", "rail": "ics",
+                       "space": "component"}],
     )  # fmt: skip
 
     def fit(self, calibration: Block, params: Params) -> State:
@@ -206,17 +229,21 @@ class ICAClean(Processor):
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
-        drop = rejected(model, params)
-        if not drop:
-            return TransformResult(block, {})
         channels = model["channels"]
         assert isinstance(channels, list)
         idx = [block.info.ch_labels.index(str(lb)) for lb in channels]
-        weights = np.asarray(model["weights"])[drop]
+        weights = np.asarray(model["weights"])
+        # weights take uV, so on data in volts they give the activations in volts
+        sources = weights @ block.data[idx]
+        rails = {"ics": Block(sources, component_info(model, block.info),
+                              block.sample_index, block.timestamp)}  # fmt: skip
+        drop = rejected(model, params)
+        if not drop:
+            return TransformResult(block, {}, (), rails)
         winv = np.asarray(model["winv"])[:, drop]
         data = block.data.copy()
-        data[idx] -= winv @ (weights @ block.data[idx])
+        data[idx] -= winv @ sources[drop]
         return TransformResult(
             Block(data, block.info, block.sample_index, block.timestamp,
-                  block.bypassed), {}
+                  block.bypassed), {}, (), rails
         )  # fmt: skip

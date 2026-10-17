@@ -52,9 +52,9 @@
             "default": {}
           },
           "input": {
-            "description": "id of the node feeding this one.",
+            "description": "id of the node feeding this one, or 'id:port' for one of its rail outputs (e.g. 'ica1:ics': the components ICA writes; spec 0.2.18).",
             "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
+            "pattern": "^[a-z][a-z0-9_]*(:[a-z][a-z0-9_]*)?$"
           },
           "strip_params": {
             "description": "UI: parameters shown on the node's strip in advanced mode (up to 3). Display only; does not affect processing.",

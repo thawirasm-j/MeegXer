@@ -315,6 +315,28 @@ def test_rail_ports_draw_their_rails_and_readers() -> None:
     assert needs == {early.id: "ICs"}
 
 
+def test_a_spectrum_can_read_the_ics_rail(doc: PipelineDoc) -> None:
+    """Spec 0.2.18: a signal strip may take a rail output (the ICs) as its input;
+    it is saved as ``input: "ica1:ics"``, drawn as a reader of the ICs rail, and
+    no longer pulls from the signal line."""
+    ica = doc.insert(len(doc.strips), "meegxer.nodes.ica")
+    psd = doc.insert(len(doc.strips), "meegxer.nodes.psd")
+    assert doc.rail_choices(psd) == [f"{ica.id}:ics"]
+    assert doc.choice_label(f"{ica.id}:ics") == "ICs (ICA + ICLabel)"
+    assert doc.input_of(psd) == ica.id and doc.reads_signal(psd)  # the default
+    doc.set_input(psd.id, f"{ica.id}:ics")
+    assert not doc.reads_signal(psd)
+    rails, _ = doc.rails()
+    ics = next(r for r in rails if r.id == f"{ica.id}:ics")
+    assert (ics.label, ics.kind, ics.readers) == ("ICs", "signal", [psd.id])
+    entry = next(e for e in doc.to_pipeline()["nodes"] if e["id"] == psd.id)
+    assert entry["input"] == f"{ica.id}:ics"
+    graph = Graph.from_dict(doc.to_pipeline(), Registry.from_entry_points())
+    assert graph[psd.id].input_port == "ics"
+    doc.remove(ica.id)
+    assert doc.get(psd.id).input == ""
+
+
 def test_a_chosen_input_is_saved_loaded_and_dropped_with_its_strip(
     doc: PipelineDoc,
 ) -> None:

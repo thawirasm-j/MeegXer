@@ -220,8 +220,8 @@ def _chain(graph: Any, node_id: str) -> list[Any]:
     """The nodes from the source to ``node_id`` (inclusive), in order."""
     nodes = []
     current = graph[node_id]
-    while current.input is not None:
-        current = graph[current.input]
+    while current.input_node is not None:
+        current = graph[current.input_node]
         nodes.append(current)
     return list(reversed(nodes))
 
@@ -396,7 +396,7 @@ class BidsFeatures(_BidsSink):
         if not self._blocks:
             return
         target = self._target()
-        upstream = self._graph[self._node_id].input
+        upstream = str(self._graph[self._node_id].input).replace(":", "-")
         table = self._claim(target.path(f"{upstream}_features.tsv"))
         target.folder.mkdir(parents=True, exist_ok=True)
         write_dataset_files(target, self._graph)

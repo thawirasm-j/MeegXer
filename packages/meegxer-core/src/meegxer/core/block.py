@@ -66,6 +66,8 @@ class SignalInfo:
     (e.g. ``eeg``, ``eog``) and ``positions`` (x, y, z in metres, head coordinates:
     x right, y front, z up; None where unknown) are per channel, or empty when not
     known at all. They describe the channels but do not change the data.
+    ``ch_classes`` and ``ch_scores`` are attributes a classifier gave each channel
+    (ICLabel for components: its most likely class and that probability), or empty.
     """
 
     ch_labels: tuple[str, ...]
@@ -74,6 +76,8 @@ class SignalInfo:
     bads: tuple[str, ...] = ()
     ch_types: tuple[str, ...] = ()
     positions: tuple[Position | None, ...] = ()
+    ch_classes: tuple[str, ...] = ()
+    ch_scores: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         labels = tuple(self.ch_labels)
@@ -99,7 +103,13 @@ class SignalInfo:
             for p in self.positions
         )
         object.__setattr__(self, "positions", positions)
-        for name, values in (("ch_types", types), ("positions", positions)):
+        classes = tuple(str(c) for c in self.ch_classes)
+        object.__setattr__(self, "ch_classes", classes)
+        scores = tuple(float(s) for s in self.ch_scores)
+        object.__setattr__(self, "ch_scores", scores)
+        per_channel = (("ch_types", types), ("positions", positions),
+                       ("ch_classes", classes), ("ch_scores", scores))  # fmt: skip
+        for name, values in per_channel:
             if values and len(values) != len(labels):
                 raise ChannelMismatchError(
                     f"{name} has {len(values)} entries for {len(labels)} channels"
@@ -115,6 +125,8 @@ class SignalInfo:
             tuple(label for label in labels if label in self.bads),
             tuple(self.ch_types[i] for i in idx) if self.ch_types else (),
             tuple(self.positions[i] for i in idx) if self.positions else (),
+            tuple(self.ch_classes[i] for i in idx) if self.ch_classes else (),
+            tuple(self.ch_scores[i] for i in idx) if self.ch_scores else (),
         )
 
     @property

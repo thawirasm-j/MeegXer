@@ -36,6 +36,10 @@ define it.
     (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
     with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
     session file next to each recording.
+  - 0.2.18: a node's `input` may name a rail output of an earlier node,
+    `"id:port"` (e.g. `"ica1:ics"`: a spectrum of the components). Signal info
+    may carry per-channel `ch_classes` and `ch_scores` (e.g. ICLabel's most
+    likely class of each component and its probability).
   - 0.2.17: rail ports. A port may carry `rail` (the rail an extra port, not the
     first, reads or writes; `events` is the Events rail) and a Signal port
     `space` (`sensor`, `component`, `source`). `fit` and `transform` requests

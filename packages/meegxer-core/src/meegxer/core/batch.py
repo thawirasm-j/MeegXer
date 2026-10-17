@@ -31,7 +31,13 @@ from meegxer.core.node import (
     output_blocks,
 )
 from meegxer.core.ports import PortType
-from meegxer.core.rails import UNBOUNDED, RailBuffer, events_input, with_rails
+from meegxer.core.rails import (
+    UNBOUNDED,
+    RailBuffer,
+    events_input,
+    rail_fingerprint,
+    with_rails,
+)
 from meegxer.core.recording import recording_events
 from meegxer.core.serialization import canonical_json, fingerprint
 from meegxer.core.stage import Stage, StageStatus, labelled_input, signal_fingerprint
@@ -84,6 +90,10 @@ def offline_input_fingerprints(graph: Graph) -> dict[str, str]:
                 if producer
             })  # fmt: skip
             outputs[node.id] = stage.output_fingerprint(inputs[node.id])
+            for port in stage.manifest.rail_outputs:  # read as a main input
+                outputs[f"{node.id}:{port.name}"] = rail_fingerprint(
+                    outputs[node.id], port.name
+                )
     return inputs
 
 
@@ -170,6 +180,7 @@ class BatchScheduler:
                 upstream = streams[node.input]
                 if isinstance(node.impl, Stage):
                     streams[node.id] = self._run_stage(node, upstream, result)
+                    self._rail_streams(node, streams, result)
                 elif isinstance(node.impl, Probe):
                     for block in upstream:
                         node.impl.tap(block)
@@ -177,8 +188,9 @@ class BatchScheduler:
                     for block in upstream:
                         node.impl.write(block)
                     node.impl.close()
-                remaining[node.input] -= 1
-                self._release(graph, node.input, remaining, streams, keep_ids, result)
+                remaining[node.input_node] -= 1  # type: ignore[index]
+                self._release(graph, node.input_node, remaining, streams,  # type: ignore[arg-type]
+                              keep_ids, result)  # fmt: skip
             self._release(graph, node.id, remaining, streams, keep_ids, result)
         for node in sinks:
             assert isinstance(node.impl, Sink)
@@ -265,6 +277,18 @@ class BatchScheduler:
             self.cache.put(output_fp, CachedOutput(joined, tuple(events)))
         return out
 
+    def _rail_streams(
+        self, node: GraphNode, streams: dict[str, Stream], result: BatchResult
+    ) -> None:
+        """A node's rail outputs as streams, for nodes reading one as their main
+        input (``"ica1:ics"``, spec 0.2.18)."""
+        for port in node.manifest.rail_outputs:
+            key = f"{node.id}:{port.name}"
+            streams[key] = list(self._written.get((node.id, port.name), []))
+            result.fingerprints[key] = rail_fingerprint(
+                result.fingerprints[node.id], port.name
+            )
+
     def _keep_rails(self, node_id: str, result: TransformResult) -> None:
         for port, data in result.rails.items():
             self._written.setdefault((node_id, port), []).extend(
@@ -290,7 +314,7 @@ class BatchScheduler:
             buffer = self._buffers.get((producer, output))
             if buffer is None:  # its writer has run to the end (node-major)
                 buffer = self._buffers[producer, output] = RailBuffer(port.type)
-                written = self._written.pop((producer, output), [])
+                written = self._written.get((producer, output), [])
                 if port.type is PortType.SIGNAL:
                     joined = [b for b in written if isinstance(b, Block)]
                     if joined:

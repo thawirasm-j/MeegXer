@@ -152,6 +152,13 @@ def test_an_output_chooses_the_feature_rail_it_reads(
     box.setCurrentIndex(box.findData(psd.id))
     assert chosen == [(tsv.id, psd.id)]
     dispose(qapp, ins)
-    ins, _ = show(qapp, doc, psd.id, advanced=False)  # reads the signal: no choice
+    ins, _ = show(qapp, doc, psd.id, advanced=False)  # the signal, or ICA's ICs
+    box = ins.findChild(QComboBox, "reads")
+    assert box is not None
+    assert [box.itemText(i) for i in range(box.count())] == [
+        "The signal", "ICs (ICA + ICLabel)"]  # fmt: skip
+    dispose(qapp, ins)
+    doc.remove("ica1")
+    ins, _ = show(qapp, doc, psd.id, advanced=False)  # no rail output: no choice
     assert ins.findChild(QComboBox, "reads") is None
     dispose(qapp, ins)

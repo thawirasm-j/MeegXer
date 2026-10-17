@@ -77,6 +77,19 @@ class GraphNode:
     strip_params: tuple[str, ...] = ()  # UI only: shown on the strip (advanced mode)
 
     @property
+    def input_node(self) -> str | None:
+        """The node this one reads from (``input`` may also name one of its rail
+        outputs: ``"ica1:ics"``, spec 0.2.18)."""
+        return None if self.input is None else self.input.split(":", 1)[0]
+
+    @property
+    def input_port(self) -> str:
+        """The rail output of ``input_node`` read as the main input, or ""."""
+        if self.input is None or ":" not in self.input:
+            return ""
+        return self.input.split(":", 1)[1]
+
+    @property
     def role(self) -> NodeRole:
         return _role_of(self.impl)
 
@@ -127,14 +140,16 @@ class Graph:
                     f"{node_id!r} has no earlier node with {wanted or 'an'} output "
                     "to read from"
                 )
-            parent = self._nodes.get(input)
+            parent_id, _, out_port = input.partition(":")
+            parent = self._nodes.get(parent_id)
             if parent is None:
                 raise GraphError(
-                    f"{node_id!r} reads from {input!r}, which is not an earlier node"
+                    f"{node_id!r} reads from {parent_id!r}, which is not an earlier "
+                    "node"
                 )
             if not parent.manifest.outputs:
                 raise GraphError(f"{input!r} ({parent.role.value}) has no output")
-            check_connection(parent.manifest.outputs[0], impl.manifest.inputs[0])
+            check_connection(self._output(parent, out_port), impl.manifest.inputs[0])
             for port in impl.manifest.rail_inputs:  # extra inputs read rails
                 self._rail_source(node_id, port)
 
@@ -300,7 +315,18 @@ class Graph:
         return node_id in self._nodes
 
     def children(self, node_id: str) -> list[GraphNode]:
-        return [n for n in self._nodes.values() if n.input == node_id]
+        return [n for n in self._nodes.values() if n.input_node == node_id]
+
+    @staticmethod
+    def _output(parent: GraphNode, port: str) -> Port:
+        """The output a reader takes as its main input: the main output, or the
+        rail output named ``port``."""
+        if not port:
+            return parent.manifest.outputs[0]
+        for out in parent.manifest.rail_outputs:
+            if out.name == port:
+                return out
+        raise GraphError(f"{parent.id!r} has no rail output {port!r}")
 
     def _rail_source(
         self, node_id: str, port: Port, before: str | None = None
@@ -381,9 +407,10 @@ class Graph:
         old = self._nodes[node_id]
         if _role_of(impl) is not old.role:
             raise GraphError("replacement must have the same role")
-        if old.input is not None:
-            parent = self._nodes[old.input]
-            check_connection(parent.manifest.outputs[0], impl.manifest.inputs[0])
+        if old.input_node is not None:
+            parent = self._nodes[old.input_node]
+            check_connection(self._output(parent, old.input_port),
+                             impl.manifest.inputs[0])  # fmt: skip
         for child in self.children(node_id):
             check_connection(impl.manifest.outputs[0], child.manifest.inputs[0])
         self._nodes[node_id] = GraphNode(node_id, impl, old.input, old.strip_params)

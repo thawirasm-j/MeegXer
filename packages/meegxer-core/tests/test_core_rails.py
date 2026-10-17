@@ -300,3 +300,27 @@ def test_features_buffer_hands_each_window_once() -> None:
         assert isinstance(got, tuple)
         taken += [w.window for w in got if isinstance(w, FeatureBlock)]
     assert taken == [w.window for w in windows]
+
+
+def test_a_node_can_take_a_rail_output_as_its_main_input() -> None:
+    """``input: "delayed1:mix"`` (spec 0.2.18): a probe on the rail sees what the
+    writer wrote, live as in batch."""
+    graph = Graph.chain([source(), Stage(DelayedWriter())])
+    probe = MemoryProbe()
+    node = graph.add(probe, input="delayed1:mix")
+    assert (node.input_node, node.input_port) == ("delayed1", "mix")
+    with pytest.raises(GraphError, match="no rail output 'nope'"):
+        graph.add(MemoryProbe(), input="delayed1:nope")
+    BatchScheduler().run(graph)
+    whole = expected(chain())
+    batch = concat_blocks([b for b in probe.blocks if isinstance(b, Block)])
+    np.testing.assert_allclose(batch.data, 2 * whole.data)  # k x input, all of it
+    live_graph = Graph.chain([source(), Stage(DelayedWriter())])
+    live_probe = MemoryProbe()
+    live_graph.add(live_probe, input="delayed1:mix")
+    scheduler = RealtimeScheduler(live_graph, max_block=13)
+    scheduler.start()
+    assert scheduler.wait(20)
+    live = concat_blocks([b for b in live_probe.blocks if isinstance(b, Block)])
+    assert live.sample_index == 0
+    np.testing.assert_allclose(live.data, batch.data[:, : live.n_samples])

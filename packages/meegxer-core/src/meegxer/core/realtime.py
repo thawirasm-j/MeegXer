@@ -51,7 +51,13 @@ from meegxer.core.node import (
     output_blocks,
 )
 from meegxer.core.ports import PortType
-from meegxer.core.rails import RailError, RailFeed, join_inputs, with_rails
+from meegxer.core.rails import (
+    RailError,
+    RailFeed,
+    join_inputs,
+    rail_fingerprint,
+    with_rails,
+)
 from meegxer.core.recording import recording_events
 from meegxer.core.stage import Stage, StageStatus, StaleModelError, signal_fingerprint
 
@@ -196,6 +202,7 @@ class RealtimeScheduler:
         self._fits: dict[str, tuple[Block, float, Mapping[str, RailInput] | None]] = {}
         self._calibration_rails: dict[str, list[Mapping[str, RailInput]]] = {}
         self._feeds: dict[str, RailFeed] = {}  # readers of rails (wait and align)
+        self._written: dict[str, RailOutput] = {}  # the last stage's rails
         # (writer, output port) -> [(reader, its input port)]
         self._subscribers: dict[tuple[str, str], list[tuple[str, str]]] = {}
         for node in graph.nodes:
@@ -482,6 +489,10 @@ class RealtimeScheduler:
                 outputs[node.id] = node.impl.output_fingerprint(
                     self._input_fps[node.id]
                 )
+                for port in node.manifest.rail_outputs:  # read as a main input
+                    outputs[f"{node.id}:{port.name}"] = rail_fingerprint(
+                        outputs[node.id], port.name
+                    )
 
     def _process(self, block: Block) -> None:
         outputs: dict[str, Block | tuple[FeatureBlock, ...] | None] = {
@@ -497,11 +508,17 @@ class RealtimeScheduler:
             started = time.perf_counter()
             if isinstance(node.impl, Stage):
                 # processors take Signal input in v1 (port types keep it so)
+                self._written = {}
                 outputs[node.id] = (
                     self._run_stage(node, upstream)
                     if isinstance(upstream, Block)
                     else None
                 )
+                for port in node.manifest.rail_outputs:  # "id:port" main inputs
+                    rail = self._written.get(port.name)
+                    if isinstance(rail, Block) and not rail.n_samples:
+                        rail = None
+                    outputs[f"{node.id}:{port.name}"] = rail
             elif isinstance(node.impl, Probe):
                 for item in output_blocks(upstream):
                     node.impl.tap(item)
@@ -544,6 +561,7 @@ class RealtimeScheduler:
             block, rails = got
         written: dict[str, RailOutput] = {}
         out = self._stage_step(node, block, rails, written)
+        self._written = written  # the rails it wrote, for "id:port" readers
         for port in stage.manifest.rail_outputs:
             data = written.get(port.name)
             if data is None and port.type is PortType.FEATURES:
