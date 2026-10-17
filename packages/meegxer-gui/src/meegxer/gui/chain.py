@@ -691,9 +691,15 @@ class ChainView(QScrollArea):
         # A rebuild usually runs inside an event handler of one of the old
         # widgets (a strip clicked, a strip removed): setWidget would delete them
         # while Qt is still delivering that event, so delete them later instead.
+        # takeWidget leaves them without a parent, a top-level window (on Windows
+        # a visible one flashes up): hide first, keep a hidden child until deleted.
+        old = self.widget()
+        if old is not None:
+            old.hide()
         old = self.takeWidget()
         self.setWidget(inner)
         if old is not None:
+            old.setParent(self)
             old.deleteLater()
         self.horizontalScrollBar().setValue(scroll)
 

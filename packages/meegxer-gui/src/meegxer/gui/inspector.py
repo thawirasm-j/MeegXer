@@ -218,10 +218,16 @@ class Inspector(QScrollArea):
     def _replace(self, page: QWidget) -> None:
         # Editing a value rebuilds the inspector while Qt is still delivering that
         # event (wheel, Enter) to the old editor: setWidget would delete the editor
-        # under it, so delete the old page later instead.
+        # under it, so delete the old page later instead. takeWidget leaves it
+        # without a parent, a top-level window (on Windows a visible one flashes
+        # up): hide it first and keep it a hidden child until it is deleted.
+        old = self.widget()
+        if old is not None:
+            old.hide()
         old = self.takeWidget()
         self.setWidget(page)
         if old is not None:
+            old.setParent(self)
             old.deleteLater()
 
     def show_strip(

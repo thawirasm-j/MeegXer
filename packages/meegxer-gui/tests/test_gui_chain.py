@@ -133,3 +133,44 @@ def test_the_add_strip_menu_has_categories_and_marks(qapp: QApplication) -> None
     assert filters[-1].startswith("✎ ")  # the user's script, after the built-ins
     menu.deleteLater()
     view.deleteLater()
+
+
+def test_a_rebuild_never_turns_the_old_page_into_a_window(qapp: QApplication) -> None:
+    """Running or editing a value rebuilds the chain and the inspector. The old
+    page waits for deferred deletion; left without a parent it would be a
+    top-level window, which on Windows flashes up (v0.2.1a7)."""
+    from meegxer.core.control import manifest_to_dict
+    from meegxer.core.registry import Registry
+    from meegxer.gui.chain import ChainView
+    from meegxer.gui.inspector import Inspector
+    from meegxer.gui.pipeline_doc import PipelineDoc
+    from meegxer.gui.theme import load_theme
+
+    registry = Registry.from_entry_points()
+    doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
+                       for n in registry.names()])  # fmt: skip
+    doc.set_source("meegxer.core.synthetic")
+    hp = doc.insert(1, "meegxer.nodes.iir_filter")
+    theme = load_theme("dark")
+    view = ChainView()
+    view.show()
+
+    def rebuild() -> None:
+        view.rebuild(doc, theme, statuses={}, taps={}, advanced=False, selected=None)
+
+    rebuild()
+    qapp.processEvents()
+    old = view.widget()
+    rebuild()  # the old page is now waiting to be deleted
+    assert not old.isWindow() and not old.isVisible()
+    inspector = Inspector()
+    inspector.show()
+    inspector.show_strip(doc, hp, advanced=False, running=False, node_status={})
+    qapp.processEvents()
+    page = inspector.widget()
+    inspector.show_strip(doc, hp, advanced=False, running=False, node_status={})
+    assert not page.isWindow() and not page.isVisible()
+    for w in (view, inspector):
+        w.close()
+        w.deleteLater()
+    qapp.processEvents()
