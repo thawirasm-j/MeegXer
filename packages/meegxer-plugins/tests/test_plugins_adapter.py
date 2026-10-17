@@ -8,6 +8,7 @@ from meegxer.core.batch import BatchScheduler
 from meegxer.core.block import Block, Event, SignalInfo
 from meegxer.core.conformance import ConformanceError, check_blockwise_equivalence
 from meegxer.core.graph import Graph
+from meegxer.core.node import RailInput
 from meegxer.core.probes import MemoryProbe
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.sources import SyntheticSource
@@ -33,6 +34,29 @@ def test_adapter_is_an_ordinary_processor(plugin: Callable[..., LocalLauncher]) 
     assert result.block.sample_index == 50 and result.block.info == INFO
     assert result.state["n"] == 350  # state comes back to the host
     assert all(isinstance(e, Event) for e in result.events)
+
+
+def test_plugin_reads_and_writes_rails(plugin: Callable[..., LocalLauncher]) -> None:
+    """Spec 0.2.17: rails travel in both directions, by port name."""
+    processor = make(plugin, "railed")()
+    try:
+        assert [p.rail for p in processor.manifest.rail_outputs] == ["twice", "marks"]
+        half = Block(BLOCK.data / 2, INFO, BLOCK.sample_index, BLOCK.timestamp)
+        rails: dict[str, RailInput] = {
+            "mix": half, "cues": (Event(60, "a"), Event(200, "b"))}  # fmt: skip
+        result = Stage(processor).transform(BLOCK, FP, rails)
+        assert isinstance(result.block, Block)
+        np.testing.assert_allclose(result.block.data, BLOCK.data / 2, rtol=1e-6)
+        twice = result.rails["twice"]
+        assert isinstance(twice, Block) and twice.sample_index == 50
+        np.testing.assert_allclose(twice.data, BLOCK.data * 2, rtol=1e-6)
+        marks = result.rails["marks"]
+        assert isinstance(marks, tuple)
+        assert [w.window for w in marks] == [(60, 61), (200, 201)]
+        check_blockwise_equivalence(processor, BLOCK, rails=rails, trials=3,
+                                    rtol=1e-6, atol=1e-12)  # fmt: skip
+    finally:
+        processor.close()
 
 
 def test_stateful_plugin_passes_acceptance_test_1(

@@ -32,7 +32,7 @@ SYNTHETIC = "meegxer.core.synthetic"
 # the GUI's defaults where they differ from the node's: synthetic input played
 # live runs until stopped (a live calibration never runs out of it)
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
-SPEC_VERSION = "0.2.16"
+SPEC_VERSION = "0.2.17"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -50,14 +50,22 @@ class StripNode:
     input: str = ""  # the strip it reads; "" = the nearest one of its input type
 
 
+RAIL_LABELS = {"ics": "ICs", "sources": "Sources", "events": "Events"}
+
+
+def rail_label(name: str) -> str:
+    """A rail's name as the chain view shows it (spec 0.2.17 rail names)."""
+    return RAIL_LABELS.get(name, name.replace("_", " ").capitalize())
+
+
 @dataclass
 class Rail:
     """A parallel rail above the signal (docs/RAILS.md): what one strip (or the
     input) produces for later strips to read. ``readers`` read it; ``lane`` is
     its row above the signal (0 is the lowest)."""
 
-    id: str  # "events", or the id of the strip that produces it
-    kind: Literal["events", "features"]
+    id: str  # "events", a feature strip's id, or "strip:port" for a rail port
+    kind: Literal["events", "features", "signal"]
     label: str
     producer: str  # strip id
     readers: list[str] = field(default_factory=list)
@@ -416,9 +424,16 @@ class PipelineDoc:
                 readers = [s.id for s in self.strips if self.input_of(s) == strip.id]
                 rails.append(Rail(strip.id, "features", self.rail_name(strip),
                                   strip.id, readers))  # fmt: skip
+        self._port_rails(rails, needs)
+        order = {s.id: i for i, s in enumerate(self.strips)}
+        rails.sort(key=lambda r: order[r.producer])  # stable: a strip's own order
         for i, rail in enumerate(rails):  # in chain order
             rail.lane = len(rails) - 1 - i
-        labelled = [s.id for s in self.strips[1:] if self.manifest(s).get("fit_events")]
+        labelled = [
+            s.id for s in self.strips[1:]
+            if self.manifest(s).get("fit_events")
+            or any(p.get("rail") == "events" for p in self.manifest(s)["inputs"][1:])
+        ]  # fmt: skip
         source = self.source
         if source is not None and self.carries_events():
             rails.append(Rail("events", "events", "Events", source.id, labelled,
@@ -426,6 +441,29 @@ class PipelineDoc:
         else:
             needs.update({sid: "Events" for sid in labelled})
         return rails, needs
+
+    def _port_rails(self, rails: list[Rail], needs: dict[str, str]) -> None:
+        """Rails written by extra output ports (spec 0.2.17), read by the extra
+        input ports of later strips naming them; a reader whose rail no earlier
+        strip writes needs it."""
+        written: dict[str, Rail] = {}  # rail name -> its nearest writer so far
+        for strip in self.strips[1:]:
+            manifest = self.manifest(strip)
+            for port in manifest["inputs"][1:]:
+                name = port.get("rail", "")
+                if not name or name == "events":
+                    continue
+                if name in written:
+                    written[name].readers.append(strip.id)
+                else:
+                    needs.setdefault(strip.id, rail_label(name))
+            for port in manifest["outputs"][1:]:
+                name = port.get("rail", "")
+                if name:
+                    rail = Rail(f"{strip.id}:{port['name']}", port["type"],
+                                rail_label(name), strip.id)  # fmt: skip
+                    rails.append(rail)
+                    written[name] = rail
 
     def carries_events(self) -> bool:
         """The input starts the Events rail: a recording with events (offline or

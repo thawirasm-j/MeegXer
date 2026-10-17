@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from meegxer.core.control import manifest_to_dict
@@ -286,6 +288,31 @@ def test_a_live_lsl_input_with_markers_starts_the_events_rail(
     rails, needs = doc.rails()
     events = next(r for r in rails if r.kind == "events")
     assert (events.readers, needs) == ([csp.id], {})
+
+
+def test_rail_ports_draw_their_rails_and_readers() -> None:
+    """Spec 0.2.17: an extra output starts a rail named by its port; later
+    strips reading that rail draw from it; one with no earlier writer needs it."""
+    registry = Registry.from_entry_points()
+    base = [manifest_to_dict(registry.get(n).manifest) for n in registry.names()]
+
+    def node(name: str, inputs: list[Any], outputs: list[Any]) -> dict[str, Any]:
+        return {"spec_version": "0.2.17", "name": name, "version": "0.1.0",
+                "type": "stream", "role": "processor", "params": [],
+                "inputs": [{"name": "in", "type": "signal"}, *inputs],
+                "outputs": [{"name": "out", "type": "signal"}, *outputs]}  # fmt: skip
+
+    ics = {"name": "ics", "type": "signal", "rail": "ics", "space": "component"}
+    doc = PipelineDoc([*base, node("lab.ica", [], [ics]), node("lab.rej", [ics], [])])
+    doc.set_source("meegxer.core.synthetic")
+    early = doc.insert(1, "lab.rej")
+    ica = doc.insert(2, "lab.ica")
+    rej = doc.insert(3, "lab.rej")
+    rails, needs = doc.rails()
+    rail = next(r for r in rails if r.kind == "signal")
+    assert (rail.id, rail.label, rail.producer, rail.readers) == (
+        f"{ica.id}:ics", "ICs", ica.id, [rej.id])  # fmt: skip
+    assert needs == {early.id: "ICs"}
 
 
 def test_a_chosen_input_is_saved_loaded_and_dropped_with_its_strip(

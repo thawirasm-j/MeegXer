@@ -22,6 +22,7 @@ from meegxer.core.graph import Graph
 from meegxer.core.manifest import SPEC_VERSION, Manifest
 from meegxer.core.node import Source
 from meegxer.core.offline import OfflineJob
+from meegxer.core.ports import Port
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.recording import builtin_montages, describe, lookup_positions
 from meegxer.core.registry import Registry, node_origin
@@ -45,6 +46,15 @@ class RpcError(Exception):
         self.message = message
 
 
+def _port_dict(port: Port) -> dict[str, str]:
+    out = {"name": port.name, "type": port.type.value}
+    if port.rail:
+        out["rail"] = port.rail
+    if port.space:
+        out["space"] = port.space
+    return out
+
+
 def manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
     return {
         "name": manifest.name,
@@ -63,8 +73,8 @@ def manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
         "category": manifest.category,
         "channel_types": list(manifest.channel_types or ("eeg",)),
         "live_params": sorted(manifest.live_params),
-        "inputs": [{"name": p.name, "type": p.type.value} for p in manifest.inputs],
-        "outputs": [{"name": p.name, "type": p.type.value} for p in manifest.outputs],
+        "inputs": [_port_dict(p) for p in manifest.inputs],
+        "outputs": [_port_dict(p) for p in manifest.outputs],
         "params": [
             {
                 "name": p.name,

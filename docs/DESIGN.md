@@ -104,14 +104,28 @@ turn knobs, and see the effect live — on a streaming amp or on a recorded data
 ### 3.3 Processor contract
 ```
 manifest:  spec_version, name, version, type (stream | analysis), image (external only),
-           inputs/outputs [{name, type: signal | features | events}],
+           inputs/outputs [{name, type: signal | features | events,
+                            rail (extra ports), space (signal), 0.2.17}],
            params [{name, type, min, max, default, unit, choices}],
            latency_samples, requires_fit (bool), fit_events (bool, 0.2.16),
            authors, references [{citation, doi | url}], license (credit, 0.2.12)
 fit(calibration_data | dataset, params)       -> model
-  (fit_events: the calibration's events too)
+  (fit_events: the calibration's events too; rail ports: rails too)
 transform(block, model, state, params)        -> block_out, state, events
+  (rail ports: + rails in, rails out)
 ```
+- **Rail ports (0.2.17, `docs/RAILS.md`):** the first input and output are the
+  main ports; a processor's further ports each name a rail. An extra input reads
+  the nearest earlier writer of that rail (or the Events rail, `events`), an extra
+  output writes one (Signal or Features; events still go out with the result).
+  Built-ins implement `transform_rails(block, model, state, params, rails)` and
+  `fit_rails(calibration, params, rails)`; `rails` maps each extra input to its
+  data over the block's samples: a Signal rail's samples, the feature windows that
+  ended inside the block, or the events inside it. Both schedulers and the
+  conformance check cut rails the same way; live, a reader waits until every rail
+  it reads covers the block (at most 30 s), so live and batch agree (rule 4). A
+  reader's input fingerprint names each rail's writer, so a change upstream of a
+  rail asks for a refit.
 - Every node (source, processor, probe, sink) has a manifest with a `role`;
   `live_params` lists parameters that may change mid-stream without resetting state;
   on a node that needs fitting they act in `transform` only, so changing one never

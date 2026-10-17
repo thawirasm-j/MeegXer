@@ -20,7 +20,18 @@ from meegxer.core.block import Block, Event, EventBlock, FeatureBlock, concat_bl
 from meegxer.core.cache import Cache, CachedOutput
 from meegxer.core.events import EventsRail
 from meegxer.core.graph import Graph, GraphError, GraphNode
-from meegxer.core.node import NodeRole, Output, Probe, Sink, Source, output_blocks
+from meegxer.core.node import (
+    NodeRole,
+    Output,
+    Probe,
+    RailInput,
+    Sink,
+    Source,
+    TransformResult,
+    output_blocks,
+)
+from meegxer.core.ports import PortType
+from meegxer.core.rails import UNBOUNDED, RailBuffer, events_input, with_rails
 from meegxer.core.recording import recording_events
 from meegxer.core.serialization import canonical_json, fingerprint
 from meegxer.core.stage import Stage, StageStatus, labelled_input, signal_fingerprint
@@ -61,12 +72,17 @@ def offline_input_fingerprints(graph: Graph) -> dict[str, str]:
                 stage = node.impl.for_mode("offline")
             except ValueError:
                 stage = node.impl
-            if stage.manifest.fit_events:
+            if stage.manifest.reads_events:
                 if events is None:
                     source = graph.source.impl
                     assert isinstance(source, Source)
                     events = recording_events(source)
                 inputs[node.id] = labelled_input(inputs[node.id], events)
+            inputs[node.id] = with_rails(inputs[node.id], {
+                port: outputs.get(producer, "")
+                for port, (producer, _) in graph.rail_sources(node.id).items()
+                if producer
+            })  # fmt: skip
             outputs[node.id] = stage.output_fingerprint(inputs[node.id])
     return inputs
 
@@ -114,6 +130,9 @@ class BatchScheduler:
         self._events: tuple[Event, ...] = ()  # the recording's, for labelled fits
         self._rail = EventsRail()  # those plus what strips emit (docs/RAILS.md)
         self._graph: Graph | None = None
+        # what extra output ports wrote: (node id, port) -> blocks or windows
+        self._written: dict[tuple[str, str], list[Block | FeatureBlock]] = {}
+        self._buffers: dict[tuple[str, str], RailBuffer] = {}  # joined, for readers
 
     def run(self, graph: Graph, *, keep: Iterable[str] = ()) -> BatchResult:
         result = BatchResult()
@@ -127,12 +146,14 @@ class BatchScheduler:
         source = graph.source.impl
         assert isinstance(source, Source)
         graph.check_positions(source.info)  # before reading or writing anything
-        labelled = any(isinstance(n.impl, Stage) and n.manifest.fit_events
+        labelled = any(isinstance(n.impl, Stage) and n.manifest.reads_events
                        for n in graph.nodes)  # fmt: skip
         self._events = recording_events(source) if labelled else ()
         self._rail = EventsRail()
         self._rail.add(self._events)
         self._graph = graph
+        self._written = {}
+        self._buffers = {}
         sinks = [n for n in graph.nodes if isinstance(n.impl, Sink)]
         for node in sinks:
             assert isinstance(node.impl, Sink)
@@ -181,9 +202,15 @@ class BatchScheduler:
             stage = node.impl.for_mode("offline")  # e.g. zero-phase band-pass
         except ValueError as exc:
             raise GraphError(f"{node.id}: {exc}") from exc
+        assert self._graph is not None
         input_fp = result.fingerprints[node.input]
-        if stage.manifest.fit_events:  # the trials' labels are part of its input
+        if stage.manifest.reads_events:  # the trials' labels are part of its input
             input_fp = labelled_input(input_fp, self._events)
+        sources = self._graph.rail_sources(node.id)
+        input_fp = with_rails(input_fp, {
+            port: result.fingerprints[producer]
+            for port, (producer, _) in sources.items() if producer
+        })  # fmt: skip
         signal_in = [b for b in upstream if isinstance(b, Block)]
         if len(signal_in) != len(upstream):
             raise GraphError(f"{node.id}: processors take Signal input in v1")
@@ -193,11 +220,18 @@ class BatchScheduler:
             # recording's only; the fit sees everything on the rail to its left
             assert self._graph is not None
             trials = self._rail.visible_to(self._graph, node.id)
-            stage.fit(self._calibration(signal_in), input_fp, trials)
+            calibration = self._calibration(signal_in)
+            rails = self._rails_for(node, calibration.sample_index,
+                                    calibration.stop_index)  # fmt: skip
+            stage.fit(calibration, input_fp, trials, rails)
             result.fitted.append(node.id)
         output_fp = stage.output_fingerprint(input_fp)
         result.fingerprints[node.id] = output_fp
-        cacheable = self.cache is not None and stage.manifest.kind == "stream"
+        cacheable = (  # a cached output keeps no rails: their writers always run
+            self.cache is not None
+            and stage.manifest.kind == "stream"
+            and not stage.manifest.rail_outputs
+        )
 
         if cacheable and self.cache is not None:
             hit = self.cache.get(output_fp)
@@ -213,13 +247,16 @@ class BatchScheduler:
         out: Stream = []
         events: list[Event] = []
         for block in signal_in:
-            transformed = stage.transform(block, input_fp)
+            rails = self._rails_for(node, block.sample_index, block.stop_index)
+            transformed = stage.transform(block, input_fp, rails)
             out.extend(_non_empty(transformed.block))
             events.extend(transformed.events)
+            self._keep_rails(node.id, transformed)
         tail = stage.flush(input_fp)  # what a delaying node still holds
         if tail is not None:
             out.extend(_non_empty(tail.block))
             events.extend(tail.events)
+            self._keep_rails(node.id, tail)
         result.events[node.id] = tuple(events)
         self._rail.add(events, node.id)
         result.computed.append(node.id)
@@ -227,6 +264,46 @@ class BatchScheduler:
             joined = concat_blocks([b for b in out if isinstance(b, Block)])
             self.cache.put(output_fp, CachedOutput(joined, tuple(events)))
         return out
+
+    def _keep_rails(self, node_id: str, result: TransformResult) -> None:
+        for port, data in result.rails.items():
+            self._written.setdefault((node_id, port), []).extend(
+                b for b in output_blocks(data)
+                if not (isinstance(b, Block) and not b.n_samples)
+            )  # fmt: skip
+
+    def _rails_for(
+        self, node: GraphNode, start: int, stop: int
+    ) -> dict[str, RailInput] | None:
+        """The rails ``node`` reads, over ``[start, stop)`` (docs/RAILS.md)."""
+        if not node.manifest.rail_inputs:
+            return None
+        assert self._graph is not None
+        sources = self._graph.rail_sources(node.id)
+        rails: dict[str, RailInput] = {}
+        for port in node.manifest.rail_inputs:
+            producer, output = sources[port.name]
+            if not producer:  # the Events rail
+                seen = self._rail.visible_to(self._graph, node.id)
+                rails[port.name] = events_input(seen, start, stop)
+                continue
+            buffer = self._buffers.get((producer, output))
+            if buffer is None:  # its writer has run to the end (node-major)
+                buffer = self._buffers[producer, output] = RailBuffer(port.type)
+                written = self._written.pop((producer, output), [])
+                if port.type is PortType.SIGNAL:
+                    joined = [b for b in written if isinstance(b, Block)]
+                    if joined:
+                        whole = concat_blocks(joined)
+                        buffer.add(whole, whole.stop_index)
+                else:
+                    windows = tuple(w for w in written if isinstance(w, FeatureBlock))
+                    buffer.add(windows, UNBOUNDED)
+            try:
+                rails[port.name] = buffer.take(start, stop)
+            except ValueError as exc:
+                raise GraphError(f"{node.id}: rail {port.name!r}: {exc}") from exc
+        return rails
 
     def _calibration(self, blocks: Sequence[Block]) -> Block:
         if not blocks:

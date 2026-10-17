@@ -23,7 +23,7 @@ import jsonschema
 from meegxer.core.block import SignalInfo
 from meegxer.core.manifest import SPEC_VERSION, Manifest, ParamValue
 from meegxer.core.node import NodeRole, Probe, Processor, Sink, Source
-from meegxer.core.ports import Port, check_connection
+from meegxer.core.ports import EVENTS_RAIL, Port, check_connection
 from meegxer.core.recording import (
     RecordingError,
     RecordingOverrides,
@@ -134,9 +134,9 @@ class Graph:
                 )
             if not parent.manifest.outputs:
                 raise GraphError(f"{input!r} ({parent.role.value}) has no output")
-            if len(impl.manifest.inputs) != 1:
-                raise GraphError(f"{impl.manifest.name}: multi-input nodes need M3+")
             check_connection(parent.manifest.outputs[0], impl.manifest.inputs[0])
+            for port in impl.manifest.rail_inputs:  # extra inputs read rails
+                self._rail_source(node_id, port)
 
         node = GraphNode(node_id, impl, input, self._check_strip(impl, strip_params))
         self._nodes[node_id] = node
@@ -302,6 +302,43 @@ class Graph:
     def children(self, node_id: str) -> list[GraphNode]:
         return [n for n in self._nodes.values() if n.input == node_id]
 
+    def _rail_source(
+        self, node_id: str, port: Port, before: str | None = None
+    ) -> tuple[str, str]:
+        """Who writes the rail an extra input reads: ``("", "")`` for the Events
+        rail, else the nearest earlier node with an extra output writing it (a
+        rail exists only to the right of its producer, docs/RAILS.md)."""
+        if port.rail == EVENTS_RAIL:
+            return "", ""
+        earlier = list(self._nodes.values())
+        if before is not None:
+            earlier = earlier[: [n.id for n in earlier].index(before)]
+        for node in reversed(earlier):
+            for out in node.manifest.rail_outputs:
+                if out.rail == port.rail:
+                    check_connection(out, port)
+                    return node.id, out.name
+        raise GraphError(
+            f"{node_id!r} reads the {port.rail!r} rail, which no earlier node writes"
+        )
+
+    def rail_sources(self, node_id: str) -> dict[str, tuple[str, str]]:
+        """For each extra input of ``node_id``: (producer id, its output port),
+        or ("", "") for the Events rail."""
+        node = self._nodes[node_id]
+        return {
+            port.name: self._rail_source(node_id, port, before=node_id)
+            for port in node.manifest.rail_inputs
+        }
+
+    def rail_readers(self, node_id: str) -> list[GraphNode]:
+        """The nodes that read a rail ``node_id`` writes."""
+        return [
+            n for n in self._nodes.values()
+            if n.manifest.rail_inputs and n.id != node_id
+            and any(p == node_id for p, _ in self.rail_sources(n.id).values())
+        ]  # fmt: skip
+
     @property
     def source(self) -> GraphNode:
         for node in self._nodes.values():
@@ -335,7 +372,7 @@ class Graph:
 
     def remove(self, node_id: str) -> None:
         """Remove a node that nothing reads from."""
-        if self.children(node_id):
+        if self.children(node_id) or self.rail_readers(node_id):
             raise GraphError(f"cannot remove {node_id!r}: other nodes read from it")
         del self._nodes[node_id]
 

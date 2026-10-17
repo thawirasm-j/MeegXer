@@ -16,9 +16,9 @@ from typing import Any, Literal
 
 import jsonschema
 
-from meegxer.core.ports import Port, PortType
+from meegxer.core.ports import EVENTS_RAIL, Port, PortType
 
-SPEC_VERSION = "0.2.16"
+SPEC_VERSION = "0.2.17"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]
@@ -40,6 +40,11 @@ def manifest_schema() -> dict[str, Any]:
     text = resources.files("meegxer.core").joinpath("schema/manifest.schema.json")
     schema: dict[str, Any] = json.loads(text.read_text(encoding="utf-8"))
     return schema
+
+
+def _port(data: Mapping[str, Any]) -> Port:
+    return Port(data["name"], PortType(data["type"]), data.get("rail", ""),
+                data.get("space", ""))  # fmt: skip
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,10 +171,8 @@ class Manifest:
             name=data["name"],
             version=data["version"],
             kind=data["type"],
-            inputs=tuple(Port(p["name"], PortType(p["type"])) for p in data["inputs"]),
-            outputs=tuple(
-                Port(p["name"], PortType(p["type"])) for p in data["outputs"]
-            ),
+            inputs=tuple(_port(p) for p in data["inputs"]),
+            outputs=tuple(_port(p) for p in data["outputs"]),
             params=params,
             latency_samples=data.get("latency_samples", 0),
             requires_fit=data.get("requires_fit", False),
@@ -215,13 +218,13 @@ class Manifest:
             raise ManifestError(
                 f"a {self.role} cannot have {n_in} input(s) and {n_out} output(s)"
             )
+        self._check_rail_ports()
         if (
             self.role == "processor"
             and self.kind == "stream"
-            and any(
-                p.type is not PortType.SIGNAL for p in (*self.inputs, *self.outputs)
-            )
-        ):
+            and any(p.type is not PortType.SIGNAL
+                    for p in (*self.inputs[:1], *self.outputs[:1]))
+        ):  # fmt: skip
             raise ManifestError("stream processors take and return Signal ports only")
         if self.requires_fit and self.role != "processor":
             raise ManifestError("only processors can require fitting")
@@ -237,6 +240,52 @@ class Manifest:
                 spec.coerce(spec.default)
             except ParamError as exc:
                 raise ManifestError(f"invalid default: {exc}") from exc
+
+    def _check_rail_ports(self) -> None:
+        """Main ports (the first of each) name no rail; every further port does.
+        Only a processor has rail ports; no output writes the Events rail (events
+        travel with the transform's result); the Events rail is read by an Events
+        port; a space is for Signal ports."""
+        for kind, ports in (("input", self.inputs), ("output", self.outputs)):
+            for i, port in enumerate(ports):
+                if port.space and port.type is not PortType.SIGNAL:
+                    raise ManifestError(f"{kind} {port.name!r}: only Signal ports "
+                                        "have a space")  # fmt: skip
+                if i == 0 and port.rail:
+                    raise ManifestError(f"{kind} {port.name!r} is the main port; "
+                                        "only further ports name a rail")  # fmt: skip
+                if i == 0:
+                    continue
+                if self.role != "processor":
+                    raise ManifestError(f"a {self.role} has one {kind} port")
+                if not port.rail:
+                    raise ManifestError(f"extra {kind} {port.name!r} must name the "
+                                        "rail it reads or writes")  # fmt: skip
+                if port.rail == EVENTS_RAIL and (
+                    kind == "output" or port.type is not PortType.EVENTS
+                ):
+                    raise ManifestError(
+                        f"{kind} {port.name!r}: the Events rail is read by an Events "
+                        "input; events are written through the transform's events"
+                    )
+                if kind == "output" and port.type is PortType.EVENTS:
+                    raise ManifestError(f"output {port.name!r}: events are written "
+                                        "through the transform's events")  # fmt: skip
+
+    @property
+    def rail_inputs(self) -> tuple[Port, ...]:
+        """The extra input ports: the rails this node reads."""
+        return self.inputs[1:]
+
+    @property
+    def rail_outputs(self) -> tuple[Port, ...]:
+        """The extra output ports: the rails this node writes."""
+        return self.outputs[1:]
+
+    @property
+    def reads_events(self) -> bool:
+        """Fit or transform sees the Events rail (fit_events, or an Events port)."""
+        return self.fit_events or any(p.rail == EVENTS_RAIL for p in self.rail_inputs)
 
     def resolve_params(
         self, overrides: Mapping[str, object] | None = None

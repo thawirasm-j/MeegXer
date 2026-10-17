@@ -29,6 +29,29 @@ def manifest(name, requires_fit=False, params=()):
 """
 
 PLUGINS = {
+    "railed": """
+class Railed(Plugin):
+    manifest = {
+        "spec_version": "0.2.17", "name": "test.railed", "version": "0.1.0",
+        "type": "stream", "params": [],
+        "inputs": [{"name": "in", "type": "signal"},
+                   {"name": "mix", "type": "signal", "rail": "mixed"},
+                   {"name": "cues", "type": "events", "rail": "events"}],
+        "outputs": [{"name": "out", "type": "signal"},
+                    {"name": "twice", "type": "signal", "rail": "twice"},
+                    {"name": "marks", "type": "features", "rail": "marks"}],
+    }
+
+    def transform(self, data, info, model, state, params):
+        rails = info["rails"]
+        marks = [{"window": [e["sample_index"], e["sample_index"] + 1],
+                  "dims": ["feature"], "data": np.array([1.0])}
+                 for e in rails["cues"]]
+        return {"data": data - rails["mix"], "state": state or {},
+                "rails": {"twice": data * 2, "marks": marks}}
+
+run(Railed())
+""",
     "ema": """
 class Ema(Plugin):
     manifest = manifest("test.ema", params=[

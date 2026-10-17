@@ -21,13 +21,19 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
 5. **Graph internally, linear UI for now.** The pipeline is a DAG; the v1 UI shows a
    single chain with probe taps. A node editor comes later on the same model.
 6. **Typed ports:** Signal (time series), Features (windowed), Events (markers/commands).
-   **Node roles:** Source, Processor, Probe, Sink.
+   **Node roles:** Source, Processor, Probe, Sink. A node's first input and output
+   are its main ports (the chain); a processor's further ports each name a rail it
+   reads or writes (`docs/RAILS.md`). Signal ports may name their space (sensor,
+   component, source).
 7. **Fit/transform contract** for every processor: `fit(calibration, params) -> model`,
    `transform(block, model, state, params) -> block, state, events` (events may be
    empty; full manifest in `docs/DESIGN.md` §3.3). A node that learns from labelled
-   trials (manifest `fit_events`) also gets the calibration's events with it. Upstream
-   changes (and changed events) mark downstream models "needs refit"; never silently
-   reuse a stale model.
+   trials (manifest `fit_events`) also gets the calibration's events with it. A node
+   with rail ports gets `rails` (by port, over the same samples as the block) in fit
+   and transform and returns what it writes in `rails`; a reader waits until every
+   rail it reads covers the block. Upstream changes (changed events, or a change
+   upstream of any rail it reads) mark downstream models "needs refit"; never
+   silently reuse a stale model.
 8. **Align by sample index, match channels by label.** Every block carries a sample
    index, counted on the source's clock from its first sample, and an LSL timestamp.
    A node that changes the rate maps indices by the exact ratio of the rates, so

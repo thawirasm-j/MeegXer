@@ -37,6 +37,16 @@ the feature windows it completed instead of ``data``: a list of dicts with
 array) and optionally ``coords`` ({dim: labels}) and ``timestamp`` (LSL time of
 the window's first sample; anchor it to the first block so it does not depend on
 how the stream is cut).
+
+Rails (spec 0.2.17): extra input ports (each naming a rail) arrive in
+``info["rails"]``, by port name, over the same samples as ``data``: a Signal rail
+as an array, a Features rail as a list of window dicts (as above), the Events
+rail as a list of event dicts; ``fit`` gets them too. To write extra output
+ports, return a dict instead of a tuple: ``{"data": ..., "state": ...,
+"events": [...], "first": ..., "rails": {port: value}}``, where a Signal rail's
+value is an array over the input's samples, or ``{"data": array,
+"sample_index": int}`` when it lags, and a Features rail's value is a list of
+window dicts.
 Never print to stdout (it carries the protocol); log to stderr.
 """
 
@@ -52,7 +62,7 @@ from typing import Any, BinaryIO, ClassVar
 import numpy as np
 
 SDK = "meegxer-python/0.1.0"
-SPEC_VERSION = "0.2.16"
+SPEC_VERSION = "0.2.17"
 MAGIC = b"MXP1"
 _DTYPES = {"float32", "float64", "int32", "int64", "uint8", "bool"}
 
@@ -181,11 +191,13 @@ def from_wire(tree: Any, arrays: dict[str, np.ndarray]) -> Any:
     return tree
 
 
-def _features_to_wire(windows: list, arrays: dict[str, np.ndarray]) -> list:
+def _features_to_wire(
+    windows: list, arrays: dict[str, np.ndarray], prefix: str = "f"
+) -> list:
     """Feature windows (dicts with window, dims, data, coords) for a result."""
     wire = []
     for i, w in enumerate(windows):
-        name = f"f{i}"
+        name = f"{prefix}{i}"
         arrays[name] = np.asarray(w["data"], dtype=np.float64)
         coords = {str(k): [v.item() if isinstance(v, np.generic) else v for v in vals]
                   for k, vals in (w.get("coords") or {}).items()}  # fmt: skip
@@ -194,6 +206,42 @@ def _features_to_wire(windows: list, arrays: dict[str, np.ndarray]) -> list:
                      "data": name})  # fmt: skip
         if w.get("timestamp") is not None:
             wire[-1]["timestamp"] = float(w["timestamp"])
+    return wire
+
+
+def _rails_from_wire(wire: dict, arrays: dict[str, np.ndarray]) -> dict:
+    """The rails a request carries (spec 0.2.17), as plain Python values."""
+    rails = {}
+    for port, item in (wire or {}).items():
+        kind = item.get("type")
+        if kind == "signal":
+            rails[port] = arrays[item["data"]].astype(np.float64)
+        elif kind == "features":
+            rails[port] = [dict(w, data=arrays[w["data"]].astype(np.float64))
+                           for w in item.get("windows", [])]  # fmt: skip
+        else:
+            rails[port] = list(item.get("events", []))
+    return rails
+
+
+def _rails_to_wire(
+    rails: dict, manifest: dict, first: int, arrays: dict[str, np.ndarray]
+) -> dict:
+    """What the extra output ports wrote, for a result (spec 0.2.17)."""
+    types = {p["name"]: p["type"] for p in manifest.get("outputs", [])[1:]}
+    wire = {}
+    for port, value in (rails or {}).items():
+        if types.get(port) == "features":
+            windows = _features_to_wire(value or [], arrays, f"w{port}_")
+            wire[port] = {"type": "features", "windows": windows}
+            continue
+        start = first
+        if isinstance(value, dict):
+            start = int(value.get("sample_index", first))
+            value = value["data"]
+        name = f"r{port}"
+        arrays[name] = np.asarray(value, dtype=np.float32)
+        wire[port] = {"type": "signal", "data": name, "sample_index": start}
     return wire
 
 
@@ -245,6 +293,8 @@ def run(
                     timestamp=header.get("timestamp", 0.0),
                     events=header.get("events", []),  # labelled trials (0.2.16)
                 )
+                if "rails" in header:  # rails the extra inputs read (0.2.17)
+                    info["rails"] = _rails_from_wire(header["rails"], arrays)
                 model = plugin.fit(
                     arrays["data"].astype(np.float64), info, header["params"]
                 )
@@ -273,6 +323,8 @@ def run(
                         sample_index=header["sample_index"],
                         timestamp=header["timestamp"],
                     )
+                if "rails" in header:  # rails the extra inputs read (0.2.17)
+                    info["rails"] = _rails_from_wire(header["rails"], arrays)
                 state = header.get("state")
                 state = None if state is None else from_wire(state, arrays)
                 model = models.get(model_id) if model_id else None
@@ -295,9 +347,16 @@ def run(
                         )
                         got = (empty, state, [], 0)
                     first = 0
-                data, new_state, events = got[0], got[1], got[2]
-                if len(got) > 3:
-                    first = int(got[3])
+                rails = {}
+                if isinstance(got, dict):  # a result that writes rails (0.2.17)
+                    data, new_state = got.get("data"), got.get("state")
+                    events = got.get("events", [])
+                    first = int(got.get("first", first))
+                    rails = got.get("rails", {})
+                else:
+                    data, new_state, events = got[0], got[1], got[2]
+                    if len(got) > 3:
+                        first = int(got[3])
                 out_arrays: dict[str, np.ndarray] = {}
                 reply = {"type": "result", "id": rid}
                 if plugin.manifest.get("type") == "analysis":
@@ -305,6 +364,10 @@ def run(
                 else:
                     out_arrays["data"] = np.asarray(data, dtype=np.float32)
                     reply["sample_index"] = first
+                if rails:
+                    reply["rails"] = _rails_to_wire(
+                        rails, plugin.manifest, first, out_arrays
+                    )
                 reply["state"] = to_wire(new_state or {}, out_arrays, "s")
                 reply["events"] = [{"duration": 0, "payload": {}, **e} for e in events]
                 write_frame(out, reply, out_arrays)

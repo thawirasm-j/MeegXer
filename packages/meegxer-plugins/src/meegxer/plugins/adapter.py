@@ -7,14 +7,21 @@ node instance owns one worker; the host keeps model and state.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, ClassVar
 
 import numpy as np
 
 from meegxer.core.block import Block, Event, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest
-from meegxer.core.node import Params, Processor, TransformResult
+from meegxer.core.node import (
+    Params,
+    Processor,
+    RailInput,
+    RailOutput,
+    TransformResult,
+)
+from meegxer.core.ports import PortType
 from meegxer.core.serialization import State, hash_state
 from meegxer.plugins.wire import tree_from_wire, tree_to_wire
 from meegxer.plugins.worker import Launcher, PluginError, PluginWorker
@@ -29,6 +36,52 @@ def _info_dict(info: SignalInfo) -> dict[str, Any]:
         "stream_id": info.stream_id,
         "bads": list(info.bads),
     }
+
+
+def _event_dict(e: Event) -> dict[str, Any]:
+    return {"sample_index": e.sample_index, "label": e.label,
+            "duration": e.duration, "payload": dict(e.payload)}  # fmt: skip
+
+
+def _windows_to_wire(
+    windows: Sequence[FeatureBlock], arrays: dict[str, Any], prefix: str
+) -> list[dict[str, Any]]:
+    wire = []
+    for w in windows:
+        name = f"{prefix}{len(arrays)}"
+        arrays[name] = np.asarray(w.data, dtype=np.float64)
+        wire.append({"window": list(w.window), "dims": list(w.dims),
+                     "coords": {k: list(v) for k, v in w.coords.items()},
+                     "data": name, "timestamp": w.timestamp})  # fmt: skip
+    return wire
+
+
+def _windows_from_wire(
+    wire: Any, arrays: Mapping[str, Any], info: SignalInfo, block: Block | None
+) -> tuple[FeatureBlock, ...]:
+    windows = []
+    for w in wire:
+        start, stop = (int(v) for v in w["window"])
+        if w.get("timestamp") is not None:
+            timestamp = float(w["timestamp"])
+        elif block is not None:
+            timestamp = block.timestamp + (start - block.sample_index) / info.sfreq
+        else:
+            timestamp = 0.0
+        coords = {str(k): tuple(v) for k, v in (w.get("coords") or {}).items()}
+        data = np.asarray(arrays[w["data"]], dtype=np.float64)
+        windows.append(FeatureBlock(data, tuple(w["dims"]), (start, stop),
+                                    timestamp, coords, info.stream_id))  # fmt: skip
+    return tuple(windows)
+
+
+def _info_from(new: Mapping[str, Any], info: SignalInfo) -> SignalInfo:
+    return SignalInfo(
+        tuple(new["ch_labels"]),
+        float(new.get("sfreq", info.sfreq)),
+        new.get("stream_id", info.stream_id),
+        tuple(new.get("bads", ())),
+    )
 
 
 class PluginProcessor(Processor):
@@ -68,8 +121,70 @@ class PluginProcessor(Processor):
     def fit(self, calibration: Block, params: Params) -> State:
         return self.fit_labelled(calibration, (), params)
 
+    def fit_rails(
+        self, calibration: Block, params: Params, rails: Mapping[str, RailInput]
+    ) -> State:
+        return self.fit_labelled(calibration, (), params, rails)
+
+    def _rails_to_wire(
+        self, rails: Mapping[str, RailInput], arrays: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The rails the extra input ports read, for a request (spec 0.2.17)."""
+        wire: dict[str, Any] = {}
+        for port in self.manifest.rail_inputs:
+            data = rails[port.name]
+            if port.type is PortType.SIGNAL:
+                assert isinstance(data, Block)
+                name = f"r{len(arrays)}"
+                arrays[name] = data.data.astype(np.float32)
+                wire[port.name] = {"type": "signal", "data": name,
+                                   "info": _info_dict(data.info),
+                                   "sample_index": data.sample_index}  # fmt: skip
+            elif port.type is PortType.FEATURES:
+                assert isinstance(data, tuple)
+                windows = [w for w in data if isinstance(w, FeatureBlock)]
+                wire[port.name] = {
+                    "type": "features",
+                    "windows": _windows_to_wire(windows, arrays, "rw"),
+                }
+            else:
+                assert isinstance(data, tuple)
+                events = [_event_dict(e) for e in data if isinstance(e, Event)]
+                wire[port.name] = {"type": "events", "events": events}
+        return wire
+
+    def _rails_from_wire(
+        self, reply: Any, info: SignalInfo, block: Block | None
+    ) -> dict[str, RailOutput]:
+        """What the extra output ports wrote, from a result (spec 0.2.17)."""
+        got = reply.header.get("rails") or {}
+        rails: dict[str, RailOutput] = {}
+        for port in self.manifest.rail_outputs:
+            item = got.get(port.name)
+            if item is None:
+                continue
+            if port.type is PortType.FEATURES:
+                rails[port.name] = _windows_from_wire(
+                    item.get("windows", []), reply.arrays, info, block
+                )
+                continue
+            rail_info = _info_from(item["info"], info) if item.get("info") else info
+            data = np.asarray(reply.arrays[item["data"]], dtype=np.float64)
+            if data.ndim == 1:
+                data = data.reshape(rail_info.n_channels, -1)
+            first = int(item.get("sample_index",
+                                 block.sample_index if block else 0))  # fmt: skip
+            timestamp = (block.timestamp + (first - block.sample_index) / info.sfreq
+                         if block is not None else 0.0)  # fmt: skip
+            rails[port.name] = Block(data, rail_info, first, timestamp)
+        return rails
+
     def fit_labelled(
-        self, calibration: Block, events: Sequence[Event], params: Params
+        self,
+        calibration: Block,
+        events: Sequence[Event],
+        params: Params,
+        rails: Mapping[str, RailInput] | None = None,
     ) -> State:
         header: dict[str, Any] = {
             "type": "fit",
@@ -79,14 +194,11 @@ class PluginProcessor(Processor):
             "timestamp": calibration.timestamp,
         }
         if self.manifest.fit_events:  # spec 0.2.16
-            header["events"] = [
-                {"sample_index": e.sample_index, "label": e.label,
-                 "duration": e.duration, "payload": dict(e.payload)}
-                for e in events
-            ]  # fmt: skip
-        reply = self.worker.request(
-            header, {"data": calibration.data.astype(np.float32)}
-        )
+            header["events"] = [_event_dict(e) for e in events]
+        arrays: dict[str, Any] = {"data": calibration.data.astype(np.float32)}
+        if rails is not None:  # spec 0.2.17
+            header["rails"] = self._rails_to_wire(rails, arrays)
+        reply = self.worker.request(header, arrays)
         if reply.type != "model":
             raise PluginError(f"expected a model reply, got {reply.type!r}")
         model = tree_from_wire(reply.header.get("model", {}), reply.arrays)
@@ -98,6 +210,20 @@ class PluginProcessor(Processor):
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
         result = self._exchange("transform", block.info, model, state, params, block)
+        assert result is not None
+        return result
+
+    def transform_rails(
+        self,
+        block: Block,
+        model: State,
+        state: State | None,
+        params: Params,
+        rails: Mapping[str, RailInput],
+    ) -> TransformResult:
+        result = self._exchange(
+            "transform", block.info, model, state, params, block, rails
+        )
         assert result is not None
         return result
 
@@ -124,22 +250,12 @@ class PluginProcessor(Processor):
         """An analysis plugin's result: its completed feature windows (0.2.14)."""
         if reply.type != "result" or not isinstance(reply.header.get("features"), list):
             raise PluginError(f"expected a result with features, got {reply.header}")
-        windows = []
-        for w in reply.header["features"]:
-            start, stop = (int(v) for v in w["window"])
-            if w.get("timestamp") is not None:
-                timestamp = float(w["timestamp"])
-            elif block is not None:
-                timestamp = block.timestamp + (start - block.sample_index) / info.sfreq
-            else:
-                timestamp = 0.0
-            coords = {str(k): tuple(v) for k, v in (w.get("coords") or {}).items()}
-            data = np.asarray(reply.arrays[w["data"]], dtype=np.float64)
-            windows.append(FeatureBlock(data, tuple(w["dims"]), (start, stop),
-                                        timestamp, coords, info.stream_id))  # fmt: skip
+        windows = _windows_from_wire(reply.header["features"], reply.arrays, info,
+                                     block)  # fmt: skip
         new_state = tree_from_wire(reply.header.get("state") or {}, reply.arrays)
         events = tuple(Event(**e) for e in reply.header.get("events", []))
-        return TransformResult(tuple(windows), new_state, events)
+        rails = self._rails_from_wire(reply, info, block)
+        return TransformResult(windows, new_state, events, rails)
 
     def _exchange(
         self,
@@ -149,10 +265,12 @@ class PluginProcessor(Processor):
         state: State | None,
         params: Params,
         block: Block | None,
+        rails: Mapping[str, RailInput] | None = None,
     ) -> TransformResult | None:
         arrays: dict[str, Any] = {}
         if block is not None:
             arrays["data"] = block.data.astype(np.float32)
+        rails_wire = self._rails_to_wire(rails, arrays) if rails is not None else None
         state_tree = None if state is None else tree_to_wire(state, arrays, "s")
         models: dict[str, tuple[Any, dict[str, Any]]] = {}
         model_id = None
@@ -169,19 +287,16 @@ class PluginProcessor(Processor):
         }
         if block is not None:
             header.update(sample_index=block.sample_index, timestamp=block.timestamp)
+        if rails_wire is not None:
+            header["rails"] = rails_wire
         reply = self.worker.request(header, arrays, models=models)
         if self.manifest.kind == "analysis":
             return self._features(reply, info, block)
         if reply.type != "result" or "data" not in reply.arrays:
             raise PluginError(f"expected a result with data, got {reply.header}")
+        in_info = info
         if isinstance(reply.header.get("info"), dict):
-            new = reply.header["info"]
-            info = SignalInfo(
-                tuple(new["ch_labels"]),
-                float(new.get("sfreq", info.sfreq)),
-                new.get("stream_id", info.stream_id),
-                tuple(new.get("bads", ())),
-            )
+            info = _info_from(reply.header["info"], info)
         data = np.asarray(reply.arrays["data"], dtype=np.float64)
         if data.ndim == 1:  # an empty result may lose its channel axis
             data = data.reshape(info.n_channels, -1)
@@ -194,7 +309,8 @@ class PluginProcessor(Processor):
         out = Block(data, info, first, timestamp)
         new_state = tree_from_wire(reply.header.get("state") or {}, reply.arrays)
         events = tuple(Event(**e) for e in reply.header.get("events", []))
-        return TransformResult(out, new_state, events)
+        rails = self._rails_from_wire(reply, in_info, block)
+        return TransformResult(out, new_state, events, rails)
 
 
 def plugin_class(
