@@ -51,6 +51,7 @@ STRIP_WIDTH = 158
 TAP_STATES = ("off", "comparison", "main")
 RAIL_Y = 26  # the signal line's height in the chain, px below the strips' top
 SIGNAL_WIDTH = 6  # the signal is the thick main line
+GAP_WIDTH = 34  # between two strips
 LANE_H = 15  # rows of the parallel rails above the strips
 TOP = 6  # margin above the rails
 PORT = 22  # a strip reads a rail near its left edge, writes near its right
@@ -291,9 +292,9 @@ class Gap(QWidget):
         super().__init__()
         self.index = index
         self.theme = theme
-        self.rail = theme.group_color("preprocess")
+        self.rail = signal_colour(theme)
         self.setAcceptDrops(True)
-        self.setFixedWidth(34)
+        self.setFixedWidth(GAP_WIDTH)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, RAIL_Y - TAP_SIZE // 2, 0, 0)
         lay.setSpacing(4)
@@ -336,6 +337,10 @@ class Gap(QWidget):
         lay.addStretch(1)
 
     def paintEvent(self, event: Any) -> None:
+        """The rail board draws the signal; a gap only lights it up while a
+        strip is dragged over it."""
+        if self.rail == signal_colour(self.theme):
+            return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = QPen(QColor(self.rail), SIGNAL_WIDTH)
@@ -354,18 +359,23 @@ class Gap(QWidget):
             event.acceptProposedAction()
 
     def dragLeaveEvent(self, event: Any) -> None:
-        self._line_colour(self.theme.group_color("preprocess"))
+        self._line_colour(signal_colour(self.theme))
 
     def dropEvent(self, event: Any) -> None:
-        self._line_colour(self.theme.group_color("preprocess"))
+        self._line_colour(signal_colour(self.theme))
         strip_id = bytes(event.mimeData().data(MIME)).decode()
         self.moved_here.emit(strip_id, self.index)
         event.acceptProposedAction()
 
 
+def signal_colour(theme: Theme) -> str:
+    """The signal line: neutral grey, so Signal rails (the ICs) stand apart."""
+    return theme.text_muted
+
+
 def rail_colour(theme: Theme, kind: str) -> str:
-    """Events violet, Signal rails (e.g. ICs) in the signal's colour, feature
-    rails in the feature strips' colour."""
+    """Events violet, Signal rails (e.g. ICs) in the preprocessing colour,
+    feature rails in the feature strips' colour."""
     if kind == "events":
         return "#b18cff" if theme.dark else "#7448c2"
     if kind == "signal":
@@ -373,14 +383,19 @@ def rail_colour(theme: Theme, kind: str) -> str:
     return theme.group_color("features")
 
 
-def _toward_text(colour: str, theme: Theme, amount: float = 0.45) -> QColor:
+def _toward_text(
+    colour: str, theme: Theme, amount: float = 0.45, alpha: float = 0.5
+) -> QColor:
     """A rail's colour moved toward the text colour (whiter on dark themes,
-    darker on light ones): its continuation past the last reader."""
+    darker on light ones) and half transparent: its continuation past the
+    last reader."""
     a, b = QColor(colour), QColor(theme.text)
     mix = [round(x + (y - x) * amount) for x, y in
            zip((a.red(), a.green(), a.blue()), (b.red(), b.green(), b.blue()),
                strict=True)]  # fmt: skip
-    return QColor(*mix)
+    out = QColor(*mix)
+    out.setAlphaF(alpha)
+    return out
 
 
 def _head(
@@ -396,25 +411,17 @@ def _head(
 
 class Lowered(QWidget):
     """A feature or output strip, set below the signal line: the signal passes
-    over it (the rail board draws the arrows into and out of it)."""
+    over it (the rail board draws the signal and the arrows into and out of
+    it)."""
 
     def __init__(self, strip: StripWidget, theme: Theme) -> None:
         super().__init__()
         self.strip = strip
-        self.signal = QColor(theme.group_color("preprocess"))
         self.setFixedWidth(STRIP_WIDTH)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, LOWER, 0, 0)
         lay.addWidget(strip)
-
-    def paintEvent(self, event: Any) -> None:
-        painter = QPainter(self)
-        pen = QPen(self.signal, SIGNAL_WIDTH)
-        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-        painter.setPen(pen)
-        painter.drawLine(0, RAIL_Y, self.width(), RAIL_Y)
-        painter.end()
 
 
 class RailBoard(QWidget):
@@ -499,13 +506,14 @@ class RailBoard(QWidget):
         return out
 
     def _vertical(self, painter: QPainter, x: float, y0: float, y1: float,
-                  crossings: list[float]) -> None:  # fmt: skip
-        """A line from ``y0`` to ``y1``, hopping over ``crossings``."""
+                  crossings: list[tuple[float, float]]) -> None:  # fmt: skip
+        """A line from ``y0`` to ``y1``, hopping over ``crossings`` (each a
+        line's y and the hop's radius)."""
         lo, hi = min(y0, y1), max(y0, y1)
         path = QPainterPath(QPointF(x, lo))
-        for c in sorted(c for c in crossings if lo + 5 < c < hi - 5):
-            path.lineTo(x, c - 4)
-            path.arcTo(QRectF(x - 4, c - 4, 8, 8), 90, -180)
+        for c, r in sorted((c, r) for c, r in crossings if lo + r + 1 < c < hi - r - 1):
+            path.lineTo(x, c - r)
+            path.arcTo(QRectF(x - r, c - r, 2 * r, 2 * r), 90, -180)
         path.lineTo(x, hi)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
@@ -517,13 +525,25 @@ class RailBoard(QWidget):
         fm = QFontMetrics(self.font_)
         spans = self.spans()
         end = self.end_x()
-        sig = QColor(self.theme.group_color("preprocess"))
+        sig = QColor(signal_colour(self.theme))
         signal_y = self.signal_y
 
-        def crossings(x: float, below_lane: int) -> list[float]:
-            """Rails under ``below_lane`` that a vertical at ``x`` passes."""
-            return [self.lane_y(r.lane) for r, x0, _ in spans
-                    if r.lane < below_lane and x0 < x]  # fmt: skip
+        def crossings(x: float, below_lane: int) -> list[tuple[float, float]]:
+            """Rails under ``below_lane`` that a vertical at ``x`` passes, and
+            the signal (a vertical into a lowered strip crosses it)."""
+            rails = [(self.lane_y(r.lane), 4.0) for r, x0, _ in spans
+                     if r.lane < below_lane and x0 < x]  # fmt: skip
+            return [*rails, (signal_y, SIGNAL_WIDTH / 2 + 3)]
+
+        # the signal first, under every arrow (strips on it hide it)
+        rects = [r for sid in self.strips if (r := self._rect(sid))]
+        if rects:
+            pen = QPen(sig, SIGNAL_WIDTH)
+            pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+            painter.setPen(pen)
+            right = max(r.right() for r in rects) + GAP_WIDTH
+            painter.drawLine(QPointF(min(r.left() for r in rects), signal_y),
+                             QPointF(right, signal_y))  # fmt: skip
 
         # down arrows from the signal into lowered strips
         for sid in self.pull_signal:
@@ -584,7 +604,8 @@ class RailBoard(QWidget):
                 continue
             y = self.lane_y(self.lanes - 1)
             painter.setPen(QPen(warn, 1.5, Qt.PenStyle.DashLine))
-            painter.drawLine(QPointF(x, y + 4), QPointF(x, rect.top() - 6))
+            self._vertical(painter, x, y + 4, rect.top() - 6,
+                           crossings(x, self.lanes - 1))  # fmt: skip
             _head(painter, warn, QPointF(x, rect.top() - 1), 0, 1)
             painter.setPen(QPen(warn, 2))
             painter.setBrush(QColor(self.theme.background))
