@@ -4,7 +4,8 @@ Used for the M5 report and visual checks: ``uv run python tools/gui_screenshot.p
 OUT_DIR``. Starts a daemon on free ports, builds the default chain (Synthetic ->
 high-pass -> notch), runs it live for a few seconds and grabs the window in the
 dark and light themes, the difference and spectrum modes, advanced mode, an
-incompatible strip and the stacked window.
+incompatible strip, the stacked window and the settings pages. Uses a throwaway
+config folder, so your own settings are neither used nor changed.
 """
 
 from __future__ import annotations
@@ -12,10 +13,12 @@ from __future__ import annotations
 import os
 import socket
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ["MEEGXER_CONFIG_DIR"] = tempfile.mkdtemp(prefix="meegxer-shots-")
 
 from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication
@@ -101,6 +104,10 @@ def demo_recording(path: Path) -> Path:
 
 
 def main() -> int:
+    # it closes the window while running: no question box to wait on offscreen
+    Path(os.environ["MEEGXER_CONFIG_DIR"], "settings.json").write_text(
+        '{"general": {"confirm_quit_running": false}}', encoding="utf-8"
+    )
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "screenshots")
     out.mkdir(parents=True, exist_ok=True)
     control = f"tcp://127.0.0.1:{free_port()}"
@@ -175,6 +182,15 @@ def main() -> int:
         win.timeline.bar.setValue(250 * 8)
         pump(app, 1.0)
         win.grab().save(str(out / "11-offline-events-dark.png"))
+        from meegxer.gui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(win.settings, win.theme, win)
+        dialog.show()
+        for page in range(dialog.pages.count()):
+            dialog.pages.setCurrentRow(page)
+            pump(app, 0.3)
+            dialog.grab().save(str(out / f"12-settings-{page + 1}.png"))
+        dialog.reject()
         print("\n".join(win.logbox.toPlainText().splitlines()[-12:]))
     finally:
         win.close()

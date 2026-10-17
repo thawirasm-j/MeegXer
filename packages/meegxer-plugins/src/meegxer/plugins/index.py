@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from meegxer.core.notices import LOCAL_CODE_NOTICE_VERSION
+from meegxer.core.settings import config_dir
 from meegxer.plugins.adapter import PluginProcessor, plugin_class, probe_manifest
 from meegxer.plugins.worker import (
     UNSANDBOXED_ENV,
@@ -41,13 +42,10 @@ INDEX_ENV = "MEEGXER_PLUGIN_INDEX"
 
 
 def index_path() -> Path:
+    """``plugins.json`` in the MeegXer config folder, next to the settings."""
     if os.environ.get(INDEX_ENV):
         return Path(os.environ[INDEX_ENV])
-    if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return base / "meegxer" / "plugins.json"
+    return config_dir() / "plugins.json"
 
 
 def load_index(path: Path | None = None) -> list[dict[str, Any]]:

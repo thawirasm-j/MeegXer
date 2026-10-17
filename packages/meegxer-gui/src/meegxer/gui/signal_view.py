@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import ChannelStyle, channel_styles_with
 from meegxer.gui.headplot import (
     BANDS,
@@ -444,6 +445,7 @@ class SignalView(QWidget):
         self.hover: str | None = None  # channel named on the head plot
         self._layouts: dict[tuple[object, ...], Layout] = {}
         self._head_inputs: tuple[object, ...] | None = None  # of the shown map
+        self.maps = Maps()  # colour maps (Settings → Visualization)
         self.styles: dict[tuple[str, ...], list[ChannelStyle]] = {}
         self.wheel: dict[str, tuple[float, float]] = {}
         self.types: dict[str, str] = {}  # label -> channel type, when known
@@ -553,6 +555,52 @@ class SignalView(QWidget):
         self.smoother.tau = self.peak.tau = float(self.smoothing.currentData())
         self.smoother.reset()
         self.peak.reset()
+
+    def view_state(self) -> dict[str, Any]:
+        """The span and spectrum settings as shown, in the shape of the
+        ``visualization`` settings (``span``, ``spectrum``) plus ``head``."""
+        lo, hi = self.band_range()
+        return {
+            "span": int(self.seconds()),
+            "spectrum": {
+                "band": [round(lo, 2), round(hi, 2)],
+                "relative": bool(self.measure.currentData()),
+                "scheme": str(self.scheme.currentData()),
+                "range": int(self.db_range.currentData()),
+                "smoothing": int(self.smoothing.currentData()),
+            },
+            "head": self.head_toggle.isChecked(),
+        }
+
+    def set_view_state(self, state: dict[str, Any]) -> None:
+        """Show these settings (any subset of ``view_state``'s keys; values the
+        menus do not offer are ignored)."""
+
+        def choose(box: QComboBox, value: Any) -> None:
+            for i in range(box.count()):
+                data = box.itemData(i)
+                if data == value or (
+                    isinstance(data, float) and isinstance(value, int | float)
+                    and abs(data - value) < 1e-9
+                ):  # fmt: skip
+                    box.setCurrentIndex(i)
+                    return
+
+        if "span" in state:
+            choose(self.span, float(state["span"]))
+        spectrum = state.get("spectrum", {})
+        band = spectrum.get("band")
+        if isinstance(band, list | tuple) and len(band) == 2:
+            lo, hi = sorted(float(v) for v in band)
+            if hi > lo:
+                self.band.setRegion((lo, hi))  # the band menu follows
+        boxes = (("relative", self.measure), ("scheme", self.scheme),
+                 ("range", self.db_range), ("smoothing", self.smoothing))  # fmt: skip
+        for key, box in boxes:
+            if key in spectrum:
+                choose(box, spectrum[key])
+        if "head" in state:
+            self.head_toggle.setChecked(bool(state["head"]))
 
     def _hover_channel(self, label: str | None) -> None:
         self.hover = label
@@ -687,13 +735,14 @@ class SignalView(QWidget):
             inputs = (data.labels, p.tobytes(), data.band, data.scheme,
                       data.relative, data.db_range, data.hidden,
                       None if data.compare_psd is None else data.compare_psd.tobytes(),
-                      id(self.theme), tuple(sorted(self.wheel.items())))  # fmt: skip
+                      id(self.theme), tuple(sorted(self.wheel.items())),
+                      self.maps)  # fmt: skip
             if inputs == self._head_inputs:
                 return
             self._head_inputs = inputs
         if live:
             self._head_inputs = None
-        self.head.show_map(render(data, self.theme, self._layouts, hold))
+        self.head.show_map(render(data, self.theme, self._layouts, hold, self.maps))
 
     def refresh(
         self, provider: Provider, main: str | None, comparisons: list[str]

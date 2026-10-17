@@ -78,10 +78,12 @@ def load_theme(name: str | Path = "dark") -> Theme:
     return Theme.from_dict(data)
 
 
-def stylesheet(t: Theme) -> str:
-    """Qt stylesheet for the whole window."""
+def stylesheet(t: Theme, scale: float = 1.0) -> str:
+    """Qt stylesheet for the whole window; ``scale`` sizes the text (Settings →
+    Appearance)."""
+    base, heading = f"{10 * scale:g}pt", f"{13 * scale:g}pt"
     return f"""
-QWidget {{ background: {t.background}; color: {t.text}; font-size: 10pt; }}
+QWidget {{ background: {t.background}; color: {t.text}; font-size: {base}; }}
 QFrame#panel, QWidget#panel {{ background: {t.surface}; border: 1px solid {t.border};
     border-radius: 6px; }}
 QLabel {{ background: transparent; border: none; }}
@@ -92,7 +94,7 @@ QFrame#card {{ background: {t.surface}; border: 1px solid {t.border};
     border-radius: 6px; }}
 QWidget#cardbody {{ background: transparent; }}
 QLabel#section {{ font-weight: 600; }}
-QLabel#heading {{ font-size: 13pt; font-weight: 700; }}
+QLabel#heading {{ font-size: {heading}; font-weight: 700; }}
 QPushButton, QToolButton {{ background: {t.surface_alt}; border: 1px solid {t.border};
     border-radius: 4px; padding: 4px 10px; }}
 QPushButton:hover, QToolButton:hover {{ border-color: {t.accent}; }}

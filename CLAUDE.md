@@ -102,6 +102,11 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   starts one); `uv run python tools/gui_screenshot.py OUT_DIR` renders it offscreen.
   Offline runs write to `MEEGXER_OFFLINE_DIR` (default: the system temp folder),
   with a processor-output cache capped by `MEEGXER_OFFLINE_CACHE_GB` (default 5).
+- Settings (`docs/SETTINGS.md`): `settings.json` (preferences, schema-checked) and
+  `state.json` (remembered view) in the config folder (`MEEGXER_CONFIG_DIR`, else
+  `%APPDATA%\meegxer` / `~/.config/meegxer`); read by `meegxer.core.settings`
+  (flag > env var > file > default). Never written into pipelines or sessions.
+  Tests get an empty config folder (root `conftest.py`, GUI `own_config` fixture).
 - Plugins: `uv run meegxer-plugin check IMAGE` (conformance),
   `meegxer-plugin add IMAGE`, `meegxer-plugin list`. Custom scripts
   (`process(raw, ...)` offline, or `transform(data, state, ...)` [+ `fit(raw, ...)`]

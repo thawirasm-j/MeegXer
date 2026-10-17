@@ -72,7 +72,10 @@ def main(argv: list[str] | None = None) -> int:
         help="a local command speaking the plugin protocol (unsandboxed)",
     )
 
-    sub.add_parser("list", help="list installed plugins")
+    listing = sub.add_parser("list", help="list installed plugins")
+    listing.add_argument(
+        "--json", action="store_true", help="one JSON array (name, version, ...)"
+    )
     rm = sub.add_parser("remove", help="uninstall a plugin by name")
     rm.add_argument("name")
     args = parser.parse_args(argv)
@@ -125,6 +128,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.command == "list":
+        if args.json:
+            print(json.dumps([{
+                "name": e["manifest"]["name"],
+                "version": e["manifest"]["version"],
+                "where": e.get("image") or " ".join(e.get("command", [])),
+                "unsandboxed": bool(e.get("unsandboxed")),
+                "description": e["manifest"].get("description", ""),
+            } for e in index.load_index()]))  # fmt: skip
+            return 0
         for entry in index.load_index():
             where = entry.get("image") or " ".join(entry.get("command", []))
             flag = "  local, unsandboxed" if entry.get("unsandboxed") else ""
