@@ -192,6 +192,7 @@ def _online_signal_processors() -> list[str]:
         and m.kind != "analysis"
         and m.runs_online
         and not m.requires_fit
+        and not m.requires_positions  # the synthetic recording has none
     ]
 
 

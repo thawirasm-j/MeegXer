@@ -20,7 +20,7 @@ from typing import Any
 
 import jsonschema
 
-from meegxer.core.block import DEFAULT_PROCESSED_TYPES, SignalInfo
+from meegxer.core.block import SignalInfo
 from meegxer.core.manifest import SPEC_VERSION, Manifest, ParamValue
 from meegxer.core.node import NodeRole, Probe, Processor, Sink, Source
 from meegxer.core.ports import Port, check_connection
@@ -207,9 +207,7 @@ class Graph:
                         node_cls(),
                         params,
                         pass_uncalibrated=passthrough,
-                        channel_types=entry.get(
-                            "channel_types", DEFAULT_PROCESSED_TYPES
-                        ),
+                        channel_types=entry.get("channel_types"),
                     )
                 except ValueError as exc:
                     raise GraphError(
@@ -280,7 +278,7 @@ class Graph:
                     **(
                         {"channel_types": list(n.impl.channel_types)}
                         if isinstance(n.impl, Stage)
-                        and n.impl.channel_types != DEFAULT_PROCESSED_TYPES
+                        and n.impl.channel_types != n.impl.default_channel_types
                         else {}
                     ),
                 }

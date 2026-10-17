@@ -36,6 +36,10 @@ define it.
     (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
     with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
     session file next to each recording.
+  - 0.2.15: optional manifest `category`: where a node is listed within its
+    group (e.g. `filters`, `spectral`, `files`); hosts group their node menus by
+    it, built-ins and plugins alike. Optional `channel_types`: the channel types
+    the node processes unless the pipeline names others (default `["eeg"]`).
   - 0.2.14: feature results: an analysis plugin's `result` carries `features`
     (window, dims, coords, optional timestamp and an array per completed window)
     instead of `data`.

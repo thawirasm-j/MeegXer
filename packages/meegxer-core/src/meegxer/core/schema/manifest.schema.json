@@ -109,6 +109,19 @@
       "uniqueItems": true,
       "default": []
     },
+    "channel_types": {
+      "description": "Channel types the node processes unless the pipeline says otherwise (spec 0.2.15); the others pass through it. Default: eeg. A node that needs, e.g., the EOG channels declares [\"eeg\", \"eog\"].",
+      "type": "array",
+      "items": {"enum": ["eeg", "eog", "emg", "ecg", "resp", "stim", "misc"]},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "category": {
+      "description": "Where the node is listed within its group (spec 0.2.15), e.g. filters, reference, artifacts, rate, epochs (preprocessing); spectral, time-frequency, connectivity, complexity, decoding, events (feature extraction); files, streams, actions (outputs). Hosts list a node without one under Other.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "maxLength": 32
+    },
     "authors": {
       "description": "Who wrote the node, for credit (spec 0.2.12).",
       "type": "array",

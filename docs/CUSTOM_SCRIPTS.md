@@ -60,8 +60,11 @@ def process(
   The strip shows them under *Credits*; sessions record them and BIDS derivatives
   list them in `dataset_description.json`. `meegxer-plugin check` notes when there
   is none, but never refuses a script for it.
-- In the strip menu, scripts and plugins appear under *Custom preprocessing* (or
-  *Custom feature extraction*, *Custom outputs*), sorted by what they return.
+- **Where it is listed** (optional): `CATEGORY = "artifacts"` puts the strip under
+  that heading of its group in the add-strip menu (filters, reference, artifacts;
+  spectral, time-frequency, connectivity, complexity, decoding, events; or your
+  own word). The group comes from what the script returns; without a category it
+  is listed under *Other*. Scripts are marked ✎ (they run unsandboxed).
 - **Offline only.** `process` sees the whole recording at once, so it runs in
   offline runs (files, BIDS), not live. For live use, write `transform` instead
   (below).

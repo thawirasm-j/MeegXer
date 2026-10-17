@@ -1,4 +1,4 @@
-"""IIR filters: causal (online and offline) and zero-phase (offline only).
+"""IIR and FIR filters: causal (online and offline) and zero-phase (offline only).
 
 Causal filters carry the per-channel ``sosfilt`` delay line as state, so filtering
 block by block gives the same result as one pass. The first block initialises the
@@ -10,6 +10,12 @@ over the whole recording. They have no phase distortion or group delay but are
 non-causal, so they are offline-only. Running the filter twice squares the
 magnitude response: attenuation doubles in dB and a Butterworth edge is -6 dB
 instead of -3 dB.
+
+FIR filters are designed by MNE (``mne.filter.create_filter``, windowed sinc with
+automatic transition bands and length; Widmann et al. 2015). Live they use the
+minimum-phase version of the design (causal, little delay, carried ``lfilter``
+state); offline, with phase auto, the linear-phase design applied without delay
+(MNE's ``phase="zero"``), so the waveform keeps its shape.
 """
 
 from __future__ import annotations
@@ -251,3 +257,116 @@ class NotchFilterZeroPhase(Processor):
     ) -> TransformResult:
         sos = NotchFilter.design(params, block.info.sfreq)
         return _apply_sos_zero_phase(sos, block)
+
+
+@lru_cache(maxsize=64)
+def _fir_taps(
+    kind: str, low: float, high: float, sfreq: float, phase: str
+) -> npt.NDArray[np.float64]:
+    """FIR taps from MNE (memoised: designs are pure functions of the params)."""
+    import mne
+
+    l_freq, h_freq = _fir_edges(kind, low, high, sfreq)
+    h = mne.filter.create_filter(None, sfreq, l_freq, h_freq, method="fir",
+                                 phase=phase, fir_design="firwin",
+                                 verbose="error")  # fmt: skip
+    return np.asarray(h, dtype=np.float64)
+
+
+def _fir_edges(
+    kind: str, low: float, high: float, sfreq: float
+) -> tuple[float | None, float | None]:
+    """MNE's (l_freq, h_freq) for a kind (band-stop: l_freq above h_freq)."""
+    if kind == "highpass":
+        return _check_band("low", low, sfreq), None
+    if kind == "lowpass":
+        return None, _check_band("high", high, sfreq)
+    lo, hi = _check_band("low", low, sfreq), _check_band("high", high, sfreq)
+    if lo >= hi:
+        raise ValueError(f"low ({low} Hz) must be below high ({high} Hz)")
+    return (lo, hi) if kind == "bandpass" else (hi, lo)
+
+
+class FIRFilter(Processor):
+    """Windowed-sinc FIR high-pass, low-pass, band-pass or band-stop (MNE)."""
+
+    manifest: ClassVar[Manifest] = stream_manifest(
+        "meegxer.nodes.fir_filter",
+        "0.1.0",
+        [
+            {"name": "kind", "type": "enum", "default": "bandpass", "primary": True,
+             "choices": ["highpass", "lowpass", "bandpass", "bandstop"]},
+            {"name": "low", "type": "float", "default": 1.0, "min": 0.0, "unit": "Hz",
+             "primary": True,
+             "description": "Lower edge (high-pass, band-pass, band-stop)"},
+            {"name": "high", "type": "float", "default": 40.0, "min": 0.0,
+             "unit": "Hz", "primary": True,
+             "description": "Upper edge (low-, band-pass, band-stop)"},
+            {"name": "phase", "type": "enum", "default": "auto",
+             "choices": ["auto", "causal", "zero"],
+             "description": "auto: minimum-phase (causal) live, zero-phase offline "
+                            "(zero: offline)"},
+        ],
+        description="FIR filter designed by MNE: minimum-phase with carried state "
+        "live, zero-phase offline (phase auto).",
+    )  # fmt: skip
+
+    def for_mode(self, params: Params, mode: Mode) -> Processor:
+        phase = params["phase"]
+        if mode == "online":
+            if phase == "zero":
+                raise ValueError(
+                    "zero-phase filtering needs the whole recording; "
+                    "use phase auto or causal live"
+                )
+            return self
+        return self if phase == "causal" else FIRFilterZeroPhase()
+
+    def transform(
+        self, block: Block, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        h = _fir_taps(str(params["kind"]), float(params["low"]),
+                      float(params["high"]), block.info.sfreq, "minimum")  # fmt: skip
+        data = np.asarray(block.data)
+        if data.shape[-1] == 0:
+            return TransformResult(block, state or {})
+        if state is None or "zi" not in state:
+            zi = signal.lfilter_zi(h, [1.0])[None, :] * data[:, :1]
+        else:
+            zi = np.asarray(state["zi"])
+        out, zf = signal.lfilter(h, [1.0], data, axis=-1, zi=zi)
+        result = Block(out, block.info, block.sample_index, block.timestamp,
+                       block.bypassed)  # fmt: skip
+        return TransformResult(result, {"zi": zf})
+
+
+class FIRFilterZeroPhase(Processor):
+    """Linear-phase FIR applied without delay (offline only)."""
+
+    manifest: ClassVar[Manifest] = _zero_phase_manifest(
+        FIRFilter.manifest,
+        "meegxer.nodes.fir_filter_zerophase",
+        "Zero-phase FIR filter designed by MNE (linear phase, delay removed); "
+        "offline only.",
+    )
+
+    def transform(
+        self, block: Block, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        import mne
+
+        kind, low, high = (
+            str(params["kind"]),
+            float(params["low"]),
+            float(params["high"]),
+        )
+        l_freq, h_freq = _fir_edges(kind, low, high, block.info.sfreq)
+        out = mne.filter.filter_data(
+            np.asarray(block.data, dtype=np.float64), block.info.sfreq, l_freq,
+            h_freq, method="fir", phase="zero", fir_design="firwin",
+            verbose="error",
+        )  # fmt: skip
+        return TransformResult(
+            Block(out, block.info, block.sample_index, block.timestamp,
+                  block.bypassed), {}
+        )  # fmt: skip

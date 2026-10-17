@@ -98,12 +98,48 @@ WELCH: Reference = {
     "modified periodograms. IEEE Trans Audio Electroacoust 15(2):70-73.",
 }
 
+WIDMANN: Reference = {
+    "citation": "Widmann A, Schröger E, Maess B (2015). Digital filter design for "
+    "electrophysiological data - a practical approach. J Neurosci Methods "
+    "250:34-46.",
+    "doi": "10.1016/j.jneumeth.2014.08.002",
+}
+PERRIN: Reference = {
+    "citation": "Perrin F, Pernier J, Bertrand O, Echallier JF (1989). Spherical "
+    "splines for scalp potential and current density mapping. Electroencephalogr "
+    "Clin Neurophysiol 72(2):184-187.",
+    "doi": "10.1016/0013-4694(89)90180-6",
+}
+KAYSER: Reference = {
+    "citation": "Kayser J, Tenke CE (2006). Principal components analysis of "
+    "Laplacian waveforms as a generic method for identifying ERP generator "
+    "patterns: I. Evaluation with auditory oddball tasks. Clin Neurophysiol "
+    "117(2):348-368.",
+    "doi": "10.1016/j.clinph.2005.08.034",
+}
+GRATTON: Reference = {
+    "citation": "Gratton G, Coles MG, Donchin E (1983). A new method for off-line "
+    "removal of ocular artifact. Electroencephalogr Clin Neurophysiol "
+    "55(4):468-484.",
+    "doi": "10.1016/0013-4694(83)90135-9",
+}
+CROFT: Reference = {
+    "citation": "Croft RJ, Barry RJ (2000). Removal of ocular artifact from the "
+    "EEG: a review. Neurophysiol Clin 30(1):5-19.",
+    "doi": "10.1016/S0987-7053(00)00055-1",
+}
+
 _FILTERS = [SCIPY]
 BY_NODE: dict[str, list[Reference]] = {
     "meegxer.nodes.iir_filter": _FILTERS,
     "meegxer.nodes.iir_filter_zerophase": _FILTERS,
     "meegxer.nodes.notch": _FILTERS,
     "meegxer.nodes.notch_zerophase": _FILTERS,
+    "meegxer.nodes.fir_filter": [WIDMANN, MNE, SCIPY],
+    "meegxer.nodes.fir_filter_zerophase": [WIDMANN, MNE],
+    "meegxer.nodes.interpolate_bads": [PERRIN, MNE],
+    "meegxer.nodes.csd": [PERRIN, KAYSER, MNE],
+    "meegxer.nodes.eog_regression": [GRATTON, CROFT, MNE],
     "meegxer.nodes.rereference": [],
     "meegxer.nodes.ica": [MNE, PICARD, EXTENDED_INFOMAX, INFOMAX, ICLABEL,
                           MNE_ICALABEL],
@@ -116,10 +152,34 @@ BY_NODE: dict[str, list[Reference]] = {
 }  # fmt: skip
 
 
+# where each built-in node is listed in the GUI (manifest ``category``)
+CATEGORIES = {
+    "meegxer.nodes.iir_filter": "filters",
+    "meegxer.nodes.iir_filter_zerophase": "filters",
+    "meegxer.nodes.notch": "filters",
+    "meegxer.nodes.notch_zerophase": "filters",
+    "meegxer.nodes.fir_filter": "filters",
+    "meegxer.nodes.fir_filter_zerophase": "filters",
+    "meegxer.nodes.rereference": "reference",
+    "meegxer.nodes.interpolate_bads": "reference",
+    "meegxer.nodes.csd": "reference",
+    "meegxer.nodes.ica": "artifacts",
+    "meegxer.nodes.eog_regression": "artifacts",
+    "meegxer.nodes.psd": "spectral",
+    "meegxer.nodes.band_power": "spectral",
+    "meegxer.nodes.connectivity": "connectivity",
+    "meegxer.nodes.complexity": "complexity",
+    "meegxer.nodes.hilbert_envelope": "time-frequency",
+}
+
+
 def credits(name: str) -> dict[str, object]:
-    """Manifest fields giving credit for a built-in node."""
-    return {
+    """Manifest fields giving credit for a built-in node, and its category."""
+    out: dict[str, object] = {
         "authors": AUTHORS,
         "references": BY_NODE.get(name, []),
         "license": LICENSE,
     }
+    if name in CATEGORIES:
+        out["category"] = CATEGORIES[name]
+    return out

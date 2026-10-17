@@ -16,6 +16,7 @@ def stream_manifest(
     availability: str = "both",
     requires_fit: bool = False,
     requires_positions: bool = False,
+    channel_types: list[str] | None = None,
 ) -> Manifest:
     return Manifest.from_dict(
         {
@@ -31,6 +32,7 @@ def stream_manifest(
             "availability": availability,
             "requires_fit": requires_fit,
             "requires_positions": requires_positions,
+            **({"channel_types": channel_types} if channel_types else {}),
             **credits(name),
         }
     )

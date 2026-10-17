@@ -18,7 +18,7 @@ import jsonschema
 
 from meegxer.core.ports import Port, PortType
 
-SPEC_VERSION = "0.2.14"
+SPEC_VERSION = "0.2.15"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]
@@ -124,6 +124,8 @@ class Manifest:
     authors: tuple[str, ...] = ()
     references: tuple[Reference, ...] = ()
     license: str = ""
+    category: str = ""
+    channel_types: tuple[str, ...] = ()  # processed unless the pipeline says otherwise
 
     @property
     def runs_online(self) -> bool:
@@ -182,6 +184,8 @@ class Manifest:
                 for r in data.get("references", ())
             ),
             license=data.get("license", ""),
+            category=data.get("category", ""),
+            channel_types=tuple(data.get("channel_types", ())),
         )
         manifest._check_semantics()
         return manifest

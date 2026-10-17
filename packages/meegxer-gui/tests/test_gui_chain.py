@@ -8,7 +8,7 @@ import time
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDoubleSpinBox, QWidget
+from PySide6.QtWidgets import QApplication, QDoubleSpinBox, QMenu, QWidget
 
 
 def test_clicking_a_strip_selects_it(
@@ -95,3 +95,41 @@ def test_no_widget_has_a_pixel_sized_font(
         assert not bad, [(type(w).__name__, w.styleSheet()) for w in bad]
     finally:
         win.close()
+
+
+def test_the_add_strip_menu_has_categories_and_marks(qapp: QApplication) -> None:
+    from meegxer.core.control import manifest_to_dict
+    from meegxer.core.registry import Registry
+    from meegxer.gui.chain import ChainView
+    from meegxer.gui.pipeline_doc import PipelineDoc
+    from meegxer.gui.theme import load_theme
+
+    registry = Registry.from_entry_points()
+    manifests = [manifest_to_dict(registry.get(n).manifest) for n in registry.names()]
+    script = {**next(m for m in manifests if m["name"] == "meegxer.nodes.notch"),
+              "name": "script.notch", "origin": "custom"}  # fmt: skip
+    doc = PipelineDoc([*manifests, script])
+    doc.set_source("meegxer.core.synthetic")
+    view = ChainView()
+    view.rebuild(doc, load_theme("dark"), statuses={}, taps={}, advanced=False,
+                 selected=None)  # fmt: skip
+    menu = view.build_palette(1)
+    assert menu is not None
+    headings = [a.text() for a in menu.actions()
+                if not a.isEnabled() and not a.menu() and a.font().bold()]  # fmt: skip
+    assert headings == ["● Preprocessing", "◆ Feature extraction", "▶ Output"]
+    submenus = {a.text().replace("&&", "&"): a.menu() for a in menu.actions()
+                if a.menu()}  # fmt: skip
+    assert {"Filters", "Reference & channels", "Artifacts", "Spectral", "Files",
+            "Streams"} <= set(submenus)  # fmt: skip
+
+    def items(heading: str) -> list[str]:
+        sub = submenus[heading]
+        assert isinstance(sub, QMenu)
+        return [a.text() for a in sub.actions()]
+
+    filters = items("Filters")
+    assert any("FIR" in t for t in filters)
+    assert filters[-1].startswith("✎ ")  # the user's script, after the built-ins
+    menu.deleteLater()
+    view.deleteLater()

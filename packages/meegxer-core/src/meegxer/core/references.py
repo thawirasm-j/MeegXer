@@ -65,10 +65,25 @@ def collect(references: Iterable[Mapping[str, str]]) -> list[dict[str, str]]:
     return out
 
 
+# where each built-in core node is listed in the GUI (manifest ``category``)
+CATEGORIES = {
+    "meegxer.core.set_writer": "files",
+    "meegxer.core.edf_writer": "files",
+    "meegxer.core.feature_tsv": "files",
+    "meegxer.core.bids_writer": "files",
+    "meegxer.core.bids_features": "files",
+    "meegxer.core.lsl_out": "streams",
+    "meegxer.core.lsl_features_out": "streams",
+}
+
+
 def credits(name: str, references: list[Reference] | None = None) -> dict[str, object]:
-    """Manifest fields giving credit for a built-in node."""
-    return {
+    """Manifest fields giving credit for a built-in node, and its category."""
+    out: dict[str, object] = {
         "authors": AUTHORS,
         "references": BY_NODE.get(name, []) if references is None else references,
         "license": LICENSE,
     }
+    if name in CATEGORIES:
+        out["category"] = CATEGORIES[name]
+    return out

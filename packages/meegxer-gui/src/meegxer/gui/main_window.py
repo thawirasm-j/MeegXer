@@ -662,9 +662,9 @@ class MainWindow(QMainWindow):
 
     def change_channel_types(self, strip_id: str, types: list[str]) -> None:
         strip = self.doc.get(strip_id)
-        if (strip.channel_types or ["eeg"]) == types:
+        if self.doc.processed_types(strip) == types:
             return
-        strip.channel_types = [] if types == ["eeg"] else types
+        strip.channel_types = [] if types == self.doc.default_types(strip) else types
         self._structure_changed(
             f"{self._name(strip_id)} processes: "
             f"{', '.join(t.upper() for t in types)} channels."
