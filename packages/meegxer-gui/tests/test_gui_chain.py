@@ -161,6 +161,7 @@ def test_a_rebuild_never_turns_the_old_page_into_a_window(qapp: QApplication) ->
     rebuild()
     qapp.processEvents()
     old = view.widget()
+    assert old is not None
     rebuild()  # the old page is now waiting to be deleted
     assert not old.isWindow() and not old.isVisible()
     inspector = Inspector()
@@ -168,6 +169,7 @@ def test_a_rebuild_never_turns_the_old_page_into_a_window(qapp: QApplication) ->
     inspector.show_strip(doc, hp, advanced=False, running=False, node_status={})
     qapp.processEvents()
     page = inspector.widget()
+    assert page is not None
     inspector.show_strip(doc, hp, advanced=False, running=False, node_status={})
     assert not page.isWindow() and not page.isVisible()
     for w in (view, inspector):
