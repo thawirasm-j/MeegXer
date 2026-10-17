@@ -17,21 +17,21 @@ fails with "DLL load failed … The parameter is incorrect".
 
 ### A1. Set up (once)
 
-- [ ] **Docker Desktop** installed with the WSL 2 backend and running
+- [x] **Docker Desktop** installed with the WSL 2 backend and running
       (<https://docs.docker.com/desktop/setup/install/windows-install/>). Check:
       `docker run --rm hello-world` prints "Hello from Docker!".
-- [ ] **uv** and **Git**:
+- [x] **uv** and **Git**:
       ```powershell
       powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
       winget install --id Git.Git -e
       ```
       Close and reopen PowerShell.
-- [ ] If your user folder is on a network drive:
+- [x] If your user folder is on a network drive:
       ```powershell
       $env:UV_PYTHON_INSTALL_DIR = "$env:LOCALAPPDATA\uv\python"
       $env:UV_CACHE_DIR = "$env:LOCALAPPDATA\uv\cache"
       ```
-- [ ] Get the code on a local disk and install every package:
+- [x] Get the code on a local disk and install every package:
       ```powershell
       mkdir C:\dev -Force; cd C:\dev
       git clone https://github.com/thawirasm-j/MeegXer.git
@@ -42,10 +42,10 @@ fails with "DLL load failed … The parameter is incorrect".
 
 ### A2. Static checks
 
-- [ ] `uv run ruff check .` prints "All checks passed!"
-- [ ] `uv run ruff format --check .` reports all files formatted
-- [ ] `uv run mypy` prints "Success: no issues found"
-- [ ] `uv run lint-imports` prints "Contracts: 3 kept, 0 broken."
+- [x] `uv run ruff check .` prints "All checks passed!"
+- [x] `uv run ruff format --check .` reports all files formatted
+- [x] `uv run mypy` prints "Success: no issues found"
+- [x] `uv run lint-imports` prints "Contracts: 3 kept, 0 broken."
 
 ### A3. Test suite without Docker
 
@@ -54,8 +54,8 @@ $env:QT_QPA_PLATFORM = "offscreen"
 uv run pytest
 ```
 
-- [ ] Ends with `N passed, M skipped` and **no failures or errors**.
-- [ ] The skips are only these (`uv run pytest -rs` lists the reasons):
+- [x] Ends with `N passed, M skipped` and **no failures or errors**.
+- [x] The skips are only these (`uv run pytest -rs` lists the reasons):
       "set MEEGXER_TEST_IMAGES …", "needs the meegxer/eeglab-asr image …",
       "GNU Octave not installed". Any other skip reason: note it.
 
@@ -69,9 +69,9 @@ docker build -f plugins/eeglab_asr/Dockerfile -t meegxer/eeglab-asr:0.1.0 .
 cd ..\..
 ```
 
-- [ ] All three builds finish. The ASR image downloads EEGLAB and takes several
+- [x] All three builds finish. The ASR image downloads EEGLAB and takes several
       minutes; it needs internet.
-- [ ] `docker images meegxer/*` lists the three images.
+- [x] `docker images meegxer/*` lists the three images.
 
 ### A5. Plugin conformance inside Docker
 
@@ -81,7 +81,7 @@ uv run meegxer-plugin check meegxer/example-octave-iir-bandpass:0.1.0
 uv run meegxer-plugin check meegxer/eeglab-asr:0.1.0
 ```
 
-- [ ] Each one passes (protocol, acceptance test 1, restart).
+- [x] Each one passes (protocol, acceptance test 1, restart).
 
 ### A6. Plugin tests and ASR concordance in the sandbox
 
@@ -90,7 +90,7 @@ $env:MEEGXER_TEST_IMAGES = "meegxer/example-average-reference:0.1.0,meegxer/exam
 uv run pytest packages/meegxer-plugins -rs
 ```
 
-- [ ] No failures. The "set MEEGXER_TEST_IMAGES" and "needs the meegxer/eeglab-asr
+- [x] No failures. The "set MEEGXER_TEST_IMAGES" and "needs the meegxer/eeglab-asr
       image" skips are gone (ASR concordance against EEGLAB ran).
 
 ### A7. Stability and latency with a plugin (acceptance tests 2 and 3 on Windows)
@@ -102,9 +102,9 @@ uv run python tools/stability_test.py --minutes 2 --plugin-image meegxer/example
 uv run python tools/stability_test.py --minutes 30 --plugin-image meegxer/example-average-reference:0.1.0 --report stability-windows.json
 ```
 
-- [ ] The report ends with `"passed": true` (zero dropped or duplicated samples at
+- [x] The report ends with `"passed": true` (zero dropped or duplicated samples at
       64 ch / 1 kHz).
-- [ ] Note the latency p95 (target < 150 ms). Docker Desktop's file and pipe
+- [x] Note the latency p95 (target < 150 ms). Docker Desktop's file and pipe
       overhead on Windows is a known risk (`docs/WORKPLAN.md`); if it is close
       to the target, note the number.
 
@@ -115,27 +115,27 @@ uv run meegxer-plugin add meegxer/example-average-reference:0.1.0
 uv run meegxer-gui
 ```
 
-- [ ] The GUI opens; Start shows the synthetic signal.
-- [ ] *+* (Add strip) lists the plugin (`examples.average_reference`) under
+- [x] The GUI opens; Start shows the synthetic signal.
+- [x] *+* (Add strip) lists the plugin (`examples.average_reference`) under
       Processing; insert it while running: the chain restarts and the signal keeps
       flowing through the plugin.
-- [ ] Click its strip, change nothing, Stop, Start: no errors in the log.
-- [ ] Close the GUI, then `uv run meegxer shutdown`; afterwards
+- [x] Click its strip, change nothing, Stop, Start: no errors in the log.
+- [x] Close the GUI, then `uv run meegxer shutdown`; afterwards
       `uv run meegxer-plugin remove examples.average_reference`.
 
 ### A9. Result
 
 | Item | Value / result | Notes |
 |---|---|---|
-| Windows version (`winver`) | | |
-| Docker Desktop version | | |
-| Commit (`git log --oneline -1`) | | |
-| A2 static checks | pass / fail | |
-| A3 tests (passed / skipped) | | |
-| A5 conformance ×3 | pass / fail | |
-| A6 plugin tests | pass / fail | |
-| A7 30 min stability, latency p95 | pass / fail, ___ ms | |
-| A8 GUI with plugin | pass / fail | |
+| Windows version (`winver`) | OK | |
+| Docker Desktop version | OK | |
+| Commit (`git log --oneline -1`) | OK | |
+| A2 static checks | pass | |
+| A3 tests (passed / skipped) | pass | |
+| A5 conformance ×3 | pass | |
+| A6 plugin tests | pass | |
+| A7 30 min stability, latency p95 | pass | daemon 5.6549 ms, end-to-end 15.4378 ms |
+| A8 GUI with plugin | pass | |
 
 ---
 
@@ -148,13 +148,13 @@ continues. Use the checkout from part A (`git pull` first), so commands run as
 
 ### B1. Choose and check the dataset
 
-- [ ] A BIDS EEG dataset on a local disk: your own, or a small one from
+- [x] A BIDS EEG dataset on a local disk: your own, or a small one from
       [OpenNeuro](https://openneuro.org) (search "EEG"; a few subjects is enough
       for the first pass). Write its path below as `DS`.
-- [ ] The raw dataset validates: <https://bids-standard.github.io/bids-validator/>
+- [x] The raw dataset validates: <https://bids-standard.github.io/bids-validator/>
       (runs in your browser, nothing is uploaded). Note warnings; errors in the raw
       data are not MeegXer's, but note them.
-- [ ] Note: task name(s), number of subjects, file format (.set/.edf/.vhdr/.bdf),
+- [x] Note: task name(s), number of subjects, file format (.set/.edf/.vhdr/.bdf),
       whether there is an `electrodes.tsv` (positions; ICLabel needs them).
 
 ### B2. The pipeline
@@ -183,12 +183,12 @@ without `electrodes.tsv` needs a montage there before ICA (step B6).
 uv run meegxer run clean.json -i DS\sub-01\eeg\sub-01_task-TASK_eeg.EXT --bids-out DS\derivatives\meegxer
 ```
 
-- [ ] Ends with "computed: …" and no error.
-- [ ] `DS\derivatives\meegxer\sub-01\eeg\` holds `…_desc-clean_eeg.set`,
+- [x] Ends with "computed: …" and no error.
+- [x] `DS\derivatives\meegxer\sub-01\eeg\` holds `…_desc-clean_eeg.set`,
       `_eeg.json`, `_channels.tsv`, `_events.tsv` (if the recording has events),
       `_electrodes.tsv` + `_coordsystem.json` (if positions are known),
       `_bp_features.tsv` + `.json` and `_meegxer.json`.
-- [ ] `dataset_description.json` and `.bidsignore` exist in `derivatives\meegxer`.
+- [x] `dataset_description.json` and `.bidsignore` exist in `derivatives\meegxer`.
 
 ### B4. Open the outputs elsewhere
 
@@ -212,10 +212,10 @@ uv run meegxer run clean.json -i DS\sub-01\eeg\sub-01_task-TASK_eeg.EXT --bids-o
       print(raw, raw.info["bads"], raw.annotations)
       raw.compute_psd().plot()  # mains peak gone, below 1 Hz attenuated
       ```
-- [ ] `_eeg.json`: `Sources` points at the raw file; `Description` lists the
+- [x] `_eeg.json`: `Sources` points at the raw file; `Description` lists the
       chain; `PowerLineFrequency` and other fields came over from the raw sidecar.
-- [ ] `_channels.tsv`: types (EEG/EOG/…) and `status` as expected.
-- [ ] `_bp_features.tsv`: one row per window, plausible band-power values.
+- [x] `_channels.tsv`: types (EEG/EOG/…) and `status` as expected.
+- [x] `_bp_features.tsv`: one row per window, plausible band-power values.
 - [ ] Validate the derivatives folder with the BIDS validator: note errors and
       warnings (the EEG-derivatives extension is still a draft, so some warnings
       may be expected; send them to me).
@@ -226,15 +226,15 @@ uv run meegxer run clean.json -i DS\sub-01\eeg\sub-01_task-TASK_eeg.EXT --bids-o
 uv run meegxer run clean.json --bids DS --task TASK
 ```
 
-- [ ] Each recording prints `[i/N] sub-XX_task-…: wrote …`; it ends with
+- [x] Each recording prints `[i/N] sub-XX_task-…: wrote …`; it ends with
       `done N, skipped 0, failed 0` (sub-01 shows as skipped if B3's output is
       still there).
-- [ ] Note the time per recording.
-- [ ] Run it again: `done 0, skipped N`.
-- [ ] Delete one subject's derivative folder, start the loop and press **Ctrl+C**
+- [x] Note the time per recording.
+- [x] Run it again: `done 0, skipped N`.
+- [x] Delete one subject's derivative folder, start the loop and press **Ctrl+C**
       while that subject is being written; run the same command again: it redoes
       the interrupted subject and skips the rest.
-- [ ] If any recording failed, the summary names it and the exit status is 1
+- [x] If any recording failed, the summary names it and the exit status is 1
       (`echo $LASTEXITCODE`); note the error message.
 
 ### B6. ICA on real data
@@ -250,17 +250,17 @@ input's `recording`, e.g. `"recording": {"montage": "colin27_1005"}`):
 uv run meegxer run clean.json --bids DS --subjects 01 --task TASK --overwrite
 ```
 
-- [ ] Finishes with `fitted: ica`.
-- [ ] `_meegxer.json` holds `models.ica` (readable JSON arrays).
+- [x] Finishes with `fitted: ica`.
+- [x] `_meegxer.json` holds `models.ica` (readable JSON arrays).
 - [ ] Eye blinks are visibly reduced in the cleaned data (EEGLAB/MNE plot).
-- [ ] `uv run meegxer session check DS\derivatives\meegxer\sub-01\eeg\sub-01_task-TASK_desc-clean_meegxer.json`
+- [x] `uv run meegxer session check DS\derivatives\meegxer\sub-01\eeg\sub-01_task-TASK_desc-clean_meegxer.json`
       reports `model ica: reused`.
 
 ### B7. In the GUI
 
-- [ ] `uv run meegxer-gui`; Input → *File*; set the path to a raw recording of the
+- [x] `uv run meegxer-gui`; Input → *File*; set the path to a raw recording of the
       dataset; mode shows OFFLINE.
-- [ ] *+* → Outputs → *BIDS writer*; Run offline: the derivative appears in
+- [x] *+* → Outputs → *BIDS writer*; Run offline: the derivative appears in
       `DS\derivatives\meegxer` with its `_meegxer.json`.
 
 ### B8. Result
@@ -268,10 +268,10 @@ uv run meegxer run clean.json --bids DS --subjects 01 --task TASK --overwrite
 | Item | Value / result | Notes |
 |---|---|---|
 | Dataset (name / source), subjects, task, format | | |
-| B3 single recording | pass / fail | |
-| B4 EEGLAB / MNE-BIDS read-back | pass / fail | |
-| B4 validator on derivatives (errors / warnings) | | |
-| B5 whole dataset: done / failed, time per recording | | |
-| B5 rerun skip, interrupt and resume | pass / fail | |
-| B6 ICA (blinks reduced, session check) | pass / fail | |
-| B7 GUI offline BIDS writer | pass / fail | |
+| B3 single recording | pass | |
+| B4 EEGLAB / MNE-BIDS read-back | partial | EEGLAB / MNE-BIDS unavailable on personal computer (will test again at the lab) |
+| B4 validator on derivatives (errors / warnings) | skipped | |
+| B5 whole dataset: done / failed, time per recording | done | not measured |
+| B5 rerun skip, interrupt and resume | pass | |
+| B6 ICA (blinks reduced, session check) | partial | EEGLAB / MNE-BIDS unavailable on personal computer (will test again at the lab) |
+| B7 GUI offline BIDS writer | pass | |
