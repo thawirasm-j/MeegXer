@@ -89,6 +89,10 @@
               "maxItems": 2
             },
             "relative": {"type": "boolean"},
+            "aperiodic": {
+              "description": "Show power above each channel's aperiodic (1/f) fit: a flattened spectrum and the band's periodic power in the head plot.",
+              "type": "boolean"
+            },
             "scheme": {"enum": ["heat", "change", "peak"]},
             "range": {"enum": [10, 20, 30]},
             "smoothing": {

@@ -468,6 +468,15 @@ class SettingsDialog(QDialog):
             ),
         )
         form.addRow(
+            "",
+            self._check(
+                "visualization.spectrum.aperiodic",
+                "Remove the aperiodic (1/f) fit",
+                "Flatten each spectrum by its 1/f fit; the head plot shows the "
+                "band's power above it",
+            ),
+        )
+        form.addRow(
             "Head plot map", self._combo("visualization.spectrum.scheme", SCHEMES)
         )
         form.addRow(

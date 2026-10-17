@@ -56,6 +56,7 @@ from meegxer.gui.headplot import (
     Layout,
     PeakHold,
     Smoother,
+    flatten,
     render,
 )
 from meegxer.gui.theme import Theme
@@ -484,6 +485,15 @@ class SignalView(QWidget):
         self.band_menu.activated.connect(self._band_chosen)
         labelled("Band", self.band_menu, "The band the head plot shows (or drag the "
                  "shaded region on the spectrum)")  # fmt: skip
+        self.aperiodic = QPushButton("Remove 1/f")
+        self.aperiodic.setCheckable(True)
+        self.aperiodic.setToolTip(
+            "Show power above each channel's aperiodic (1/f) fit over 1–45 Hz "  # noqa: RUF001
+            "(specparam's robust fixed-mode fit), in dB: the spectrum is flattened "
+            "and the head plot shows the band's periodic power from 0 dB up"
+        )
+        self.aperiodic.toggled.connect(self._aperiodic_toggled)
+        row.addWidget(self.aperiodic)
         self.measure = QComboBox()
         self.measure.addItem("Absolute", False)
         self.measure.addItem("Relative", True)
@@ -552,6 +562,11 @@ class SignalView(QWidget):
         self.band_menu.setItemText(custom, f"Custom ({lo:.1f}–{hi:.1f} Hz)")  # noqa: RUF001
         self.band_menu.setCurrentIndex(custom)
 
+    def _aperiodic_toggled(self, on: bool) -> None:
+        self.measure.setEnabled(not on)  # relative power has no meaning above 1/f
+        self.peak.reset()  # the head plot's scale starts afresh
+        self._head_inputs = None
+
     def _smoothing_changed(self) -> None:
         self.smoother.tau = self.peak.tau = float(self.smoothing.currentData())
         self.smoother.reset()
@@ -566,6 +581,7 @@ class SignalView(QWidget):
             "spectrum": {
                 "band": [round(lo, 2), round(hi, 2)],
                 "relative": bool(self.measure.currentData()),
+                "aperiodic": self.aperiodic.isChecked(),
                 "scheme": str(self.scheme.currentData()),
                 "range": int(self.db_range.currentData()),
                 "smoothing": int(self.smoothing.currentData()),
@@ -600,6 +616,8 @@ class SignalView(QWidget):
         for key, box in boxes:
             if key in spectrum:
                 choose(box, spectrum[key])
+        if "aperiodic" in spectrum:
+            self.aperiodic.setChecked(bool(spectrum["aperiodic"]))
         if "head" in state:
             self.head_toggle.setChecked(bool(state["head"]))
 
@@ -719,6 +737,7 @@ class SignalView(QWidget):
             band=self.band_range(),
             scheme=str(self.scheme.currentData()),
             relative=bool(self.measure.currentData()),
+            aperiodic=self.aperiodic.isChecked(),
             db_range=float(self.db_range.currentData()),
             hidden=frozenset(self.channels.hidden),
             compare_psd=None if first is None or not len(first[1]) else first[2],
@@ -730,11 +749,11 @@ class SignalView(QWidget):
         hold = None
         live = self.panner.live
         if live:  # the scale's top decays instead of flickering
-            key = (win.probe, data.band, data.relative, data.scheme)
+            key = (win.probe, data.band, data.relative, data.aperiodic, data.scheme)
             hold = lambda top: self.peak.update(key, top)  # noqa: E731
         else:  # offline the view often redraws the same spectra: skip the work
             inputs = (data.labels, p.tobytes(), data.band, data.scheme,
-                      data.relative, data.db_range, data.hidden,
+                      data.relative, data.aperiodic, data.db_range, data.hidden,
                       None if data.compare_psd is None else data.compare_psd.tobytes(),
                       id(self.theme), tuple(sorted(self.wheel.items())),
                       self.maps)  # fmt: skip
@@ -818,18 +837,21 @@ class SignalView(QWidget):
             self.legend.setText(names)
             spectra = self._spectra([*comp, main_win])
             pens = [(1.0, 90)] * len(comp) + [(1.0, 90) if waiting else main_pen]
+            flat = self.aperiodic.isChecked()
             for (win, f, p), (width, alpha) in zip(spectra, pens, strict=True):
                 if len(f) < 2:
                     continue
+                shown = flatten(f, p) if flat else 10 * np.log10(p + 1e-12)
                 hovered = [c for c in chans if win.labels[c] == self.hover]
                 for c in [c for c in chans if c not in hovered] + hovered:
                     st = styles[c]
                     bold = bool(hovered) and c == hovered[0] and win is main_win
                     pen = _pen(st.color, width + 2 if bold else width,
                                255 if bold else alpha, st.dashed)  # fmt: skip
-                    layers.append((f[1:], 10 * np.log10(p[c, 1:] + 1e-12), pen))
+                    layers.append((f[1:], shown[c, 1:], pen))
             self._draw_head(spectra, has_comparison=bool(comp), waiting=waiting)
-            plot.setLabel("left", "power (dB µV²/Hz)")
+            plot.setLabel("left", "power above 1/f (dB)" if flat
+                          else "power (dB µV²/Hz)")  # fmt: skip
             plot.setLabel("bottom", "frequency", units="Hz")
         else:
             self.legend.setText(names)

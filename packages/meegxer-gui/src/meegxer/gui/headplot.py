@@ -22,6 +22,12 @@ Colour schemes (``SCHEMES``):
 Power is the integral of the PSD over the band (µV²), absolute or relative to
 1-45 Hz. Live, spectra are smoothed between refreshes by an exponential moving
 average with time constant ``tau`` (``Smoother``), in linear power.
+
+With the aperiodic part removed (``HeadInput.aperiodic``), each channel's
+spectrum is first divided by its aperiodic (1/f) fit over 1-45 Hz, the robust
+fixed-mode fit of specparam (``aperiodic_fit``): heat shows the band's mean power
+above the fit (0 dB = on the 1/f line, below it counts as 0), change compares
+those values, and peak frequency looks for the peak above the fit.
 """
 
 from __future__ import annotations
@@ -73,6 +79,8 @@ HEAT_STEP = 2.0  # dB per heat band
 MIN_CHANGE_DB = 3.0  # the change scale spans at least ±3 dB
 GRID = 200  # map resolution (pixels per side)
 RING = 24  # virtual points on the extrapolation ring
+FIT_RANGE = (1.0, 45.0)  # where the aperiodic (1/f) fit is made
+MIN_PERIODIC_DB = 3.0  # the scale above the 1/f fit spans at least 3 dB
 
 
 # -- scales -----------------------------------------------------------------------
@@ -113,6 +121,61 @@ def peak_frequency(f: FloatArray, psd: FloatArray, lo: float, hi: float) -> Floa
     inside = (best > 0) & (best < keep.size - 1)
     out[inside] = f[keep][best[inside]]
     return out
+
+
+def aperiodic_fit(
+    f: FloatArray, psd: FloatArray, lo: float = FIT_RANGE[0], hi: float = FIT_RANGE[1]
+) -> tuple[FloatArray, FloatArray]:
+    """Each row's aperiodic fit log10(P) = offset - exponent * log10(f) over
+    ``[lo, hi]`` Hz, as specparam's robust fit (fixed mode) makes it: a
+    least-squares line, then a second one through the points that lie below the
+    first (where no peak lifts the spectrum). Vectorized over rows; NaN for rows
+    with too few usable points."""
+    n_rows = psd.shape[0]
+    offset, exponent = np.full(n_rows, np.nan), np.full(n_rows, np.nan)
+    keep = (f >= lo) & (f <= hi) & (f > 0)
+    if keep.sum() < 3:
+        return offset, exponent
+    x = np.log10(f[keep])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        y = np.log10(psd[:, keep])
+    ok = np.all(np.isfinite(y), axis=1)
+    if not ok.any():
+        return offset, exponent
+    y = y[ok]
+    a = np.column_stack([np.ones_like(x), x])
+    coef = np.linalg.lstsq(a, y.T, rcond=None)[0]  # (2, rows): intercept, slope
+    flat = y - (coef[0][:, None] + coef[1][:, None] * x)
+    flat[flat < 0] = 0
+    mask = flat <= np.percentile(flat, 0.025, axis=1, keepdims=True)
+    n = mask.sum(axis=1)
+    sx, sy = (mask * x).sum(axis=1), (mask * y).sum(axis=1)
+    sxx, sxy = (mask * x * x).sum(axis=1), (mask * x * y).sum(axis=1)
+    denom = n * sxx - sx**2
+    good = (n >= 2) & (denom > 1e-12)
+    slope = np.where(good, (n * sxy - sx * sy) / np.where(good, denom, 1), coef[1])
+    inter = np.where(good, (sy - slope * sx) / np.maximum(n, 1), coef[0])
+    offset[ok], exponent[ok] = inter, -slope
+    return offset, exponent
+
+
+def flatten(f: FloatArray, psd: FloatArray) -> FloatArray:
+    """Power above each row's aperiodic fit, in dB (NaN at 0 Hz)."""
+    offset, exponent = aperiodic_fit(f, psd)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        logf = np.where(f > 0, np.log10(np.where(f > 0, f, 1.0)), np.nan)
+        fit = offset[:, None] - exponent[:, None] * logf
+        return np.asarray(10 * (np.log10(psd) - fit), dtype=float)
+
+
+def band_mean(f: FloatArray, values: FloatArray, lo: float, hi: float) -> FloatArray:
+    """Mean of each row over the bins in ``[lo, hi]`` Hz (the nearest bin for a
+    band narrower than the resolution)."""
+    keep = (f >= lo) & (f <= hi)
+    if not keep.any():
+        keep = np.arange(f.size) == int(np.argmin(np.abs(f - (lo + hi) / 2)))
+    with np.errstate(invalid="ignore"):
+        return np.asarray(np.nanmean(values[:, keep], axis=1), dtype=float)
 
 
 class Smoother:
@@ -355,6 +418,7 @@ class HeadInput:
     band: tuple[float, float]
     scheme: str = "heat"
     relative: bool = False
+    aperiodic: bool = False  # remove each channel's 1/f fit first
     db_range: float = DEFAULT_RANGE
     hidden: frozenset[str] = frozenset()
     compare_psd: FloatArray | None = None  # first comparison tap, same channels
@@ -413,18 +477,24 @@ def render(
     rows = np.array([index[lb] for lb in placed])
 
     unit = "rel." if data.relative else "µV²"
+
+    def band_db(psd: FloatArray) -> FloatArray:
+        if data.aperiodic:  # mean dB above the 1/f fit
+            return band_mean(data.f, flatten(data.f, psd), lo, hi)
+        return _db(_power(data.f, psd, (lo, hi), data.relative))
+
     if data.scheme == "change":
         if data.compare_psd is None:
             return "Change needs a second tap (click a ◇ in the chain)"
         cmp_index = {lb: i for i, lb in enumerate(data.compare_labels)}
-        main_db = _db(_power(data.f, data.psd, (lo, hi), data.relative))
-        cmp_db = _db(_power(data.f, data.compare_psd, (lo, hi), data.relative))
+        main_db, cmp_db = band_db(data.psd), band_db(data.compare_psd)
         value = np.array([main_db[index[lb]] - cmp_db[cmp_index[lb]]
                           if lb in cmp_index else np.nan for lb in placed])  # fmt: skip
     elif data.scheme == "peak":
-        value = peak_frequency(data.f, data.psd, lo, hi)[rows]
+        psd = 10 ** (flatten(data.f, data.psd) / 10) if data.aperiodic else data.psd
+        value = peak_frequency(data.f, np.nan_to_num(psd, nan=-np.inf), lo, hi)[rows]
     else:
-        value = _db(_power(data.f, data.psd, (lo, hi), data.relative))[rows]
+        value = band_db(data.psd)[rows]
 
     valid = np.isfinite(value) & np.array([lb not in data.hidden for lb in placed])
     if valid.sum() == 0:
@@ -451,7 +521,8 @@ def render(
         band_rgb = maps.diverging_rgb(centres, theme)
         bold = [0.0]
         scale = (f"−{n * step:g} dB", f"+{n * step:g} dB")  # noqa: RUF001
-        caption = f"Power change vs. the comparison tap, {step:g} dB steps"
+        what = "Power change above 1/f" if data.aperiodic else "Power change"
+        caption = f"{what} vs. the comparison tap, {step:g} dB steps"
     elif data.scheme == "peak":
         step = nice_step((hi - lo) / 10)
         start = math.floor(lo / step) * step
@@ -460,6 +531,16 @@ def render(
         band_rgb = maps.peak_rgb(centres, theme)
         scale = (f"{edges[0]:g} Hz", f"{edges[-1]:g} Hz")
         caption = f"Peak frequency in the band, {step:g} Hz steps"
+    elif data.aperiodic:  # from the 1/f line (0 dB) up to the held top
+        top = max(MIN_PERIODIC_DB, float(np.max(v)))
+        top = max(top, hold(top)) if hold is not None else top
+        step = nice_step(top / 8)
+        n = math.ceil(top / step - 1e-9)
+        edges = step * np.arange(n + 1, dtype=float)
+        grid = np.maximum(grid, 0.0)  # below the fit: no periodic power
+        band_rgb = maps.sequential_rgb((np.arange(n) + 0.5) / n, theme)
+        scale = ("0 dB", f"+{n * step:g} dB")
+        caption = f"Band power above the aperiodic (1/f) fit, {step:g} dB steps"
     else:
         top = float(np.max(v))
         top = max(top, hold(top)) if hold is not None else top
@@ -495,6 +576,8 @@ def render(
         elif data.scheme == "change":
             text = (f"{lb}: {value[i]:+.1f} dB" if np.isfinite(value[i])
                     else f"{lb}: not in the comparison tap")  # fmt: skip
+        elif data.aperiodic:
+            text = f"{lb}: {value[i]:+.1f} dB above the 1/f fit"
         else:
             p = 10 ** (value[i] / 10) if np.isfinite(value[i]) else float("nan")
             text = f"{lb}: {p:.3g} {unit} ({value[i]:.1f} dB)"

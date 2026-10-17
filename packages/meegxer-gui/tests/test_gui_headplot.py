@@ -13,9 +13,11 @@ from meegxer.gui.headplot import (
     HeadMap,
     PeakHold,
     Smoother,
+    aperiodic_fit,
     band_power,
     contour_segments,
     electrode_xy,
+    flatten,
     layout,
     nice_step,
     peak_frequency,
@@ -326,4 +328,85 @@ def test_offline_the_same_spectra_are_not_mapped_twice(
     v.band_menu.activated.emit(1)
     v.refresh(lambda p, s: main, "main", [])  # a new band is a new map
     assert len(calls) == 3
+    dispose(qapp, v)
+
+
+# -- aperiodic (1/f) removal --------------------------------------------------------
+
+
+def one_over_f(
+    exponent: float = 1.5, alpha: float = 0.0, seed: int = 0
+) -> tuple[np.ndarray, np.ndarray]:
+    """A 1/f^exponent spectrum (10^-11 offset) with a little multiplicative
+    noise and an optional alpha peak, as specparam models it (log10 power)."""
+    rng = np.random.default_rng(seed)
+    f = np.arange(0, 62.5, 0.5)
+    with np.errstate(divide="ignore"):
+        logp = -11 - exponent * np.log10(np.where(f > 0, f, np.nan))
+    logp += alpha * np.exp(-0.5 * ((f - 10) / 1.0) ** 2)
+    logp += 0.02 * rng.standard_normal(f.size)
+    return f, 10 ** np.nan_to_num(logp, nan=0.0)[None, :]
+
+
+def test_the_aperiodic_fit_is_specparams_robust_fit() -> None:
+    specparam = pytest.importorskip("specparam")  # a dependency of meegxer-nodes
+
+    for alpha in (0.0, 0.6):
+        f, psd = one_over_f(alpha=alpha)
+        offset, exponent = aperiodic_fit(f, psd)
+        keep = (f >= 1) & (f <= 45)
+        model = specparam.SpectralModel(verbose=False)
+        robust = getattr(model.algorithm, "_robust_ap_fit", None)
+        if robust is None:  # private in specparam; checked while it is there
+            pytest.skip("specparam no longer exposes its robust aperiodic fit")
+        ref = robust(f[keep], np.log10(psd[0, keep]))
+        assert offset[0] == pytest.approx(ref[0], abs=1e-6)
+        assert exponent[0] == pytest.approx(ref[1], abs=1e-6)
+        assert exponent[0] == pytest.approx(1.5, abs=0.1)
+
+
+def test_flattening_leaves_the_peak_above_zero() -> None:
+    f, psd = one_over_f(alpha=0.6)
+    flat = flatten(f, psd)
+    assert np.isnan(flat[0, 0])  # 0 Hz
+    assert flat[0, f == 10.0][0] == pytest.approx(6.0, abs=0.5)  # 0.6 log10 = 6 dB
+    assert abs(np.median(flat[0, (f > 20) & (f < 45)])) < 0.5
+    # rows are fitted independently; a row without data stays NaN
+    both = np.vstack([psd, np.full_like(psd, np.nan)])
+    _, exponent = aperiodic_fit(f, both)
+    assert np.isfinite(exponent[0]) and np.isnan(exponent[1])
+
+
+def test_heat_above_the_aperiodic_fit_starts_at_0_db() -> None:
+    m = head(aperiodic=True)
+    assert isinstance(m, HeadMap)
+    assert m.scale[0] == "0 dB" and m.scale[1].startswith("+")
+    assert m.caption.startswith("Band power above the aperiodic (1/f) fit")
+    o1 = next(e for e in m.electrodes if e.label == "O1")
+    assert "dB above the 1/f fit" in o1.text
+    flat = head(aperiodic=True, psd=spectra({})[1])  # no peak: the floor of the scale
+    assert isinstance(flat, HeadMap) and flat.scale[1] == "+3 dB"
+
+
+def test_peak_frequency_above_the_fit_finds_a_peak_on_a_slope() -> None:
+    f, psd = one_over_f(alpha=0.3)
+    raw = peak_frequency(f, psd, 4.0, 13.0)
+    assert np.isnan(raw[0])  # the 1/f slope peaks at the band's lower edge
+    flat = 10 ** (flatten(f, psd) / 10)
+    assert peak_frequency(f, np.nan_to_num(flat), 4.0, 13.0)[0] == 10.0
+
+
+def test_the_view_can_remove_the_aperiodic_fit(qapp: QApplication) -> None:
+    v = view(qapp)
+    main = window("main", OCCIPITAL)
+    v.refresh(lambda p, s: main, "main", [])
+    assert "dB µV²/Hz" in v.plot.getPlotItem().getAxis("left").labelText
+    v.aperiodic.setChecked(True)
+    assert not v.measure.isEnabled()  # relative power means nothing above 1/f
+    v.refresh(lambda p, s: main, "main", [])
+    assert v.plot.getPlotItem().getAxis("left").labelText == "power above 1/f (dB)"
+    assert isinstance(v.head.map, HeadMap) and v.head.map.scale[0] == "0 dB"
+    assert v.view_state()["spectrum"]["aperiodic"] is True
+    v.set_view_state({"spectrum": {"aperiodic": False}})
+    assert not v.aperiodic.isChecked() and v.measure.isEnabled()
     dispose(qapp, v)

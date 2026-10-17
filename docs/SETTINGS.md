@@ -46,7 +46,7 @@ reported (in the log) and use their defaults. The format is checked against
 | | Reverse sequential maps on a light theme | `visualization.flip_on_light` | `false` |
 | | Time span (s) | `visualization.span` | `10` |
 | | Live time axis: seconds before now, or time since start | `visualization.time_axis` | `before_now` |
-| | Head plot band, power, map, power range, live smoothing | `visualization.spectrum.*` | α (8–13 Hz), absolute, band power, 20 dB, 2 s |
+| | Head plot band, power, remove 1/f, map, power range, live smoothing | `visualization.spectrum.*` | α (8–13 Hz), absolute, off, band power, 20 dB, 2 s |
 | Data & storage | Offline run files (empty: system temp folder) | `storage.offline_dir` | `""` |
 | | Offline cache cap (GB) | `storage.cache_gb` | `5` |
 | | Pipelines and sessions folder (file dialogs) | `storage.output_dir` | `""` |
@@ -64,7 +64,7 @@ The **☀** button is a quick theme switch: it changes the theme setting.
 ## What is remembered
 
 `state.json` holds the window's size and place, Friendly/Advanced, the time span,
-the spectrum view (band, power, colour, range, smoothing, head plot on or off), the
+the spectrum view (band, power, 1/f removal, colour, range, smoothing, head plot on or off), the
 last folder and the last pipeline. A view's last state wins over its default
 setting; changing that default in Settings replaces it, and **Forget remembered
 view** returns everything to the settings.
