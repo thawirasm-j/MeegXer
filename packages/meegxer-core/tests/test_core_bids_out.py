@@ -62,10 +62,16 @@ def test_derivative_is_readable_by_bids_tools(tmp_path: Path) -> None:
     deriv = raw_root / "derivatives" / "meegxer"
     folder = deriv / "sub-01" / "eeg"
     stem = "sub-01_task-rest_desc-clean"
-    for suffix in ("eeg.set", "eeg.json", "channels.tsv", "events.tsv",
-                   "electrodes.tsv", "coordsystem.json", "bp_features.tsv",
+    for suffix in ("eeg.set", "eeg.json", "channels.tsv", "channels.json",
+                   "events.tsv", "events.json", "bp_features.tsv",
                    "bp_features.json", "meegxer.json"):  # fmt: skip
         assert (folder / f"{stem}_{suffix}").is_file(), suffix
+    # positions are the subject's, without task or desc (validator: BIDS 1.10)
+    for name in ("electrodes.tsv", "electrodes.json", "coordsystem.json"):
+        assert (folder / f"sub-01_{name}").is_file(), name
+    for name in ("channels", "events", "electrodes"):
+        stemmed = f"sub-01_{name}" if name == "electrodes" else f"{stem}_{name}"
+        assert json.loads((folder / f"{stemmed}.json").read_text())["Description"]
 
     back = mne_bids.read_raw_bids(
         mne_bids.BIDSPath(root=deriv, subject="01", task="rest", description="clean",
@@ -77,6 +83,7 @@ def test_derivative_is_readable_by_bids_tools(tmp_path: Path) -> None:
     assert [a["description"] for a in back.annotations] == ["go", "stop"]
     assert back.info["bads"] == ["Pz"]  # the recording edit, in channels.tsv
     assert back.info["line_freq"] == 50.0  # from the raw sidecar
+    assert back.get_montage() is not None  # electrodes found at subject level
 
     description = json.loads((deriv / "dataset_description.json").read_text())
     assert description["DatasetType"] == "derivative"
@@ -86,7 +93,9 @@ def test_derivative_is_readable_by_bids_tools(tmp_path: Path) -> None:
     assert any("10.3389/fnins.2013.00267" in r for r in links)  # MNE
     assert any("10.1038/s41597-019-0104-8" in r for r in links)  # EEG-BIDS
     assert len(links) == len(set(links))
-    assert "*_meegxer.json" in (deriv / ".bidsignore").read_text()
+    ignored = (deriv / ".bidsignore").read_text().split()
+    assert {"*_meegxer.json", "*_features.tsv", "*_features.json"} <= set(ignored)
+    assert "Authors" in (deriv / "README.md").read_text()
     sidecar = json.loads((folder / f"{stem}_eeg.json").read_text())
     assert sidecar["Sources"] == ["bids:raw:sub-01/eeg/sub-01_task-rest_eeg.edf"]
     assert sidecar["EEGChannelCount"] == 5 and sidecar["EOGChannelCount"] == 1

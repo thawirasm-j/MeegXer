@@ -220,9 +220,9 @@ uv run meegxer run clean.json -i DS\sub-01\eeg\sub-01_task-TASK_eeg.EXT --bids-o
       chain; `PowerLineFrequency` and other fields came over from the raw sidecar.
 - [x] `_channels.tsv`: types (EEG/EOG/…) and `status` as expected.
 - [x] `_bp_features.tsv`: one row per window, plausible band-power values.
-- [ ] Validate the derivatives folder with the BIDS validator: note errors and
-      warnings (the EEG-derivatives extension is still a draft, so some warnings
-      may be expected; send them to me).
+- [ ] Validate the derivatives folder with the BIDS validator: no errors; the
+      only expected warning is TOO_FEW_AUTHORS (add your names under `Authors`
+      in `dataset_description.json` to clear it). Send me anything else.
 
 ### B5. The whole dataset, then an interrupted run
 
