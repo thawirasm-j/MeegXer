@@ -220,7 +220,7 @@ uv run meegxer run clean.json -i DS\sub-01\eeg\sub-01_task-TASK_eeg.EXT --bids-o
       chain; `PowerLineFrequency` and other fields came over from the raw sidecar.
 - [x] `_channels.tsv`: types (EEG/EOG/…) and `status` as expected.
 - [x] `_bp_features.tsv`: one row per window, plausible band-power values.
-- [ ] Validate the derivatives folder with the BIDS validator: no errors; the
+- [x] Validate the derivatives folder with the BIDS validator: no errors; the
       only expected warning is TOO_FEW_AUTHORS (add your names under `Authors`
       in `dataset_description.json` to clear it). Send me anything else.
 
@@ -271,10 +271,10 @@ uv run meegxer run clean.json --bids DS --subjects 01 --task TASK --overwrite
 
 | Item | Value / result | Notes |
 |---|---|---|
-| Dataset (name / source), subjects, task, format | | |
+| Dataset (name / source), subjects, task, format | ds004504 (OpenNeuro), sub-001 to sub-009, eyesclosed, EEGLAB .set | |
 | B3 single recording | pass | |
 | B4 EEGLAB / MNE-BIDS read-back | partial | EEGLAB / MNE-BIDS unavailable on personal computer (will test again at the lab) |
-| B4 validator on derivatives (errors / warnings) | skipped | |
+| B4 validator on derivatives (errors / warnings) | pass | no errors; TOO_FEW_AUTHORS only (after PR #54) |
 | B5 whole dataset: done / failed, time per recording | done | not measured |
 | B5 rerun skip, interrupt and resume | pass | |
 | B6 ICA (blinks reduced, session check) | partial | EEGLAB / MNE-BIDS unavailable on personal computer (will test again at the lab) |

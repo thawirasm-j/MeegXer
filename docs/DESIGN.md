@@ -447,7 +447,7 @@ same node interface plugins use so both remain possible.
 ## 5. v1 scope
 
 Status: everything under **In** has shipped (0.2.1a8); the first beta (0.3.0b1)
-follows the manual release checks (`docs/TESTING.md`), then 1.0.0. What each
+passed the manual release checks (`docs/TESTING.md`); next is 1.0.0. What each
 release added: `docs/RELEASE_NOTES.md`.
 
 **In:**

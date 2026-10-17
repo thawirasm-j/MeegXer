@@ -5,14 +5,15 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 (`docs/RELEASING.md`). Install or upgrade: `uv tool install --python 3.14
 --prerelease allow meegxer` (or `uv tool upgrade meegxer`).
 
-## 0.3.0b1: first beta (not released yet)
+## 0.3.0b1: first beta (2026-10-17)
 
 The first beta: every feature planned for v1 (`docs/DESIGN.md` §5) is in. It
 carries the code of 0.2.1a8; what changes is the promise. From here to 1.0.0 the
 pipeline, session and plugin formats change only in compatible ways, and the
-work is fixing what the beta turns up. It is tagged once the manual release
-checks pass (`docs/TESTING.md`: acceptance test 5 on Windows with Docker, and
-the check on real BIDS data).
+work is fixing what the beta turns up. The manual release checks passed
+(`docs/TESTING.md`: acceptance test 5 on Windows with Docker, and the check on
+real BIDS data, ds004504); the EEGLAB read-back is still to be done, and
+anything it finds goes into 0.3.0b2.
 
 ### What MeegXer does at this release
 
