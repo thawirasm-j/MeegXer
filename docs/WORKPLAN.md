@@ -284,7 +284,8 @@ known brain and artifact sources, `tools/make_m6_ica_testdata.py`) against
 on the same decomposition, ICLabel features equal EEGLAB's to float32 precision and
 probabilities to 4e-6; Extended Infomax matches `runica` (matched components,
 median |r| 1.000, min 0.98) and extended Picard nearly so (median 0.996, min 0.93).
-The strip writes the ICs rail (activations with ICLabel classes, `docs/RAILS.md`), which later strips can read as their input. Not yet: a view of the components in the GUI.
+The strip writes the ICs rail (activations with ICLabel classes, `docs/RAILS.md`), which later strips can read as their input. Tapping the ICs rail shows the
+components, coloured by ICLabel class.
 
 **M6c status:** implemented. Analysis processors return the windows a block
 completes as a tuple of FeatureBlocks; both schedulers route them to Features sinks
@@ -300,9 +301,9 @@ MATLAB's no-detrend setting to 3e-16 (`tests/data/m6_ref_features.npz`,
 `tools/make_m6_feature_references.py`); the envelope stays within 1 % of a
 whole-recording `hilbert` away from the recording's ends (median 0.03 %);
 connectivity and complexity equal direct mne-connectivity/antropy calls and give
-the expected answers on signals with known coupling and regularity. Not yet: GUI
-feature views (PSD plot and the like); a strip's channel layout changing mid-stream
-stops the feature outlets.
+the expected answers on signals with known coupling and regularity. Tapping a feature
+rail shows its feature view (a spectrum, or values over time; live and offline).
+Not yet: a strip's channel layout changing mid-stream stops the feature outlets.
 
 **Decided**
 - Features → Sink only in v1 (view, export, LSL feature stream); Features → Processor
@@ -417,7 +418,7 @@ identical output.
 | 33 | EEGLAB references | Stored in `tests/data/` with the generating script, so CI needs no EEGLAB | M6 |
 | 34 | Live params on fitted nodes | Act in `transform` only and stay out of the model fingerprint, so e.g. the ICA threshold changes without a refit (spec 0.2.6) | M6b |
 | 35 | Feature windows | An analysis processor returns a tuple of FeatureBlocks, one per completed window (or none); sinks get them one by one | M6c |
-| 36 | Features in a linear chain | Branch off: an omitted `input` takes the nearest earlier node with a matching output type (spec 0.2.7); no probe tap after Features strips | M6c |
+| 36 | Features in a linear chain | Branch off: an omitted `input` takes the nearest earlier node with a matching output type (spec 0.2.7); a feature strip's tap is on its rail (a Features probe), shown alone in the feature view | M6c |
 | 37 | Hilbert envelope | Signal strip, piecewise analytic signal with look-ahead (delayed output), one implementation live and offline | M6c |
 | 38 | First feature measures | Connectivity: coh, imcoh, PLV, wPLI; complexity: permutation/sample/spectral entropy, Hjorth, Lempel-Ziv | M6c |
 | 39 | PyPI releases | Six projects (five packages + `meegxer` bundle = sterile build), one shared version from a `v*` tag, Trusted Publishing; tag → TestPyPI, PyPI by manual approved run (`docs/RELEASING.md`) | — |

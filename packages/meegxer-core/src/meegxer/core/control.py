@@ -143,6 +143,7 @@ class Daemon:
             "lookup_positions": self.lookup_positions,
             "run_offline": self.run_offline,
             "offline_window": self.offline_window,
+            "offline_features": self.offline_features,
             "shutdown": self.shutdown,
         }
 
@@ -401,6 +402,24 @@ class Daemon:
         if self._offline is None:
             raise RuntimeError("no offline run")
         return self._offline.window(probe, int(start), int(n_samples), int(max_bins))
+
+    def offline_features(
+        self,
+        probe: str,
+        start: int = 0,
+        stop: int = 2**62,
+        max_windows: int = 2000,
+        reduce: str = "none",
+    ) -> dict[str, Any]:
+        """Feature windows of one Features probe of the current offline run that
+        end in ``(start, stop]`` (samples): at most ``max_windows`` of them, or
+        their mean with ``reduce="mean"``."""
+        if self._offline is None:
+            raise RuntimeError("no offline run")
+        if reduce not in ("none", "mean"):
+            raise ValueError("reduce must be 'none' or 'mean'")
+        return self._offline.feature_windows(probe, int(start), int(stop),
+                                             int(max_windows), reduce)  # fmt: skip
 
     def shutdown(self) -> str:
         self._stop.set()

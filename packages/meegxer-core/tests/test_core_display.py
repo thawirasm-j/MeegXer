@@ -51,6 +51,7 @@ def test_frame_round_trip() -> None:
     )
     frame = DisplayFrame("main", 3, ("a", "b"), 250.0, env)
     back = decode_frame(encode_frame(frame))
+    assert isinstance(back, DisplayFrame)
     assert (back.probe, back.seq, back.ch_labels, back.sfreq) == (
         "main",
         3,

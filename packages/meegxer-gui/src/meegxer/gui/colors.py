@@ -140,3 +140,28 @@ def channel_styles(
     labels: tuple[str, ...] | list[str], theme: Theme
 ) -> list[ChannelStyle]:
     return [channel_style(label, theme) for label in labels]
+
+
+# ICLabel classes (the ICs rail): Okabe-Ito colours, readable on both themes
+# and for colour-blind viewers; "other" is neutral and dashed.
+IC_CLASS_COLORS: dict[str, str] = {
+    "brain": "#009E73",
+    "muscle": "#E69F00",
+    "eye": "#56B4E9",
+    "heart": "#D55E00",
+    "line_noise": "#CC79A7",
+    "channel_noise": "#0072B2",
+}
+
+
+def class_style(name: str, theme: Theme) -> ChannelStyle:
+    """Style of a component by its class (e.g. ICLabel's ``eye``)."""
+    colour = IC_CLASS_COLORS.get(name)
+    if colour is None:
+        return ChannelStyle(_hex(theme.unknown_channel), dashed=True)
+    return ChannelStyle(_hex(colour))
+
+
+def class_label(name: str) -> str:
+    """``line_noise`` -> ``line noise``."""
+    return name.replace("_", " ")

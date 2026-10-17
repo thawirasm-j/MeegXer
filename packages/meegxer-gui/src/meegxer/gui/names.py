@@ -13,6 +13,7 @@ TITLES = {
     "meegxer.core.set_writer": "EEGLAB file (.set)",
     "meegxer.core.edf_writer": "EDF file",
     "meegxer.core.feature_tsv": "Features table",
+    "meegxer.core.feature_probe": "Features tap",
     "meegxer.core.bids_writer": "BIDS dataset",
     "meegxer.core.bids_features": "BIDS features table",
     "meegxer.nodes.notch": "Notch",

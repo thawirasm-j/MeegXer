@@ -429,9 +429,14 @@ class RailBoard(QWidget):
       and in a fainter colour, to the end of the chain with an arrow.
     - A strip that needs a rail the chain lacks gets a red dashed arrow."""
 
-    def __init__(self, doc: PipelineDoc, theme: Theme) -> None:
+    tap_clicked = Signal(str, bool)  # a feature rail or rail output, make main
+
+    def __init__(
+        self, doc: PipelineDoc, theme: Theme, taps: dict[str, str] | None = None
+    ) -> None:
         super().__init__()
         self.theme = theme
+        self.taps = taps or {}
         self.rails, self.needs = doc.rails()
         self.lanes = doc.rail_lanes()
         self.strips: dict[str, QWidget] = {}
@@ -557,10 +562,15 @@ class RailBoard(QWidget):
                 painter.setPen(QPen(colour, 1.6))
                 self._vertical(painter, x, y, rect.top() - 6, crossings(x, rail.lane))
                 _head(painter, colour, QPointF(x, rect.top() - 1), 0, 1)
-            # its name above its producer
-            room = STRIP_WIDTH - 2 * PORT - 30
-            label = fm.elidedText(rail.label, Qt.TextElideMode.ElideRight, room)
-            box = QRectF(x0 - 8 - room, y - fm.height() / 2, room, fm.height())
+            # its name above its producer; a rail with a view has a tap mark
+            box = self.label_box(rail, x0, fm)
+            label = fm.elidedText(rail.label, Qt.TextElideMode.ElideRight,
+                                  int(box.width()))  # fmt: skip
+            if self.tappable(rail):
+                state = self.taps.get(rail.id, "off")
+                label = ("◆ " if state == "main" else "◇ ") + label
+                if state == "main":
+                    colour = QColor(self.theme.accent)
             painter.setPen(colour)
             painter.drawText(
                 box, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, label
@@ -588,6 +598,37 @@ class RailBoard(QWidget):
             )
         painter.end()
 
+    @staticmethod
+    def tappable(rail: Rail) -> bool:
+        """Feature rails and Signal rail outputs (the ICs) have a view."""
+        return rail.kind in ("features", "signal")
+
+    def label_box(self, rail: Rail, x0: float, fm: QFontMetrics) -> QRectF:
+        room = STRIP_WIDTH - 2 * PORT - 30
+        return QRectF(x0 - 8 - room, self.lane_y(rail.lane) - fm.height() / 2, room,
+                      fm.height())  # fmt: skip
+
+    def tap_at(self, point: QPointF) -> Rail | None:
+        """The rail whose name or start is at ``point``, when it has a view."""
+        fm = QFontMetrics(self.font_)
+        for rail, x0, _ in self.spans():
+            if not self.tappable(rail):
+                continue
+            box = self.label_box(rail, x0, fm)
+            text = fm.horizontalAdvance("◇ " + rail.label) + 6
+            box.setLeft(max(box.left(), box.right() - text))
+            if box.adjusted(0, -2, 8, 2).contains(point):
+                return rail
+        return None
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        rail = self.tap_at(event.position())
+        if rail is None:
+            super().mousePressEvent(event)
+            return
+        right = event.button() == Qt.MouseButton.RightButton
+        self.tap_clicked.emit(rail.id, right)
+
     def rail_at(self, point: QPointF) -> Rail | None:
         end = self.end_x()
         for rail, x0, _ in self.spans():
@@ -599,14 +640,16 @@ class RailBoard(QWidget):
     def event(self, event: QEvent) -> bool:
         if event.type() == QEvent.Type.ToolTip:
             assert isinstance(event, QHelpEvent)
-            rail = self.rail_at(QPointF(event.pos()))
+            point = QPointF(event.pos())
+            rail = self.rail_at(point) or self.tap_at(point)
             if rail is None:
                 QToolTip.hideText()
             else:
                 readers = ", ".join(rail.readers) or "nothing yet"
-                QToolTip.showText(event.globalPos(),
-                                  f"{rail.label} rail, from {rail.producer}\n"
-                                  f"Read by: {readers}", self)  # fmt: skip
+                tip = f"{rail.label} rail, from {rail.producer}\nRead by: {readers}"
+                if self.tappable(rail):
+                    tip += "\nClick its name: show it in the view above"
+                QToolTip.showText(event.globalPos(), tip, self)
             return True
         return super().event(event)
 
@@ -646,7 +689,8 @@ class ChainView(QScrollArea):
         self._doc = doc
         self._theme = theme
         scroll = self.horizontalScrollBar().value()
-        inner = RailBoard(doc, theme)
+        inner = RailBoard(doc, theme, taps)
+        inner.tap_clicked.connect(self.tap_clicked)
         lay = QHBoxLayout(inner)
         lay.setContentsMargins(8, inner.band + 2, 8, 8)
         lay.setSpacing(0)

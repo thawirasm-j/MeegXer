@@ -38,6 +38,7 @@ PARAMS: dict[str, str] = {
     "include_index": "Add a sample counter channel",
     "label": "Name",
     "keep_seconds": "History kept",
+    "keep_windows": "Windows kept",
     # synthetic parts
     "neural": "Brain-like signal",
     "line": "Line noise",

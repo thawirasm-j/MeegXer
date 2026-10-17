@@ -106,6 +106,10 @@ output strip chooses which line it draws from.
 - **A strip that needs a rail the chain lacks** shows a red "needs Events" at the
   top row (e.g. CSP on a recording without events).
 - Hovering a rail names it, its producer and its readers.
+- **Clicking a rail's name shows it** (◇, ◆ while shown): a feature rail in the
+  feature view (a spectrum, or values over time), the ICs rail as component
+  traces coloured by ICLabel class. It is shown alone, in place of the signal
+  taps, until clicked again or a signal tap is clicked.
 
 ## 5. Strip and plugin inputs and outputs (built, spec 0.2.17)
 

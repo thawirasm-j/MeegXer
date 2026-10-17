@@ -39,7 +39,13 @@ import numpy as np
 import pylsl
 
 from meegxer.core.block import Block, FeatureBlock, SignalInfo, concat_blocks
-from meegxer.core.display import Decimator, DisplayFrame, DisplayPublisher, Envelope
+from meegxer.core.display import (
+    Decimator,
+    DisplayFrame,
+    DisplayPublisher,
+    Envelope,
+    FeatureFrame,
+)
 from meegxer.core.events import EventsRail
 from meegxer.core.graph import Graph, GraphError, GraphNode, positions_message
 from meegxer.core.node import (
@@ -64,6 +70,7 @@ from meegxer.core.stage import Stage, StageStatus, StaleModelError, signal_finge
 Clock = Callable[[], float]
 EVENTS_KEEP_SECONDS = 60.0  # live Events rail kept beyond open calibrations
 RAIL_HOLD_SECONDS = 30.0  # how long a reader's input waits for a lagging rail
+FEATURE_FRAMES_PER_FLUSH = 16  # newest feature windows sent per probe and frame
 
 
 class _Readable(Protocol):
@@ -217,6 +224,7 @@ class RealtimeScheduler:
         self._input_fps: dict[str, str] = {}
         self._decimators: dict[str, Decimator] = {}
         self._pending: dict[str, list[Any]] = {}
+        self._pending_features: dict[str, list[FeatureBlock]] = {}
         self._seq: dict[str, int] = {}
         self._last_flush = 0.0
         self._lock = threading.Lock()
@@ -524,6 +532,8 @@ class RealtimeScheduler:
                     node.impl.tap(item)
                     if isinstance(item, Block):
                         self._feed_display(node, item)
+                    elif isinstance(item, FeatureBlock) and self.display is not None:
+                        self._pending_features.setdefault(node.id, []).append(item)
             elif isinstance(node.impl, Sink):
                 for item in output_blocks(upstream):  # feature windows one by one
                     node.impl.write(item)
@@ -682,11 +692,20 @@ class RealtimeScheduler:
                 seq = self._seq.get(probe_id, 0)
                 self._seq[probe_id] = seq + 1
                 self.display.publish(
-                    DisplayFrame(
-                        probe_id, seq, info.ch_labels, info.sfreq, merged, bypassed
-                    )
-                )
+                    DisplayFrame(probe_id, seq, info.ch_labels, info.sfreq, merged,
+                                 bypassed, info.ch_classes, info.ch_scores)
+                )  # fmt: skip
             items.clear()
+        sfreq = self.graph.source.impl.info.sfreq  # type: ignore[union-attr]
+        for probe_id, windows in self._pending_features.items():
+            for w in windows[-FEATURE_FRAMES_PER_FLUSH:]:  # lossy, like the rest
+                seq = self._seq.get(probe_id, 0)
+                self._seq[probe_id] = seq + 1
+                self.display.publish(
+                    FeatureFrame(probe_id, seq, w.window, sfreq, w.dims,
+                                 dict(w.coords), w.data)
+                )  # fmt: skip
+            windows.clear()
 
     # -- status ---------------------------------------------------------------------
 
