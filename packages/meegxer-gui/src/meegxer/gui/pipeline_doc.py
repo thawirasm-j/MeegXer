@@ -32,7 +32,7 @@ SYNTHETIC = "meegxer.core.synthetic"
 # the GUI's defaults where they differ from the node's: synthetic input played
 # live runs until stopped (a live calibration never runs out of it)
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
-SPEC_VERSION = "0.2.15"
+SPEC_VERSION = "0.2.16"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores

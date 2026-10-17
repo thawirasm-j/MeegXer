@@ -58,6 +58,7 @@ def analysis_manifest(
     *,
     window: float = 2.0,
     step: float = 0.5,
+    **fields: object,
 ) -> Manifest:
     windowing = [dict(WINDOW_PARAMS[0], default=window),
                  dict(WINDOW_PARAMS[1], default=step)]  # fmt: skip
@@ -73,6 +74,7 @@ def analysis_manifest(
             "params": [*windowing, *params],
             "availability": "both",
             **credits(name),
+            **fields,
         }
     )
 
@@ -129,6 +131,12 @@ class WindowedFeatures(Processor):
     ) -> tuple[np.ndarray, tuple[str, ...], dict[str, tuple[Any, ...]]]:
         """(data, dims, coords) for one window ``x`` (channels x samples)."""
 
+    def fitted_features(
+        self, x: np.ndarray, info: SignalInfo, params: Params, model: State
+    ) -> tuple[np.ndarray, tuple[str, ...], dict[str, tuple[Any, ...]]]:
+        """As ``features``, for a node with a fitted model. Default: ``features``."""
+        return self.features(x, info, params)
+
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
@@ -153,7 +161,7 @@ class WindowedFeatures(Processor):
         out = []
         while nxt + n <= start + buffer.shape[1]:
             x = buffer[:, nxt - start : nxt - start + n]
-            values, dims, coords = self.features(x, info, params)
+            values, dims, coords = self.fitted_features(x, info, params, model)
             out.append(FeatureBlock(values, dims, (nxt, nxt + n),
                                     t_ref + (nxt - i_ref) / info.sfreq,
                                     coords, info.stream_id))  # fmt: skip

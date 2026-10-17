@@ -52,7 +52,7 @@ from typing import Any, BinaryIO, ClassVar
 import numpy as np
 
 SDK = "meegxer-python/0.1.0"
-SPEC_VERSION = "0.2.15"
+SPEC_VERSION = "0.2.16"
 MAGIC = b"MXP1"
 _DTYPES = {"float32", "float64", "int32", "int64", "uint8", "bool"}
 
@@ -243,6 +243,7 @@ def run(
                     header["info"],
                     sample_index=header.get("sample_index", 0),
                     timestamp=header.get("timestamp", 0.0),
+                    events=header.get("events", []),  # labelled trials (0.2.16)
                 )
                 model = plugin.fit(
                     arrays["data"].astype(np.float64), info, header["params"]

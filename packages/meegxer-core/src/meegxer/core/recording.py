@@ -23,7 +23,7 @@ from typing import Any
 
 import numpy as np
 
-from meegxer.core.block import CHANNEL_TYPES, Block, Position, SignalInfo
+from meegxer.core.block import CHANNEL_TYPES, Block, Event, Position, SignalInfo
 from meegxer.core.node import Source
 
 _EVENT_LABEL_COLUMNS = ("trial_type", "value", "label", "description", "type")
@@ -330,16 +330,57 @@ def recording_of(source: Source) -> dict[str, Any]:
     return source.recording.to_dict() if isinstance(source, _RecordingMixin) else {}
 
 
+def _overrides(source: Source) -> RecordingOverrides:
+    return (
+        source.recording
+        if isinstance(source, _RecordingMixin)
+        else RecordingOverrides()
+    )
+
+
+def _raw_events(
+    source: Source, overrides: RecordingOverrides
+) -> tuple[list[dict[str, float | str]], str]:
+    """The recording's events before renaming, and where they came from."""
+    if overrides.events_file:
+        return read_events_file(overrides.events_file), "file"
+    if callable(getattr(source, "annotations", None)):
+        return source.annotations(), "recording"  # type: ignore[attr-defined]
+    return [], "none"
+
+
+def _renamed(
+    events: list[dict[str, float | str]], overrides: RecordingOverrides
+) -> list[dict[str, float | str]]:
+    return [
+        {**e, "label": overrides.rename_events.get(str(e["label"]), str(e["label"]))}
+        for e in events
+        if str(e["label"]) not in overrides.drop_events
+    ]
+
+
+def recording_events(source: Source) -> tuple[Event, ...]:
+    """The recording's events as the pipeline sees them (events file or the
+    file's own annotations, renamed and dropped as the overrides say), at
+    absolute sample indices: onset (s) x rate from the source's first sample."""
+    overrides = _overrides(source)
+    sfreq = source.info.sfreq
+    events = []
+    for e in _renamed(_raw_events(source, overrides)[0], overrides):
+        onset = float(e["onset"])
+        if onset < 0 or not str(e["label"]):
+            continue
+        duration = max(0, round(float(e.get("duration", 0.0)) * sfreq))
+        events.append(Event(round(onset * sfreq), str(e["label"]), duration))
+    return tuple(sorted(events, key=lambda e: e.sample_index))
+
+
 def describe(source: Source) -> dict[str, Any]:
     """What a client needs to show and edit a recording: channels before and
     after the overrides, the sampling rate and length, and the events."""
     info = source.info
     original = source.source_info if isinstance(source, _RecordingMixin) else info
-    overrides = (
-        source.recording
-        if isinstance(source, _RecordingMixin)
-        else RecordingOverrides()
-    )
+    overrides = _overrides(source)
     channels = [
         {
             "label": label,
@@ -352,18 +393,9 @@ def describe(source: Source) -> dict[str, Any]:
         }
         for i, label in enumerate(info.ch_labels)
     ]
-    if overrides.events_file:
-        events, origin = read_events_file(overrides.events_file), "file"
-    elif callable(getattr(source, "annotations", None)):
-        events, origin = source.annotations(), "recording"  # type: ignore[attr-defined]
-    else:
-        events, origin = [], "none"
+    events, origin = _raw_events(source, overrides)
     labels = sorted({str(e["label"]) for e in events})
-    shown = [
-        {**e, "label": overrides.rename_events.get(str(e["label"]), str(e["label"]))}
-        for e in events
-        if str(e["label"]) not in overrides.drop_events
-    ]
+    shown = _renamed(events, overrides)
     n = source.n_samples
     return {
         "sfreq": info.sfreq,

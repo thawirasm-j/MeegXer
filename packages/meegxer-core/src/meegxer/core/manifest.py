@@ -18,7 +18,7 @@ import jsonschema
 
 from meegxer.core.ports import Port, PortType
 
-SPEC_VERSION = "0.2.15"
+SPEC_VERSION = "0.2.16"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]
@@ -116,6 +116,7 @@ class Manifest:
     latency_samples: int = 0
     requires_fit: bool = False
     requires_positions: bool = False
+    fit_events: bool = False  # fit also gets the calibration's events (0.2.16)
     image: str | None = None
     description: str = ""
     role: NodeRoleName = "processor"
@@ -173,6 +174,7 @@ class Manifest:
             latency_samples=data.get("latency_samples", 0),
             requires_fit=data.get("requires_fit", False),
             requires_positions=data.get("requires_positions", False),
+            fit_events=data.get("fit_events", False),
             image=data.get("image"),
             description=data.get("description", ""),
             role=data.get("role", "processor"),
@@ -223,6 +225,8 @@ class Manifest:
             raise ManifestError("stream processors take and return Signal ports only")
         if self.requires_fit and self.role != "processor":
             raise ManifestError("only processors can require fitting")
+        if self.fit_events and not self.requires_fit:
+            raise ManifestError("fit_events needs requires_fit")
         unknown_live = sorted(self.live_params - set(names))
         if unknown_live:
             raise ManifestError(f"live_params names unknown parameters {unknown_live}")

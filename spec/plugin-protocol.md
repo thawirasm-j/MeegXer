@@ -81,6 +81,13 @@ Request fields: `params`, `info`, `sample_index`, `timestamp`; array `data` (the
 calibration signal). Reply: `{"type": "model", "model": TREE}` plus the model's
 arrays. Only sent when the manifest has `requires_fit: true`.
 
+With `fit_events: true` in the manifest (0.2.16) the request also carries
+`events`: the events inside the calibration stretch, each
+`{"sample_index": int, "label": str, "duration": int, "payload": {...}}` at
+absolute sample indices (the data's first sample is `sample_index`). The host
+never sends such a `fit` without events. The SDKs hand them to the plugin's fit
+as `info["events"]` (Python) or `info.events` (Octave).
+
 ### `load_model` → `ok`
 
 Request fields: `model_id` (string chosen by the host), `model` (TREE) plus arrays.

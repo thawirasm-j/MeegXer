@@ -53,6 +53,7 @@ dependencies = [
 "meegxer.nodes.specparam" = "meegxer.nodes.specparam_node:SpecParam"
 "meegxer.nodes.morlet" = "meegxer.nodes.tfr:MorletPower"
 "meegxer.nodes.ssvep_cca" = "meegxer.nodes.ssvep:SSVEPCCA"
+"meegxer.nodes.csp" = "meegxer.nodes.decoding:CSP"
 
 [project.urls]
 Homepage = "https://github.com/thawirasm-j/MeegXer"

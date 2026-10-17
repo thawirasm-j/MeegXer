@@ -131,6 +131,10 @@ PARAMS: dict[str, str] = {
     "subbands": "Sub-bands",
     "subband_low": "First sub-band edge",
     "subband_high": "Sub-band upper edge",
+    "classes": "Classes (event labels)",
+    "tmin": "Trial start",
+    "tmax": "Trial end",
+    "reg": "Covariance shrinkage",
 }
 
 # (parameter name, value) -> label for enum choices
@@ -161,6 +165,9 @@ CHOICES: dict[tuple[str, str], str] = {
     ("unit", "uV"): "µV",
     ("unit", "mV"): "mV",
     ("unit", "V"): "V",
+    ("reg", "none"): "None",
+    ("reg", "ledoit_wolf"): "Ledoit–Wolf",  # noqa: RUF001
+    ("reg", "oas"): "Oracle approximating (OAS)",
 }
 
 UNITS = {"uV": "µV", "/min": "per minute", "deg": "°", "s": "s", "ms": "ms"}

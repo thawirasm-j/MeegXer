@@ -265,6 +265,52 @@ def test_a_calibrated_live_script_fits_on_the_recording(tmp_path: Path) -> None:
     stage.processor.close()
 
 
+LABELLED = '''
+    """Learns from labelled trials."""
+
+    FIT_EVENTS = True
+
+
+    def fit(raw):
+        notes = raw.annotations
+        return {"labels": sorted(set(notes.description)), "n": len(notes),
+                "first": float(notes.onset[0])}
+
+
+    def transform(data, state, model):
+        return data, state
+'''
+
+
+def test_a_script_fits_on_labelled_trials(tmp_path: Path) -> None:
+    """FIT_EVENTS: the manifest says fit_events, and fit(raw) finds the
+    calibration's events in raw.annotations, timed from the data's start."""
+    from meegxer.core.registry import Registry
+    from meegxer.core.stage import Stage
+
+    path = write(tmp_path, "labelled.py", LABELLED)
+    assert script_manifest(load_script(path), path)["fit_events"] is True
+    events = tmp_path / "events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n1.5\t0\tleft\n"
+                      "3.0\t0\tright\n4.5\t0\tleft\n")  # fmt: skip
+    cls = script_class(path)
+    registry = Registry([*Registry.from_entry_points().as_mapping().values(), cls])
+    graph = Graph.from_dict({"spec_version": "0.2.16", "nodes": [
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"duration": 6.0, "n_channels": 3, "sfreq": 200.0},
+         "recording": {"events": {"file": str(events)}}},
+        {"id": "s", "node": "script.labelled"},
+    ]}, registry)  # fmt: skip
+    result = BatchScheduler().run(graph)
+    impl = graph["s"].impl
+    assert isinstance(impl, Stage) and result.fitted == ["s"]
+    assert impl.model is not None
+    assert impl.model.data == {"labels": ["left", "right"], "n": 3, "first": 1.5}
+    impl.processor.close()
+    # the conformance suite gives such a script labelled trials to fit on
+    assert cli_main(["check", "--script", str(path)]) == 0
+
+
 def test_a_live_script_that_is_not_blockwise_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -20,6 +20,7 @@ from meegxer.core.block import (
     CHANNEL_TYPES,
     DEFAULT_PROCESSED_TYPES,
     Block,
+    Event,
     SignalInfo,
     concat_blocks,
 )
@@ -44,6 +45,13 @@ class StageStatus(StrEnum):
 
 class StaleModelError(RuntimeError):
     """Transform was attempted without a current model for this input."""
+
+
+def labelled_input(input_fp: str, events: Sequence[Event]) -> str:
+    """The input fingerprint of a node that fits on labelled trials
+    (``fit_events``): its input plus the events, so changed events need a refit."""
+    marks = [[e.sample_index, e.label, e.duration] for e in events]
+    return fingerprint("labelled", input_fp, canonical_json(marks))
 
 
 def signal_fingerprint(info: SignalInfo) -> str:
@@ -193,10 +201,24 @@ class Stage:
             raise RuntimeError(f"{self.manifest.name} does not require fitting")
         self._calibrating = True
 
-    def fit(self, calibration: Block, input_fp: str) -> FittedModel:
-        """Fit on ``calibration`` for the input identified by ``input_fp``."""
+    def fit(
+        self, calibration: Block, input_fp: str, events: Sequence[Event] = ()
+    ) -> FittedModel:
+        """Fit on ``calibration`` for the input identified by ``input_fp``. A
+        node with ``fit_events`` also gets the ``events`` inside the calibration
+        stretch (the caller folds them into ``input_fp``: ``labelled_input``)."""
         if not self.manifest.requires_fit:
             raise RuntimeError(f"{self.manifest.name} does not require fitting")
+        inside = tuple(e for e in events
+                       if calibration.sample_index <= e.sample_index
+                       < calibration.stop_index)  # fmt: skip
+        if self.manifest.fit_events and not inside:
+            self._calibrating = False
+            raise ValueError(
+                f"{self.manifest.name} learns from labelled trials, but the "
+                "calibration data has no events (offline: the recording's events "
+                "or an events file; live markers are not supported yet)"
+            )
         selected = self._selected(calibration)
         if selected is None:
             raise ValueError(
@@ -205,7 +227,10 @@ class Stage:
             )
         calibration = selected
         try:
-            data = self.processor.fit(calibration, self.params)
+            if self.manifest.fit_events:
+                data = self.processor.fit_labelled(calibration, inside, self.params)
+            else:
+                data = self.processor.fit(calibration, self.params)
             check_state(data)
         finally:
             self._calibrating = False

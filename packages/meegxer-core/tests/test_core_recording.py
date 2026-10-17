@@ -100,6 +100,24 @@ def test_events_file_replaces_the_recordings_events(
     ]
 
 
+def test_recording_events_are_events_at_sample_indices(recording: Path) -> None:
+    """What a labelled fit receives (spec 0.2.16): renamed and dropped as the
+    overrides say, onset x rate from the first sample."""
+    from meegxer.core.block import Event
+    from meegxer.core.recording import recording_events
+
+    graph = Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": [source(
+        recording, events={"rename": {"stim": "go"}, "drop": ["rest"]})]},
+        Registry.from_entry_points())  # fmt: skip
+    src = graph["input"].impl
+    assert isinstance(src, Source)
+    assert recording_events(src) == (Event(250, "go"), Event(1250, "go"))
+    plain = Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": [
+        source(recording)]}, Registry.from_entry_points())["input"].impl  # fmt: skip
+    assert isinstance(plain, Source)
+    assert recording_events(plain)[1] == Event(750, "rest", 125)
+
+
 @pytest.mark.parametrize("rec", [
     {"channels": {"Nope": {"bad": True}}},
     {"montage": "no_such_montage"},

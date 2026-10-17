@@ -161,6 +161,18 @@ CHEN_FBCCA: Reference = {
     "brain-computer interface. J Neural Eng 12(4):046008.",
     "doi": "10.1088/1741-2560/12/4/046008",
 }
+RAMOSER: Reference = {
+    "citation": "Ramoser H, Müller-Gerking J, Pfurtscheller G (2000). Optimal "
+    "spatial filtering of single trial EEG during imagined hand movement. IEEE "
+    "Trans Rehabil Eng 8(4):441-446.",
+    "doi": "10.1109/86.895946",
+}
+KOLES: Reference = {
+    "citation": "Koles ZJ (1991). The quantitative extraction and topographic "
+    "mapping of the abnormal components in the clinical EEG. Electroencephalogr "
+    "Clin Neurophysiol 79(6):440-447.",
+    "doi": "10.1016/0013-4694(91)90163-X",
+}
 
 _FILTERS = [SCIPY]
 _SPECTRA = [WELCH, THOMSON, BABADI, SCIPY, MNE]
@@ -182,6 +194,7 @@ BY_NODE: dict[str, list[Reference]] = {
     "meegxer.nodes.specparam": [SPECPARAM, *_SPECTRA],
     "meegxer.nodes.morlet": [TALLON_BAUDRY, MNE, SCIPY],
     "meegxer.nodes.ssvep_cca": [LIN_CCA, CHEN_FBCCA, SCIPY],
+    "meegxer.nodes.csp": [RAMOSER, KOLES, MNE],
     "meegxer.nodes.connectivity": [MNE_CONNECTIVITY, MNE, IMCOH, PLV, WPLI],
     "meegxer.nodes.complexity": [ANTROPY, PERMUTATION_ENTROPY, SAMPLE_ENTROPY,
                                  HJORTH, LEMPEL_ZIV],
@@ -210,6 +223,7 @@ CATEGORIES = {
     "meegxer.nodes.specparam": "spectral",
     "meegxer.nodes.morlet": "time-frequency",
     "meegxer.nodes.ssvep_cca": "decoding",
+    "meegxer.nodes.csp": "decoding",
 }
 
 

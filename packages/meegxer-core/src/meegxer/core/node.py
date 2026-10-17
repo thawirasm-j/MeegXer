@@ -9,7 +9,7 @@ sessions be saved and resumed.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar, Literal, NamedTuple
@@ -54,7 +54,10 @@ class Processor(ABC):
     Contract:
 
     - ``fit(calibration, params) -> model``: learn from calibration data. Only
-      called when ``manifest.requires_fit`` is true.
+      called when ``manifest.requires_fit`` is true. A node that learns from
+      labelled trials (manifest ``fit_events``) implements
+      ``fit_labelled(calibration, events, params)`` instead: ``events`` are the
+      events inside the calibration stretch, at absolute sample indices.
     - ``transform(block, model, state, params) -> (block, state, events)``: process
       one block. ``state`` is ``None`` on the first block of a stream (and after a
       parameter change or refit); the processor initialises it then. Model and state
@@ -76,6 +79,13 @@ class Processor(ABC):
 
     def fit(self, calibration: Block, params: Params) -> State:
         raise NotImplementedError(f"{self.manifest.name} does not implement fit")
+
+    def fit_labelled(
+        self, calibration: Block, events: Sequence[Event], params: Params
+    ) -> State:
+        """Fit with the calibration stretch's events (manifest ``fit_events``).
+        Default: the events are not needed, ``fit``."""
+        return self.fit(calibration, params)
 
     @abstractmethod
     def transform(

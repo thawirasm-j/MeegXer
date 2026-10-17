@@ -7,7 +7,7 @@ node instance owns one worker; the host keeps model and state.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, ClassVar
 
 import numpy as np
@@ -66,15 +66,26 @@ class PluginProcessor(Processor):
         return model_id
 
     def fit(self, calibration: Block, params: Params) -> State:
+        return self.fit_labelled(calibration, (), params)
+
+    def fit_labelled(
+        self, calibration: Block, events: Sequence[Event], params: Params
+    ) -> State:
+        header: dict[str, Any] = {
+            "type": "fit",
+            "params": dict(params),
+            "info": _info_dict(calibration.info),
+            "sample_index": calibration.sample_index,
+            "timestamp": calibration.timestamp,
+        }
+        if self.manifest.fit_events:  # spec 0.2.16
+            header["events"] = [
+                {"sample_index": e.sample_index, "label": e.label,
+                 "duration": e.duration, "payload": dict(e.payload)}
+                for e in events
+            ]  # fmt: skip
         reply = self.worker.request(
-            {
-                "type": "fit",
-                "params": dict(params),
-                "info": _info_dict(calibration.info),
-                "sample_index": calibration.sample_index,
-                "timestamp": calibration.timestamp,
-            },
-            {"data": calibration.data.astype(np.float32)},
+            header, {"data": calibration.data.astype(np.float32)}
         )
         if reply.type != "model":
             raise PluginError(f"expected a model reply, got {reply.type!r}")

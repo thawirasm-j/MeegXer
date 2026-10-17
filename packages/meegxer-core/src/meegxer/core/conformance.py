@@ -9,7 +9,7 @@ Used by built-in tests now and the plugin conformance suite (M4).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 
@@ -67,13 +67,15 @@ def check_blockwise_equivalence(
     params: Mapping[str, object] | None = None,
     *,
     calibration: Block | None = None,
+    events: Sequence[Event] = (),
     trials: int = 5,
     seed: int = 0,
     max_block: int | None = None,
     rtol: float = 1e-9,
     atol: float = 1e-12,
 ) -> float:
-    """Raise :class:`ConformanceError` on mismatch; return the max abs deviation."""
+    """Raise :class:`ConformanceError` on mismatch; return the max abs deviation.
+    ``events`` label the calibration's trials for a node with ``fit_events``."""
     if processor.manifest.availability == "offline":
         raise ValueError(
             f"{processor.manifest.name} is offline-only: it always receives the "
@@ -81,13 +83,15 @@ def check_blockwise_equivalence(
         )
     if processor.manifest.kind == "analysis":
         return _check_feature_windows(
-            processor, block, params, calibration=calibration, trials=trials,
-            seed=seed, max_block=max_block, rtol=rtol, atol=atol,
+            processor, block, params, calibration=calibration, events=events,
+            trials=trials, seed=seed, max_block=max_block, rtol=rtol, atol=atol,
         )  # fmt: skip
     fp = signal_fingerprint(block.info)
     reference_stage = Stage(processor, params)
     if processor.manifest.requires_fit:
-        reference_stage.fit(calibration if calibration is not None else block, fp)
+        reference_stage.fit(
+            calibration if calibration is not None else block, fp, events
+        )
     reference, ref_events = _run(reference_stage, block, [block.n_samples], fp)
     if reference.n_samples != block.n_samples:
         raise ConformanceError("stream processors must return as many samples as given")
@@ -153,6 +157,7 @@ def _check_feature_windows(
     params: Mapping[str, object] | None,
     *,
     calibration: Block | None,
+    events: Sequence[Event],
     trials: int,
     seed: int,
     max_block: int | None,
@@ -164,7 +169,9 @@ def _check_feature_windows(
     fp = signal_fingerprint(block.info)
     reference_stage = Stage(processor, params)
     if processor.manifest.requires_fit:
-        reference_stage.fit(calibration if calibration is not None else block, fp)
+        reference_stage.fit(
+            calibration if calibration is not None else block, fp, events
+        )
     reference, ref_events = _run_windows(reference_stage, block, [block.n_samples], fp)
     rng = np.random.default_rng(seed)
     max_block = max_block or max(2, block.n_samples // 4)

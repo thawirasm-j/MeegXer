@@ -104,6 +104,7 @@ def test_schema_violations_rejected(data: dict[str, Any]) -> None:
         with_changes(
             outputs=[{"name": "a", "type": "signal"}, {"name": "a", "type": "signal"}]
         ),
+        with_changes(fit_events=True),  # fit_events needs requires_fit (0.2.16)
     ],
 )
 def test_semantic_violations_rejected(data: dict[str, Any]) -> None:
