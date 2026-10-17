@@ -1,7 +1,7 @@
 [project]
 name = "meegxer-nodes"
 version = "0.0.0"
-description = "Built-in processing nodes (filters, re-referencing, ICA/ICLabel, features)."
+description = "Built-in processing nodes (filters, re-referencing, ICA/ICLabel, features, SSVEP detection)."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "GPL-3.0-or-later"
@@ -30,6 +30,7 @@ dependencies = [
     "onnxruntime>=1.20",
     "mne-connectivity>=0.7",
     "antropy>=0.1.9",
+    "specparam>=2.0.0rc7",
 ]
 
 [project.entry-points."meegxer.nodes"]
@@ -49,6 +50,9 @@ dependencies = [
 "meegxer.nodes.connectivity" = "meegxer.nodes.features:Connectivity"
 "meegxer.nodes.complexity" = "meegxer.nodes.features:Complexity"
 "meegxer.nodes.hilbert_envelope" = "meegxer.nodes.features:HilbertEnvelope"
+"meegxer.nodes.specparam" = "meegxer.nodes.specparam_node:SpecParam"
+"meegxer.nodes.morlet" = "meegxer.nodes.tfr:MorletPower"
+"meegxer.nodes.ssvep_cca" = "meegxer.nodes.ssvep:SSVEPCCA"
 
 [project.urls]
 Homepage = "https://github.com/thawirasm-j/MeegXer"

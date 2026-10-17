@@ -117,7 +117,20 @@ PARAMS: dict[str, str] = {
     "spectral_entropy": "Spectral entropy",
     "hjorth_mobility": "Hjorth mobility",
     "hjorth_complexity": "Hjorth complexity",
-    "lziv": "Lempel-Ziv complexity",
+    "lziv": "Lempel–Ziv complexity",  # noqa: RUF001
+    "bandwidth": "Multitaper bandwidth",
+    "aperiodic": "Aperiodic mode",
+    "max_n_peaks": "Maximum number of peaks",
+    "peak_width_min": "Narrowest peak",
+    "peak_width_max": "Widest peak",
+    "min_peak_height": "Minimum peak height",
+    "peak_threshold": "Peak threshold",
+    "fstep": "Frequency step",
+    "n_cycles": "Cycles per wavelet",
+    "frequencies": "Stimulus frequencies",
+    "subbands": "Sub-bands",
+    "subband_low": "First sub-band edge",
+    "subband_high": "Sub-band upper edge",
 }
 
 # (parameter name, value) -> label for enum choices
@@ -139,6 +152,15 @@ CHOICES: dict[tuple[str, str], str] = {
     ("mode", "channels"): "Chosen channels",
     ("taper", "hamming"): "Hamming",
     ("taper", "hann"): "Hann",
+    ("method", "welch"): "Welch",
+    ("method", "multitaper"): "Multitaper (DPSS)",
+    ("method", "cca"): "CCA",
+    ("method", "fbcca"): "Filter-bank CCA",
+    ("aperiodic", "fixed"): "Fixed (no knee)",
+    ("aperiodic", "knee"): "With a knee",
+    ("unit", "uV"): "µV",
+    ("unit", "mV"): "mV",
+    ("unit", "V"): "V",
 }
 
 UNITS = {"uV": "µV", "/min": "per minute", "deg": "°", "s": "s", "ms": "ms"}

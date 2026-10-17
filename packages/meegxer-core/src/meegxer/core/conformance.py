@@ -181,9 +181,11 @@ def _check_feature_windows(
                 raise ConformanceError(f"trial {trial}: feature layout differs")
             if got.timestamp != ref.timestamp:
                 raise ConformanceError(f"trial {trial}: window timestamps differ")
-            diff = float(np.max(np.abs(got.data - ref.data), initial=0.0))
+            # NaN marks a missing value (e.g. no spectral peak): same place, same
+            diff = float(np.nanmax(np.abs(got.data - ref.data), initial=0.0))
             worst = max(worst, diff)
-            if not np.allclose(got.data, ref.data, rtol=rtol, atol=atol):
+            if not np.allclose(got.data, ref.data, rtol=rtol, atol=atol,
+                               equal_nan=True):  # fmt: skip
                 raise ConformanceError(
                     f"trial {trial}: window {got.window} deviates by up to "
                     f"{diff:.3g} (block sizes {sizes[:10]}...)"

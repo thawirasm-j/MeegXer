@@ -128,8 +128,42 @@ CROFT: Reference = {
     "EEG: a review. Neurophysiol Clin 30(1):5-19.",
     "doi": "10.1016/S0987-7053(00)00055-1",
 }
+THOMSON: Reference = {
+    "citation": "Thomson DJ (1982). Spectrum estimation and harmonic analysis. "
+    "Proc IEEE 70(9):1055-1096.",
+}
+BABADI: Reference = {
+    "citation": "Babadi B, Brown EN (2014). A review of multitaper spectral "
+    "analysis. IEEE Trans Biomed Eng 61(5):1555-1564.",
+    "doi": "10.1109/TBME.2014.2311996",
+}
+SPECPARAM: Reference = {
+    "citation": "Donoghue T, Haller M, Peterson EJ, et al. (2020). Parameterizing "
+    "neural power spectra into periodic and aperiodic components. Nat Neurosci "
+    "23(12):1655-1665.",
+    "doi": "10.1038/s41593-020-00744-x",
+}
+TALLON_BAUDRY: Reference = {
+    "citation": "Tallon-Baudry C, Bertrand O, Delpuech C, Pernier J (1997). "
+    "Oscillatory gamma-band (30-70 Hz) activity induced by a visual search task "
+    "in humans. J Neurosci 17(2):722-734.",
+    "doi": "10.1523/JNEUROSCI.17-02-00722.1997",
+}
+LIN_CCA: Reference = {
+    "citation": "Lin Z, Zhang C, Wu W, Gao X (2006). Frequency recognition based "
+    "on canonical correlation analysis for SSVEP-based BCIs. IEEE Trans Biomed "
+    "Eng 53(12 Pt 2):2610-2614.",
+    "doi": "10.1109/TBME.2006.886577",
+}
+CHEN_FBCCA: Reference = {
+    "citation": "Chen X, Wang Y, Gao S, Jung TP, Gao X (2015). Filter bank "
+    "canonical correlation analysis for implementing a high-speed SSVEP-based "
+    "brain-computer interface. J Neural Eng 12(4):046008.",
+    "doi": "10.1088/1741-2560/12/4/046008",
+}
 
 _FILTERS = [SCIPY]
+_SPECTRA = [WELCH, THOMSON, BABADI, SCIPY, MNE]
 BY_NODE: dict[str, list[Reference]] = {
     "meegxer.nodes.iir_filter": _FILTERS,
     "meegxer.nodes.iir_filter_zerophase": _FILTERS,
@@ -143,8 +177,11 @@ BY_NODE: dict[str, list[Reference]] = {
     "meegxer.nodes.rereference": [],
     "meegxer.nodes.ica": [MNE, PICARD, EXTENDED_INFOMAX, INFOMAX, ICLABEL,
                           MNE_ICALABEL],
-    "meegxer.nodes.psd": [WELCH, SCIPY],
-    "meegxer.nodes.band_power": [WELCH, SCIPY],
+    "meegxer.nodes.psd": _SPECTRA,
+    "meegxer.nodes.band_power": _SPECTRA,
+    "meegxer.nodes.specparam": [SPECPARAM, *_SPECTRA],
+    "meegxer.nodes.morlet": [TALLON_BAUDRY, MNE, SCIPY],
+    "meegxer.nodes.ssvep_cca": [LIN_CCA, CHEN_FBCCA, SCIPY],
     "meegxer.nodes.connectivity": [MNE_CONNECTIVITY, MNE, IMCOH, PLV, WPLI],
     "meegxer.nodes.complexity": [ANTROPY, PERMUTATION_ENTROPY, SAMPLE_ENTROPY,
                                  HJORTH, LEMPEL_ZIV],
@@ -170,6 +207,9 @@ CATEGORIES = {
     "meegxer.nodes.connectivity": "connectivity",
     "meegxer.nodes.complexity": "complexity",
     "meegxer.nodes.hilbert_envelope": "time-frequency",
+    "meegxer.nodes.specparam": "spectral",
+    "meegxer.nodes.morlet": "time-frequency",
+    "meegxer.nodes.ssvep_cca": "decoding",
 }
 
 

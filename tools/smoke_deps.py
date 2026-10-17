@@ -38,6 +38,7 @@ DEPENDENCIES: list[tuple[str, str, bool]] = [
     ("onnxruntime", "onnxruntime", True),
     ("mne-connectivity", "mne_connectivity", True),
     ("antropy", "antropy", True),
+    ("specparam>=2.0.0rc7", "specparam", True),  # 2.0 is in release candidates
     ("numba", "numba", True),
 ]
 

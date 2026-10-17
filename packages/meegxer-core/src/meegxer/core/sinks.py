@@ -50,6 +50,13 @@ def feature_columns(block: FeatureBlock) -> list[str]:
     return ["|".join(col) for col in grid.T]
 
 
+def tsv_value(value: float) -> str:
+    """A feature value for a TSV cell: exact (repr), and BIDS's ``n/a`` for a
+    missing (NaN) value."""
+    v = float(value)
+    return "n/a" if np.isnan(v) else repr(v)
+
+
 class _RawFileSink(Sink):
     fmt: ClassVar[Literal["eeglab", "edf"]]
 
@@ -141,7 +148,7 @@ class FeatureTsvSink(Sink):
             self._header = ["window_start", "window_stop", "timestamp", *columns]
         elif self._header[3:] != columns:
             raise ValueError("feature layout changed between blocks")
-        values = [repr(float(v)) for v in block.data.ravel()]
+        values = [tsv_value(v) for v in block.data.ravel()]
         start, stop = block.window
         self._rows.append([str(start), str(stop), repr(block.timestamp), *values])
 
