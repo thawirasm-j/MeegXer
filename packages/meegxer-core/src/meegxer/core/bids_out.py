@@ -37,6 +37,20 @@ COUNT_KEYS = {"EEG": "EEGChannelCount", "EOG": "EOGChannelCount",
               "ECG": "ECGChannelCount", "EMG": "EMGChannelCount",
               "MISC": "MiscChannelCount", "TRIG": "TriggerChannelCount"}  # fmt: skip
 _LABEL = re.compile(r"^[A-Za-z0-9]+$")
+# not (yet) covered by BIDS: the run's session file and feature tables
+IGNORED = ("*_meegxer.json", "*_features.tsv", "*_features.json")
+README = """# MeegXer derivatives
+
+EEG processed with MeegXer (https://github.com/thawirasm-j/MeegXer). Each
+recording's `*_eeg.json` names its raw source (`Sources`) and the processing
+chain (`Description`); `*_meegxer.json` is the run's session file (pipeline,
+node versions, fitted models, file hashes), which reruns it exactly. Feature
+tables (`*_features.tsv`) and session files are not yet covered by BIDS and are
+listed in `.bidsignore`.
+
+Add the people who made this dataset under `Authors` in
+`dataset_description.json`.
+"""
 
 
 def _manifest(name: str, input_type: str, description: str) -> Manifest:
@@ -73,6 +87,12 @@ class Target:
 
     def path(self, suffix: str) -> Path:
         return self.folder / f"{self.stem}_{suffix}"
+
+    def subject_path(self, suffix: str) -> Path:
+        """A file shared by the subject's (session's) recordings: electrodes and
+        coordinate system carry only ``sub-``/``ses-`` (BIDS 1.10)."""
+        parts = [p for p in self.stem.split("_") if p.startswith(("sub-", "ses-"))]
+        return self.folder / f"{'_'.join(parts)}_{suffix}"
 
 
 def find_dataset_root(path: Path) -> Path | None:
@@ -203,10 +223,20 @@ def write_dataset_files(target: Target, graph: Any = None) -> None:
     desc_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     ignore = target.root / ".bidsignore"
     lines = ignore.read_text(encoding="utf-8").splitlines() if ignore.is_file() else []
-    if "*_meegxer.json" not in lines:
-        ignore.write_text(
-            "\n".join([*lines, "*_meegxer.json"]) + "\n", encoding="utf-8"
-        )
+    missing = [p for p in IGNORED if p not in lines]
+    if missing:
+        ignore.write_text("\n".join([*lines, *missing]) + "\n", encoding="utf-8")
+    readme = target.root / "README.md"
+    if not readme.is_file() and not (target.root / "README").is_file():
+        readme.write_text(README, encoding="utf-8")
+
+
+def _write_description(path: Path, description: str) -> Path:
+    """A table's JSON sidecar with the Description that BIDS derivatives
+    recommend for every derivative file."""
+    path.write_text(json.dumps({"Description": description}, indent=2) + "\n",
+                    encoding="utf-8")  # fmt: skip
+    return path
 
 
 def _write_tsv(path: Path, header: list[str], rows: list[list[str]]) -> None:
@@ -293,6 +323,10 @@ class BidsWriter(_BidsSink):
         self.written = [signal_path]
         self.written.append(self._sidecar(target, whole))
         self.written.append(self._channels(target, whole.info))
+        self.written.append(_write_description(
+            target.path("channels.json"),
+            "Channels of the processed recording: types, units and status "
+            "after the recording's edits"))  # fmt: skip
         source = self._graph.source.impl
         events = describe(source)["events"]
         if events:
@@ -301,6 +335,8 @@ class BidsWriter(_BidsSink):
                      str(e["label"])] for e in events]  # fmt: skip
             _write_tsv(path, ["onset", "duration", "trial_type"], rows)
             self.written.append(path)
+            note = "Events of the raw recording, after renaming and dropping"
+            self.written.append(_write_description(target.path("events.json"), note))
         if whole.info.positions and any(p is not None for p in whole.info.positions):
             self.written.extend(self._electrodes(target, whole.info))
         self._blocks.clear()
@@ -349,13 +385,15 @@ class BidsWriter(_BidsSink):
         for label, pos in zip(info.ch_labels, info.positions, strict=True):
             xyz = [repr(float(v)) for v in pos] if pos is not None else ["n/a"] * 3
             rows.append([label, *xyz])
-        electrodes = target.path("electrodes.tsv")
+        electrodes = target.subject_path("electrodes.tsv")
         _write_tsv(electrodes, ["name", "x", "y", "z"], rows)
-        coords = target.path("coordsystem.json")
+        note = "Electrode positions used for processing"
+        sidecar = _write_description(target.subject_path("electrodes.json"), note)
+        coords = target.subject_path("coordsystem.json")
         coords.write_text(json.dumps({"EEGCoordinateSystem": "CapTrak",
                                       "EEGCoordinateUnits": "m"}, indent=2) + "\n",
                           encoding="utf-8")  # fmt: skip
-        return [electrodes, coords]
+        return [electrodes, sidecar, coords]
 
     def finish(self) -> None:
         """The run's session file next to the outputs (models, hashes, versions)."""

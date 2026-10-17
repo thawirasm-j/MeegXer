@@ -34,20 +34,28 @@ For `sub-01_task-rest_eeg.set` and `desc` `clean`:
 ```
 <root>/
 ├── dataset_description.json
+├── README.md                                           (when there is none)
 ├── .bidsignore
 └── sub-01/eeg/
     ├── sub-01_task-rest_desc-clean_eeg.set
     ├── sub-01_task-rest_desc-clean_eeg.json
     ├── sub-01_task-rest_desc-clean_channels.tsv
+    ├── sub-01_task-rest_desc-clean_channels.json
     ├── sub-01_task-rest_desc-clean_events.tsv          (when the input has events)
-    ├── sub-01_task-rest_desc-clean_electrodes.tsv      (when positions are known)
-    ├── sub-01_task-rest_desc-clean_coordsystem.json    (with electrodes.tsv)
+    ├── sub-01_task-rest_desc-clean_events.json
+    ├── sub-01_electrodes.tsv                           (when positions are known)
+    ├── sub-01_electrodes.json
+    ├── sub-01_coordsystem.json                         (with electrodes.tsv)
     ├── sub-01_task-rest_desc-clean_<node>_features.tsv (bids_features, per node)
     ├── sub-01_task-rest_desc-clean_<node>_features.json
     └── sub-01_task-rest_desc-clean_meegxer.json        (the run's session file)
 ```
 
 With `ses-` the files go under `sub-01/ses-a/eeg/` and every name carries `ses-a`.
+Electrodes and the coordinate system belong to the subject (or session), as BIDS
+1.10 expects, so they carry only `sub-` and `ses-`; recordings of the same subject
+and session share them. Every table has a JSON sidecar with a `Description`, as
+BIDS derivatives recommend.
 
 - **Signal:** EEGLAB `.set`, float32, in volts, written deterministically (the same
   data give the same bytes). EDF is not used: its 16-bit samples would lose detail
@@ -71,7 +79,13 @@ With `ses-` the files go under `sub-01/ses-a/eeg/` and every name carries `ses-a
   parameters.
 - **`_meegxer.json`:** the session of the run (`session.md`): pipeline, node
   versions and plugin images, fitted models, input and output hashes. Listed in
-  `.bidsignore`, so the validator skips it.
+  `.bidsignore`, so the validator skips it, as are feature tables
+  (`*_features.tsv`, `*_features.json`), which BIDS does not cover yet.
+- **`README.md`:** written once if the folder has no README: what made the
+  dataset and where to add its `Authors`.
+
+The BIDS validator (schema 1.2.7) then reports no errors; it warns that
+`dataset_description.json` lists no `Authors` until you add them.
 
 ## `dataset_description.json`
 
