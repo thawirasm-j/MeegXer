@@ -104,6 +104,10 @@ def demo_recording(path: Path) -> Path:
 
 
 def main() -> int:
+    # it closes the window while running: no question box to wait on offscreen
+    Path(os.environ["MEEGXER_CONFIG_DIR"], "settings.json").write_text(
+        '{"general": {"confirm_quit_running": false}}', encoding="utf-8"
+    )
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "screenshots")
     out.mkdir(parents=True, exist_ok=True)
     control = f"tcp://127.0.0.1:{free_port()}"

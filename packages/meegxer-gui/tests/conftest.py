@@ -19,6 +19,11 @@ def own_config(tmp_path, monkeypatch):
     """Each test (and the daemon it starts) gets empty settings and state, so a
     window never reopens what another test left behind."""
     folder = tmp_path / "config"
+    folder.mkdir()
+    # no "close while running?" question: a modal box would wait forever offscreen
+    (folder / "settings.json").write_text(
+        '{"general": {"confirm_quit_running": false}}', encoding="utf-8"
+    )
     monkeypatch.setenv("MEEGXER_CONFIG_DIR", str(folder))
     return folder
 

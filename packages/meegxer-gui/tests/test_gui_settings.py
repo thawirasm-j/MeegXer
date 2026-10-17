@@ -306,6 +306,7 @@ def test_closing_while_running_asks_first(
     control, _ = daemon
     win = _window(control)
     try:
+        win.settings["general"]["confirm_quit_running"] = True
         win.running = True
         monkeypatch.setattr(win, "stop", lambda: setattr(win, "running", False))
         monkeypatch.setattr(win, "_confirm_close", lambda: "cancel")
