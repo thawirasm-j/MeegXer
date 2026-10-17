@@ -66,7 +66,8 @@ In the repository: *Settings → Environments → New environment*:
 
 ## Making a release
 
-1. Make sure `main` is green, then tag it:
+1. Make sure `main` is green and `docs/RELEASE_NOTES.md` has a section for the
+   version (its text also goes into the GitHub release), then tag it:
 
    ```
    git tag v0.1.0a1

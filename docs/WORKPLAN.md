@@ -334,7 +334,11 @@ Not yet: a strip's channel layout changing mid-stream stops the feature outlets.
   carries the CLI, GUI and plugin commands so `uv tool install meegxer` exposes
   them). Since 0.2.1 the bundle installs every package, plugins included
   (decision 40; before, it was the "sterile set" without the plugin runtime).
-- v1 tag once tests 1–6 are green.
+- Release path: 0.2.1a8 is the last alpha (everything in `docs/DESIGN.md` §5
+  is in). **0.3.0b1**, the first beta, once the manual checks of
+  `docs/TESTING.md` pass (test 5 on Windows with Docker, real BIDS data); then
+  fixes from the beta, and **1.0.0** once tests 1–6 are green. Release notes:
+  `docs/RELEASE_NOTES.md`.
 
 ---
 

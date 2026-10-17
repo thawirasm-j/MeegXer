@@ -1,7 +1,7 @@
 # Manual release checks
 
-Two checks that need a real machine and real data, done before tagging v1
-(`docs/DESIGN.md` §6, `docs/WORKPLAN.md` M7). Tick each box; write down what you
+Two checks that need a real machine and real data, done before tagging the first
+beta, 0.3.0b1, and again before 1.0.0 (`docs/DESIGN.md` §6, `docs/WORKPLAN.md` M7). Tick each box; write down what you
 see in the *Notes* column of the result tables, especially anything unexpected.
 
 ---
