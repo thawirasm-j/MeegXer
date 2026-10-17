@@ -1,4 +1,12 @@
-"""Typed ports (CLAUDE.md rule 6): Signal, Features and Events never mix."""
+"""Typed ports (CLAUDE.md rule 6): Signal, Features and Events never mix.
+
+A node's first input and first output are its main ports (the chain). Further
+ports name a rail (docs/RAILS.md, spec 0.2.17): an extra input reads that rail, an
+extra output writes it. ``events`` is the run's Events rail; a node adds to it
+through the events its transform returns, so no output port names it. A Signal
+port may say which space its channels are in: sensor (electrodes), component
+(e.g. ICs) or source (regions).
+"""
 
 from __future__ import annotations
 
@@ -25,10 +33,16 @@ class PortTypeError(TypeError):
     """A connection or block does not match the declared port type."""
 
 
+EVENTS_RAIL = "events"
+SPACES = ("sensor", "component", "source")
+
+
 @dataclass(frozen=True, slots=True)
 class Port:
     name: str
     type: PortType
+    rail: str = ""  # the rail an extra port reads or writes (spec 0.2.17)
+    space: str = ""  # Signal ports: sensor, component or source
 
 
 def check_connection(output: Port, input: Port) -> None:

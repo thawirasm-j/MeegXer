@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, ClassVar, Literal, NamedTuple
 
 from meegxer.core.block import Block, Event, EventBlock, FeatureBlock, SignalInfo
@@ -32,15 +33,23 @@ class NodeRole(StrEnum):
 
 
 type Output = Block | FeatureBlock | tuple[FeatureBlock, ...]
+# what an extra input port receives (docs/RAILS.md, spec 0.2.17): a Signal rail's
+# block over the same samples as the main block, the feature windows that ended
+# inside it, or the Events rail's events inside it
+type RailInput = Block | tuple[FeatureBlock, ...] | tuple[Event, ...]
+# what an extra output port writes: a Signal block, or completed feature windows
+type RailOutput = Block | tuple[FeatureBlock, ...]
 
 
 class TransformResult(NamedTuple):
     """``block`` is the output: a Signal block, or for an analysis processor the
-    feature windows completed by this call (a tuple, possibly empty)."""
+    feature windows completed by this call (a tuple, possibly empty). ``rails``
+    holds what the extra output ports write, by port name."""
 
     block: Output
     state: State
     events: tuple[Event, ...] = ()
+    rails: Mapping[str, RailOutput] = MappingProxyType({})
 
 
 def output_blocks(output: Output) -> tuple[Block | FeatureBlock, ...]:
@@ -58,6 +67,11 @@ class Processor(ABC):
       labelled trials (manifest ``fit_events``) implements
       ``fit_labelled(calibration, events, params)`` instead: ``events`` are the
       events inside the calibration stretch, at absolute sample indices.
+    - Rails (spec 0.2.17): a node with extra input ports (the rails it reads)
+      implements ``transform_rails(block, model, state, params, rails)`` and, if it
+      fits, ``fit_rails(calibration, params, rails)``; ``rails`` maps each extra
+      input's name to its data over the same samples (``RailInput``). Extra output
+      ports are written through ``TransformResult.rails``.
     - ``transform(block, model, state, params) -> (block, state, events)``: process
       one block. ``state`` is ``None`` on the first block of a stream (and after a
       parameter change or refit); the processor initialises it then. Model and state
@@ -87,10 +101,29 @@ class Processor(ABC):
         Default: the events are not needed, ``fit``."""
         return self.fit(calibration, params)
 
+    def fit_rails(
+        self, calibration: Block, params: Params, rails: Mapping[str, RailInput]
+    ) -> State:
+        """Fit with the rails the extra input ports read, over the calibration
+        stretch. Default: the rails are not needed, ``fit``."""
+        return self.fit(calibration, params)
+
     @abstractmethod
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult: ...
+
+    def transform_rails(
+        self,
+        block: Block,
+        model: State,
+        state: State | None,
+        params: Params,
+        rails: Mapping[str, RailInput],
+    ) -> TransformResult:
+        """Transform with the rails the extra input ports read, over the block's
+        samples. Default: the rails are not needed, ``transform``."""
+        return self.transform(block, model, state, params)
 
     def flush(
         self, info: SignalInfo, model: State, state: State | None, params: Params

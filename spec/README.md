@@ -36,6 +36,11 @@ define it.
     (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
     with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
     session file next to each recording.
+  - 0.2.17: rail ports. A port may carry `rail` (the rail an extra port, not the
+    first, reads or writes; `events` is the Events rail) and a Signal port
+    `space` (`sensor`, `component`, `source`). `fit` and `transform` requests
+    carry `rails` for the extra inputs; results carry `rails` for the extra
+    outputs (`plugin-protocol.md`).
   - 0.2.16: optional manifest `fit_events`: the node learns from labelled
     trials; its `fit` request carries the calibration's `events` (absolute sample
     indices), and hosts refuse to fit it without any. Needs `requires_fit`.

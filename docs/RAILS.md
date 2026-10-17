@@ -91,9 +91,13 @@ output strip chooses which line it draws from.
   top row (e.g. CSP on a recording without events).
 - Hovering a rail names it, its producer and its readers.
 
-## 5. Strip and plugin inputs and outputs (to design next)
+## 5. Strip and plugin inputs and outputs (built, spec 0.2.17)
 
-Strips and plugins need a way to say which lines they read and write.
+Strips and plugins say which lines they read and write through their ports.
+Built: manifest ports, the transform and fit contract, both schedulers (live:
+wait and align, a reader's input held at most 30 s for a lagging rail), the
+conformance check, the plugin protocol and the Python SDK, and the chain view.
+Still to come: sources declaring extra outputs, custom scripts, the Octave SDK.
 
 - **Manifest ports name lines [rule 6].**
   - Inputs: `[{"name": "in", "type": "signal"}, {"name": "labels", "type": "events", "rail": "events"}]`.
@@ -122,7 +126,8 @@ Strips and plugins need a way to say which lines they read and write.
 1. Rail drawing in the chain view, named feature rails, *Reads* choice (this PR).
 2. Events rail in the core, and an LSL marker inlet on the input (done: live
    labelled calibration, e.g. CSP).
-3. Rail ports and `TransformResult.rails` [rules 6, 7]; plugin protocol and SDKs.
+3. Rail ports and `TransformResult.rails` [rules 6, 7]; plugin protocol and the
+   Python SDK (done; scripts, sources and the Octave SDK follow).
 4. ICs rail from ICA and from EEGLAB files; IC rejection and IC features read it.
 5. LDA classifier reading a feature rail and adding events.
 6. Sources rail: inverse on a template head (cached ahead for Sterile mode).

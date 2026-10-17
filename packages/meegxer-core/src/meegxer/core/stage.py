@@ -25,8 +25,14 @@ from meegxer.core.block import (
     concat_blocks,
 )
 from meegxer.core.manifest import ParamValue
-from meegxer.core.node import Mode, Processor, TransformResult, output_blocks
-from meegxer.core.ports import check_block
+from meegxer.core.node import (
+    Mode,
+    Processor,
+    RailInput,
+    TransformResult,
+    output_blocks,
+)
+from meegxer.core.ports import PortType, check_block
 from meegxer.core.serialization import (
     State,
     canonical_json,
@@ -202,11 +208,17 @@ class Stage:
         self._calibrating = True
 
     def fit(
-        self, calibration: Block, input_fp: str, events: Sequence[Event] = ()
+        self,
+        calibration: Block,
+        input_fp: str,
+        events: Sequence[Event] = (),
+        rails: Mapping[str, RailInput] | None = None,
     ) -> FittedModel:
         """Fit on ``calibration`` for the input identified by ``input_fp``. A
         node with ``fit_events`` also gets the ``events`` inside the calibration
-        stretch (the caller folds them into ``input_fp``: ``labelled_input``)."""
+        stretch (the caller folds them into ``input_fp``: ``labelled_input``). A
+        node with extra input ports gets ``rails`` over the stretch (``fit_rails``;
+        the caller folds their producers into ``input_fp``: ``with_rails``)."""
         if not self.manifest.requires_fit:
             raise RuntimeError(f"{self.manifest.name} does not require fitting")
         inside = tuple(e for e in events
@@ -228,7 +240,11 @@ class Stage:
             )
         calibration = selected
         try:
-            if self.manifest.fit_events:
+            if self.manifest.rail_inputs:
+                data = self.processor.fit_rails(
+                    calibration, self.params, self._rails_in(rails)
+                )
+            elif self.manifest.fit_events:
                 data = self.processor.fit_labelled(calibration, inside, self.params)
             else:
                 data = self.processor.fit(calibration, self.params)
@@ -244,8 +260,40 @@ class Stage:
         self.state = None
         return self.model
 
-    def transform(self, block: Block, input_fp: str) -> TransformResult:
-        """Process one block; refuses to run on a missing or stale model."""
+    def _rails_in(
+        self, rails: Mapping[str, RailInput] | None
+    ) -> Mapping[str, RailInput]:
+        """The rails a node with extra input ports reads, checked by port."""
+        rails = rails or {}
+        missing = [p.name for p in self.manifest.rail_inputs if p.name not in rails]
+        if missing:
+            raise ValueError(f"{self.manifest.name}: no data for rails {missing}")
+        for port in self.manifest.rail_inputs:
+            data = rails[port.name]
+            if port.type is PortType.SIGNAL:
+                check_block(port, data)  # type: ignore[arg-type]
+            elif isinstance(data, Block):
+                raise ValueError(f"{self.manifest.name}: rail {port.name!r} takes "
+                                 f"{port.type.value}, not a Signal block")  # fmt: skip
+        return rails
+
+    def _check_rails_out(self, result: TransformResult) -> None:
+        ports = {p.name: p for p in self.manifest.rail_outputs}
+        unknown = sorted(set(result.rails) - set(ports))
+        if unknown:
+            raise ValueError(f"{self.manifest.name}: no output ports {unknown}")
+        for name, data in result.rails.items():
+            for item in output_blocks(data):
+                check_block(ports[name], item)
+
+    def transform(
+        self,
+        block: Block,
+        input_fp: str,
+        rails: Mapping[str, RailInput] | None = None,
+    ) -> TransformResult:
+        """Process one block; refuses to run on a missing or stale model. A node
+        with extra input ports gets ``rails`` over the block's samples."""
         status = self.status(input_fp)
         if status is not StageStatus.READY:
             raise StaleModelError(f"{self.manifest.name} is {status}, not ready")
@@ -269,7 +317,13 @@ class Stage:
                     "calibration data"
                 )
             model = self.model.data
-        result = self.processor.transform(block, model, self.state, self.params)
+        if self.manifest.rail_inputs:
+            result = self.processor.transform_rails(
+                block, model, self.state, self.params, self._rails_in(rails)
+            )
+        else:
+            result = self.processor.transform(block, model, self.state, self.params)
+        self._check_rails_out(result)
         for port in self.manifest.outputs[:1]:
             for out_block in output_blocks(result.block):
                 check_block(port, out_block)
@@ -297,6 +351,7 @@ class Stage:
         result = self.processor.flush(self._last_info, model, self.state, self.params)
         if result is None:
             return None
+        self._check_rails_out(result)
         check_state(result.state)
         self.state = result.state
         if self._rest and self._full_info and isinstance(result.block, Block):

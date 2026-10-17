@@ -364,9 +364,12 @@ class Gap(QWidget):
 
 
 def rail_colour(theme: Theme, kind: str) -> str:
-    """Events violet, feature rails in the feature strips' colour."""
+    """Events violet, Signal rails (e.g. ICs) in the signal's colour, feature
+    rails in the feature strips' colour."""
     if kind == "events":
         return "#b18cff" if theme.dark else "#7448c2"
+    if kind == "signal":
+        return theme.group_color("preprocess")
     return theme.group_color("features")
 
 
@@ -479,11 +482,13 @@ class RailBoard(QWidget):
     def spans(self) -> list[tuple[Rail, float, float]]:
         """Each drawn rail: where it starts and where its solid part ends."""
         out = []
+        produced: dict[str, int] = {}  # a strip writing several rails: side by side
         for rail in self.rails:
             rect = self._rect(rail.producer)
             if rect is None:
                 continue
-            x0 = rect.right() - PORT
+            k = produced[rail.producer] = produced.get(rail.producer, -1) + 1
+            x0 = rect.right() - PORT - 14 * k
             xs = [x for r in rail.readers if (x := self._read_x(r, rail.id))]
             out.append((rail, x0, max([x0, *xs])))
         return out

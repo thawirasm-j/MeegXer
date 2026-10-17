@@ -30,7 +30,7 @@ import threading
 import time
 import traceback
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -42,12 +42,22 @@ from meegxer.core.block import Block, FeatureBlock, SignalInfo, concat_blocks
 from meegxer.core.display import Decimator, DisplayFrame, DisplayPublisher, Envelope
 from meegxer.core.events import EventsRail
 from meegxer.core.graph import Graph, GraphError, GraphNode, positions_message
-from meegxer.core.node import Probe, Sink, Source, output_blocks
+from meegxer.core.node import (
+    Probe,
+    RailInput,
+    RailOutput,
+    Sink,
+    Source,
+    output_blocks,
+)
+from meegxer.core.ports import PortType
+from meegxer.core.rails import RailError, RailFeed, join_inputs, with_rails
 from meegxer.core.recording import recording_events
 from meegxer.core.stage import Stage, StageStatus, StaleModelError, signal_fingerprint
 
 Clock = Callable[[], float]
 EVENTS_KEEP_SECONDS = 60.0  # live Events rail kept beyond open calibrations
+RAIL_HOLD_SECONDS = 30.0  # how long a reader's input waits for a lagging rail
 
 
 class _Readable(Protocol):
@@ -182,7 +192,18 @@ class RealtimeScheduler:
         self._running = threading.Event()
         self._finished = threading.Event()
         self._calibration: dict[str, tuple[list[Block], float]] = {}
-        self._fits: dict[str, tuple[Block, float]] = {}  # labelled: waiting markers
+        # labelled fits waiting for markers: calibration, due time, rails over it
+        self._fits: dict[str, tuple[Block, float, Mapping[str, RailInput] | None]] = {}
+        self._calibration_rails: dict[str, list[Mapping[str, RailInput]]] = {}
+        self._feeds: dict[str, RailFeed] = {}  # readers of rails (wait and align)
+        # (writer, output port) -> [(reader, its input port)]
+        self._subscribers: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        for node in graph.nodes:
+            for port, (producer, output) in graph.rail_sources(node.id).items():
+                if producer:
+                    self._subscribers.setdefault((producer, output), []).append(
+                        (node.id, port)
+                    )
         self._rail = EventsRail()
         self._stop_index = 0  # end of the last block processed
         self._fitted: deque[tuple[int, int]] = deque(maxlen=32)  # labelled stretches
@@ -252,6 +273,7 @@ class RealtimeScheduler:
                 raise GraphError(f"{node_id}: {exc}") from exc
             node.impl.set_params(**params)
             self._calibration.pop(node_id, None)
+            self._calibration_rails.pop(node_id, None)
             self._fits.pop(node_id, None)
             self._refresh_fingerprints()
             return dict(node.impl.params)
@@ -269,6 +291,7 @@ class RealtimeScheduler:
             node.impl.begin_calibration()
             self._fits.pop(node_id, None)  # a new stretch replaces one still waiting
             self._calibration[node_id] = ([], seconds)
+            self._calibration_rails[node_id] = []
 
         self.submit(apply).result(timeout=10)
 
@@ -291,6 +314,7 @@ class RealtimeScheduler:
                 if isinstance(node.impl, Stage) and node.impl.manifest.requires_fit:
                     node.impl.clear_model()
                     self._calibration.pop(node.id, None)
+                    self._calibration_rails.pop(node.id, None)
                     self._fits.pop(node.id, None)
                     cleared.append(node.id)
             if node_id and not cleared:
@@ -395,19 +419,24 @@ class RealtimeScheduler:
         for blocks, _ in self._calibration.values():
             if blocks:
                 keep = min(keep, blocks[0].sample_index)
-        for calibration, _ in self._fits.values():
+        for calibration, _, _ in self._fits.values():
             keep = min(keep, calibration.sample_index)
         self._rail.trim(keep)
 
     def _finish_fits(self, now: bool = False) -> None:
         """Fit the labelled calibrations whose wait for late markers is over (all
         of them when the input has ended: no more can come)."""
-        for node_id, (calibration, due) in list(self._fits.items()):
+        for node_id, (calibration, due, rails) in list(self._fits.items()):
             if now or time.monotonic() >= due:
                 del self._fits[node_id]
-                self._fit(self.graph[node_id], calibration)
+                self._fit(self.graph[node_id], calibration, rails)
 
-    def _fit(self, node: GraphNode, calibration: Block) -> None:
+    def _fit(
+        self,
+        node: GraphNode,
+        calibration: Block,
+        rails: Mapping[str, RailInput] | None = None,
+    ) -> None:
         stage = node.impl
         assert isinstance(stage, Stage)
         events = (
@@ -420,7 +449,7 @@ class RealtimeScheduler:
         if stage.manifest.fit_events:
             self._fitted.append((calibration.sample_index, calibration.stop_index))
         try:
-            stage.fit(calibration, self._input_fps[node.id], events)
+            stage.fit(calibration, self._input_fps[node.id], events, rails)
         except ValueError as exc:  # e.g. too few trials: say so, stay uncalibrated
             self.metrics.errors.append(f"calibration of {node.id!r} failed: {exc}")
         self._refresh_fingerprints()
@@ -444,7 +473,11 @@ class RealtimeScheduler:
         outputs = {src.id: fp}
         for node in self.graph.nodes[1:]:
             assert node.input is not None
-            self._input_fps[node.id] = outputs.get(node.input, "")
+            self._input_fps[node.id] = with_rails(outputs.get(node.input, ""), {
+                port: outputs.get(producer, "")
+                for port, (producer, _) in self.graph.rail_sources(node.id).items()
+                if producer
+            })  # fmt: skip
             if isinstance(node.impl, Stage):
                 outputs[node.id] = node.impl.output_fingerprint(
                     self._input_fps[node.id]
@@ -490,6 +523,53 @@ class RealtimeScheduler:
     def _run_stage(
         self, node: GraphNode, block: Block
     ) -> Block | tuple[FeatureBlock, ...] | None:
+        """One block through a processor: a reader of rails first waits until
+        they cover it (docs/RAILS.md); a writer hands its rails to their readers,
+        along with how far its input has come."""
+        stage = node.impl
+        assert isinstance(stage, Stage)
+        rails: dict[str, RailInput] | None = None
+        if stage.manifest.rail_inputs:
+            feed = self._feed(node.id, block.info.sfreq)
+            feed.push_main(block)
+            try:
+                got = feed.ready(
+                    lambda a, b: self._rail.visible_to(self.graph, node.id, a, b)
+                )
+            except RailError as exc:
+                self.metrics.errors.append(f"{node.id}: {exc}")
+                got = None
+            if got is None:
+                return None  # a rail it reads lags: wait (rule 8)
+            block, rails = got
+        written: dict[str, RailOutput] = {}
+        out = self._stage_step(node, block, rails, written)
+        for port in stage.manifest.rail_outputs:
+            data = written.get(port.name)
+            if data is None and port.type is PortType.FEATURES:
+                data = ()  # no window, but the rail is known this far
+            if data is None:
+                continue
+            for reader, reader_port in self._subscribers.get((node.id, port.name), []):
+                feed = self._feed(reader, block.info.sfreq)
+                feed.push_rail(reader_port, data, block.stop_index)
+        return out
+
+    def _feed(self, node_id: str, sfreq: float) -> RailFeed:
+        feed = self._feeds.get(node_id)
+        if feed is None:
+            ports = self.graph[node_id].manifest.rail_inputs
+            hold = round(RAIL_HOLD_SECONDS * sfreq)
+            feed = self._feeds[node_id] = RailFeed(ports, hold)
+        return feed
+
+    def _stage_step(
+        self,
+        node: GraphNode,
+        block: Block,
+        rails: dict[str, RailInput] | None,
+        written: dict[str, RailOutput],
+    ) -> Block | tuple[FeatureBlock, ...] | None:
         stage = node.impl
         assert isinstance(stage, Stage)
         input_fp = self._input_fps[node.id]
@@ -497,25 +577,32 @@ class RealtimeScheduler:
         if pending is not None:
             blocks, seconds = pending
             blocks.append(block)
+            if rails is not None:
+                self._calibration_rails.setdefault(node.id, []).append(rails)
             if sum(b.n_samples for b in blocks) >= seconds * block.info.sfreq:
                 del self._calibration[node.id]
                 calibration = concat_blocks(blocks)
-                if stage.manifest.fit_events:  # wait for markers still on their way
+                pieces = self._calibration_rails.pop(node.id, [])
+                joined = (
+                    join_inputs(pieces, stage.manifest.rail_inputs) if pieces else None
+                )
+                if stage.manifest.reads_events:  # wait for markers on their way
                     source = self.graph.source.impl
                     assert isinstance(source, Source)
                     due = time.monotonic() + source.event_wait
-                    self._fits[node.id] = (calibration, due)
+                    self._fits[node.id] = (calibration, due, joined)
                 else:
-                    self._fit(node, calibration)
+                    self._fit(node, calibration, joined)
             return self._without_model(node, block)
         if node.id in self._fits:
             return self._without_model(node, block)
         if stage.status(input_fp) is not StageStatus.READY:
             return self._without_model(node, block)
         try:
-            result = stage.transform(block, input_fp)
+            result = stage.transform(block, input_fp, rails)
         except StaleModelError:
             return self._without_model(node, block)
+        written.update(result.rails)
         self.metrics.events += len(result.events)
         self._rail.add(result.events, node.id)
         if isinstance(result.block, FeatureBlock):

@@ -134,6 +134,25 @@ stream is cut, so a plugin that wants exact times anchors them to its first bloc
 (keeping that anchor in `state`). The result must not depend on how the stream is cut into blocks
 (acceptance test 1), so a windowing plugin keeps its unfinished window in `state`.
 
+**Rails (0.2.17).** A plugin whose manifest has extra ports (each naming a
+`rail`, see `manifest.schema.json`) gets a `rails` object in `transform` and in
+`fit`, by input port name, over the same samples as `data`:
+
+```json
+"rails": {"ics": {"type": "signal", "data": "r1", "info": {...}, "sample_index": 1000},
+          "power": {"type": "features", "windows": [ ...as in features... ]},
+          "cues": {"type": "events", "events": [{"sample_index": 1010, "label": "left", ...}]}}
+```
+
+A Signal rail covers exactly the block's samples; a Features rail holds the
+windows that ended inside the block (`start < window end <= stop`); the Events
+rail holds the events inside it. Its `result` may carry `rails` for its extra
+outputs, by output port name: `{"type": "signal", "data": NAME, "sample_index":
+int, "info": {...}}` (index and info optional: aligned with the input, same info)
+or `{"type": "features", "windows": [...]}`. Events are always written through
+`events`. The Python SDK hands the rails to the plugin as `info["rails"]` and takes
+them from a dict result's `rails`.
+
 The host owns model and state; the plugin keeps nothing between blocks except the
 models it was given. A plugin that crashes or times out is restarted and continues
 with the state the host already holds.

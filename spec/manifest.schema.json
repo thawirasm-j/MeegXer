@@ -191,6 +191,19 @@
             "features",
             "events"
           ]
+        },
+        "rail": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "The rail an extra port (not the first) reads or writes: 'events' (the Events rail, read by an Events input) or a rail a node's extra output writes, e.g. 'ics' (spec 0.2.17). The first input and output are the main ports and name no rail."
+        },
+        "space": {
+          "enum": [
+            "sensor",
+            "component",
+            "source"
+          ],
+          "description": "Signal ports: the space of the channels (electrodes, components such as ICs, or source regions) (spec 0.2.17)."
         }
       }
     },
