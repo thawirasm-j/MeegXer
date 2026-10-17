@@ -258,7 +258,8 @@ class Inspector(QScrollArea):
                 return "Changing this restarts this strip's filter state."
             return ""
 
-        if manifest["inputs"] and manifest["inputs"][0]["type"] == "features":
+        if manifest["inputs"] and (manifest["inputs"][0]["type"] == "features"
+                                   or doc.rail_choices(strip)):  # fmt: skip
             lay.addWidget(self._reads(doc, strip))
         if main_specs:
             card, card_lay = _card("Settings")
@@ -540,19 +541,24 @@ class Inspector(QScrollArea):
         return card
 
     def _reads(self, doc: PipelineDoc, strip: StripNode) -> QWidget:
-        """The feature rail this strip draws from (docs/RAILS.md)."""
-        card, lay = _card("Reads", "The feature rail this strip draws from.")
-        choices = doc.input_choices(strip)
+        """The line this strip draws from (docs/RAILS.md): a feature rail, or for
+        a strip on the signal the signal or a rail output such as the ICs."""
+        on_signal = doc.manifest(strip)["inputs"][0]["type"] == "signal"
+        what = "line" if on_signal else "feature rail"
+        card, lay = _card("Reads", f"The {what} this strip draws from.")
+        choices = doc.rail_choices(strip) if on_signal else doc.input_choices(strip)
         box = QComboBox()
         box.setObjectName("reads")
         if not choices:
             box.addItem("No feature rail before this strip", "")
             box.setEnabled(False)
         else:
-            nearest = doc.rail_name(doc.get(choices[0]))
-            box.addItem(f"Nearest ({nearest})", "")
+            if on_signal:
+                box.addItem("The signal", "")
+            else:
+                box.addItem(f"Nearest ({doc.choice_label(choices[0])})", "")
             for sid in choices:
-                box.addItem(doc.rail_name(doc.get(sid)), sid)
+                box.addItem(doc.choice_label(sid), sid)
             box.setCurrentIndex(max(0, box.findData(strip.input)) if strip.input else 0)
         box.currentIndexChanged.connect(
             lambda _: self.input_changed.emit(strip.id, str(box.currentData()))

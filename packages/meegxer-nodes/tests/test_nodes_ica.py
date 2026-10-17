@@ -168,3 +168,53 @@ def test_bad_channels_are_left_out_and_pass_through() -> None:
 def test_iclabel_needs_positions() -> None:
     with pytest.raises(ValueError, match="electrode positions"):
         Stage(ICAClean()).fit(recording(positions=()), FP)
+
+
+def test_strip_writes_the_ics_rail_with_iclabel_classes(fitted: Stage) -> None:
+    """The ICs rail (docs/RAILS.md): one channel per component, its activation
+    (weights @ x, in volts), and ICLabel's most likely class and probability."""
+    rec = recording()
+    ics = fitted.transform(rec, FP).rails["ics"]
+    assert isinstance(ics, Block) and ics.sample_index == rec.sample_index
+    model = fitted.model
+    assert model is not None
+    weights = np.asarray(model.data["weights"])
+    proba = np.asarray(model.data["probabilities"])
+    assert ics.info.ch_labels[:2] == ("IC01", "IC02") and ics.info.n_channels == len(
+        weights
+    )
+    np.testing.assert_allclose(ics.data, weights @ rec.data)
+    assert ics.info.ch_classes == tuple(CLASSES[i] for i in proba.argmax(axis=1))
+    np.testing.assert_allclose(ics.info.ch_scores, proba.max(axis=1))
+    assert ics.info.ch_classes.count("eye") >= 2  # the two eye sources
+
+
+def test_a_spectrum_reads_the_components(tmp_path: Path) -> None:
+    """A strip whose input is "ica1:ics" processes the components (spec 0.2.18):
+    PSD per IC, with the batch and the fingerprints following the rail."""
+    from meegxer.core.batch import BatchScheduler, offline_input_fingerprints
+    from meegxer.core.block import FeatureBlock
+    from meegxer.core.graph import Graph
+    from meegxer.core.registry import Registry
+
+    spec = {"spec_version": "0.2.18", "nodes": [
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"duration": 20.0, "n_channels": 8, "sfreq": 100.0},
+         "recording": {"montage": "colin27_1020"}},
+        {"id": "ica1", "node": "meegxer.nodes.ica", "params": {"n_components": 4}},
+        {"id": "psd1", "node": "meegxer.nodes.psd", "input": "ica1:ics",
+         "params": {"window": 4.0, "step": 4.0}},
+    ]}  # fmt: skip
+    graph = Graph.from_dict(spec, Registry.from_entry_points())
+    assert graph["psd1"].input_node == "ica1" and graph["psd1"].input_port == "ics"
+    result = BatchScheduler().run(graph, keep=["psd1"])
+    windows = result.outputs["psd1"]
+    assert isinstance(windows, list) and windows
+    first = windows[0]
+    assert isinstance(first, FeatureBlock)
+    assert first.coords["channel"] == ("IC01", "IC02", "IC03", "IC04")
+    before = offline_input_fingerprints(graph)["psd1"]
+    ica = graph["ica1"].impl
+    assert isinstance(ica, Stage)
+    ica.set_params(seed=1)  # another decomposition: other components
+    assert offline_input_fingerprints(graph)["psd1"] != before

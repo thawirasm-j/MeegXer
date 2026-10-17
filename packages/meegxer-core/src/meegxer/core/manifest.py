@@ -18,7 +18,7 @@ import jsonschema
 
 from meegxer.core.ports import EVENTS_RAIL, Port, PortType
 
-SPEC_VERSION = "0.2.17"
+SPEC_VERSION = "0.2.18"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]

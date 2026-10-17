@@ -284,7 +284,7 @@ known brain and artifact sources, `tools/make_m6_ica_testdata.py`) against
 on the same decomposition, ICLabel features equal EEGLAB's to float32 precision and
 probabilities to 4e-6; Extended Infomax matches `runica` (matched components,
 median |r| 1.000, min 0.98) and extended Picard nearly so (median 0.996, min 0.93).
-Not yet: showing the component labels in the GUI.
+The strip writes the ICs rail (activations with ICLabel classes, `docs/RAILS.md`), which later strips can read as their input. Not yet: a view of the components in the GUI.
 
 **M6c status:** implemented. Analysis processors return the windows a block
 completes as a tuple of FeatureBlocks; both schedulers route them to Features sinks

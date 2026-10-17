@@ -114,6 +114,10 @@ fit(calibration_data | dataset, params)       -> model
 transform(block, model, state, params)        -> block_out, state, events
   (rail ports: + rails in, rails out)
 ```
+- **Rail outputs as a main input (0.2.18):** a node's `input` may be `"id:port"`,
+  one of an earlier node's rail outputs, e.g. PSD of the components ICA writes
+  (`"ica1:ics"`). Signal info may carry per-channel `ch_classes` and `ch_scores`
+  (ICLabel's class of each component and its probability).
 - **Rail ports (0.2.17, `docs/RAILS.md`):** the first input and output are the
   main ports; a processor's further ports each name a rail. An extra input reads
   the nearest earlier writer of that rail (or the Events rail, `events`), an extra

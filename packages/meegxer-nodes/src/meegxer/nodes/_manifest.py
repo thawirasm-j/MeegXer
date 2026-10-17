@@ -17,6 +17,7 @@ def stream_manifest(
     requires_fit: bool = False,
     requires_positions: bool = False,
     channel_types: list[str] | None = None,
+    rail_outputs: list[dict[str, str]] | None = None,
 ) -> Manifest:
     return Manifest.from_dict(
         {
@@ -26,7 +27,7 @@ def stream_manifest(
             "type": "stream",
             "description": description,
             "inputs": [{"name": "in", "type": "signal"}],
-            "outputs": [{"name": "out", "type": "signal"}],
+            "outputs": [{"name": "out", "type": "signal"}, *(rail_outputs or [])],
             "params": params,
             "live_params": live_params or [],
             "availability": availability,

@@ -62,7 +62,7 @@ from typing import Any, BinaryIO, ClassVar
 import numpy as np
 
 SDK = "meegxer-python/0.1.0"
-SPEC_VERSION = "0.2.17"
+SPEC_VERSION = "0.2.18"
 MAGIC = b"MXP1"
 _DTYPES = {"float32", "float64", "int32", "int64", "uint8", "bool"}
 

@@ -70,6 +70,22 @@ output strip chooses which line it draws from.
   already fitted on: missed trials), and the LSL input's `markers` and
   `markers_dropped` (before the first sample, or without a label).
 
+## ICs rail (built, step 4a)
+
+- **ICA + ICLabel writes it:** an extra output (`ics`, space `component`) carries
+  the component activations (`weights @ x`, in volts), one channel per component
+  (`IC01`...). Each channel has ICLabel's most likely class and its probability
+  as attributes (`SignalInfo.ch_classes`, `ch_scores`).
+- **A strip can take it as its main input:** `input: "ica1:ics"` (spec 0.2.18).
+  In the inspector, a strip on the signal gets *Reads*: the signal, or a rail
+  output such as *ICs (ICA + ICLabel)*; e.g. PSD or band power per component.
+  The chain draws it as a reader of the ICs rail, without a pull from the signal.
+- **Refits:** a refit of ICA changes its components, so the strips reading them
+  need a refit too (their input fingerprint names the rail).
+- **Next (4b):** an EEGLAB file's decomposition starts the ICs rail at the Input
+  strip; an ICA strip after it rewrites it, drawn as the file's rail ending at the
+  ICA strip and a new ICs rail starting there.
+
 ## 4. Display (built)
 
 - The signal is the thick line; rails are thin lines above the strips.
@@ -128,7 +144,8 @@ Still to come: sources declaring extra outputs, custom scripts, the Octave SDK.
    labelled calibration, e.g. CSP).
 3. Rail ports and `TransformResult.rails` [rules 6, 7]; plugin protocol and the
    Python SDK (done; scripts, sources and the Octave SDK follow).
-4. ICs rail from ICA and from EEGLAB files; IC rejection and IC features read it.
+4. ICs rail: from ICA, with ICLabel classes, read as a main input (done, 4a);
+   from EEGLAB files at the Input strip, rewritten by ICA (4b).
 5. LDA classifier reading a feature rail and adding events.
 6. Sources rail: inverse on a template head (cached ahead for Sterile mode).
 7. Event outputs: keyboard sink, events writer, epoching.

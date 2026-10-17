@@ -32,7 +32,7 @@ SYNTHETIC = "meegxer.core.synthetic"
 # the GUI's defaults where they differ from the node's: synthetic input played
 # live runs until stopped (a live calibration never runs out of it)
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
-SPEC_VERSION = "0.2.17"
+SPEC_VERSION = "0.2.18"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -268,7 +268,7 @@ class PipelineDoc:
             raise ValueError("the Input strip cannot be removed")
         self.strips.remove(strip)
         for other in self.strips:  # who read it goes back to the nearest
-            if other.input == strip_id:
+            if other.input.split(":", 1)[0] == strip_id:
                 other.input = ""
 
     def get(self, strip_id: str) -> StripNode:
@@ -377,12 +377,40 @@ class PipelineDoc:
             return []
         wanted = inputs[0]["type"]
         index = self.strips.index(strip)
-        return [
+        main = [
             earlier.id
             for earlier in reversed(self.strips[:index])
             if (outputs := self.manifest(earlier)["outputs"])
             and outputs[0]["type"] == wanted
         ]
+        return main + self.rail_choices(strip)
+
+    def rail_choices(self, strip: StripNode) -> list[str]:
+        """Rail outputs of earlier strips this one could take as its main input
+        (``"ica1:ics"``, spec 0.2.18), nearest first."""
+        inputs = self.manifest(strip)["inputs"]
+        if not inputs:
+            return []
+        index = self.strips.index(strip)
+        return [
+            f"{earlier.id}:{port['name']}"
+            for earlier in reversed(self.strips[:index])
+            for port in self.manifest(earlier)["outputs"][1:]
+            if port.get("rail") and port["type"] == inputs[0]["type"]
+        ]
+
+    def choice_label(self, choice: str) -> str:
+        """How the inspector's *Reads* names a choice: a rail output by its rail
+        and writer (ICs (ICA + ICLabel)), a feature strip by its rail name."""
+        from meegxer.gui.names import title  # names imports nothing from here
+
+        sid, _, port = choice.partition(":")
+        strip = self.get(sid)
+        if not port:
+            return self.rail_name(strip)
+        rail = next(p.get("rail", "") for p in self.manifest(strip)["outputs"]
+                    if p["name"] == port)  # fmt: skip
+        return f"{rail_label(rail)} ({title(strip.node, strip.params)})"
 
     def set_input(self, strip_id: str, source: str) -> None:
         """Make a strip read ``source`` ("" for the nearest of its type)."""
@@ -460,10 +488,14 @@ class PipelineDoc:
             for port in manifest["outputs"][1:]:
                 name = port.get("rail", "")
                 if name:
-                    rail = Rail(f"{strip.id}:{port['name']}", port["type"],
-                                rail_label(name), strip.id)  # fmt: skip
+                    rail_id = f"{strip.id}:{port['name']}"
+                    rail = Rail(rail_id, port["type"], rail_label(name), strip.id)
                     rails.append(rail)
                     written[name] = rail
+        for rail in rails:  # strips taking the rail as their main input
+            if rail.kind != "events" and ":" in rail.id:
+                taking = [s.id for s in self.strips if s.input == rail.id]
+                rail.readers += [sid for sid in taking if sid not in rail.readers]
 
     def carries_events(self) -> bool:
         """The input starts the Events rail: a recording with events (offline or
@@ -481,8 +513,10 @@ class PipelineDoc:
         return self.group(strip) in ("features", "output")
 
     def reads_signal(self, strip: StripNode) -> bool:
+        """Its main input is the signal line (not a rail output such as ICs)."""
         inputs = self.manifest(strip)["inputs"]
-        return bool(inputs) and inputs[0]["type"] == "signal"
+        upstream = self.input_of(strip) or ""
+        return bool(inputs) and inputs[0]["type"] == "signal" and ":" not in upstream
 
     def rail_lanes(self) -> int:
         """Rows the rails take above the signal (a missing rail keeps one)."""
@@ -505,7 +539,8 @@ class PipelineDoc:
                 declared = int(self.manifest(on_path).get("latency_samples") or 0)
                 if declared and sfreq:
                     total += 1000 * declared / sfreq
-                sid = self.input_of(on_path)
+                upstream = self.input_of(on_path)
+                sid = upstream.split(":", 1)[0] if upstream else None
             totals[strip.id] = total
         base = totals.get(self.source.id, 0.0) if self.source else 0.0
         return {sid: max(0.0, t - base) for sid, t in totals.items()}

@@ -21,10 +21,10 @@ INPUT = "input"  # origin of the events the input carries
 def upstream_ids(graph: Graph, node_id: str) -> set[str]:
     """The nodes whose output reaches ``node_id`` (its ancestors), source included."""
     found: set[str] = set()
-    current = graph[node_id].input
+    current = graph[node_id].input_node
     while current is not None and current not in found:
         found.add(current)
-        current = graph[current].input
+        current = graph[current].input_node
     return found
 
 

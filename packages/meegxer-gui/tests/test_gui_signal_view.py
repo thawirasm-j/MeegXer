@@ -295,9 +295,10 @@ def test_chain_puts_every_strip_on_the_signal_and_rails_above(
     assert len(on_signal) == 1 and len(lowered) == 1  # one chain, none forked
     assert min(lowered) > max(on_signal)  # features and outputs sit lower
     assert [(r.label, r.readers, r.lane) for r in board.rails] == [
-        ("Band power", ["lslfeature1"], 1), ("CSP", [], 0)]  # fmt: skip
+        ("Band power", ["lslfeature1"], 2), ("ICs", [], 1),
+        ("CSP", [], 0)]  # fmt: skip
     assert board.needs == {"csp1": "Events"}
-    assert board.lanes == 3  # a row per rail, one for Events
+    assert board.lanes == 4  # a row per rail (ICA writes the ICs), one for Events
     labels = {
         w.strip_id: label.text()
         for w in strips
