@@ -329,7 +329,11 @@ Not yet: a strip's channel layout changing mid-stream stops the feature outlets.
   **Passing** (`packages/meegxer-cli/tests/test_cli_session.py`, ICA model reused,
   byte-identical `.set`).
 - **Acceptance test 5:** full suite on Linux and Windows (Docker Desktop / WSL2). Procedure and
-  checklist: `docs/TESTING.md` (with the real-data BIDS check).
+  checklist: `docs/TESTING.md` (with the real-data BIDS check). **Windows part A
+  passed** (2026-10-17): static checks, tests, plugin conformance and ASR
+  concordance in Docker, GUI with a plugin; 30 min at 64 ch / 1 kHz with a plugin,
+  zero gaps or duplicates, end-to-end p95 15.4 ms
+  (`docs/results/a7-windows-30min-plugin.json`).
 - Publish to PyPI: the five `meegxer-*` packages plus the `meegxer` bundle (it also
   carries the CLI, GUI and plugin commands so `uv tool install meegxer` exposes
   them). Since 0.2.1 the bundle installs every package, plugins included
