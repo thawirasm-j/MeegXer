@@ -20,8 +20,9 @@ from meegxer.core.block import Block, Event, EventBlock, FeatureBlock, concat_bl
 from meegxer.core.cache import Cache, CachedOutput
 from meegxer.core.graph import Graph, GraphError, GraphNode
 from meegxer.core.node import NodeRole, Output, Probe, Sink, Source, output_blocks
+from meegxer.core.recording import recording_events
 from meegxer.core.serialization import canonical_json, fingerprint
-from meegxer.core.stage import Stage, StageStatus, signal_fingerprint
+from meegxer.core.stage import Stage, StageStatus, labelled_input, signal_fingerprint
 
 type Stream = list[Block | FeatureBlock | EventBlock]
 
@@ -47,6 +48,7 @@ def offline_input_fingerprints(graph: Graph) -> dict[str, str]:
     tells whether a loaded model would be reused or refitted (sessions)."""
     outputs: dict[str, str] = {}
     inputs: dict[str, str] = {}
+    events: tuple[Event, ...] | None = None
     for node in graph.nodes:
         if isinstance(node.impl, Source):
             outputs[node.id] = source_fingerprint(node.impl)
@@ -58,6 +60,12 @@ def offline_input_fingerprints(graph: Graph) -> dict[str, str]:
                 stage = node.impl.for_mode("offline")
             except ValueError:
                 stage = node.impl
+            if stage.manifest.fit_events:
+                if events is None:
+                    source = graph.source.impl
+                    assert isinstance(source, Source)
+                    events = recording_events(source)
+                inputs[node.id] = labelled_input(inputs[node.id], events)
             outputs[node.id] = stage.output_fingerprint(inputs[node.id])
     return inputs
 
@@ -102,6 +110,7 @@ class BatchScheduler:
         self.block_size = block_size
         self.cache = cache
         self.calibration_seconds = calibration_seconds
+        self._events: tuple[Event, ...] = ()  # the recording's, for labelled fits
 
     def run(self, graph: Graph, *, keep: Iterable[str] = ()) -> BatchResult:
         result = BatchResult()
@@ -115,6 +124,9 @@ class BatchScheduler:
         source = graph.source.impl
         assert isinstance(source, Source)
         graph.check_positions(source.info)  # before reading or writing anything
+        labelled = any(isinstance(n.impl, Stage) and n.manifest.fit_events
+                       for n in graph.nodes)  # fmt: skip
+        self._events = recording_events(source) if labelled else ()
         sinks = [n for n in graph.nodes if isinstance(n.impl, Sink)]
         for node in sinks:
             assert isinstance(node.impl, Sink)
@@ -164,12 +176,14 @@ class BatchScheduler:
         except ValueError as exc:
             raise GraphError(f"{node.id}: {exc}") from exc
         input_fp = result.fingerprints[node.input]
+        if stage.manifest.fit_events:  # the trials' labels are part of its input
+            input_fp = labelled_input(input_fp, self._events)
         signal_in = [b for b in upstream if isinstance(b, Block)]
         if len(signal_in) != len(upstream):
             raise GraphError(f"{node.id}: processors take Signal input in v1")
 
         if stage.status(input_fp) is not StageStatus.READY:
-            stage.fit(self._calibration(signal_in), input_fp)
+            stage.fit(self._calibration(signal_in), input_fp, self._events)
             result.fitted.append(node.id)
         output_fp = stage.output_fingerprint(input_fp)
         result.fingerprints[node.id] = output_fp

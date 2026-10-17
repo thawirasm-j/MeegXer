@@ -6,6 +6,7 @@
 ## Serves the MeegXer plugin protocol on stdin/stdout (spec/plugin-protocol.md).
 ## MANIFEST is a struct following manifest.schema.json. FIT_FN is [] or
 ##   model = fit_fn (data, info, params)
+## (with fit_events in the manifest, INFO.events holds the calibration's events)
 ## TRANSFORM_FN is
 ##   [data, state, events] = transform_fn (data, info, model, state, params)
 ## or, for a plugin whose output lags its input (look-ahead),
@@ -57,6 +58,9 @@ function meegxer_plugin_run (manifest, fit_fn, transform_fn, flush_fn)
           mx_write_frame (struct ("type", "ok", "id", rid), {});
         case "fit"
           info = mx_info (header);
+          if (isfield (header, "events"))  # labelled trials (spec 0.2.16)
+            info.events = header.events;
+          endif
           model = fit_fn (double (arrays.data), info, header.params);
           out = {};
           [tree, out] = mx_to_wire (model, out, "m");

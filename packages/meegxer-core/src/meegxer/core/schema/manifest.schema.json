@@ -100,6 +100,11 @@
       "type": "boolean",
       "default": false
     },
+    "fit_events": {
+      "description": "True if fit also needs the events inside the calibration stretch (labelled trials, e.g. CSP): the host passes them with the calibration data and refuses to fit without any (spec 0.2.16). Requires requires_fit.",
+      "type": "boolean",
+      "default": false
+    },
     "live_params": {
       "description": "Parameters that may change while streaming without resetting the node's state. For a node with requires_fit they also leave its fitted model valid (they act in transform only), so changing them never asks for a refit (spec 0.2.6).",
       "type": "array",

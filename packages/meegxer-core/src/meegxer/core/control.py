@@ -54,6 +54,7 @@ def manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
         "availability": manifest.availability,
         "requires_fit": manifest.requires_fit,
         "requires_positions": manifest.requires_positions,
+        "fit_events": manifest.fit_events,
         "latency_samples": manifest.latency_samples,
         "description": manifest.description,
         "authors": list(manifest.authors),

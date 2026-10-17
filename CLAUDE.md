@@ -24,8 +24,10 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
    **Node roles:** Source, Processor, Probe, Sink.
 7. **Fit/transform contract** for every processor: `fit(calibration, params) -> model`,
    `transform(block, model, state, params) -> block, state, events` (events may be
-   empty; full manifest in `docs/DESIGN.md` §3.3). Upstream changes mark downstream
-   models "needs refit"; never silently reuse a stale model.
+   empty; full manifest in `docs/DESIGN.md` §3.3). A node that learns from labelled
+   trials (manifest `fit_events`) also gets the calibration's events with it. Upstream
+   changes (and changed events) mark downstream models "needs refit"; never silently
+   reuse a stale model.
 8. **Align by sample index, match channels by label.** Every block carries a sample
    index, counted on the source's clock from its first sample, and an LSL timestamp.
    A node that changes the rate maps indices by the exact ratio of the rates, so

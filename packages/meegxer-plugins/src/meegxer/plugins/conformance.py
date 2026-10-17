@@ -12,7 +12,7 @@ from typing import Any
 
 import numpy as np
 
-from meegxer.core.block import Block, FeatureBlock, concat_blocks
+from meegxer.core.block import Block, Event, FeatureBlock, concat_blocks
 from meegxer.core.conformance import check_blockwise_equivalence
 from meegxer.core.node import output_blocks
 from meegxer.core.sources import SyntheticSource
@@ -26,6 +26,16 @@ class Check:
     name: str
     passed: bool
     detail: str = ""
+
+
+def labelled_trials(block: Block, params: Mapping[str, Any]) -> tuple[Event, ...]:
+    """Trials for a plugin that fits on labelled trials (fit_events): every 2 s,
+    alternating the labels of its ``classes`` parameter (default left, right)."""
+    text = str(params.get("classes") or "left, right")
+    labels = [c.strip() for c in text.split(",") if c.strip()] or ["left", "right"]
+    step = max(1, round(2.0 * block.info.sfreq))
+    starts = range(block.sample_index, block.stop_index - step, step)
+    return tuple(Event(s, labels[k % len(labels)]) for k, s in enumerate(starts))
 
 
 def test_signal(
@@ -112,10 +122,12 @@ def run_conformance(
     fp = signal_fingerprint(block.info)
     reference = Stage(plugin_cls(), params)
     one_pass: list[Any] = []
+    trials = labelled_trials(block, reference.params) if (
+        plugin_cls.manifest.fit_events) else ()  # fmt: skip
 
     def transform() -> str:
         if plugin_cls.manifest.requires_fit:
-            reference.fit(block, fp)
+            reference.fit(block, fp, trials)
         result = reference.transform(block, fp)
         out = result.block
         if plugin_cls.manifest.kind == "analysis":
@@ -156,6 +168,7 @@ def run_conformance(
                 block,
                 params,
                 calibration=block,
+                events=trials,
                 trials=3,
                 rtol=1e-6,
                 atol=1e-10,

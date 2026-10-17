@@ -36,6 +36,9 @@ define it.
     (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
     with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
     session file next to each recording.
+  - 0.2.16: optional manifest `fit_events`: the node learns from labelled
+    trials; its `fit` request carries the calibration's `events` (absolute sample
+    indices), and hosts refuse to fit it without any. Needs `requires_fit`.
   - 0.2.15: optional manifest `category`: where a node is listed within its
     group (e.g. `filters`, `spectral`, `files`); hosts group their node menus by
     it, built-ins and plugins alike. Optional `channel_types`: the channel types

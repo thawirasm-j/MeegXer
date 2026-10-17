@@ -33,6 +33,7 @@ TITLES = {
     "meegxer.nodes.specparam": "Spectral parameterization",
     "meegxer.nodes.morlet": "Wavelet power (Morlet)",
     "meegxer.nodes.ssvep_cca": "SSVEP detection",
+    "meegxer.nodes.csp": "Common spatial patterns (CSP)",
     "meegxer.core.lsl_features_out": "LSL features output",
     "eeglab.asr": "ASR cleaning (EEGLAB)",
 }

@@ -128,6 +128,11 @@ def transform(data, state, info, cutoff: float = 1.0, order: int = 4):
   def transform(data, state, model):
       return (data - model["mean"]) / model["std"], state
   ```
+- **Labelled trials:** set `FIT_EVENTS = True` and `fit` finds the calibration's
+  events in `raw.annotations` (onset in seconds from the start of `raw`,
+  duration, label), e.g. for a classifier trained on cued trials. The fit is
+  refused when the calibration has no events (offline: the recording's events or
+  an events file; live markers come later).
 - **Block by block must equal one pass.** Live, blocks arrive in whatever sizes the
   stream delivers; the result must not depend on them (acceptance test 1). A script
   that, say, removes each block's own mean fails this. `meegxer-plugin check`

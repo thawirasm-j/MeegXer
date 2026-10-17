@@ -106,9 +106,10 @@ turn knobs, and see the effect live — on a streaming amp or on a recorded data
 manifest:  spec_version, name, version, type (stream | analysis), image (external only),
            inputs/outputs [{name, type: signal | features | events}],
            params [{name, type, min, max, default, unit, choices}],
-           latency_samples, requires_fit (bool),
+           latency_samples, requires_fit (bool), fit_events (bool, 0.2.16),
            authors, references [{citation, doi | url}], license (credit, 0.2.12)
 fit(calibration_data | dataset, params)       -> model
+  (fit_events: the calibration's events too)
 transform(block, model, state, params)        -> block_out, state, events
 ```
 - Every node (source, processor, probe, sink) has a manifest with a `role`;
@@ -247,9 +248,18 @@ transform(block, model, state, params)        -> block_out, state, events
   the samples where the whole wavelet fits in the window (no zero padding). SSVEP
   detection scores each stimulus frequency by CCA or filter-bank CCA with sine and
   cosine references, no calibration; bad channels are left out. The conformance
-  check counts NaNs in the same place as equal. CSP and other classifiers that fit
-  on labelled trials need labels in calibration, which `fit(calibration, params)`
-  does not carry yet (proposed separately).
+  check counts NaNs in the same place as equal.
+- **Labelled calibration (0.2.16):** a node with `fit_events` learns from labelled
+  trials. Its fit gets the events inside the calibration stretch at absolute
+  sample indices (built-ins: `fit_labelled(calibration, events, params)`; plugins:
+  `events` in the `fit` message; scripts with `FIT_EVENTS`: `raw.annotations`).
+  Offline the events are the recording's (its annotations or the events file,
+  renamed and dropped as the recording overrides say); they are part of the node's
+  input fingerprint, so changed events ask for a refit. With no events the fit is
+  refused with the reason. Live markers (an LSL marker inlet) come later; until
+  then such a node calibrates offline and its model loads into a live session.
+  First user: **CSP** (MNE), the log power of each component per window, from
+  `tmin`-`tmax` trials of the named classes.
 - Plugins emit Events only; trusted host Sinks perform actions.
 - **Sterile mode** (planned): one container runs the whole processing chain (built-in
   nodes and plugins) as a single worker over the plugin protocol, so the added

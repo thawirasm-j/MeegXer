@@ -128,9 +128,19 @@ def _raw(data: np.ndarray, info: dict[str, Any]) -> Any:
     import mne
 
     labels = list(info["ch_labels"])
-    raw_info = mne.create_info(labels, float(info["sfreq"]), "eeg")
+    sfreq = float(info["sfreq"])
+    raw_info = mne.create_info(labels, sfreq, "eeg")
     raw_info["bads"] = [b for b in info.get("bads", []) if b in labels]
-    return mne.io.RawArray(np.array(data, dtype=np.float64), raw_info, verbose="error")
+    raw = mne.io.RawArray(np.array(data, dtype=np.float64), raw_info, verbose="error")
+    events = info.get("events") or []
+    if events:  # labelled trials (FIT_EVENTS), timed from the data's start
+        start = int(info.get("sample_index", 0))
+        raw.set_annotations(mne.Annotations(
+            [(int(e["sample_index"]) - start) / sfreq for e in events],
+            [int(e.get("duration", 0)) / sfreq for e in events],
+            [str(e["label"]) for e in events],
+        ))  # fmt: skip
+    return raw
 
 
 def _accepted(fn: Any, names: Any) -> dict[str, Any]:
@@ -247,6 +257,8 @@ def script_manifest(module: ModuleType, path: Path) -> dict[str, Any]:
                     spec.setdefault("min", 0.01)
     if live and callable(getattr(module, "fit", None)):
         manifest["requires_fit"] = True
+        if getattr(module, "FIT_EVENTS", False):  # fit(raw) gets raw.annotations
+            manifest["fit_events"] = True
     manifest.update(_credits(module))
     category = getattr(module, "CATEGORY", None)
     if category:
