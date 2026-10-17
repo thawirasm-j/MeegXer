@@ -1,0 +1,34 @@
+# Version updates (security updates are switched on in the repository settings).
+# One grouped PR per ecosystem a week; new releases wait two weeks first, the
+# project's rule for third-party versions. The workspace's own meegxer-*
+# packages are pinned to each other by tools/set_version.py, never by Dependabot.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 14
+    ignore:
+      - dependency-name: "meegxer*"
+    groups:
+      python:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
