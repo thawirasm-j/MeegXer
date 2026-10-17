@@ -176,3 +176,16 @@ def test_a_rebuild_never_turns_the_old_page_into_a_window(qapp: QApplication) ->
         w.close()
         w.deleteLater()
     qapp.processEvents()
+
+
+def test_the_signal_is_grey_and_rail_ends_are_faint() -> None:
+    """The signal stands apart from the ICs rail; past its last reader a rail
+    runs on half transparent."""
+    from meegxer.gui.chain import _toward_text, rail_colour, signal_colour
+    from meegxer.gui.theme import load_theme
+
+    for name in ("dark", "light"):
+        theme = load_theme(name)
+        assert signal_colour(theme) == theme.text_muted
+        assert signal_colour(theme) != rail_colour(theme, "signal")
+        assert _toward_text(rail_colour(theme, "features"), theme).alphaF() < 0.6

@@ -88,12 +88,13 @@ output strip chooses which line it draws from.
 
 ## 4. Display (built)
 
-- The signal is the thick line; rails are thin lines above the strips.
+- The signal is the thick grey line; rails are thin coloured lines above the
+  strips (Events violet, the ICs blue, feature rails orange).
 - Preprocessing strips sit on the signal. Feature and output strips hang below it.
 - Each rail has its own row: feature rails in chain order, the earliest highest,
   Events on the top row. A rail is solid to its last reader, then continues
   dashed, thinner and fainter (whiter on dark themes, darker on light ones) to
-  the end of the chain, with an arrowhead.
+  the end of the chain, with an arrowhead, half transparent.
 - **Arrows:**
   - ↓ from the signal into each strip that reads the signal, near its left edge;
   - ↓ from a rail into each strip that reads it (an output reads one line, a
@@ -101,7 +102,7 @@ output strip chooses which line it draws from.
   - ↑ from a feature strip into its rail, near its right edge, with ● where it
     starts the rail; ○ will mark a strip that adds to an existing rail (Events);
   - outputs only pull; they push nothing;
-  - a hop where an arrow crosses another rail;
+  - a hop where an arrow crosses another rail or the signal;
   - the rail's name above its producer.
 - **A strip that needs a rail the chain lacks** shows a red "needs Events" at the
   top row (e.g. CSP on a recording without events).
