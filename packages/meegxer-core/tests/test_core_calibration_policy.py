@@ -162,7 +162,8 @@ def test_display_frames_carry_the_bypass_mark() -> None:
     env = Decimator(2).feed(Block(np.ones((2, 4)), INFO, 0, 0.0))
     assert env is not None
     frame = DisplayFrame("p", 0, ("a", "b"), 100.0, env, ("center",))
-    assert decode_frame(encode_frame(frame)).bypassed == ("center",)
+    back = decode_frame(encode_frame(frame))
+    assert isinstance(back, DisplayFrame) and back.bypassed == ("center",)
 
 
 @pytest.fixture

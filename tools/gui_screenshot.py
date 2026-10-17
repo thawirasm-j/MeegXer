@@ -214,6 +214,27 @@ def main() -> int:
             pump(app, 0.3)
             dialog.grab().save(str(out / f"12-settings-{page + 1}.png"))
         dialog.reject()
+        # feature views: a feature strip's tap (spectrum, over time), the ICs rail
+        for sid in [s.id for s in win.doc.strips[3:]]:
+            win.remove_strip(sid)
+        for node in ["meegxer.nodes.ica", "meegxer.nodes.psd",
+                     "meegxer.nodes.band_power"]:  # fmt: skip
+            win.insert_strip(len(win.doc.strips), node)
+        assert win.doc.source is not None
+        win.doc.source.recording = {
+            "montage": "colin27_1005",
+            "channels": {"HEOG": {"type": "eog"}, "VEOG": {"type": "eog"}},
+        }
+        win.start()
+        pump(app, 12.0)
+        for key, name in [("psd1", "15-features-spectrum"),
+                          ("bandpower1", "16-features-over-time"),
+                          ("ica1:ics", "17-ics-classes")]:  # fmt: skip
+            win.click_tap(key, False)
+            win.feature_view.span.setCurrentIndex(1)  # 30 s
+            pump(app, 1.0)
+            win.grab().save(str(out / f"{name}-dark.png"))
+        win.click_tap("ica1:ics", False)
         print("\n".join(win.logbox.toPlainText().splitlines()[-12:]))
     finally:
         win.close()

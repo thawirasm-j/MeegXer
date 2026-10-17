@@ -25,6 +25,8 @@ Group = Literal["input", "preprocess", "features", "output"]
 Manifest = dict[str, Any]
 
 PROBE = "meegxer.core.probe"
+FEATURE_PROBE = "meegxer.core.feature_probe"
+FEATURE_KEEP_WINDOWS = 600  # live: feature windows a Features tap keeps
 TAP_PREFIX = "tap_"
 LIVE_ONLY_SOURCES = {"meegxer.core.lsl_in"}
 DEFAULT_OFFLINE_SOURCES = {"meegxer.core.file", "meegxer.core.bids"}
@@ -73,7 +75,8 @@ class Rail:
 
 
 def tap_id(strip_id: str) -> str:
-    return TAP_PREFIX + strip_id
+    """The probe id of a tap: after a strip, or on a rail output (``ica1:ics``)."""
+    return TAP_PREFIX + strip_id.replace(":", "__")
 
 
 GROUP_NAMES = {
@@ -296,6 +299,27 @@ class PipelineDoc:
             if self.role(s) in ("source", "processor")
             and [p["type"] for p in self.manifest(s)["outputs"][:1]] == ["signal"]
         ]
+
+    def feature_taps(self) -> list[StripNode]:
+        """Feature strips: their tap shows the feature view (a spectrum per
+        window, or values over time)."""
+        return [s for s in self.strips[1:] if self.produces_features(s)]
+
+    def rail_taps(self) -> list[str]:
+        """Signal rail outputs a tap can show (``ica1:ics``: the components)."""
+        return [
+            f"{s.id}:{port['name']}"
+            for s in self.strips[1:]
+            for port in self.manifest(s)["outputs"][1:]
+            if port.get("rail") and port["type"] == "signal"
+        ]
+
+    def tap_kind(self, key: str) -> str:
+        """``signal`` (after a strip on the signal), ``rail`` (a rail output,
+        e.g. the ICs) or ``features`` (after a feature strip)."""
+        if ":" in key:
+            return "rail"
+        return "features" if self.produces_features(self.get(key)) else "signal"
 
     def group(self, strip: StripNode | str) -> Group:
         """Input, preprocessing (Signal in and out), feature extraction (Signal
@@ -608,6 +632,8 @@ class PipelineDoc:
             if strip.input and strip.input in self.input_choices(strip):
                 entry["input"] = strip.input
             nodes.append(entry)
+            if not taps:
+                continue
             if strip.id in tappable:
                 nodes.append(
                     {
@@ -617,6 +643,28 @@ class PipelineDoc:
                         "params": {"label": strip.id, "keep_seconds": tap_keep_seconds},
                     }
                 )
+            if self.produces_features(strip) and strip is not self.source:
+                params = {"label": strip.id, "keep_windows": FEATURE_KEEP_WINDOWS}
+                nodes.append(
+                    {
+                        "id": tap_id(strip.id),
+                        "node": FEATURE_PROBE,
+                        "input": strip.id,
+                        "params": params,
+                    }
+                )
+            for port in self.manifest(strip)["outputs"][1:]:
+                if port.get("rail") and port["type"] == "signal":
+                    key = f"{strip.id}:{port['name']}"
+                    params = {"label": key, "keep_seconds": tap_keep_seconds}
+                    nodes.append(
+                        {
+                            "id": tap_id(key),
+                            "node": PROBE,
+                            "input": key,
+                            "params": params,
+                        }
+                    )
         return {"spec_version": SPEC_VERSION, "nodes": nodes}
 
     def load_pipeline(self, data: dict[str, Any]) -> None:
@@ -626,7 +674,7 @@ class PipelineDoc:
         if not isinstance(nodes, list) or not all(isinstance(e, dict) for e in nodes):
             raise ValueError("not a pipeline document (expected {'nodes': [...]})")
         for entry in nodes:
-            if entry["node"] == PROBE:
+            if entry["node"] in (PROBE, FEATURE_PROBE):
                 continue
             node = canonical_name(entry["node"])  # names before 0.2.1 still load
             if node not in self.manifests:

@@ -30,21 +30,23 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from meegxer.core import settings as core_settings
 from meegxer.core.control import RpcError
-from meegxer.core.display import DisplayFrame
+from meegxer.core.display import DisplayFrame, FeatureFrame
 from meegxer.core.graph import positions_message
 from meegxer.core.notices import LOCAL_CODE_NOTICE
 from meegxer.core.session import is_session, read_session, write_session
-from meegxer.gui.buffers import ProbeBuffer
+from meegxer.gui.buffers import FeatureBuffer, ProbeBuffer
 from meegxer.gui.chain import ChainView
 from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import wheel_positions
 from meegxer.gui.connection import DaemonLink
+from meegxer.gui.feature_view import FeatureSeries, FeatureView
 from meegxer.gui.inspector import Inspector
 from meegxer.gui.labels import param_label
 from meegxer.gui.names import title
@@ -95,14 +97,22 @@ class MainWindow(QMainWindow):
         self.theme = theme or resolve_theme(self.settings["appearance"]["theme"])
         self.doc = PipelineDoc(link.call("list_nodes"))
         self.buffers: dict[str, ProbeBuffer] = {}
+        self.feature_buffers: dict[str, FeatureBuffer] = {}
         self.taps: dict[str, str] = {}
+        # a tapped feature strip or rail output (e.g. "ica1:ics"): shown alone,
+        # in place of the signal taps, until tapped again or a signal tap is
+        self.view_tap: str | None = None
         self.selected: str | None = None
         self.advanced = False
         self.running = False
         self.statuses: dict[str, str] = {}
         self.node_status: dict[str, dict[str, Any]] = {}
         self.offline_probes: dict[str, dict[str, Any]] = {}
+        self.offline_features: dict[str, dict[str, Any]] = {}
+        self.offline_sfreq = 0.0
+        self.offline_total = 0
         self.offline_state = ""
+        self._feature_cache: dict[str, tuple[tuple[Any, ...], FeatureSeries]] = {}
         self._offline_cache: dict[str, tuple[tuple[int, int, int], Window]] = {}
         app = QApplication.instance()
         if isinstance(app, QApplication):
@@ -138,7 +148,11 @@ class MainWindow(QMainWindow):
         sp.setContentsMargins(10, 8, 10, 8)
         self.view = SignalView(self.theme)
         self.view.stacked_requested.connect(self.show_stacked)
-        sp.addWidget(self.view, 1)
+        self.feature_view = FeatureView(self.theme)
+        self.views = QStackedWidget()  # the signal view, or a feature tap's view
+        self.views.addWidget(self.view)
+        self.views.addWidget(self.feature_view)
+        sp.addWidget(self.views, 1)
         self.timeline = self.view.panner
         splitter.addWidget(signal_panel)
 
@@ -250,6 +264,7 @@ class MainWindow(QMainWindow):
         if isinstance(app, QApplication):
             app.setStyleSheet(stylesheet(theme, self.scale))
         self.view.apply_theme(theme)
+        self.feature_view.apply_theme(theme)
         self.inspector.apply_theme(theme)
         self.stacked.apply_theme(theme)
         self.stacked.setStyleSheet(stylesheet(theme, self.scale))
@@ -356,12 +371,19 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             print(f"MeegXer: could not remember the view: {exc}", file=sys.stderr)
 
+    def chain_taps(self) -> dict[str, str]:
+        """Taps as the chain shows them: a tapped feature strip or rail output
+        is Main and the signal taps rest meanwhile."""
+        if self.view_tap is None:
+            return dict(self.taps)
+        return {**{k: "off" for k in self.taps}, self.view_tap: "main"}
+
     def refresh_chain(self) -> None:
         self.chain.rebuild(
             self.doc,
             self.theme,
             statuses=self.statuses,
-            taps=self.taps,
+            taps=self.chain_taps(),
             advanced=self.advanced,
             selected=self.selected,
         )
@@ -380,6 +402,11 @@ class MainWindow(QMainWindow):
             if self.advanced or name in repeated:
                 text += f" ({sid})"
             names[tap_id(sid)] = text
+        for strip in self.doc.feature_taps():
+            text = self.doc.rail_name(strip)
+            names[tap_id(strip.id)] = text + (f" ({strip.id})" if self.advanced else "")
+        for key in self.doc.rail_taps():
+            names[tap_id(key)] = self.doc.choice_label(key)
         return names
 
     def refresh_inspector(self) -> None:
@@ -408,6 +435,7 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(self.running)
 
     def _default_taps(self) -> None:
+        self.view_tap = None
         tappable = [s.id for s in self.doc.tappable()]
         self.taps = {sid: "off" for sid in tappable}
         if tappable:
@@ -459,6 +487,9 @@ class MainWindow(QMainWindow):
         }
         if "main" not in self.taps.values() and self.taps:
             self.taps[list(self.taps)[-1]] = "main"
+        views = {s.id for s in self.doc.feature_taps()} | set(self.doc.rail_taps())
+        if self.view_tap not in views:
+            self.view_tap = None
         self.log(what)
         self.refresh_chain()
         if self.running:
@@ -566,6 +597,7 @@ class MainWindow(QMainWindow):
             self.refresh_chain()
         if info is None:
             self.view.set_wheel({})
+            self.feature_view.wheel = {}
             self.view.types = {}
             self.view.events = []
             return
@@ -574,6 +606,7 @@ class MainWindow(QMainWindow):
             c["label"]: tuple(c["position"]) for c in info["channels"] if c["position"]
         }
         self.view.set_wheel(wheel_positions(positions))
+        self.feature_view.wheel = self.view.wheel
         self.view.events = list(info["events"]) if self.doc.mode == "offline" else []
 
     def _describe_input(self) -> dict[str, Any] | None:
@@ -617,6 +650,15 @@ class MainWindow(QMainWindow):
         self.refresh_chain()
 
     def click_tap(self, strip_id: str, make_main: bool) -> None:
+        """A signal tap is Main, a comparison or off. A feature strip's or a
+        rail output's tap (``ica1:ics``) is shown alone, or off."""
+        if self.doc.tap_kind(strip_id) != "signal":
+            self.view_tap = None if self.view_tap == strip_id else strip_id
+            self.refresh_chain()
+            return
+        if self.view_tap is not None:  # back to the signal: this tap is Main
+            self.view_tap = None
+            make_main = True
         state = self.taps.get(strip_id, "off")
         if make_main or (state == "off" and "main" not in self.taps.values()):
             for k, v in self.taps.items():
@@ -661,7 +703,7 @@ class MainWindow(QMainWindow):
             self.doc,
             self.theme,
             statuses=self.statuses,
-            taps=self.taps,
+            taps=self.chain_taps(),
             advanced=self.advanced,
             selected=self.selected,
         )
@@ -720,13 +762,16 @@ class MainWindow(QMainWindow):
             if result is not None:
                 self.offline_state = "running"
                 self.offline_probes.clear()
+                self.offline_features.clear()
                 self._offline_cache.clear()
+                self._feature_cache.clear()
                 self.log("Offline run started.")
             self._transport()
             return
         if self.call("load_pipeline", pipeline=self.doc.to_pipeline()) is None:
             return
         self.buffers.clear()
+        self.feature_buffers.clear()
         if self.call("start") is not None:
             self.running = True
             self.log("Started.")
@@ -922,7 +967,9 @@ class MainWindow(QMainWindow):
         """Probes become scrollable as soon as they have data (the run writes
         them as it goes); the scrollbar spans the whole recording."""
         self.offline_probes = offline.get("probes", {})
-        total = int(offline.get("n_samples") or 0)
+        self.offline_features = offline.get("features", {})
+        self.offline_sfreq = float(offline.get("sfreq") or 0.0)
+        total = self.offline_total = int(offline.get("n_samples") or 0)
         sfreq = next((p["sfreq"] for p in self.offline_probes.values()), 0.0)
         span = int(self.view.seconds() * sfreq)
         self.timeline.set_extent(0, max(0, total - span), span, live=False)
@@ -965,9 +1012,16 @@ class MainWindow(QMainWindow):
         if "overruns" in status:
             m["overruns"].setText(f"late blocks {status['overruns']}")
         shown = sum(b.dropped for b in self.buffers.values())
+        shown += sum(b.dropped for b in self.feature_buffers.values())
         m["display"].setText(f"display frames skipped {shown}" if self.buffers else "")
 
-    def on_frame(self, frame: DisplayFrame) -> None:
+    def on_frame(self, frame: DisplayFrame | FeatureFrame) -> None:
+        if isinstance(frame, FeatureFrame):
+            features = self.feature_buffers.get(frame.probe)
+            if features is None:
+                features = self.feature_buffers[frame.probe] = FeatureBuffer()
+            features.add(frame)
+            return
         buf = self.buffers.get(frame.probe)
         if buf is None:
             buf = self.buffers[frame.probe] = ProbeBuffer()
@@ -976,6 +1030,8 @@ class MainWindow(QMainWindow):
     # -- drawing ----------------------------------------------------------------------
 
     def _shown(self) -> tuple[str | None, list[str]]:
+        if self.view_tap is not None:  # a rail output (features have their view)
+            return tap_id(self.view_tap), []
         main = next((tap_id(k) for k, v in self.taps.items() if v == "main"), None)
         comps = [tap_id(k) for k, v in self.taps.items() if v == "comparison"]
         return main, comps
@@ -1005,7 +1061,8 @@ class MainWindow(QMainWindow):
         mins, maxs, bypassed = buf.window(end, n)
         origin = 0 if self._since_start() else newest  # bin 0 = the source's sample 0
         t = (np.arange(end - n, end) - origin) / buf.bin_rate
-        return Window(probe, buf.labels, t, mins, maxs, bypassed, buf.bin_rate)
+        return Window(probe, buf.labels, t, mins, maxs, bypassed, buf.bin_rate,
+                      buf.classes, buf.scores)  # fmt: skip
 
     def _offline_window(
         self, probe: str, seconds: float, offset: int | None = None
@@ -1040,17 +1097,93 @@ class MainWindow(QMainWindow):
             maxs,
             bypassed,
             info["sfreq"] / size,
+            tuple(info.get("ch_classes", ())),
+            tuple(info.get("ch_scores", ())),
         )
         self._offline_cache[probe] = (key, win)
         return win
 
     def redraw(self) -> None:
+        features = self.view_tap is not None and (
+            self.doc.tap_kind(self.view_tap) == "features"
+        )
+        self.views.setCurrentIndex(1 if features else 0)
+        if features:
+            self._draw_features()
+            return
         main, comps = self._shown()
         if self.stacked.isVisible():  # the signal view rests meanwhile
             self.stacked.refresh(self.view, self._stacked_provider(main), main, comps)
             return
         provider = self._panned_provider(self.timeline, self.view.seconds(), main)
         self.view.refresh(provider, main, comps)
+
+    def _draw_features(self) -> None:
+        """The tapped feature strip's windows over the feature view's span:
+        live from the display stream, offline from the run's feature store."""
+        assert self.view_tap is not None
+        probe = tap_id(self.view_tap)
+        view = self.feature_view
+        name = self.view.names.get(probe, self.view_tap)
+        seconds = view.seconds()
+        if self.doc.mode == "live":
+            series, t0, t1 = self._live_features(probe, seconds)
+        else:
+            series, t0, t1 = self._offline_features(probe, seconds)
+        view.refresh(series, name, t0, t1)
+
+    def _live_features(
+        self, probe: str, seconds: float
+    ) -> tuple[FeatureSeries | None, float, float]:
+        buf = self.feature_buffers.get(probe)
+        panner = self.feature_view.panner
+        if buf is None or not buf.windows or not buf.sfreq:
+            panner.set_extent(0, 0, 1, live=True)
+            return None, -seconds, 0.0
+        ends = np.array([w[1] for w in buf.windows])
+        newest, n = int(ends[-1]), max(1, int(seconds * buf.sfreq))
+        panner.since_start = self._since_start()
+        panner.set_extent(min(int(ends[0]) + n, newest), newest, n, live=True)
+        end = panner.position()
+        idx = np.flatnonzero((ends > end - n) & (ends <= end))
+        if FeatureView.spectral(buf.dims) and idx.size:
+            idx = idx[-1:]  # live spectrum: the newest window shown
+        origin = 0 if self._since_start() else newest
+        t0, t1 = (end - n - origin) / buf.sfreq, (end - origin) / buf.sfreq
+        if not idx.size:
+            return None, t0, t1
+        values = np.stack([buf.values[i] for i in idx])
+        t = (ends[idx] - origin) / buf.sfreq
+        return FeatureSeries(probe, buf.dims, buf.coords, t, values), t0, t1
+
+    def _offline_features(
+        self, probe: str, seconds: float
+    ) -> tuple[FeatureSeries | None, float, float]:
+        info = self.offline_features.get(probe)
+        panner, sfreq = self.feature_view.panner, self.offline_sfreq
+        if info is None or not sfreq:
+            return None, 0.0, seconds
+        n = max(1, int(seconds * sfreq))
+        panner.set_extent(0, max(0, self.offline_total - n), n, live=False)
+        start = panner.position()
+        t0, t1 = start / sfreq, (start + n) / sfreq
+        dims = tuple(info["dims"])
+        reduce = "mean" if FeatureView.spectral(dims) else "none"
+        key = (start, n, reduce, int(info["n_windows"]))
+        cached = self._feature_cache.get(probe)
+        if cached is not None and cached[0] == key:
+            return cached[1], t0, t1
+        reply = self.call("offline_features", probe=probe, start=start,
+                          stop=start + n, max_windows=2000, reduce=reduce)  # fmt: skip
+        if reply is None or not reply["windows"]:
+            return None, t0, t1
+        coords = {k: tuple(v) for k, v in reply["coords"].items()}
+        values = np.array(reply["values"], dtype=float)
+        stops = np.array([w[1] for w in reply["windows"]], dtype=float)
+        series = FeatureSeries(probe, dims, coords, stops / sfreq, values,
+                               int(reply["n_windows"]))  # fmt: skip
+        self._feature_cache[probe] = (key, series)
+        return series, t0, t1
 
     def _stacked_provider(self, main: str | None) -> Callable[..., Window | None]:
         return self._panned_provider(self.stacked.panner, self.stacked.seconds(), main)

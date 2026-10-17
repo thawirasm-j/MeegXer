@@ -224,7 +224,7 @@ def test_status_reports_timing_and_latency() -> None:
 
 
 def test_display_frames_cover_the_probe_contiguously() -> None:
-    from meegxer.core.display import DisplayPublisher, DisplaySubscriber
+    from meegxer.core.display import DisplayFrame, DisplayPublisher, DisplaySubscriber
 
     publisher = DisplayPublisher("tcp://127.0.0.1:0")
     subscriber = DisplaySubscriber(publisher.endpoint, ["main"])
@@ -237,6 +237,7 @@ def test_display_frames_cover_the_probe_contiguously() -> None:
     scheduler.start()
     frames = []
     while (frame := subscriber.recv(timeout=1.0)) is not None:
+        assert isinstance(frame, DisplayFrame)
         frames.append(frame)
     assert scheduler.wait(5)
     assert len(frames) > 10

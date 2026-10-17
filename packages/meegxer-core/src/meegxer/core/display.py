@@ -8,7 +8,8 @@ different probes of the same stream line up bin for bin.
 Wire format (one multipart message per probe per frame; see
 ``spec/display-protocol.md``): ``[topic, header, payload]`` where topic is the probe
 id (UTF-8), header is JSON and payload is float32 ``(2, n_channels, n_bins)``
-little-endian (row 0 = min, row 1 = max).
+little-endian (row 0 = min, row 1 = max). A Features probe sends its feature
+windows instead (header ``kind: "features"``, payload the window's values).
 """
 
 from __future__ import annotations
@@ -23,7 +24,8 @@ import zmq
 
 from meegxer.core.block import Block, FloatArray
 
-DISPLAY_PROTOCOL = "meegxer.display/0.1"
+DISPLAY_PROTOCOL = "meegxer.display/0.2"
+_ACCEPTED = ("meegxer.display/0.1", DISPLAY_PROTOCOL)
 
 type ZmqContext = zmq.Context[zmq.Socket[bytes]]
 
@@ -85,6 +87,21 @@ class DisplayFrame:
     sfreq: float
     envelope: Envelope
     bypassed: tuple[str, ...] = ()  # nodes this data passed through unprocessed
+    ch_classes: tuple[str, ...] = ()  # e.g. ICLabel's class of each component
+    ch_scores: tuple[float, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class FeatureFrame:
+    """One feature window of a Features probe (display protocol 0.2)."""
+
+    probe: str
+    seq: int
+    window: tuple[int, int]  # source samples [start, stop) it was computed from
+    sfreq: float
+    dims: tuple[str, ...]
+    coords: dict[str, tuple[str | float, ...]]
+    values: FloatArray
 
 
 def encode_frame(frame: DisplayFrame) -> list[bytes]:
@@ -100,15 +117,45 @@ def encode_frame(frame: DisplayFrame) -> list[bytes]:
         "n_bins": env.n_bins,
         "bypassed": list(frame.bypassed),
     }
+    if frame.ch_classes:
+        header["ch_classes"] = list(frame.ch_classes)
+        header["ch_scores"] = list(frame.ch_scores)
     payload = np.stack([env.mins, env.maxs]).astype("<f4").tobytes()
     return [frame.probe.encode(), json.dumps(header).encode(), payload]
 
 
-def decode_frame(parts: Sequence[bytes]) -> DisplayFrame:
+def encode_features(frame: FeatureFrame) -> list[bytes]:
+    header = {
+        "protocol": DISPLAY_PROTOCOL,
+        "kind": "features",
+        "probe": frame.probe,
+        "seq": frame.seq,
+        "window": list(frame.window),
+        "sfreq": frame.sfreq,
+        "dims": list(frame.dims),
+        "coords": {k: list(v) for k, v in frame.coords.items()},
+        "shape": list(frame.values.shape),
+    }
+    payload = np.asarray(frame.values).astype("<f4").tobytes()
+    return [frame.probe.encode(), json.dumps(header).encode(), payload]
+
+
+def decode_frame(parts: Sequence[bytes]) -> DisplayFrame | FeatureFrame:
     _, header_bytes, payload = parts
     header = json.loads(header_bytes)
-    if header.get("protocol") != DISPLAY_PROTOCOL:
+    if header.get("protocol") not in _ACCEPTED:
         raise ValueError(f"unsupported display protocol {header.get('protocol')!r}")
+    if header.get("kind") == "features":
+        values = np.frombuffer(payload, dtype="<f4").reshape(header["shape"])
+        return FeatureFrame(
+            header["probe"],
+            header["seq"],
+            (int(header["window"][0]), int(header["window"][1])),
+            float(header["sfreq"]),
+            tuple(header["dims"]),
+            {k: tuple(v) for k, v in header.get("coords", {}).items()},
+            values.astype(np.float64),
+        )
     n_ch, n_bins = len(header["ch_labels"]), header["n_bins"]
     arr: npt.NDArray[np.float32] = np.frombuffer(payload, dtype="<f4").reshape(
         2, n_ch, n_bins
@@ -126,6 +173,8 @@ def decode_frame(parts: Sequence[bytes]) -> DisplayFrame:
         header["sfreq"],
         env,
         tuple(header.get("bypassed", ())),
+        tuple(header.get("ch_classes", ())),
+        tuple(float(s) for s in header.get("ch_scores", ())),
     )
 
 
@@ -151,9 +200,14 @@ class DisplayPublisher:
         self.sent = 0
         self.dropped = 0
 
-    def publish(self, frame: DisplayFrame) -> None:
+    def publish(self, frame: DisplayFrame | FeatureFrame) -> None:
+        parts = (
+            encode_features(frame)
+            if isinstance(frame, FeatureFrame)
+            else encode_frame(frame)
+        )
         try:
-            self._socket.send_multipart(encode_frame(frame), flags=zmq.NOBLOCK)
+            self._socket.send_multipart(parts, flags=zmq.NOBLOCK)
             self.sent += 1
         except zmq.Again:
             self.dropped += 1
@@ -180,7 +234,7 @@ class DisplaySubscriber:
             self._socket.setsockopt(zmq.SUBSCRIBE, probe.encode())
         self._socket.connect(endpoint)
 
-    def recv(self, timeout: float = 1.0) -> DisplayFrame | None:
+    def recv(self, timeout: float = 1.0) -> DisplayFrame | FeatureFrame | None:
         if not self._socket.poll(int(timeout * 1000)):
             return None
         return decode_frame(self._socket.recv_multipart())

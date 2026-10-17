@@ -30,12 +30,12 @@ import numpy.typing as npt
 
 from meegxer.core import settings
 from meegxer.core.batch import BatchScheduler
-from meegxer.core.block import Block, SignalInfo
+from meegxer.core.block import Block, FeatureBlock, SignalInfo
 from meegxer.core.cache import DirectoryCache
 from meegxer.core.display import Decimator
 from meegxer.core.graph import Graph, GraphError
 from meegxer.core.node import AnyBlock, Probe
-from meegxer.core.probes import MemoryProbe
+from meegxer.core.probes import FeatureProbe, MemoryProbe
 from meegxer.core.stage import Stage
 
 MAX_WINDOW_BINS = 20000
@@ -172,6 +172,73 @@ class StoreProbe(Probe):
         store.write(block)
 
 
+class FeatureStore:
+    """One Features probe's windows of an offline run, kept in memory as
+    float32 (feature windows are few compared with samples)."""
+
+    def __init__(self, first: FeatureBlock) -> None:
+        self.dims = first.dims
+        self.coords = {k: list(v) for k, v in first.coords.items()}
+        self.starts: list[int] = []
+        self.stops: list[int] = []
+        self.values: list[npt.NDArray[np.float32]] = []
+
+    def write(self, window: FeatureBlock) -> None:
+        self.starts.append(window.window[0])
+        self.stops.append(window.window[1])
+        self.values.append(np.asarray(window.data, dtype=np.float32))
+
+    def windows(
+        self, start: int, stop: int, max_windows: int, reduce: str
+    ) -> dict[str, Any]:
+        """The windows ending in ``(start, stop]``: at most ``max_windows`` of
+        them, evenly picked, or their mean (``reduce="mean"``)."""
+        ends = np.asarray(self.stops)
+        idx = np.flatnonzero((ends > start) & (ends <= stop))
+        out: dict[str, Any] = {"dims": list(self.dims), "coords": self.coords,
+                               "n_windows": int(idx.size)}  # fmt: skip
+        if not idx.size:
+            return {**out, "windows": [], "values": []}
+        if reduce == "mean":
+            mean = np.nanmean(np.stack([self.values[i] for i in idx]), axis=0)
+            return {**out, "windows": [[int(self.starts[idx[0]]),
+                                        int(self.stops[idx[-1]])]],
+                    "values": [_nested(mean)]}  # fmt: skip
+        if idx.size > max_windows:
+            idx = idx[np.linspace(0, idx.size - 1, max_windows).round().astype(int)]
+        return {
+            **out,
+            "windows": [[int(self.starts[i]), int(self.stops[i])] for i in idx],
+            "values": [_nested(self.values[i]) for i in idx],
+        }
+
+
+def _nested(a: npt.NDArray[Any]) -> Any:
+    """An array as nested lists, NaN as None (JSON)."""
+    if a.ndim == 0:
+        v = float(a)
+        return None if np.isnan(v) else v
+    return [_nested(x) for x in a]
+
+
+class FeatureStoreProbe(Probe):
+    """Stands in for a Features probe during an offline run."""
+
+    manifest = FeatureProbe.manifest
+
+    def __init__(self, job: OfflineJob, probe_id: str) -> None:
+        super().__init__({})
+        self.job, self.probe_id = job, probe_id
+
+    def tap(self, block: AnyBlock) -> None:
+        if not isinstance(block, FeatureBlock):
+            return
+        store = self.job.features.get(self.probe_id)
+        if store is None:
+            store = self.job.features[self.probe_id] = FeatureStore(block)
+        store.write(block)
+
+
 class OfflineJob:
     """One background batch run of a graph."""
 
@@ -188,10 +255,14 @@ class OfflineJob:
         self.started = 0.0
         self.finished = 0.0
         self.n_total = 0
+        self.sfreq = 0.0  # the source's rate (feature windows are in its samples)
         self.probes: dict[str, ProbeStore] = {}
+        self.features: dict[str, FeatureStore] = {}
         self._thread: threading.Thread | None = None
         for node in graph.nodes:  # probes write to disk as the run goes
-            if isinstance(node.impl, Probe):
+            if isinstance(node.impl, FeatureProbe):
+                graph.replace(node.id, FeatureStoreProbe(self, node.id))
+            elif isinstance(node.impl, Probe):
                 graph.replace(node.id, StoreProbe(self, node.id))
 
     def start(self) -> None:
@@ -211,6 +282,7 @@ class OfflineJob:
             if total is None:
                 raise GraphError("batch runs need a finite source (set a duration)")
             self.n_total = int(total)
+            self.sfreq = float(source.info.sfreq)  # type: ignore[union-attr]
             self.folder.mkdir(parents=True, exist_ok=True)
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             BatchScheduler(cache=DirectoryCache(self.cache_dir)).run(self.graph)
@@ -231,6 +303,7 @@ class OfflineJob:
             "error": self.error,
             "elapsed_s": round(end - self.started, 3) if self.started else 0.0,
             "n_samples": self.n_total,
+            "sfreq": self.sfreq,
             # nodes with a fitted model after the run (fitted now or reused)
             "models": [
                 n.id
@@ -247,8 +320,18 @@ class OfflineJob:
                     "n_filled": p.filled,
                     "n_samples": p.n_total,
                     "bypassed": p.bypassed,
+                    "ch_classes": list(p.info.ch_classes),
+                    "ch_scores": list(p.info.ch_scores),
                 }
                 for pid, p in list(self.probes.items())
+            },
+            "features": {
+                pid: {
+                    "dims": list(f.dims),
+                    "coords": f.coords,
+                    "n_windows": len(f.stops),
+                }
+                for pid, f in list(self.features.items())
             },
         }
 
@@ -257,6 +340,14 @@ class OfflineJob:
         if store is None:
             raise KeyError(f"no offline output for probe {probe!r} (yet)")
         return {"probe": probe, **store.window(start, n, max_bins)}
+
+    def feature_windows(
+        self, probe: str, start: int, stop: int, max_windows: int, reduce: str
+    ) -> dict[str, Any]:
+        store = self.features.get(probe)
+        if store is None:
+            raise KeyError(f"no offline features for probe {probe!r} (yet)")
+        return {"probe": probe, **store.windows(start, stop, max_windows, reduce)}
 
     def discard(self) -> None:
         """Delete this run's files (after the run has stopped)."""

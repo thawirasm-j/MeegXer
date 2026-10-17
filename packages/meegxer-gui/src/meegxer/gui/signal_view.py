@@ -44,7 +44,12 @@ from PySide6.QtWidgets import (
 )
 
 from meegxer.gui.colormaps import Maps
-from meegxer.gui.colors import ChannelStyle, channel_styles_with
+from meegxer.gui.colors import (
+    ChannelStyle,
+    channel_styles_with,
+    class_label,
+    class_style,
+)
 from meegxer.gui.headplot import (
     BANDS,
     DEFAULT_RANGE,
@@ -76,6 +81,8 @@ class Window:
     maxs: FloatArray
     bypassed: npt.NDArray[np.bool_]
     bin_rate: float
+    classes: tuple[str, ...] = ()  # ICs: ICLabel's class of each component
+    scores: tuple[float, ...] = ()
 
 
 # provider(probe, seconds) -> Window or None
@@ -131,6 +138,17 @@ def _psd_rows(
     return np.fft.rfftfreq(seg, 1 / rate), psd
 
 
+def class_notes(win: Window) -> dict[str, str]:
+    """Menu names of components: ``IC03 · eye 0.97``."""
+    if len(win.classes) != len(win.labels):
+        return {}
+    scores = win.scores if len(win.scores) == len(win.labels) else ()
+    return {
+        lb: f"{lb} · {class_label(c)}" + (f" {scores[i]:.2f}" if scores else "")
+        for i, (lb, c) in enumerate(zip(win.labels, win.classes, strict=True))
+    }
+
+
 class ChannelMenu(QToolButton):
     """Pick the channels to show; all by default."""
 
@@ -142,23 +160,30 @@ class ChannelMenu(QToolButton):
         self.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.labels: tuple[str, ...] = ()
         self.defaults: frozenset[str] = frozenset()
+        self.notes: dict[str, str] = {}
         self.hidden: set[str] = set()
         self.setMenu(QMenu(self))
 
     def set_labels(
-        self, labels: tuple[str, ...], hide_by_default: frozenset[str] = frozenset()
+        self,
+        labels: tuple[str, ...],
+        hide_by_default: frozenset[str] = frozenset(),
+        notes: dict[str, str] | None = None,
     ) -> None:
-        """New channels: non-EEG ones (``hide_by_default``) start hidden."""
-        if labels == self.labels and hide_by_default == self.defaults:
+        """New channels: non-EEG ones (``hide_by_default``) start hidden;
+        ``notes`` name a channel in the menu (``IC03 · eye 0.97``)."""
+        notes = notes or {}
+        if (labels, hide_by_default, notes) == (self.labels, self.defaults, self.notes):
             return
-        self.labels, self.defaults = labels, hide_by_default
+        self.labels, self.defaults, self.notes = labels, hide_by_default, notes
         self.hidden = set(hide_by_default) & set(labels)
         menu = QMenu(self)
         menu.addAction("All", lambda: self._set(set()))
         menu.addAction("None", lambda: self._set(set(labels)))
         menu.addSeparator()
         for label in labels:
-            action = QAction(label, menu, checkable=True)
+            action = QAction(notes.get(label, label), menu, checkable=True)
+            action.setData(label)
             action.setChecked(label not in self.hidden)
             action.toggled.connect(lambda on, lb=label: self._toggle(lb, on))
             menu.addAction(action)
@@ -170,7 +195,7 @@ class ChannelMenu(QToolButton):
         for action in self.menu().actions():
             if action.isCheckable():
                 action.blockSignals(True)
-                action.setChecked(action.text() not in hidden)
+                action.setChecked(action.data() not in hidden)
                 action.blockSignals(False)
         self._caption()
         self.changed.emit()
@@ -448,7 +473,7 @@ class SignalView(QWidget):
         self._layouts: dict[tuple[object, ...], Layout] = {}
         self._head_inputs: tuple[object, ...] | None = None  # of the shown map
         self.maps = Maps()  # colour maps (Settings → Visualization)
-        self.styles: dict[tuple[str, ...], list[ChannelStyle]] = {}
+        self.styles: dict[tuple[tuple[str, ...], ...], list[ChannelStyle]] = {}
         self.wheel: dict[str, tuple[float, float]] = {}
         self.types: dict[str, str] = {}  # label -> channel type, when known
         self.events: list[dict[str, Any]] = []
@@ -696,10 +721,18 @@ class SignalView(QWidget):
         self.wheel = wheel
         self.styles.clear()
 
-    def _styles(self, labels: tuple[str, ...]) -> list[ChannelStyle]:
-        if labels not in self.styles:
-            self.styles[labels] = channel_styles_with(labels, self.theme, self.wheel)
-        return self.styles[labels]
+    def _styles(
+        self, labels: tuple[str, ...], classes: tuple[str, ...] = ()
+    ) -> list[ChannelStyle]:
+        """Colours by scalp position, or by class (ICs) when classes are known."""
+        key = (labels, classes)
+        if key not in self.styles:
+            self.styles[key] = (
+                [class_style(c, self.theme) for c in classes]
+                if len(classes) == len(labels) and classes
+                else channel_styles_with(labels, self.theme, self.wheel)
+            )
+        return self.styles[key]
 
     def _spectra(
         self, windows: list[Window]
@@ -792,15 +825,18 @@ class SignalView(QWidget):
                 for lb in main_win.labels
                 if self.types.get(lb, "eeg") not in ("eeg", "")
             ),
+            class_notes(main_win),
         )
         chans = self.channels.selected(main_win.labels)
-        styles = self._styles(main_win.labels)
+        styles = self._styles(main_win.labels, main_win.classes)
         self.legend.setToolTip(self.delay_note)
         layers: list[tuple[FloatArray, FloatArray, QPen]] = []
         plot = self.plot.getPlotItem()
         names = f"Main: {self.name(main_win.probe)}" + "".join(
             f" · {self.name(w.probe)}" for w in comp
         )
+        if main_win.classes:
+            names += " · colour: ICLabel class"
         main_pen = (1.0, 80) if waiting else (2.0, 255)
         if waiting:
             names = f"Main: {self.name(main)} (no data yet) · " + " · ".join(
@@ -962,9 +998,9 @@ class StackedWindow(QWidget):
             self.plot.draw([])
             return
         top = wins[-1]  # Main, or a comparison lending its channels and time
-        self.channels.set_labels(top.labels)
+        self.channels.set_labels(top.labels, notes=class_notes(top))
         chans = self.channels.selected(top.labels)
-        styles = view._styles(top.labels)
+        styles = view._styles(top.labels, top.classes)
         normalize = self.normalize.isChecked()
         scale = np.ones(len(top.labels))  # per channel; comparisons use main's
         if normalize:

@@ -337,6 +337,16 @@ it never interrupts processing.
     strip reads the nearest earlier node of its input type (spec 0.2.7); an output
     can pick another feature rail in the inspector (*Reads*), saved as the node's
     `input`.
+  - **Feature and component views:** clicking a rail's name (◇, ◆ when shown)
+    shows it in place of the signal view, alone, until it is clicked again or a
+    signal tap is. A feature rail opens the feature view: a spectrum per channel
+    when its windows have a frequency dimension (live the newest window, offline
+    the mean over the shown span; dB for positive values), else one line per
+    channel over time, with *Show* choosing among further dimensions (the band
+    of band power). The ICs rail opens the signal view on the components,
+    coloured by ICLabel class and named "IC03 · eye 0.97" in the channel menu.
+    The core sends the feature windows on the display stream (protocol 0.2,
+    lossy) and keeps an offline run's windows for scrolling (`offline_features`).
 - **Mode comes from the Input strip:** an LSL source is always live; a file or BIDS
   source is offline by default and a synthetic source live, and either can be
   switched on the Input strip (live playback or offline processing). The transport

@@ -1,11 +1,12 @@
-"""Per-probe history of display envelopes, aligned by bin index (rule 8)."""
+"""Per-probe history of display frames: envelopes aligned by bin index (rule 8),
+and the newest windows of a Features tap."""
 
 from __future__ import annotations
 
 import numpy as np
 import numpy.typing as npt
 
-from meegxer.core.display import DisplayFrame
+from meegxer.core.display import DisplayFrame, FeatureFrame
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -21,6 +22,8 @@ class ProbeBuffer:
     def __init__(self, capacity_bins: int = 250 * 30) -> None:
         self.capacity = capacity_bins
         self.labels: tuple[str, ...] = ()
+        self.classes: tuple[str, ...] = ()  # e.g. ICLabel's class of each IC
+        self.scores: tuple[float, ...] = ()
         self.sfreq = 0.0
         self.bin_size = 0
         self.end_bin = 0  # one past the newest bin received
@@ -55,6 +58,7 @@ class ProbeBuffer:
             self.dropped += frame.seq - self.last_seq - 1
         self.last_seq = frame.seq
         self.frames += 1
+        self.classes, self.scores = frame.ch_classes, frame.ch_scores
         start, stop = env.start_bin, env.start_bin + env.n_bins
         if start > self.end_bin:  # a gap: forget what the ring holds there
             self._clear(self.end_bin, start)
@@ -97,3 +101,31 @@ class ProbeBuffer:
     @property
     def bin_rate(self) -> float:
         return self.sfreq / self.bin_size if self.bin_size else 0.0
+
+
+class FeatureBuffer:
+    """The newest windows of one Features tap, in window order (live)."""
+
+    def __init__(self, capacity: int = 600) -> None:
+        self.capacity = capacity
+        self.dims: tuple[str, ...] = ()
+        self.coords: dict[str, tuple[str | float, ...]] = {}
+        self.sfreq = 0.0
+        self.windows: list[tuple[int, int]] = []
+        self.values: list[FloatArray] = []
+        self.last_seq = -1
+        self.dropped = 0
+
+    def add(self, frame: FeatureFrame) -> None:
+        restarted = bool(self.windows) and frame.window[1] <= self.windows[-1][1]
+        if frame.dims != self.dims or frame.coords != self.coords or restarted:
+            self.dims, self.coords = frame.dims, dict(frame.coords)
+            self.windows, self.values = [], []
+        if self.last_seq >= 0 and frame.seq > self.last_seq + 1:
+            self.dropped += frame.seq - self.last_seq - 1
+        self.last_seq = frame.seq
+        self.sfreq = frame.sfreq
+        self.windows.append(frame.window)
+        self.values.append(np.asarray(frame.values, dtype=float))
+        if len(self.windows) > self.capacity:
+            del self.windows[0], self.values[0]
