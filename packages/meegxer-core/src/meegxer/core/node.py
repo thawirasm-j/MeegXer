@@ -166,6 +166,18 @@ class Source(_ConfiguredNode):
         """The files this source reads (recorded with their hashes in sessions)."""
         return []
 
+    def new_events(self) -> tuple[Event, ...]:
+        """Live events the input carries that arrived since the last call (LSL
+        markers), already placed on this source's sample index (rule 8). A
+        recording's events come from ``recording_events`` instead."""
+        return ()
+
+    @property
+    def event_wait(self) -> float:
+        """Seconds a labelled calibration waits after its last sample for live
+        events still on their way (0: none can arrive late)."""
+        return 0.0
+
 
 class Probe(_ConfiguredNode):
     """Non-modifying tap: sees every block of its input, changes nothing."""

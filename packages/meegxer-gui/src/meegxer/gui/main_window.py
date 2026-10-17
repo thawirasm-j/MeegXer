@@ -559,8 +559,8 @@ class MainWindow(QMainWindow):
     def use_recording_info(self, info: dict[str, Any] | None) -> None:
         """Colour channels by the recording's positions; mark its events on the
         offline view (live views have no absolute time axis) and start the
-        chain's Events rail with them."""
-        events = len(info["events"]) if info and self.doc.mode == "offline" else 0
+        chain's Events rail with them (live playback carries them too)."""
+        events = len(info["events"]) if info else 0
         if events != self.doc.input_events:
             self.doc.input_events = events
             self.refresh_chain()

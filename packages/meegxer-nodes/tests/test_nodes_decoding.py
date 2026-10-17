@@ -130,3 +130,46 @@ def test_a_batch_run_fits_on_the_recordings_events(tmp_path: Path) -> None:
     after = offline_input_fingerprints(graph)["csp"]
     assert after != before
     assert stage.status(after).value == "needs-refit"
+
+
+def test_live_calibration_from_a_played_recording_matches_batch(
+    tmp_path: Path,
+) -> None:
+    """Rule 4 for labelled fits: CSP calibrated live on the first 5 s of a played
+    recording, from the events on the Events rail, is the model a batch run fits
+    on the same 5 s."""
+    from meegxer.core.probes import MemoryProbe
+    from meegxer.core.realtime import RealtimeScheduler
+
+    events = tmp_path / "events.tsv"
+    rows = [f"{0.5 * k}\t0\t{'left' if k % 2 else 'right'}" for k in range(1, 12)]
+    events.write_text("onset\tduration\ttrial_type\n" + "\n".join(rows) + "\n")
+
+    def graph() -> Graph:
+        spec = {"spec_version": "0.2.16", "nodes": [
+            {"id": "src", "node": "meegxer.core.synthetic",
+             "params": {"duration": 6.0, "n_channels": 6, "sfreq": 100.0},
+             "recording": {"events": {"file": str(events)}}},
+            {"id": "csp", "node": "meegxer.nodes.csp",
+             "params": {"n_components": 2, "tmin": 0.0, "tmax": 0.4}},
+        ]}  # fmt: skip
+        return Graph.from_dict(spec, Registry.from_entry_points())
+
+    offline = graph()
+    BatchScheduler(calibration_seconds=5.0).run(offline)
+    live = graph()
+    live.add(MemoryProbe())
+    scheduler = RealtimeScheduler(live)
+    scheduler.calibrate("csp", 5.0)  # from the first sample
+    scheduler.start()
+    assert scheduler.wait(30)
+    assert scheduler.status()["errors"] == []
+    models = []
+    for g in (offline, live):
+        stage = g["csp"].impl
+        assert isinstance(stage, Stage) and stage.model is not None
+        models.append(stage.model.data)
+    assert models[0]["trials"] == models[1]["trials"] == [5, 4]
+    np.testing.assert_allclose(
+        np.asarray(models[1]["filters"]), np.asarray(models[0]["filters"])
+    )

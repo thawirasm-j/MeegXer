@@ -12,7 +12,13 @@ import pytest
 
 from meegxer.core.block import Block, FeatureBlock, SignalInfo
 from meegxer.core.graph import Graph
-from meegxer.core.lsl import INDEX_CHANNEL, LslFeatureSink, LslSink, LslSource
+from meegxer.core.lsl import (
+    INDEX_CHANNEL,
+    LslFeatureSink,
+    LslSink,
+    LslSource,
+    MarkerClock,
+)
 from meegxer.core.probes import MemoryProbe
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.sources import SyntheticSource
@@ -103,6 +109,54 @@ def test_source_detects_gaps_and_duplicates() -> None:
     assert total == 22
     assert source.gaps == 5 and source.duplicates == 2
     source.close()
+
+
+def test_marker_clock_places_timestamps_on_the_signal_index() -> None:
+    clock = MarkerClock(100.0, keep=3)
+    for i in range(5):  # chunks of 10 samples, the first at t = 50 s
+        clock.anchor(10 * i, 50.0 + 0.1 * i)
+    assert clock.place(50.234) == 23  # from the anchor at 50.2 s (sample 20)
+    assert clock.place(50.6) == 60  # after the newest: extrapolated forward
+    assert clock.place(50.0) == 0  # older than the anchors kept: the oldest one
+
+
+def test_source_places_markers_on_its_sample_index() -> None:
+    """Rule 8: markers from a separate stream land on the signal's index once,
+    at the inlet, from their LSL timestamps."""
+    name, markers = unique("mx-sig"), unique("mx-mrk")
+    signal = pylsl.StreamOutlet(
+        pylsl.StreamInfo(name, "EEG", 1, 100.0, "double64", name)
+    )
+    marker_out = pylsl.StreamOutlet(
+        pylsl.StreamInfo(markers, "Markers", 1, 0.0, "string", markers)
+    )
+    source = LslSource({"stream_name": name, "marker_stream": markers, "timeout": 5.0,
+                        "marker_wait": 0.25})  # fmt: skip
+    _ = source.info
+    assert source.event_wait == 0.25
+    time.sleep(0.5)
+    t0 = pylsl.local_clock()
+    for i in range(300):
+        signal.push_sample([0.0], t0 + i / 100.0)
+    for index, label in [(50, "left"), (120, "right"), (299, "left")]:
+        marker_out.push_sample([label], t0 + index / 100.0)
+    marker_out.push_sample(["early"], t0 - 5.0)  # before the first sample
+    events: list[tuple[int, str]] = []
+    deadline = time.monotonic() + 5
+    while len(events) < 3 and time.monotonic() < deadline:
+        block = source.read(100)
+        assert block is not None
+        events += [(e.sample_index, e.label) for e in source.new_events()]
+        time.sleep(0.02)
+    assert [label for _, label in events] == ["left", "right", "left"]
+    for (index, _), want in zip(events, (50, 120, 299), strict=True):
+        assert abs(index - want) <= 1  # clock sync and dejitter: a sample at most
+    assert (source.markers, source.markers_dropped) == (3, 1)
+    source.close()
+
+
+def test_source_without_markers_has_no_wait() -> None:
+    assert LslSource({"stream_name": "x"}).event_wait == 0.0
 
 
 @pytest.mark.timeout(60)

@@ -174,7 +174,9 @@ transform(block, model, state, params)        -> block_out, state, events
 - Aligned by **sample index**, channels matched by **label**. The index counts the
   source's samples from its first (rule 8); a rate-changing node maps it by the
   exact ratio of the rates, so index / rate is the same time on either side and
-  probes at different rates still line up.
+  probes at different rates still line up. Markers from a separate stream (the
+  LSL input's `marker_stream`) are placed on the signal's sample index once, at
+  the inlet, from their LSL timestamp; downstream, events align by index only.
 - **Time axis:** offline, time since the recording's start; live, seconds before
   the newest data (fixed ticks, 0 at the right edge; the default) or time since
   the stream started (setting `visualization.time_axis`).
@@ -256,8 +258,16 @@ transform(block, model, state, params)        -> block_out, state, events
   Offline the events are the recording's (its annotations or the events file,
   renamed and dropped as the recording overrides say); they are part of the node's
   input fingerprint, so changed events ask for a refit. With no events the fit is
-  refused with the reason. Live markers (an LSL marker inlet) come later; until
-  then such a node calibrates offline and its model loads into a live session.
+  refused with the reason. Live, the events come from the **Events rail**
+  (`docs/RAILS.md`): the LSL input's marker stream (`marker_stream`), or a
+  recording played live. `calibrate NODE --seconds N` collects N s, waits
+  `marker_wait` (default 0.5 s, Advanced) for markers still on their way while
+  processing goes on, then fits on the events inside the stretch; a failed fit
+  (too few trials) is reported and the node stays uncalibrated. Status counts
+  `input_events` and `events_late` (markers that landed in a stretch already
+  fitted on: missed trials). A live fit's model fingerprint names the input, not
+  the events (later markers are new trials, not a changed calibration). A fit
+  sees the input's events and those of the strips upstream of it.
   First user: **CSP** (MNE), the log power of each component per window, from
   `tmin`-`tmax` trials of the named classes.
 - Plugins emit Events only; trusted host Sinks perform actions.

@@ -4,10 +4,17 @@ LSL streams usually carry microvolts; the core works in volts, so both nodes sca
 by ``unit``. A stream may carry a ``SAMPLE_INDEX`` channel (the sink can add one):
 the source then uses it as the sample index and counts gaps and duplicates, which
 is how acceptance test 2 verifies that no sample is dropped or repeated.
+
+Markers: the source can also pull an LSL marker stream (``marker_stream``). Each
+marker is placed once, at the inlet, on the signal's sample index from its LSL
+timestamp (rule 8): both inlets are on the local clock (clock sync, dejitter), and the
+signal's recent chunks anchor timestamps to indices. The markers start the Events
+rail (docs/RAILS.md).
 """
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Mapping
 from typing import ClassVar
 
@@ -15,7 +22,7 @@ import numpy as np
 import numpy.typing as npt
 import pylsl
 
-from meegxer.core.block import Block, FeatureBlock, SignalInfo
+from meegxer.core.block import Block, Event, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Sink, Source
 from meegxer.core.ports import PortTypeError
@@ -54,6 +61,34 @@ _UNIT_PARAM = {
 }
 
 
+class MarkerClock:
+    """Places LSL timestamps on the signal's sample index.
+
+    Each signal chunk anchors (sample index of its first sample, its dejittered
+    timestamp). A timestamp is placed from the latest anchor at or before it (the
+    oldest one if it is older than all of them), at the signal's nominal rate.
+    """
+
+    def __init__(self, sfreq: float, keep: int = 256) -> None:
+        self.sfreq = sfreq
+        self._anchors: deque[tuple[int, float]] = deque(maxlen=keep)
+
+    def anchor(self, index: int, stamp: float) -> None:
+        self._anchors.append((index, stamp))
+
+    @property
+    def ready(self) -> bool:
+        return bool(self._anchors)
+
+    def place(self, stamp: float) -> int:
+        index, at = self._anchors[0]
+        for i, t in reversed(self._anchors):
+            if t <= stamp:
+                index, at = i, t
+                break
+        return index + round((stamp - at) * self.sfreq)
+
+
 def channel_labels(info: pylsl.StreamInfo) -> list[str]:
     labels: list[str] = []
     channel = info.desc().child("channels").child("channel")
@@ -77,6 +112,15 @@ class LslSource(Source):
             {"name": "timeout", "type": "float", "default": 10.0, "min": 0.1,
              "unit": "s", "advanced": True, "description": "How long to search"},
             _UNIT_PARAM,
+            {"name": "marker_stream", "type": "string", "default": "",
+             "description": "LSL marker stream to read with this signal (its "
+                            "markers start the Events rail)"},
+            {"name": "marker_type", "type": "string", "default": "",
+             "advanced": True, "description": "Type of the marker stream"},
+            {"name": "marker_wait", "type": "float", "default": 0.5, "min": 0.0,
+             "max": 30.0, "unit": "s", "advanced": True,
+             "description": "How long a labelled calibration waits after its "
+                            "last sample for markers still on their way"},
         ],
     )  # fmt: skip
     live: ClassVar[bool] = True
@@ -92,6 +136,17 @@ class LslSource(Source):
         self.first_index: int | None = None  # first counter value seen
         self.gaps = 0  # samples missing according to the index channel
         self.duplicates = 0
+        self._markers: pylsl.StreamInlet | None = None
+        self._clock: MarkerClock | None = None
+        self._waiting: list[tuple[str, float]] = []  # markers before any signal
+        self._events: list[Event] = []
+        self.markers = 0  # markers placed on the signal
+        self.markers_dropped = 0  # before the first sample, or without a label
+
+    @property
+    def event_wait(self) -> float:
+        wait = float(self.params["marker_wait"])
+        return wait if self.params["marker_stream"] else 0.0
 
     def open(self) -> None:
         if self._inlet is not None:
@@ -124,6 +179,25 @@ class LslSource(Source):
         )
         inlet.open_stream(timeout=float(self.params["timeout"]))
         self._inlet = inlet
+        self._clock = MarkerClock(sfreq)
+        if self.params["marker_stream"]:
+            self._markers = self._open_markers()
+
+    def _open_markers(self) -> pylsl.StreamInlet:
+        name = str(self.params["marker_stream"])
+        timeout = float(self.params["timeout"])
+        kind = str(self.params["marker_type"])
+        found = [s for s in pylsl.resolve_byprop("name", name, timeout=timeout)
+                 if not kind or s.type() == kind]  # fmt: skip
+        if not found:
+            raise TimeoutError(f"no LSL marker stream named {name!r} found")
+        inlet = pylsl.StreamInlet(
+            found[0],
+            max_buflen=30,
+            processing_flags=pylsl.proc_clocksync | pylsl.proc_dejitter,
+        )
+        inlet.open_stream(timeout=timeout)
+        return inlet
 
     @property
     def info(self) -> SignalInfo:
@@ -144,8 +218,34 @@ class LslSource(Source):
             self._check_index(chunk[:, self._index_col])
         data = chunk[:, self._keep].T * scale
         block = Block(data, self._info, self._next, float(stamps[0]))
+        if self._clock is not None:
+            self._clock.anchor(self._next, float(stamps[0]))
         self._next += data.shape[1]
+        self._pull_markers()
         return block
+
+    def _pull_markers(self) -> None:
+        if self._markers is None or self._clock is None:
+            return
+        samples, stamps = self._markers.pull_chunk(timeout=0.0)
+        self._waiting.extend(
+            (str(sample[0]).strip() if sample else "", float(stamp))
+            for sample, stamp in zip(samples, stamps, strict=True)
+        )
+        if not self._clock.ready:
+            return
+        for label, stamp in self._waiting:
+            index = self._clock.place(stamp)
+            if index < 0 or not label:
+                self.markers_dropped += 1
+                continue
+            self._events.append(Event(index, label))
+            self.markers += 1
+        self._waiting.clear()
+
+    def new_events(self) -> tuple[Event, ...]:
+        events, self._events = tuple(self._events), []
+        return events
 
     def _check_index(self, index: npt.NDArray[np.float64]) -> None:
         """Count missing and repeated samples from consecutive index steps."""
@@ -164,6 +264,9 @@ class LslSource(Source):
         if self._inlet is not None:
             self._inlet.close_stream()
             self._inlet = None
+        if self._markers is not None:
+            self._markers.close_stream()
+            self._markers = None
 
 
 class LslSink(Sink):

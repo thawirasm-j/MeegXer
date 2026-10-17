@@ -217,10 +217,11 @@ class Stage:
             raise ValueError(
                 f"{self.manifest.name} learns from labelled trials, but the "
                 "calibration data has no events (offline: the recording's events "
-                "or an events file; live markers are not supported yet)"
+                "or an events file; live: the LSL input's marker stream)"
             )
         selected = self._selected(calibration)
         if selected is None:
+            self._calibrating = False
             raise ValueError(
                 f"{self.manifest.name}: no channels of types {self.channel_types} "
                 "to fit on"

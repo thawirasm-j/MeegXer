@@ -31,7 +31,9 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
 8. **Align by sample index, match channels by label.** Every block carries a sample
    index, counted on the source's clock from its first sample, and an LSL timestamp.
    A node that changes the rate maps indices by the exact ratio of the rates, so
-   index / rate is the same time on both sides. Probes overlay by index, never by
+   index / rate is the same time on both sides. Markers from a separate stream are
+   placed on the signal's sample index once, at the inlet, from their LSL timestamp;
+   downstream, events align by index only. Probes overlay by index, never by
    arrival time; the GUI shows time (live: seconds before now, or since the start).
 9. **Plugins are untrusted code; only host Sinks act.** A plugin runs in its own
    process and speaks the stdin/stdout framed binary protocol. It emits Events only;

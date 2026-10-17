@@ -433,6 +433,11 @@ def status(
         lat = result["latency"]
         typer.echo(f"latency ms: mean {lat['mean_ms']:.1f}  p95 {lat['p95_ms']:.1f}"
                    f"  max {lat['max_ms']:.1f}")  # fmt: skip
+    if result.get("input_events") or "source_markers" in result:
+        typer.echo(f"events: {result.get('input_events', 0)} from the input"
+                   f"  late: {result.get('events_late', 0)}"
+                   + (f"  markers dropped: {result['source_markers_dropped']}"
+                      if result.get("source_markers_dropped") else ""))  # fmt: skip
     for node in result.get("nodes", []):
         timing = node.get("timing") or {}
         mean = f"{timing['mean_ms']:.3f} ms" if timing else "-"

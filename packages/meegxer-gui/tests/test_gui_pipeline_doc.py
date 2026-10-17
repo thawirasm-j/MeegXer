@@ -275,6 +275,19 @@ def test_events_rail_comes_from_the_input_and_csp_needs_it(doc: PipelineDoc) -> 
     assert (events.producer, events.readers, needs) == ("input", [csp.id], {})
 
 
+def test_a_live_lsl_input_with_markers_starts_the_events_rail(
+    doc: PipelineDoc,
+) -> None:
+    doc.set_source("meegxer.core.lsl_in")
+    csp = doc.insert(len(doc.strips), "meegxer.nodes.csp")
+    assert doc.rails()[1] == {csp.id: "Events"}
+    assert doc.source is not None
+    doc.source.params["marker_stream"] = "PsychoPy markers"
+    rails, needs = doc.rails()
+    events = next(r for r in rails if r.kind == "events")
+    assert (events.readers, needs) == ([csp.id], {})
+
+
 def test_a_chosen_input_is_saved_loaded_and_dropped_with_its_strip(
     doc: PipelineDoc,
 ) -> None:
