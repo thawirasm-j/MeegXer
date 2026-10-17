@@ -15,7 +15,7 @@ jobs:
     name: Lint, types, architecture contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --locked --all-packages --python 3.14
       - run: uv run --frozen ruff check .
@@ -34,7 +34,7 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen  # GUI tests run headless
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - name: Qt system libraries
         if: runner.os == 'Linux'
@@ -46,7 +46,7 @@ jobs:
     name: Release build (all packages, stamped version)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - run: python3 tools/set_version.py 0.0.1.dev0  # as the release workflow does
       - run: uv build --all-packages --out-dir dist
@@ -56,7 +56,7 @@ jobs:
     name: Reference plugins in the container sandbox
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - name: Build reference plugin images
         working-directory: packages/meegxer-plugins
@@ -87,7 +87,7 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - name: Qt system libraries
         if: runner.os == 'Linux'
