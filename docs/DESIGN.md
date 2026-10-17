@@ -278,6 +278,16 @@ it never interrupts processing.
   comparison probes thin and faded; overlay, difference and spectrum modes; bypassed
   data hatched. A button opens stacked traces (EEGLAB-scroll style) in a separate
   window that follows the same probes.
+- **Settings:** preferences in `settings.json` and the remembered view in
+  `state.json`, in the user's config folder (`meegxer.core.settings`, pure Python so
+  the daemon and CLI read them too; `docs/SETTINGS.md`). A dialog (⚙, Ctrl+,) with
+  General, Appearance (theme incl. "system" and theme files, text size),
+  Visualization (colour maps, fixed in every theme unless flipped on light themes;
+  view defaults), Data & storage (offline folder and cache, dialog start folders)
+  and Plugins & privacy (the plugin list through `meegxer-plugin list --json`, rule 9).
+  Changes preview live; OK keeps, Cancel reverts. A view's last state wins over its
+  default until that default changes or the remembered view is forgotten. Settings
+  never enter pipelines, sessions or provenance.
 - **Spectrum head plot:** spectrum mode puts a square head plot left of the
   spectra (`gui/headplot.py`), for the Main tap, drawn as a topomap: filled contour
   bands with lines. The band is a shaded region on the spectrum (drag it or its

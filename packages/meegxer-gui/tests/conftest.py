@@ -14,6 +14,15 @@ def free_endpoint() -> str:
         return f"tcp://127.0.0.1:{s.getsockname()[1]}"
 
 
+@pytest.fixture(autouse=True)
+def own_config(tmp_path, monkeypatch):
+    """Each test (and the daemon it starts) gets empty settings and state, so a
+    window never reopens what another test left behind."""
+    folder = tmp_path / "config"
+    monkeypatch.setenv("MEEGXER_CONFIG_DIR", str(folder))
+    return folder
+
+
 @pytest.fixture(scope="session")
 def qapp():
     from PySide6.QtWidgets import QApplication

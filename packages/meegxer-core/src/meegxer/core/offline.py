@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from meegxer.core import settings
 from meegxer.core.batch import BatchScheduler
 from meegxer.core.block import Block, SignalInfo
 from meegxer.core.cache import DirectoryCache
@@ -44,13 +45,15 @@ _job_numbers = itertools.count(1)
 
 
 def offline_dir() -> Path:
-    """Where offline runs keep their files (``MEEGXER_OFFLINE_DIR`` overrides)."""
-    root = os.environ.get("MEEGXER_OFFLINE_DIR")
+    """Where offline runs keep their files: ``MEEGXER_OFFLINE_DIR``, else the
+    ``storage.offline_dir`` setting, else the system temp folder."""
+    root = settings.resolve("storage.offline_dir", "MEEGXER_OFFLINE_DIR")
     return Path(root) if root else Path(tempfile.gettempdir()) / "meegxer-offline"
 
 
 def _cache_cap_bytes() -> int:
-    return int(float(os.environ.get("MEEGXER_OFFLINE_CACHE_GB", "5")) * 1e9)
+    gb = settings.resolve("storage.cache_gb", "MEEGXER_OFFLINE_CACHE_GB")
+    return int(float(gb) * 1e9)
 
 
 class ProbeStore:

@@ -59,6 +59,7 @@ class RecordingWindow(QWidget):
         super().__init__()
         self.call = call
         self.theme = theme
+        self.start_dir: Callable[[], str] = lambda: ""  # where file pickers open
         self.setWindowTitle("MeegXer · recording")
         self.resize(980, 640)
         self.entry: dict[str, Any] = {}
@@ -427,7 +428,8 @@ class RecordingWindow(QWidget):
                 box.setChecked(bad)
 
     def _browse_lookup(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Channel locations file", "",
+        path, _ = QFileDialog.getOpenFileName(self, "Channel locations file",
+                                              self.start_dir(),
                                               "Locations (*)")  # fmt: skip
         if path:
             self.lookup_source.setCurrentText(path)
@@ -473,13 +475,15 @@ class RecordingWindow(QWidget):
         )  # fmt: skip
 
     def _browse_montage(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Montage file", "", "Montage (*)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Montage file", self.start_dir(), "Montage (*)"
+        )
         if path:
             self.montage.setCurrentText(path)
 
     def _browse_events(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Events file", "", "Events (*.tsv *.csv *.txt)"
+            self, "Events file", self.start_dir(), "Events (*.tsv *.csv *.txt)"
         )
         if path:
             self.events_file.setText(path)

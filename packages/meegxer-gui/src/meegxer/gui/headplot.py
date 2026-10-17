@@ -6,7 +6,8 @@ ring, so they read apart from the map's colours. The map is a smooth (C1,
 Clough-Tocher) interpolation over the electrodes, extrapolated to the head's edge
 through virtual points on a ring outside it (each the mean of its nearest
 electrodes, as MNE's ``extrapolate="head"`` does), and clipped to the electrodes'
-own range so it never overshoots. It is drawn as filled contour bands with lines.
+own range so it never overshoots. It is drawn as filled contour bands with lines,
+in the colour maps chosen in Settings (``colormaps.Maps``).
 
 Colour schemes (``SCHEMES``):
 
@@ -46,6 +47,7 @@ from PySide6.QtWidgets import QToolTip, QWidget
 from scipy.interpolate import CloughTocher2DInterpolator
 from scipy.spatial import Delaunay, QhullError, cKDTree
 
+from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import RGB, channel_style, position
 from meegxer.gui.theme import Theme
 
@@ -73,95 +75,7 @@ GRID = 200  # map resolution (pixels per side)
 RING = 24  # virtual points on the extrapolation ring
 
 
-# -- colour -------------------------------------------------------------------------
-
-
-def srgb_to_oklab(rgb: npt.ArrayLike) -> FloatArray:
-    """sRGB (0-255, ``(..., 3)``) to OKLab."""
-    c = np.asarray(rgb, dtype=float) / 255.0
-    lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
-    m1 = np.array(
-        [
-            [0.4122214708, 0.5363325363, 0.0514459929],
-            [0.2119034982, 0.6806995451, 0.1073969566],
-            [0.0883024619, 0.2817188376, 0.6299787005],
-        ]
-    )
-    m2 = np.array(
-        [
-            [0.2104542553, 0.7936177850, -0.0040720468],
-            [1.9779984951, -2.4285922050, 0.4505937099],
-            [0.0259040371, 0.7827717662, -0.8086757660],
-        ]
-    )
-    return np.asarray(np.cbrt(lin @ m1.T) @ m2.T, dtype=float)
-
-
-def oklab_to_srgb(lab: npt.ArrayLike) -> npt.NDArray[np.uint8]:
-    """OKLab (``(..., 3)``) to sRGB bytes, clipped to the gamut."""
-    lab = np.asarray(lab, dtype=float)
-    lightness, a, b = lab[..., 0], lab[..., 1], lab[..., 2]
-    l_ = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
-    m_ = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
-    s_ = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
-    lin = np.stack(
-        [
-            4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
-            -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
-            -0.0041960863 * l_ - 0.7034186147 * m_ + 1.7076147010 * s_,
-        ],
-        axis=-1,
-    ).clip(0.0, 1.0)
-    enc = np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * lin ** (1 / 2.4) - 0.055)
-    return np.asarray(np.round(enc * 255), dtype=np.uint8)
-
-
-def _lch(lightness: float, chroma: float, hue_deg: float) -> FloatArray:
-    h = math.radians(hue_deg)
-    return np.array([lightness, chroma * math.cos(h), chroma * math.sin(h)])
-
-
-def _background(theme: Theme) -> FloatArray:
-    return srgb_to_oklab(_hex(theme.plot_background))
-
-
-def _rgb(values: npt.NDArray[np.uint8]) -> RGB:
-    return (int(values[0]), int(values[1]), int(values[2]))
-
-
-def _hex(color: str) -> RGB:
-    c = color.lstrip("#")
-    return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
-
-
-def heat_colors(s: FloatArray, theme: Theme) -> FloatArray:
-    """Sequential: dim violet to bright yellow on a dark theme, pale yellow to
-    deep violet on a light one (more is further from the background)."""
-    s = np.clip(s, 0.0, 1.0)[..., None]
-    lo, hi = (_lch(0.38, 0.11, 300), _lch(0.93, 0.16, 95))
-    if not theme.dark:
-        lo, hi = (_lch(0.94, 0.09, 95), _lch(0.32, 0.15, 290))
-    return np.asarray(lo + s * (hi - lo), dtype=float)
-
-
-def diverging_colors(s: FloatArray, theme: Theme) -> FloatArray:
-    """-1 (blue, removed) through the background (0) to +1 (red, added)."""
-    bg = _background(theme)
-    light = 0.72 if theme.dark else 0.55
-    neg, pos = _lch(light, 0.15, 255), _lch(light, 0.17, 28)
-    s = np.clip(s, -1.0, 1.0)[..., None]
-    end = np.where(s < 0, neg, pos)
-    return np.asarray(bg + np.abs(s) * (end - bg), dtype=float)
-
-
-def peak_colors(s: FloatArray, theme: Theme) -> FloatArray:
-    """0 (the band's low edge, blue) through green and yellow to 1 (red)."""
-    light = 0.76 if theme.dark else 0.58
-    hue = 255.0 - 225.0 * np.clip(s, 0.0, 1.0)
-    h = np.radians(hue)
-    return np.stack(
-        [np.full_like(h, light), 0.13 * np.cos(h), 0.13 * np.sin(h)], axis=-1
-    )
+# -- scales -----------------------------------------------------------------------
 
 
 def nice_step(x: float) -> float:
@@ -479,9 +393,12 @@ def render(
     theme: Theme,
     cache: dict[tuple[object, ...], Layout] | None = None,
     hold: Callable[[float], float] | None = None,
+    maps: Maps | None = None,
 ) -> HeadMap | str:
     """The head map for one refresh, or why there is none. ``hold`` maps the
-    heat map's maximum (dB) to the top of its scale (live: a ``PeakHold``)."""
+    heat map's maximum (dB) to the top of its scale (live: a ``PeakHold``);
+    ``maps`` are the colour maps (Settings → Visualization)."""
+    maps = maps or Maps()
     xy = electrode_xy(data.labels, data.wheel)
     unplaced = [lb for lb in data.labels if lb not in xy]
     if len(xy) < 3:
@@ -531,7 +448,7 @@ def render(
         n = math.ceil(span / step - 1e-9)
         edges = step * np.arange(-n, n + 1, dtype=float)
         centres = (edges[:-1] + edges[1:]) / 2 / (n * step)
-        colors = diverging_colors(centres, theme)
+        band_rgb = maps.diverging_rgb(centres, theme)
         bold = [0.0]
         scale = (f"−{n * step:g} dB", f"+{n * step:g} dB")  # noqa: RUF001
         caption = f"Change vs. the comparison tap, {step:g} dB steps"
@@ -540,7 +457,7 @@ def render(
         start = math.floor(lo / step) * step
         edges = np.arange(start, hi + step, step, dtype=float)
         centres = ((edges[:-1] + edges[1:]) / 2 - lo) / (hi - lo)
-        colors = peak_colors(centres, theme)
+        band_rgb = maps.peak_rgb(centres, theme)
         scale = (f"{edges[0]:g} Hz", f"{edges[-1]:g} Hz")
         caption = f"Peak frequency in the band, {step:g} Hz steps"
     else:
@@ -548,13 +465,12 @@ def render(
         top = max(top, hold(top)) if hold is not None else top
         n = max(1, round(data.db_range / HEAT_STEP))
         edges = top - HEAT_STEP * np.arange(n, -1, -1, dtype=float)
-        colors = heat_colors((np.arange(n) + 0.5) / n, theme)
+        band_rgb = maps.sequential_rgb((np.arange(n) + 0.5) / n, theme)
         scale = (f"−{n * HEAT_STEP:g} dB", "max")  # noqa: RUF001
         what = "Relative band power" if data.relative else "Band power"
         caption = f"{what}, {HEAT_STEP:g} dB steps"
 
     band_index, filled = _bands(grid, edges)
-    band_rgb = oklab_to_srgb(colors)
     rgba = np.zeros((*grid.shape, 4), dtype=np.uint8)
     rgba[filled, :3] = band_rgb[band_index[filled]]
     rgba[filled, 3] = 255
@@ -586,7 +502,7 @@ def render(
             text += " (hidden)"
         color = channel_style(lb, theme, data.wheel).color
         electrodes.append(Electrode(lb, x, y, color, bool(valid[i]), text))
-    ramp = [_rgb(rgb) for rgb in band_rgb]
+    ramp = [(int(r), int(g), int(b)) for r, g, b in band_rgb]
     return HeadMap(lay.extent, lay.radius, rgba, lines, electrodes, unplaced,
                    (scale[0], scale[1], ramp), caption)  # fmt: skip
 

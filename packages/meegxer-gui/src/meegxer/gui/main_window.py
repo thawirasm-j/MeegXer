@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import QByteArray, Qt, QTimer
+from PySide6.QtGui import QCloseEvent, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from meegxer.core import settings as core_settings
 from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame
 from meegxer.core.graph import positions_message
@@ -41,6 +42,7 @@ from meegxer.core.notices import LOCAL_CODE_NOTICE
 from meegxer.core.session import is_session, read_session, write_session
 from meegxer.gui.buffers import ProbeBuffer
 from meegxer.gui.chain import ChainView
+from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import wheel_positions
 from meegxer.gui.connection import DaemonLink
 from meegxer.gui.inspector import Inspector
@@ -48,6 +50,7 @@ from meegxer.gui.labels import param_label
 from meegxer.gui.names import title
 from meegxer.gui.pipeline_doc import LIVE_ONLY_SOURCES, PipelineDoc, tap_id
 from meegxer.gui.recording_window import RecordingWindow
+from meegxer.gui.settings_dialog import SettingsDialog
 from meegxer.gui.signal_view import Panner, SignalView, StackedWindow, Window
 from meegxer.gui.theme import Theme, load_theme, stylesheet
 from meegxer.gui.wheel import install_wheel_guard
@@ -58,14 +61,38 @@ DEFAULT_CHAIN: list[tuple[str, dict[str, Any]]] = [
 ]
 
 
+def resolve_theme(name: str) -> Theme:
+    """A theme setting: ``dark``, ``light``, ``system`` (the operating system's
+    choice) or a theme file (dark when it cannot be read)."""
+    if name == "system":
+        hints = QGuiApplication.styleHints()
+        name = "light" if hints.colorScheme() == Qt.ColorScheme.Light else "dark"
+    try:
+        return load_theme(name)
+    except (OSError, ValueError, KeyError, TypeError):
+        return load_theme("dark")
+
+
 class MainWindow(QMainWindow):
     def __init__(
-        self, link: DaemonLink, theme: Theme | None = None, *, owns_daemon: bool = False
+        self,
+        link: DaemonLink,
+        theme: Theme | None = None,
+        *,
+        owns_daemon: bool = False,
+        settings: dict[str, Any] | None = None,
+        state: dict[str, Any] | None = None,
     ) -> None:
         super().__init__()
         self.link = link
         self.owns_daemon = owns_daemon
-        self.theme = theme or load_theme("dark")
+        # preferences (settings.json) and what was remembered (state.json)
+        self.settings = (
+            settings if settings is not None else core_settings.load_settings()
+        )
+        self.state = state if state is not None else core_settings.load_state()
+        self.scale = self.settings["appearance"]["scale"] / 100
+        self.theme = theme or resolve_theme(self.settings["appearance"]["theme"])
         self.doc = PipelineDoc(link.call("list_nodes"))
         self.buffers: dict[str, ProbeBuffer] = {}
         self.taps: dict[str, str] = {}
@@ -83,6 +110,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("MeegXer")
         self.resize(1440, 900)
         self._build()
+        self._apply_view_settings()
         self._load_initial()
         link.status.connect(self.on_status)
         link.frame.connect(self.on_frame)
@@ -149,6 +177,8 @@ class MainWindow(QMainWindow):
         self.stacked = StackedWindow(self.theme)
         self.stacked.closed.connect(self._stacked_closed)
         self.recording_window = RecordingWindow(self.call, self.theme)
+        self.recording_window.start_dir = lambda: self._start_dir("data_dir")
+        QShortcut(QKeySequence("Ctrl+,"), self, self.open_settings)
         self.recording_window.applied.connect(self.apply_recording)
 
     def _top_bar(self) -> QWidget:
@@ -195,6 +225,10 @@ class MainWindow(QMainWindow):
         self.theme_btn.setToolTip("Switch between dark and light themes")
         self.theme_btn.clicked.connect(self.toggle_theme)
         lay.addWidget(self.theme_btn)
+        settings_btn = QPushButton("⚙")
+        settings_btn.setToolTip("Settings (Ctrl+,)")
+        settings_btn.clicked.connect(self.open_settings)
+        lay.addWidget(settings_btn)
         return bar
 
     # -- helpers ----------------------------------------------------------------------
@@ -213,18 +247,113 @@ class MainWindow(QMainWindow):
         self.theme = theme
         app = QApplication.instance()
         if isinstance(app, QApplication):
-            app.setStyleSheet(stylesheet(theme))
+            app.setStyleSheet(stylesheet(theme, self.scale))
         self.view.apply_theme(theme)
         self.inspector.apply_theme(theme)
         self.stacked.apply_theme(theme)
-        self.stacked.setStyleSheet(stylesheet(theme))
+        self.stacked.setStyleSheet(stylesheet(theme, self.scale))
         self.recording_window.theme = theme
-        self.recording_window.setStyleSheet(stylesheet(theme))
+        self.recording_window.setStyleSheet(stylesheet(theme, self.scale))
         self.theme_btn.setText("☀" if theme.dark else "☾")
         self.refresh_chain()
 
     def toggle_theme(self) -> None:
-        self.apply_theme(load_theme("light" if self.theme.dark else "dark"))
+        """The quick switch: the same as choosing the theme in Settings."""
+        name = "light" if self.theme.dark else "dark"
+        self.settings["appearance"]["theme"] = name
+        try:
+            core_settings.save_settings(self.settings)
+        except (OSError, ValueError) as exc:
+            self.log(f"Could not save the theme: {exc}")
+        self.apply_theme(load_theme(name))
+
+    # -- settings ---------------------------------------------------------------------
+
+    def _apply_view_settings(self) -> None:
+        """Defaults from the settings, then what was remembered on top."""
+        vis = self.settings["visualization"]
+        self.view.maps = Maps.from_settings(vis)
+        self.view.set_view_state({"span": vis["span"], "spectrum": vis["spectrum"]})
+        self.view.set_view_state(self.state.get("view", {}))
+        self.set_advanced(
+            bool(self.state.get("advanced", self.settings["general"]["advanced"]))
+        )
+        geometry = self.state.get("geometry")
+        if isinstance(geometry, str):
+            self.restoreGeometry(QByteArray.fromBase64(geometry.encode()))
+
+    def open_settings(self) -> None:
+        dialog = SettingsDialog(self.settings, self.theme, self)
+        dialog.setStyleSheet(stylesheet(self.theme, self.scale))
+        dialog.changed.connect(self._preview_settings)
+        dialog.forget_requested.connect(self.forget_view)
+        dialog.add_script_requested.connect(
+            lambda: self.add_script(len(self.doc.strips))
+        )
+        if dialog.exec():
+            self.accept_settings(dialog.settings())
+
+    def _preview_settings(self, settings: dict[str, Any]) -> None:
+        """Show appearance and colour choices while the dialog is open."""
+        self.scale = settings["appearance"]["scale"] / 100
+        self.apply_theme(resolve_theme(settings["appearance"]["theme"]))
+        self.view.maps = Maps.from_settings(settings["visualization"])
+
+    def accept_settings(self, settings: dict[str, Any]) -> None:
+        """Keep new settings: save them, and let a changed default replace what
+        was remembered for it."""
+        old, self.settings = self.settings, settings
+        try:
+            path = core_settings.save_settings(settings)
+            self.log(f"Settings saved to {path}.")
+        except (OSError, ValueError) as exc:
+            self.log(f"Could not save the settings: {exc}")
+        self._preview_settings(settings)
+        if settings["general"]["advanced"] != old["general"]["advanced"]:
+            self.state.pop("advanced", None)
+            self.set_advanced(settings["general"]["advanced"])
+        vis, before = settings["visualization"], old["visualization"]
+        view = self.state.setdefault("view", {})
+        if vis["span"] != before["span"]:
+            view.pop("span", None)
+            self.view.set_view_state({"span": vis["span"]})
+        changed = {k: v for k, v in vis["spectrum"].items()
+                   if before["spectrum"].get(k) != v}  # fmt: skip
+        if changed:
+            for key in changed:
+                view.get("spectrum", {}).pop(key, None)
+            self.view.set_view_state({"spectrum": changed})
+
+    def forget_view(self) -> None:
+        """Forget what was remembered and go back to the settings' defaults."""
+        self.state = {}
+        core_settings.clear_state()
+        vis = self.settings["visualization"]
+        self.view.set_view_state({"span": vis["span"], "spectrum": vis["spectrum"],
+                                  "head": True})  # fmt: skip
+        self.set_advanced(self.settings["general"]["advanced"])
+        self.log("Forgot the remembered view; using the settings' defaults.")
+
+    def _start_dir(self, kind: str = "output_dir") -> str:
+        """Where a file dialog opens: the last folder used, else the setting."""
+        storage = self.settings["storage"]
+        if kind == "data_dir" and storage.get("data_dir"):
+            return str(self.state.get("last_data_dir") or storage["data_dir"])
+        return str(self.state.get("last_dir") or storage.get("output_dir") or "")
+
+    def _remember_file(self, path: str, pipeline: bool = False) -> None:
+        self.state["last_dir"] = str(Path(path).parent)
+        if pipeline:
+            self.state["last_pipeline"] = str(Path(path).resolve())
+
+    def save_state(self) -> None:
+        self.state["view"] = self.view.view_state()
+        self.state["advanced"] = self.advanced
+        self.state["geometry"] = bytes(self.saveGeometry().toBase64().data()).decode()
+        try:
+            core_settings.save_state(self.state)
+        except OSError as exc:
+            print(f"MeegXer: could not remember the view: {exc}", file=sys.stderr)
 
     def refresh_chain(self) -> None:
         self.chain.rebuild(
@@ -295,9 +424,25 @@ class MainWindow(QMainWindow):
                 self.log(f"Could not show the daemon's pipeline: {exc}")
                 pipeline = None
         if not pipeline:
+            last = self.state.get("last_pipeline")
+            if (
+                self.settings["general"]["reopen_last"]
+                and last
+                and Path(last).is_file()
+            ):
+                try:
+                    data = json.loads(Path(last).read_text(encoding="utf-8"))
+                    self.doc.load_pipeline(data.get("pipeline", data)
+                                           if is_session(data) else data)  # fmt: skip
+                    pipeline = data
+                    self.log(f"Reopened {last}.")
+                except (OSError, ValueError, KeyError) as exc:
+                    self.log(f"Could not reopen {last}: {exc}")
+        if not pipeline:
             self.doc.set_source("meegxer.core.synthetic")
             for node, params in DEFAULT_CHAIN:
                 self.doc.insert(len(self.doc.strips), node).params.update(params)
+            self.doc.input_mode = self.settings["general"]["start_mode"]
         self._default_taps()
         self.refresh_chain()
 
@@ -339,10 +484,11 @@ class MainWindow(QMainWindow):
         never imports plugin code, rule 9), then insert it at ``index``."""
         if path is None:
             path, _ = QFileDialog.getOpenFileName(
-                self, "Add a custom script", "", "Python scripts (*.py)"
+                self, "Add a custom script", self._start_dir(), "Python scripts (*.py)"
             )
             if not path:
                 return
+            self._remember_file(path)
         if not self._accept_local_code(Path(path).name):
             self.log("Custom script not added (the notice was not accepted).")
             return
@@ -585,11 +731,12 @@ class MainWindow(QMainWindow):
     def open_pipeline(self) -> None:
         """Open a pipeline, or a session (``*.meegxer.json``) with its models."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open pipeline or session", "",
+            self, "Open pipeline or session", self._start_dir(),
             "Pipeline or session (*.json);;MeegXer session (*.meegxer.json)",
         )  # fmt: skip
         if not path:
             return
+        self._remember_file(path, pipeline=True)
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
             if is_session(data):
@@ -641,11 +788,12 @@ class MainWindow(QMainWindow):
         """Save what is shown as a session, with the models fitted by the last
         offline run (offline mode) or calibrated live."""
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save session", "session.meegxer.json",
+            self, "Save session", str(Path(self._start_dir()) / "session.meegxer.json"),
             "MeegXer session (*.meegxer.json)",
         )  # fmt: skip
         if not path:
             return
+        self._remember_file(path, pipeline=True)
         if path.endswith(".meegxer"):
             path += ".json"
         elif not path.endswith(".json"):
@@ -671,9 +819,13 @@ class MainWindow(QMainWindow):
 
     def save_pipeline(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save pipeline", "pipeline.json", "Pipeline (*.json)"
+            self,
+            "Save pipeline",
+            str(Path(self._start_dir()) / "pipeline.json"),
+            "Pipeline (*.json)",
         )
         if path:
+            self._remember_file(path, pipeline=True)
             text = json.dumps(self.doc.to_pipeline(taps=False), indent=2)
             Path(path).write_text(text + "\n", encoding="utf-8")
             self.log(f"Saved {path}.")
@@ -922,7 +1074,29 @@ class MainWindow(QMainWindow):
         self.view.set_active(True)
         self.timeline.setEnabled(True)
 
+    def _confirm_close(self) -> str:
+        """While running: "stop", "keep" (running in the daemon) or "cancel"."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Close MeegXer")
+        box.setText("The pipeline is running.")
+        box.setInformativeText("Stop it, or keep it running in the processing "
+                               "engine after the window closes?")  # fmt: skip
+        stop = box.addButton("Stop and close", QMessageBox.ButtonRole.AcceptRole)
+        keep = box.addButton("Keep running", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        return "stop" if clicked is stop else "keep" if clicked is keep else "cancel"
+
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self.running and self.settings["general"]["confirm_quit_running"]:
+            choice = self._confirm_close()
+            if choice == "cancel":
+                event.ignore()
+                return
+            if choice == "stop":
+                self.stop()
+        self.save_state()
         self._render.stop()
         self.stacked.close()
         self.recording_window.close()

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thawirasm-j/MeegXer/core/schema/settings.schema.json",
+  "title": "MeegXer user settings",
+  "description": "Preferences of one user (settings.json in the MeegXer config folder). Personal choices only: nothing here changes what a pipeline computes, so none of it goes into pipelines, sessions or provenance. See docs/SETTINGS.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": 1},
+    "general": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_mode": {
+          "description": "The input mode a new pipeline starts in.",
+          "enum": ["live", "offline"]
+        },
+        "advanced": {
+          "description": "Start in advanced mode (every setting shown) instead of friendly mode.",
+          "type": "boolean"
+        },
+        "reopen_last": {
+          "description": "Open the last pipeline when the daemon has none loaded.",
+          "type": "boolean"
+        },
+        "daemon": {
+          "description": "Control endpoint of the daemon the GUI connects to (or starts).",
+          "type": "string",
+          "pattern": "^(tcp|ipc|inproc)://.+"
+        },
+        "confirm_quit_running": {
+          "description": "Ask what to do with a running pipeline when the window closes.",
+          "type": "boolean"
+        }
+      }
+    },
+    "appearance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "theme": {
+          "description": "dark, light, system (follow the operating system) or the path of a theme JSON file.",
+          "type": "string",
+          "minLength": 1
+        },
+        "scale": {
+          "description": "Interface text size, in percent.",
+          "enum": [90, 100, 110, 125, 150]
+        }
+      }
+    },
+    "visualization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequential": {
+          "description": "Colour map for magnitudes (the head plot's heat map).",
+          "enum": ["viridis", "cividis", "inferno", "magma", "plasma", "turbo", "meegxer"]
+        },
+        "diverging": {
+          "description": "Colour map for signed changes (the head plot's change map).",
+          "enum": ["blue-white-red", "blue-black-red", "meegxer"]
+        },
+        "peak": {
+          "description": "Colour map for frequencies (the head plot's peak-frequency map).",
+          "enum": ["viridis", "cividis", "inferno", "magma", "plasma", "turbo", "meegxer"]
+        },
+        "flip_on_light": {
+          "description": "Reverse the sequential and frequency maps on a light theme, so more is darker. Maps are the same in every theme by default.",
+          "type": "boolean"
+        },
+        "span": {
+          "description": "Default time span of the signal view, in seconds.",
+          "enum": [2, 5, 10, 20, 30]
+        },
+        "spectrum": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "band": {
+              "description": "Default head-plot band [low, high] in Hz.",
+              "type": "array",
+              "items": {"type": "number", "minimum": 0},
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "relative": {"type": "boolean"},
+            "scheme": {"enum": ["heat", "change", "peak"]},
+            "range": {"enum": [10, 20, 30]},
+            "smoothing": {
+              "description": "Time constant (s) of the live spectrum smoothing; 0 is off.",
+              "enum": [0, 1, 2, 5, 10]
+            }
+          }
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "offline_dir": {
+          "description": "Where offline runs keep their files (empty: the system temp folder). MEEGXER_OFFLINE_DIR overrides it.",
+          "type": "string"
+        },
+        "cache_gb": {
+          "description": "Cap of the offline processor-output cache, in GB. MEEGXER_OFFLINE_CACHE_GB overrides it.",
+          "type": "number",
+          "minimum": 0
+        },
+        "output_dir": {
+          "description": "Folder file dialogs start in when there is no last-used folder (empty: the working folder).",
+          "type": "string"
+        },
+        "data_dir": {
+          "description": "Where your recordings live (e.g. a BIDS dataset): file dialogs for recording files (channel locations, montages, events) start there (empty: the last-used folder).",
+          "type": "string"
+        }
+      }
+    }
+  }
+}
