@@ -206,3 +206,36 @@ def test_scripts_and_plugins_are_grouped_as_custom(doc: PipelineDoc) -> None:
     assert doc.group_label("script.notch") == "Custom preprocessing"
     assert doc.group_label("lab.bp") == "Custom feature extraction"
     assert not doc.is_custom("meegxer.nodes.notch")
+
+
+def test_the_add_strip_menu_is_grouped_by_category(doc: PipelineDoc) -> None:
+    script = {**doc.manifest("meegxer.nodes.notch"), "name": "script.notch",
+              "origin": "custom", "category": "filters"}  # fmt: skip
+    plugin = {**doc.manifest("meegxer.nodes.band_power"), "name": "lab.bp",
+              "origin": "plugin", "category": "my-measures"}  # fmt: skip
+    loose = {**doc.manifest("meegxer.nodes.notch"), "name": "script.loose",
+             "origin": "custom", "category": ""}  # fmt: skip
+    doc.set_manifests([*doc.manifests.values(), script, plugin, loose])
+    sections = dict(doc.palette_sections())
+    assert list(sections) == ["Preprocessing", "Feature extraction", "Output"]
+    pre = dict(sections["Preprocessing"])
+    assert list(pre)[:3] == ["Filters", "Reference & channels", "Artifacts"]
+    assert list(pre)[-1] == "Other"  # no category: last
+    filters = pre["Filters"]
+    assert filters[-1] == "script.notch"  # built-ins first, then the user's
+    assert "meegxer.nodes.fir_filter" in filters
+    assert pre["Other"] == ["script.loose"]
+    features = dict(sections["Feature extraction"])
+    assert list(features)[-1] == "My measures"  # unknown categories after known
+    assert dict(sections["Output"])["Files"][0].startswith("meegxer.core.")
+    assert doc.mark("script.notch") == "✎" and doc.mark("lab.bp") == "⬡"
+    assert doc.mark("meegxer.nodes.notch") == ""
+
+
+def test_a_node_can_process_more_than_eeg_by_default(doc: PipelineDoc) -> None:
+    strip = doc.insert(len(doc.strips), "meegxer.nodes.eog_regression")
+    assert doc.default_types(strip) == ["eeg", "eog"]
+    assert doc.processed_types(strip) == ["eeg", "eog"]
+    assert "channel_types" not in doc.to_pipeline(taps=False)["nodes"][-1]  # default
+    strip.channel_types = ["eeg"]  # narrower than the node's default: saved
+    assert doc.to_pipeline(taps=False)["nodes"][-1]["channel_types"] == ["eeg"]

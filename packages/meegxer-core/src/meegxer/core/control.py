@@ -59,6 +59,8 @@ def manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
         "authors": list(manifest.authors),
         "references": [r.as_dict() for r in manifest.references],
         "license": manifest.license,
+        "category": manifest.category,
+        "channel_types": list(manifest.channel_types or ("eeg",)),
         "live_params": sorted(manifest.live_params),
         "inputs": [{"name": p.name, "type": p.type.value} for p in manifest.inputs],
         "outputs": [{"name": p.name, "type": p.type.value} for p in manifest.outputs],

@@ -511,39 +511,47 @@ class ChainView(QScrollArea):
 
     def _palette(self, index: int) -> None:
         """Pick a node to insert; nodes that cannot run in this mode are greyed."""
+        menu = self.build_palette(index)
+        if menu is not None:
+            menu.exec(self.mapToGlobal(self.rect().center()))
+
+    def build_palette(self, index: int) -> QMenu | None:
+        """The add-strip menu: each group by category (submenus), the user's own
+        nodes marked ✎ (unsandboxed) or ⬡ (container plugin)."""
         doc = self._doc
         if doc is None:
-            return
+            return None
         menu = QMenu(self)
-        groups = {
-            "preprocess": "● Preprocessing",
-            "features": "◆ Feature extraction",
-            "output": "▶ Outputs",
-        }
-
-        def add(heading: str, nodes: list[dict[str, Any]]) -> None:
-            if not nodes:
-                return
-            section = menu.addSection(heading)
-            section.setEnabled(False)
-            for m in nodes:
-                problem = doc.incompatibility(m["name"])
-                label = title(m["name"])
-                action = menu.addAction(label + (f"   ({problem})" if problem else ""))
-                action.setToolTip(m.get("description", ""))
-                action.setEnabled(problem is None)
-                action.triggered.connect(
-                    lambda _=False, n=m["name"]: self.insert_requested.emit(index, n)
-                )
-
-        palette = doc.nodes_for_palette()
-        for custom in (False, True):  # built-ins first, then scripts and plugins
-            for group, heading in groups.items():
-                nodes = [m for m in palette if doc.group(m["name"]) == group
-                         and doc.is_custom(m["name"]) == custom]  # fmt: skip
-                if custom:  # "✎ Custom preprocessing"
-                    heading = f"✎ Custom {heading[2:].lower()}"
-                add(heading, nodes)
+        marks = {"Preprocessing": "●", "Feature extraction": "◆", "Output": "▶"}
+        for i, (heading, categories) in enumerate(doc.palette_sections()):
+            if i:
+                menu.addSeparator()
+            # a bold, inert heading (menu sections do not show text in every style)
+            head = menu.addAction(f"{marks.get(heading, '')} {heading}".strip())
+            font = head.font()
+            font.setBold(True)
+            head.setFont(font)
+            head.setEnabled(False)
+            for label, names in categories:
+                sub = menu.addMenu(label.replace("&", "&&"))  # "&" marks a shortcut
+                sub.setToolTipsVisible(True)
+                for name in names:
+                    m = doc.manifest(name)
+                    problem = doc.incompatibility(name)
+                    text = f"{doc.mark(name)} {title(name)}".strip()
+                    action = sub.addAction(
+                        text + (f"   ({problem})" if problem else "")
+                    )
+                    tip = m.get("description", "")
+                    if doc.mark(name) == "✎":
+                        tip += "\n✎ added by you: runs on this computer, unsandboxed"
+                    elif doc.mark(name):
+                        tip += "\n⬡ plugin: runs in an isolated container"
+                    action.setToolTip(tip.strip())
+                    action.setEnabled(problem is None)
+                    action.triggered.connect(
+                        lambda _=False, n=name: self.insert_requested.emit(index, n)
+                    )
         menu.addSeparator()
         script = menu.addAction("✎ Add a custom script…")
         script.setToolTip(
@@ -553,4 +561,4 @@ class ChainView(QScrollArea):
         )
         script.triggered.connect(lambda: self.script_requested.emit(index))
         menu.setToolTipsVisible(True)
-        menu.exec(self.mapToGlobal(self.rect().center()))
+        return menu

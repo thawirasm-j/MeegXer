@@ -24,8 +24,9 @@ descriptions, and a trailing ``(unit)`` becomes the unit. Optional module-level
 module docstring (the strip description). Credit, shown with the strip and kept in
 session and BIDS provenance: ``__author__`` (a string or a list), ``__license__``
 and ``REFERENCES``, a list of citations (strings, or dicts with ``citation`` and an
-optional ``doi`` or ``url``). Annotations the script adds to the
-returned recording come out as events.
+optional ``doi`` or ``url``). ``CATEGORY`` (e.g. ``"filters"``, ``"artifacts"``,
+``"spectral"``) lists the strip under that heading of its group in the GUI's menu.
+Annotations the script adds to the returned recording come out as events.
 
 That tier runs offline only (the whole recording at once). A live script instead
 defines ``transform``, called block by block, live and offline alike::
@@ -247,6 +248,12 @@ def script_manifest(module: ModuleType, path: Path) -> dict[str, Any]:
     if live and callable(getattr(module, "fit", None)):
         manifest["requires_fit"] = True
     manifest.update(_credits(module))
+    category = getattr(module, "CATEGORY", None)
+    if category:
+        text = re.sub(r"[^a-z0-9]+", "-", str(category).lower()).strip("-")
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", text):
+            raise ScriptError(f"CATEGORY {category!r}: use a short word, e.g. filters")
+        manifest["category"] = text
     return manifest
 
 

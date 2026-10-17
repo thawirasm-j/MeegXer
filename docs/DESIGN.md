@@ -219,8 +219,20 @@ transform(block, model, state, params)        -> block_out, state, events
   sessions record each node's references, BIDS derivatives gather them
   (`ReferencesAndLinks`). Informative only: `meegxer-plugin check` mentions missing
   credit but never fails on it. `list_nodes` reports each node's `origin`
-  (builtin, plugin, custom); the GUI pools plugins and scripts into "Custom
-  preprocessing / feature extraction / outputs" by their data types.
+  (builtin, plugin, custom).
+- **Menu categories and processed channel types (0.2.15):** a manifest may name a
+  `category` (filters, reference, artifacts, rate, epochs; spectral,
+  time-frequency, connectivity, complexity, decoding, events; files, streams,
+  actions; or its own). The add-strip menu lists each group (by data type) by
+  category, built-ins first, then what the user added, marked ✎ (custom script or
+  local plugin: unsandboxed) or ⬡ (container plugin); scripts set `CATEGORY`. A
+  manifest may also declare `channel_types`, the types it processes unless the
+  pipeline names others (default EEG; EOG regression takes EEG and EOG).
+- **More preprocessing built-ins:** FIR filter (MNE design; minimum-phase live,
+  zero-phase offline with phase auto), bad-channel interpolation and surface
+  Laplacian (CSD) as channel-mixing matrices computed once from the positions
+  (spherical splines, sphere fitted to the electrodes), EOG regression (fit on
+  calibration, linear subtraction). All are exact block by block.
 - Plugins emit Events only; trusted host Sinks perform actions.
 - **Sterile mode** (planned): one container runs the whole processing chain (built-in
   nodes and plugins) as a single worker over the plugin protocol, so the added

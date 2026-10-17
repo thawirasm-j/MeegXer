@@ -32,7 +32,7 @@ SYNTHETIC = "meegxer.core.synthetic"
 # the GUI's defaults where they differ from the node's: synthetic input played
 # live runs until stopped (a live calibration never runs out of it)
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
-SPEC_VERSION = "0.2.14"
+SPEC_VERSION = "0.2.15"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -59,6 +59,32 @@ GROUP_NAMES = {
     "features": "Feature extraction",
     "output": "Output",
 }
+# menu headings within a group (manifest ``category``, spec 0.2.15), in order
+CATEGORY_NAMES = {
+    "filters": "Filters",
+    "reference": "Reference & channels",
+    "artifacts": "Artifacts",
+    "rate": "Rate & resampling",
+    "epochs": "Epochs",
+    "spectral": "Spectral",
+    "time-frequency": "Time–frequency",  # noqa: RUF001
+    "connectivity": "Connectivity",
+    "complexity": "Complexity",
+    "decoding": "Decoding & BCI",
+    "events": "Events & detection",
+    "files": "Files",
+    "streams": "Streams",
+    "actions": "Actions",
+}
+# marks in front of nodes the user added: a custom script or local plugin runs
+# unsandboxed on this computer; a container plugin runs isolated
+ORIGIN_MARKS = {"custom": "✎", "plugin": "⬡"}
+
+
+def category_label(category: str) -> str:
+    if not category:
+        return "Other"
+    return CATEGORY_NAMES.get(category) or category.replace("-", " ").capitalize()
 
 
 class PipelineDoc:
@@ -154,7 +180,7 @@ class PipelineDoc:
         for strip in self.strips:
             if not self.manifest(strip).get("requires_positions"):
                 continue
-            types = strip.channel_types or ["eeg"]
+            types = self.processed_types(strip)
             missing = [
                 c["label"]
                 for c in channels
@@ -261,6 +287,46 @@ class PipelineDoc:
         """Added by the user (a custom script or a plugin), not built in."""
         return bool(self.manifest(strip).get("origin", "builtin") != "builtin")
 
+    def default_types(self, strip: StripNode | str) -> list[str]:
+        """Channel types the node processes unless the strip names others."""
+        return list(self.manifest(strip).get("channel_types") or ["eeg"])
+
+    def processed_types(self, strip: StripNode) -> list[str]:
+        return strip.channel_types or self.default_types(strip)
+
+    def category(self, strip: StripNode | str) -> str:
+        return str(self.manifest(strip).get("category") or "")
+
+    def mark(self, strip: StripNode | str) -> str:
+        """``✎`` (custom script or local plugin), ``⬡`` (container plugin) or
+        nothing (built in)."""
+        return ORIGIN_MARKS.get(str(self.manifest(strip).get("origin", "builtin")), "")
+
+    def palette_sections(self) -> list[tuple[str, list[tuple[str, list[str]]]]]:
+        """The add-strip menu: per group, its categories (known ones in their
+        order, then others, then Other), each listing built-ins first, then the
+        nodes the user added."""
+        out = []
+        palette = self.nodes_for_palette()
+        order = list(CATEGORY_NAMES)
+        for group in ("preprocess", "features", "output"):
+            nodes = [m["name"] for m in palette if self.group(m["name"]) == group]
+            if not nodes:
+                continue
+
+            def rank(c: str) -> tuple[bool, bool, int, str]:
+                return (c == "", c not in order,
+                        order.index(c) if c in order else 0, c)  # fmt: skip
+
+            cats = sorted({self.category(n) for n in nodes}, key=rank)
+            out.append((GROUP_NAMES[group], [
+                (category_label(c), sorted(
+                    (n for n in nodes if self.category(n) == c),
+                    key=lambda n: (self.is_custom(n), n)))
+                for c in cats
+            ]))  # fmt: skip
+        return out
+
     def group_label(self, strip: StripNode | str) -> str:
         """``Preprocessing``, ``Custom feature extraction``, ...: the group by
         data type, marked custom for scripts and plugins."""
@@ -361,7 +427,7 @@ class PipelineDoc:
                 entry["pass_uncalibrated"] = True
             if strip.strip_params:
                 entry["strip_params"] = list(strip.strip_params)
-            if strip.channel_types and strip.channel_types != ["eeg"]:
+            if strip.channel_types and strip.channel_types != self.default_types(strip):
                 entry["channel_types"] = list(strip.channel_types)
             if strip.recording:
                 entry["recording"] = copy.deepcopy(strip.recording)

@@ -76,11 +76,13 @@ class Stage:
         params: Mapping[str, object] | None = None,
         *,
         pass_uncalibrated: bool = False,
-        channel_types: Sequence[str] = DEFAULT_PROCESSED_TYPES,
+        channel_types: Sequence[str] | None = None,
     ) -> None:
         self.processor = processor
         self.manifest = processor.manifest
         self.params: dict[str, ParamValue] = self.manifest.resolve_params(params)
+        if channel_types is None:  # the node's own default (spec 0.2.15), else EEG
+            channel_types = self.default_channel_types
         unknown = sorted(set(channel_types) - set(CHANNEL_TYPES))
         if unknown or not channel_types:
             raise ValueError(f"channel_types must name some of {CHANNEL_TYPES}")
@@ -94,6 +96,11 @@ class Stage:
         self._calibrating = False
         self.pass_uncalibrated = False
         self.set_pass_uncalibrated(pass_uncalibrated)
+
+    @property
+    def default_channel_types(self) -> tuple[str, ...]:
+        """The types processed when the pipeline names none."""
+        return tuple(self.manifest.channel_types) or DEFAULT_PROCESSED_TYPES
 
     def for_mode(self, mode: Mode) -> Stage:
         """This stage, or a stage running the processor's variant for ``mode``

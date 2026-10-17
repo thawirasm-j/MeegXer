@@ -280,7 +280,7 @@ class Inspector(QScrollArea):
         if manifest.get("authors") or manifest.get("references"):
             lay.addWidget(self._credits(manifest))
         if advanced and is_processor:
-            lay.addWidget(self._channel_types(strip))
+            lay.addWidget(self._channel_types(strip, doc.processed_types(strip)))
         if advanced and manifest["params"]:
             lay.addWidget(self._strip_picker(doc, strip))
         lay.addStretch(1)
@@ -514,12 +514,11 @@ class Inspector(QScrollArea):
             lay.addLayout(row)
         return card
 
-    def _channel_types(self, strip: StripNode) -> QWidget:
+    def _channel_types(self, strip: StripNode, chosen: list[str]) -> QWidget:
         """Which channel types this strip processes; the rest pass through it."""
         card, lay = _card(
             "Channels processed", "Other channel types pass through untouched."
         )
-        chosen = strip.channel_types or ["eeg"]
         boxes: list[tuple[str, QCheckBox]] = []
 
         def changed() -> None:

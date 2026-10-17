@@ -438,3 +438,21 @@ def test_a_feature_script_that_returns_the_wrong_shape_is_explained(
     assert "PASS  restart with host-held state" in report
     assert cli_main(["add", "--script", str(good), "--accept-risk"]) == 0
     assert [e["manifest"]["name"] for e in index.load_index()] == ["script.bp"]
+
+
+def test_a_script_chooses_its_menu_category(tmp_path: Path) -> None:
+    body = 'CATEGORY = "Artifacts"\n\ndef process(raw):\n    return raw\n'
+    path = write(tmp_path, "clean.py", body)
+    manifest = script_manifest(load_script(path), path)
+    assert manifest["category"] == "artifacts"
+    from meegxer.core.manifest import Manifest
+
+    assert Manifest.from_dict(manifest).category == "artifacts"  # valid per spec
+    spaced = write(tmp_path, "tf.py", 'CATEGORY = "time frequency"\n'
+                   "def features(data):\n    return data.mean(axis=1)\n")  # fmt: skip
+    assert script_manifest(load_script(spaced), spaced)["category"] == "time-frequency"
+    bad = write(
+        tmp_path, "bad.py", 'CATEGORY = "!!"\ndef process(raw):\n    return raw\n'
+    )
+    with pytest.raises(ScriptError, match="CATEGORY"):
+        script_manifest(load_script(bad), bad)
