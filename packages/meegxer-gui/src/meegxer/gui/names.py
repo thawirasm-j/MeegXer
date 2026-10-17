@@ -38,6 +38,17 @@ TITLES = {
     "eeglab.asr": "ASR cleaning (EEGLAB)",
 }
 SPECTRAL = ("meegxer.nodes.psd", "meegxer.nodes.band_power", "meegxer.nodes.specparam")
+# short names for the rails a feature strip starts (docs/RAILS.md)
+RAIL_NAMES = {
+    "meegxer.nodes.psd": "PSD",
+    "meegxer.nodes.band_power": "Band power",
+    "meegxer.nodes.specparam": "Specparam",
+    "meegxer.nodes.morlet": "Morlet power",
+    "meegxer.nodes.connectivity": "Connectivity",
+    "meegxer.nodes.complexity": "Complexity",
+    "meegxer.nodes.ssvep_cca": "SSVEP",
+    "meegxer.nodes.csp": "CSP",
+}
 FILTER_KINDS = {
     "highpass": "High-pass",
     "lowpass": "Low-pass",
@@ -57,6 +68,11 @@ def title(node: str, params: dict[str, Any] | None = None) -> str:
         return TITLES[node]
     text = node.rsplit(".", 1)[-1].replace("_", " ")
     return text[:1].upper() + text[1:]  # keep the node's own case (e.g. FOOOF)
+
+
+def rail_title(node: str, params: dict[str, Any] | None = None) -> str:
+    """The short name of the rail a feature strip starts (PSD, CSP)."""
+    return RAIL_NAMES.get(node) or title(node, params)
 
 
 def badge(node: str, params: dict[str, Any], mode: str) -> str:

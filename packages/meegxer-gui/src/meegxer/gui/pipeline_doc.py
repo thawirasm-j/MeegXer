@@ -47,6 +47,21 @@ class StripNode:
     strip_params: list[str] = field(default_factory=list)
     recording: dict[str, Any] = field(default_factory=dict)  # input strip only
     channel_types: list[str] = field(default_factory=list)  # processors; [] = EEG
+    input: str = ""  # the strip it reads; "" = the nearest one of its input type
+
+
+@dataclass
+class Rail:
+    """A parallel rail above the signal (docs/RAILS.md): what one strip (or the
+    input) produces for later strips to read. ``readers`` read it; ``lane`` is
+    its row above the signal (0 is the lowest)."""
+
+    id: str  # "events", or the id of the strip that produces it
+    kind: Literal["events", "features"]
+    label: str
+    producer: str  # strip id
+    readers: list[str] = field(default_factory=list)
+    lane: int = 0
 
 
 def tap_id(strip_id: str) -> str:
@@ -94,6 +109,7 @@ class PipelineDoc:
         self.manifests: dict[str, Manifest] = {m["name"]: m for m in manifests}
         self.strips: list[StripNode] = []
         self.input_mode: Mode = "live"
+        self.input_events = 0  # events the input carries (from its description)
 
     # -- manifests ----------------------------------------------------------------
 
@@ -243,6 +259,9 @@ class PipelineDoc:
         if strip is self.source:
             raise ValueError("the Input strip cannot be removed")
         self.strips.remove(strip)
+        for other in self.strips:  # who read it goes back to the nearest
+            if other.input == strip_id:
+                other.input = ""
 
     def get(self, strip_id: str) -> StripNode:
         for strip in self.strips:
@@ -333,24 +352,96 @@ class PipelineDoc:
         name = GROUP_NAMES[self.group(strip)]
         return f"Custom {name.lower()}" if self.is_custom(strip) else name
 
-    def on_main_line(self, strip: StripNode) -> bool:
-        """The signal path: the input and the preprocessing strips. Feature
-        extraction and outputs fork off it; the signal passes them by."""
-        return self.group(strip) in ("input", "preprocess")
-
     def input_of(self, strip: StripNode) -> str | None:
-        """The strip this one reads from: the nearest earlier strip whose output
-        has the type of its input (spec 0.2.7), as the pipeline resolves it."""
+        """The strip this one reads from: the one it names (``input``) if that is
+        an earlier strip with the right output type, otherwise the nearest such
+        strip (spec 0.2.7), as the pipeline resolves it."""
+        choices = self.input_choices(strip)
+        if strip.input in choices:
+            return strip.input
+        return choices[0] if choices else None
+
+    def input_choices(self, strip: StripNode) -> list[str]:
+        """Earlier strips this one could read from, nearest first: those whose
+        output has the type of its input."""
         inputs = self.manifest(strip)["inputs"]
         if not inputs:
-            return None
+            return []
         wanted = inputs[0]["type"]
         index = self.strips.index(strip)
-        for earlier in reversed(self.strips[:index]):
-            outputs = self.manifest(earlier)["outputs"]
-            if outputs and outputs[0]["type"] == wanted:
-                return earlier.id
-        return None
+        return [
+            earlier.id
+            for earlier in reversed(self.strips[:index])
+            if (outputs := self.manifest(earlier)["outputs"])
+            and outputs[0]["type"] == wanted
+        ]
+
+    def set_input(self, strip_id: str, source: str) -> None:
+        """Make a strip read ``source`` ("" for the nearest of its type)."""
+        strip = self.get(strip_id)
+        if source and source not in self.input_choices(strip):
+            raise ValueError(f"{strip_id} cannot read from {source}")
+        strip.input = source
+
+    # -- rails (docs/RAILS.md) ------------------------------------------------------
+
+    def rail_name(self, strip: StripNode) -> str:
+        """A feature rail's name: its strip's title, numbered when the chain has
+        more than one (Band power, Band power·2)."""
+        from meegxer.gui.names import rail_title  # names imports nothing from here
+
+        name = rail_title(strip.node, strip.params)
+        same = [s for s in self.strips if self.produces_features(s)
+                and rail_title(s.node, s.params) == name]  # fmt: skip
+        n = same.index(strip) + 1 if strip in same else 1
+        return name if n == 1 else f"{name}·{n}"
+
+    def produces_features(self, strip: StripNode) -> bool:
+        outputs = self.manifest(strip)["outputs"]
+        return bool(outputs) and outputs[0]["type"] == "features"
+
+    def rails(self) -> tuple[list[Rail], dict[str, str]]:
+        """The parallel rails of this chain and the strips that need a rail that
+        is not there (strip id -> rail).
+
+        Events: the input's events, read by strips that fit on labelled trials.
+        Features: one rail per feature strip, read by the strips that take it
+        as input. Every rail runs on to the end of the chain, so each has its
+        own row: Events on top, then the feature rails, earliest highest (a
+        strip pushing up into its rail crosses no earlier rail)."""
+        needs: dict[str, str] = {}
+        rails: list[Rail] = []
+        for strip in self.strips[1:]:
+            if self.produces_features(strip):
+                readers = [s.id for s in self.strips if self.input_of(s) == strip.id]
+                rails.append(Rail(strip.id, "features", self.rail_name(strip),
+                                  strip.id, readers))  # fmt: skip
+        for i, rail in enumerate(rails):  # in chain order
+            rail.lane = len(rails) - 1 - i
+        labelled = [s.id for s in self.strips[1:] if self.manifest(s).get("fit_events")]
+        source = self.source
+        if source is not None and self.input_events:
+            rails.append(Rail("events", "events", "Events", source.id, labelled,
+                              lane=len(rails)))  # fmt: skip
+        else:
+            needs.update({sid: "Events" for sid in labelled})
+        return rails, needs
+
+    def lowered(self, strip: StripNode) -> bool:
+        """Feature and output strips sit below the signal line and draw from it
+        (or from a rail); the signal passes over them."""
+        return self.group(strip) in ("features", "output")
+
+    def reads_signal(self, strip: StripNode) -> bool:
+        inputs = self.manifest(strip)["inputs"]
+        return bool(inputs) and inputs[0]["type"] == "signal"
+
+    def rail_lanes(self) -> int:
+        """Rows the rails take above the signal (a missing rail keeps one)."""
+        rails, needs = self.rails()
+        lanes = max((r.lane + 1 for r in rails), default=0)
+        return lanes + (1 if needs and not any(r.kind == "events" for r in rails)
+                        else 0)  # fmt: skip
 
     def tap_delays(self, timing_ms: dict[str, float], sfreq: float) -> dict[str, float]:
         """Estimated ms each tappable strip runs behind the input: the measured
@@ -431,6 +522,8 @@ class PipelineDoc:
                 entry["channel_types"] = list(strip.channel_types)
             if strip.recording:
                 entry["recording"] = copy.deepcopy(strip.recording)
+            if strip.input and strip.input in self.input_choices(strip):
+                entry["input"] = strip.input
             nodes.append(entry)
             if strip.id in tappable:
                 nodes.append(
@@ -464,6 +557,7 @@ class PipelineDoc:
                     list(entry.get("strip_params", [])),
                     dict(entry.get("recording", {})),
                     list(entry.get("channel_types", [])),
+                    str(entry.get("input") or ""),
                 )
             )
         if not strips or self.role(strips[0]) != "source":

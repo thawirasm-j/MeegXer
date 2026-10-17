@@ -4,7 +4,8 @@ Used for the M5 report and visual checks: ``uv run python tools/gui_screenshot.p
 OUT_DIR``. Starts a daemon on free ports, builds the default chain (Synthetic ->
 high-pass -> notch), runs it live for a few seconds and grabs the window in the
 dark and light themes, the difference and spectrum modes, advanced mode, an
-incompatible strip, the stacked window and the settings pages. Uses a throwaway
+incompatible strip, the stacked window, the chain's rails (docs/RAILS.md) and the
+settings pages. Uses a throwaway
 config folder, so your own settings are neither used nor changed.
 """
 
@@ -182,6 +183,28 @@ def main() -> int:
         win.timeline.bar.setValue(250 * 8)
         pump(app, 1.0)
         win.grab().save(str(out / "11-offline-events-dark.png"))
+        # rails: feature strips start named rails, outputs pick one, CSP reads Events
+        for node in [
+            "meegxer.nodes.psd",
+            "meegxer.core.feature_tsv",
+            "meegxer.nodes.band_power",
+            "meegxer.nodes.csp",
+            "meegxer.core.lsl_features_out",
+            "meegxer.core.bids_features",
+        ]:
+            win.insert_strip(len(win.doc.strips), node)
+        ids = [s.id for s in win.doc.strips]
+        bids = next(i for i in ids if i.startswith("bidsfeatur"))
+        win.change_input(bids, next(i for i in ids if i.startswith("bandpower")))
+        win.select(bids)
+        win.resize(1900, 900)
+        pump(app, 0.5)
+        win.grab().save(str(out / "13-rails-dark.png"))
+        win.apply_theme(load_theme("light"))
+        pump(app, 0.5)
+        win.grab().save(str(out / "14-rails-light.png"))
+        win.apply_theme(load_theme("dark"))
+        win.resize(1440, 900)
         from meegxer.gui.settings_dialog import SettingsDialog
 
         dialog = SettingsDialog(win.settings, win.theme, win)

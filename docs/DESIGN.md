@@ -296,12 +296,19 @@ it never interrupts processing.
   - **Groups:** each strip's top band, shape and label give its group, from its role
     and ports: ■ input, ● preprocessing (Signal to Signal), ◆ feature extraction
     (Signal to Features), ▶ output (sinks). Theme tokens `groups`.
-  - **Forks in one lane:** the main line (input and preprocessing) runs along a
-    rail; feature extraction and outputs sit lower and fork off it with an arrow
-    down from the rail, which passes over them to the next preprocessing strip
-    (they read the nearest earlier node of their input type, spec 0.2.7). A strip
-    reading the forked strip before it (band power into LSL features) is linked at
-    the forked level.
+  - **One chain, rails above it** (`docs/RAILS.md`): every strip sits on the
+    signal, a thick line; a feature strip passes the signal on unchanged. Feature
+    and output strips hang below the signal, with a down arrow for each line they
+    pull (the signal, a rail). Thinner parallel rails above the strips show what
+    else travels with it: each feature strip pushes up into a rail named after it
+    (PSD, Band power·2; a filled dot where it starts, a hollow one where a strip
+    adds to an existing rail), and the input's events start the Events rail. Each
+    rail has its own row, solid to its last reader, then dashed and fainter to the
+    end of the chain with an arrow: it is still there for later strips. A strip that needs
+    a rail the chain lacks (CSP without events) shows "needs Events". By default a
+    strip reads the nearest earlier node of its input type (spec 0.2.7); an output
+    can pick another feature rail in the inspector (*Reads*), saved as the node's
+    `input`.
 - **Mode comes from the Input strip:** an LSL source is always live; a file or BIDS
   source is offline by default and a synthetic source live, and either can be
   switched on the Input strip (live playback or offline processing). The transport

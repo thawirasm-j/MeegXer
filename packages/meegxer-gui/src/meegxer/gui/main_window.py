@@ -159,6 +159,7 @@ class MainWindow(QMainWindow):
         self.inspector = Inspector()
         self.inspector.param_changed.connect(self.change_param)
         self.inspector.strip_params_changed.connect(self.change_strip_params)
+        self.inspector.input_changed.connect(self.change_input)
         self.inspector.channel_types_changed.connect(self.change_channel_types)
         self.inspector.pass_uncalibrated_changed.connect(self.change_passthrough)
         self.inspector.clear_calibration.connect(self.clear_calibration)
@@ -557,7 +558,12 @@ class MainWindow(QMainWindow):
 
     def use_recording_info(self, info: dict[str, Any] | None) -> None:
         """Colour channels by the recording's positions; mark its events on the
-        offline view (live views have no absolute time axis)."""
+        offline view (live views have no absolute time axis) and start the
+        chain's Events rail with them."""
+        events = len(info["events"]) if info and self.doc.mode == "offline" else 0
+        if events != self.doc.input_events:
+            self.doc.input_events = events
+            self.refresh_chain()
         if info is None:
             self.view.set_wheel({})
             self.view.types = {}
@@ -659,6 +665,15 @@ class MainWindow(QMainWindow):
             advanced=self.advanced,
             selected=self.selected,
         )
+
+    def change_input(self, strip_id: str, source: str) -> None:
+        """Which rail (feature strip) a strip reads; "" for the nearest one."""
+        strip = self.doc.get(strip_id)
+        if strip.input == source:
+            return
+        self.doc.set_input(strip_id, source)
+        what = self.doc.rail_name(self.doc.get(source)) if source else "the nearest"
+        self._structure_changed(f"{self._name(strip_id)} reads {what}.")
 
     def change_channel_types(self, strip_id: str, types: list[str]) -> None:
         strip = self.doc.get(strip_id)

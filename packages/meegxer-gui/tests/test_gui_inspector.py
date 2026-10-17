@@ -134,3 +134,24 @@ def test_editing_keeps_the_inspector_where_it_was(
     show("ica1")  # another strip starts at the top
     assert bar.value() == 0
     dispose(qapp, ins)
+
+
+def test_an_output_chooses_the_feature_rail_it_reads(
+    qapp: QApplication, doc: PipelineDoc
+) -> None:
+    psd = doc.insert(len(doc.strips), "meegxer.nodes.psd")
+    doc.insert(len(doc.strips), "meegxer.nodes.band_power")
+    tsv = doc.insert(len(doc.strips), "meegxer.core.feature_tsv")
+    ins, _ = show(qapp, doc, tsv.id, advanced=False)
+    chosen: list[tuple[str, str]] = []
+    ins.input_changed.connect(lambda *a: chosen.append(a))
+    box = ins.findChild(QComboBox, "reads")
+    assert box is not None
+    assert [box.itemText(i) for i in range(box.count())] == [
+        "Nearest (Band power)", "Band power", "PSD"]  # fmt: skip
+    box.setCurrentIndex(box.findData(psd.id))
+    assert chosen == [(tsv.id, psd.id)]
+    dispose(qapp, ins)
+    ins, _ = show(qapp, doc, psd.id, advanced=False)  # reads the signal: no choice
+    assert ins.findChild(QComboBox, "reads") is None
+    dispose(qapp, ins)
