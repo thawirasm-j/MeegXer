@@ -27,6 +27,9 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 - **Opening a pipeline or session runs no code:** a test now proves that a
   pipeline or session naming a custom script or local plugin you have not added
   (with the notice accepted) starts nothing, from the CLI, the daemon or a session.
+- **Feature view hover:** near a line, the feature view draws it bold, marks
+  its nearest point and names the line, where the point is and its value with
+  the unit.
 - **The head plot maps every EEG channel,** whichever curves the channel menu
   shows (hiding curves no longer leaves holes in the map); EOG, EMG and other
   non-EEG channels stay off it.

@@ -7,6 +7,9 @@
   (or per feature), a point at the end of each window. Live, time is seconds
   before now or since the start (as in the signal view); offline, recording time.
 
+Hovering near a line names it: the line is drawn bold, its nearest point is
+marked and labelled with the line's name, where it is and its value.
+
 Further dimensions (e.g. the band of band power) are chosen in *Show*. The value
 axis names the features' unit when the node states one (spec 0.2.19). The
 windows come from the core, decimated and lossy (rule 2): live from the display
@@ -21,6 +24,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 import pyqtgraph as pg
+from PySide6.QtCore import QEvent, QObject, QPointF
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from meegxer.core.block import unit_at
@@ -30,6 +34,7 @@ from meegxer.gui.theme import Theme
 
 FloatArray = npt.NDArray[np.float64]
 SPANS = (10, 30, 60, 120, 300)  # seconds
+HOVER_PX = 12.0  # how near (pixels) the pointer must be to a line to name it
 
 
 @dataclass
@@ -51,6 +56,12 @@ class FeatureSeries:
 def pretty_unit(unit: str) -> str:
     """A unit for an axis label: ``V^2/Hz`` as ``V²/Hz``."""
     return unit.replace("^2", "²").replace("^3", "³")
+
+
+def hover_unit(series: FeatureSeries, chosen: dict[str, int]) -> str:
+    """The unit of a hovered value (as on the axis; "" when none or mixed)."""
+    label = value_label(series, chosen)
+    return label[len("value (") : -1] if label.startswith("value (") else ""
 
 
 def value_label(
@@ -87,6 +98,42 @@ def pick(
     if "frequency" not in kept:
         arr = arr[..., None]
     return np.asarray(arr, dtype=float)
+
+
+def nearest_point(
+    lines: list[tuple[FloatArray, FloatArray]],
+    x: float,
+    y: float,
+    pixel: tuple[float, float],
+    radius: float = HOVER_PX,
+) -> tuple[int, int] | None:
+    """The line nearest the pointer at (``x``, ``y``) and its point nearest the
+    pointer, as (line, point) indices, when that line passes within ``radius``
+    pixels; ``pixel`` is the data size of one pixel (x, y)."""
+    px, py = (abs(pixel[0]) or 1.0), (abs(pixel[1]) or 1.0)
+    best: tuple[float, int] | None = None
+    for i, (lx, ly) in enumerate(lines):
+        ok = np.isfinite(lx) & np.isfinite(ly)
+        sx, sy = (lx[ok] - x) / px, (ly[ok] - y) / py  # pointer at the origin
+        if not sx.size:
+            continue
+        d = float(np.min(np.hypot(sx, sy)))
+        if sx.size > 1:  # distance to each segment, not only its ends
+            ax, ay, bx, by = sx[:-1], sy[:-1], sx[1:], sy[1:]
+            dx, dy = bx - ax, by - ay
+            length = dx * dx + dy * dy
+            with np.errstate(all="ignore"):
+                t = np.clip(np.where(length > 0, -(ax * dx + ay * dy) / length, 0),
+                            0, 1)  # fmt: skip
+            d = min(d, float(np.min(np.hypot(ax + t * dx, ay + t * dy))))
+        if d <= radius and (best is None or d < best[0]):
+            best = (d, i)
+    if best is None:
+        return None
+    lx, ly = lines[best[1]]
+    with np.errstate(all="ignore"):
+        dist = np.hypot((lx - x) / px, (ly - y) / py)
+    return best[1], int(np.nanargmin(np.where(np.isfinite(dist), dist, np.nan)))
 
 
 def _coords(series: FeatureSeries, dim: str) -> tuple[str | float, ...]:
@@ -131,10 +178,81 @@ class FeatureView(QWidget):
         lay.addWidget(self.panner)
         self.wheel: dict[str, tuple[float, float]] = {}
         self._slices: tuple[tuple[str, ...], tuple[str, ...]] = ((), ())
+        # hover: the drawn lines (name, x, y, pen), how to word a point, the
+        # pointer (scene position) and what it names
+        self._lines: list[tuple[str, FloatArray, FloatArray, object]] = []
+        self._where = ("", "")  # x quantity and unit, e.g. ("t", "s")
+        self._value_unit = ""
+        self._mouse: QPointF | None = None
+        self.hovered: tuple[str, float, float] | None = None  # name, x, y
+        self._marker = pg.ScatterPlotItem(size=9)
+        self._marker.setZValue(20)
+        self._tag = pg.TextItem(anchor=(0, 1))
+        self._tag.setZValue(21)
+        for item in (self._marker, self._tag):
+            item.setVisible(False)
+            self.plot.addItem(item, ignoreBounds=True)
+        self.plot.scene().sigMouseMoved.connect(self._mouse_moved)
+        self.plot.viewport().installEventFilter(self)
 
     def apply_theme(self, theme: Theme) -> None:
         self.theme = theme
         self.plot.apply_theme(theme)
+
+    # -- hover --------------------------------------------------------------------
+
+    def _mouse_moved(self, pos: QPointF) -> None:
+        self._mouse = QPointF(pos)
+        self._update_hover()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Leave:
+            self._mouse = None
+            self._update_hover()
+        return super().eventFilter(watched, event)
+
+    def _update_hover(self) -> None:
+        """Bold the line nearest the pointer, mark its nearest point and label it
+        (or clear all of that when no line is near)."""
+        found = None
+        if self._mouse is not None and self._lines:
+            vb = self.plot.getViewBox()
+            if vb.sceneBoundingRect().contains(self._mouse):
+                at = vb.mapSceneToView(self._mouse)
+                px, py = vb.viewPixelSize()
+                found = nearest_point([(x, y) for _, x, y, _ in self._lines],
+                                      at.x(), at.y(), (px, py))  # fmt: skip
+        for i, (_, _, _, pen) in enumerate(self._lines):  # undo an earlier bold
+            if i < len(self.plot._curves):
+                self.plot._curves[i].setPen(pen)
+        if found is None:
+            self.hovered = None
+            self._marker.setVisible(False)
+            self._tag.setVisible(False)
+            return
+        i, k = found
+        name, x, y, pen = self._lines[i]
+        bold = pg.mkPen(pen)
+        bold.setWidthF(bold.widthF() + 2)
+        self.plot._curves[i].setPen(bold)
+        self.hovered = (name, float(x[k]), float(y[k]))
+        color = bold.color()
+        self._marker.setData([x[k]], [y[k]], brush=pg.mkBrush(color),
+                             pen=pg.mkPen(self.theme.text, width=1.5))  # fmt: skip
+        self._tag.setText(self.hover_text(), color=self.theme.text)
+        self._tag.setPos(float(x[k]), float(y[k]))
+        self._marker.setVisible(True)
+        self._tag.setVisible(True)
+
+    def hover_text(self) -> str:
+        """The hovered point in words: ``Fz · 10 Hz: -112 dB``."""
+        if self.hovered is None:
+            return ""
+        name, x, y = self.hovered
+        quantity, unit = self._where
+        where = f"{quantity} = {x:.2f} {unit}" if quantity else f"{x:g} {unit}"
+        value = f"{y:.4g}" + (f" {self._value_unit}" if self._value_unit else "")
+        return f"{name} · {where}: {value}"
 
     def seconds(self) -> float:
         return float(self.span.currentData())
@@ -188,6 +306,8 @@ class FeatureView(QWidget):
         return out
 
     def clear(self, message: str) -> None:
+        self._lines = []
+        self._update_hover()
         self.plot.draw([])
         self.legend.setText(message)
 
@@ -220,6 +340,8 @@ class FeatureView(QWidget):
             for c in chans:
                 st = styles[c]
                 layers.append((freqs, shown[c], _pen(st.color, 1.4, 230, st.dashed)))
+            self._where = ("", "Hz")
+            self._value_unit = "dB" if db else hover_unit(series, chosen)
             plot.setLabel("left", value_label(series, chosen, spectrum_db=db))
             plot.setLabel("bottom", "frequency", units="Hz")
             what = "newest window" if self.panner.live else "mean over the span"
@@ -231,9 +353,14 @@ class FeatureView(QWidget):
                 st = styles[c]
                 layers.append((series.t, data[:, c, 0],
                                _pen(st.color, 1.4, 230, st.dashed)))  # fmt: skip
+            self._where = ("t", "s")
+            self._value_unit = hover_unit(series, chosen)
             plot.setLabel("left", value_label(series, chosen))
             plot.setLabel("bottom", "time", units="s")
             self.legend.setText(f"{name}: over time ({count})")
             self.plot.draw(layers)
             self.plot.set_time(t0, t1)
+        drawn = zip(chans, layers, strict=True)
+        self._lines = [(labels[c], x, y, pen) for c, (x, y, pen) in drawn]
+        self._update_hover()  # the pointer may now be near another line or point
         self.panner.show_span(t0, t1)
