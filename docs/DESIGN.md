@@ -345,7 +345,11 @@ it never interrupts processing.
     channel over time, with *Show* choosing among further dimensions (the band
     of band power). Hovering near a line draws it bold, marks its nearest point
     and labels it with the line's name, where it is and its value with the
-    unit ("Cz · t = 2.00 s: 5 V²"). The ICs rail opens the signal view on the components,
+    unit ("Cz · t = 2.00 s: 5 V²"). Connectivity (channel x target) adds a
+    head map beside the plot: a line from the seed (the channel chosen in
+    *Show*, or a clicked electrode) to every other, coloured and thickened by
+    its value (live the newest window, offline the mean over the span; both
+    signs, as imaginary coherence, on the diverging map). The ICs rail opens the signal view on the components,
     coloured by ICLabel class and named "IC03 · eye 0.97" in the channel menu.
     The core sends the feature windows on the display stream (protocol 0.2,
     lossy) and keeps an offline run's windows for scrolling (`offline_features`).
