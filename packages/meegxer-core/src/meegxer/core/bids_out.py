@@ -25,7 +25,7 @@ from meegxer.core.ports import PortTypeError
 from meegxer.core.recording import describe
 from meegxer.core.references import as_text, collect, credits
 from meegxer.core.registry import node_origin
-from meegxer.core.sinks import SetSink, feature_columns, tsv_value
+from meegxer.core.sinks import SetSink, feature_columns, feature_units, tsv_value
 
 BIDS_VERSION = "1.10.0"
 CODE_URL = "https://github.com/thawirasm-j/MeegXer"
@@ -500,6 +500,9 @@ class BidsFeatures(_BidsSink):
                             "Units": "sample"},
             "onset": {"Description": "Window start", "Units": "s"},
         }  # fmt: skip
+        for column, unit in zip(columns, feature_units(first), strict=True):
+            if unit:  # BIDS: a column's units; "1" (dimensionless) stays "1"
+                sidecar[column] = {"Units": unit}
         sidecar_path = target.path(f"{upstream}_features.json")
         sidecar_path.write_text(json.dumps(sidecar, indent=2) + "\n", encoding="utf-8")
         self.written = [table, sidecar_path]

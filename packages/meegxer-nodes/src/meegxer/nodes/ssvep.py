@@ -134,3 +134,8 @@ class SSVEPCCA(WindowedFeatures):
                     scores[k] += weight * canonical_correlation(band, y) ** 2
         coords = {"frequency": tuple(round(f, 6) for f in freqs)}
         return np.asarray(scores, dtype=float), ("frequency",), coords
+
+    def units(
+        self, params: Params, coords: dict[str, tuple[Any, ...]]
+    ) -> str | tuple[str, tuple[str, ...]]:
+        return "1"  # canonical correlations (filter bank: their weighted sum)

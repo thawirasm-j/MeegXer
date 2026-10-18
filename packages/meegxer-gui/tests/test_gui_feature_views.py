@@ -237,3 +237,34 @@ def test_offline_feature_and_ics_taps(
     finally:
         win.close()
         dispose(qapp, win.stacked, win.recording_window, win)
+
+
+def test_feature_view_labels_the_value_axis_with_the_unit(qapp: QApplication) -> None:
+    """Spec 0.2.19: the value axis names the unit; a spectrum converted to dB
+    names its reference; *Show* names each measure's unit when they differ."""
+    view = FeatureView(load_theme("dark"))
+    left = view.plot.getPlotItem().getAxis("left")
+    psd = FeatureSeries("tap_psd1", ("channel", "frequency"),
+                        {"channel": ("Fz",), "frequency": (1.0, 2.0)},
+                        np.array([2.0]), np.full((1, 1, 2), 1e-12),
+                        unit="V^2/Hz")  # fmt: skip
+    view.refresh(psd, "PSD", 0.0, 60.0)
+    assert left.labelText == "dB (re 1 V²/Hz)"
+    in_db = FeatureSeries("tap_psd1", psd.dims, psd.coords, psd.t,
+                          np.full((1, 1, 2), 3.0), unit="dB")  # fmt: skip
+    view.refresh(in_db, "PSD", 0.0, 60.0)
+    y = next(c for c in view.plot._curves if c.isVisible()).getData()[1]
+    assert left.labelText == "value (dB)" and y[0] == 3.0  # not converted again
+
+    fooof = FeatureSeries("tap_sp1", ("channel", "measure"),
+                          {"channel": ("Fz",), "measure": ("exponent", "cf")},
+                          np.arange(3.0), np.ones((3, 1, 2)),
+                          unit_dim="measure", units=("1", "Hz"))  # fmt: skip
+    view.refresh(fooof, "Specparam", 0.0, 10.0)
+    assert [view.slice.itemText(i) for i in range(view.slice.count())] == [
+        "exponent", "cf (Hz)"]  # fmt: skip
+    assert left.labelText == "value"
+    view.slice.setCurrentIndex(1)
+    view.refresh(fooof, "Specparam", 0.0, 10.0)
+    assert left.labelText == "value (Hz)"
+    dispose(qapp, view)

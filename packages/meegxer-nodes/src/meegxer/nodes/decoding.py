@@ -126,3 +126,8 @@ class CSP(WindowedFeatures):
         values = np.log(np.maximum(power, np.finfo(float).tiny))
         names = tuple(f"CSP{i + 1}" for i in range(filters.shape[0]))
         return values, ("component",), {"component": names}
+
+    def units(
+        self, params: Params, coords: dict[str, tuple[Any, ...]]
+    ) -> str | tuple[str, tuple[str, ...]]:
+        return "log(V^2)"  # natural log of the filtered signal's variance

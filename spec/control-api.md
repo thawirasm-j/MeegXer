@@ -58,7 +58,7 @@ remote GUI).
 | `lookup_positions` | `labels`, `montage` (standard name or montage file, incl. EEGLAB `.ced`) | `{positions: {label: [x, y, z]}, unmatched: [label]}`: positions by channel name, like EEGLAB's channel-location lookup. Matching tries the label, then case-insensitively, then without a type prefix or reference suffix (`EEG Fp1-REF` → `Fp1`), then the 10-20 name of old labels (T3 → T7). Bipolar labels do not match |
 | `run_offline` | `pipeline` | offline status (below). Runs the pipeline over its whole, finite input in the background with the batch scheduler (offline variants such as the zero-phase band-pass apply). Its sinks write files. Its probes write their samples and min/max zoom levels to memory-mapped files in a temporary folder (`MEEGXER_OFFLINE_DIR`) as the run goes, so they can be viewed before it ends; the previous run's files are deleted. Processor outputs go to a disk cache capped at `MEEGXER_OFFLINE_CACHE_GB` (default 5). Fitted models of the previous offline run (or of the session loaded since) are reused where their fingerprint matches, otherwise refitted. Refused while the live pipeline runs or another offline run is in progress |
 | `offline_window` | `probe`, `start`, `n_samples`, `max_bins` (default 2000, ≤ 20000) | `{probe, ch_labels, sfreq, bin_size, start_bin, mins, maxs}`: min/max of samples `[start, start + n_samples)` of one probe of the current offline run in at most `max_bins` bins (`bin_size` 1 when zoomed in to single samples), clipped to what has been written; `mins`/`maxs` are channel × bin lists in volts (`null` where empty). Bin `k` covers samples `[k * bin_size, (k + 1) * bin_size)`, as on the display stream |
-| `offline_features` | `probe`, `start` (default 0), `stop` (default: the end), `max_windows` (default 2000), `reduce` (`none` or `mean`) | `{probe, dims, coords, n_windows, windows, values}`: the windows of one Features probe of the current offline run that end in `(start, stop]` (source samples). `n_windows` counts them; `windows` lists `[start, stop)` and `values` the windows' values (nested lists by `dims`, `null` for NaN): at most `max_windows` of them, evenly picked, or with `mean` one entry, their mean over the whole range |
+| `offline_features` | `probe`, `start` (default 0), `stop` (default: the end), `max_windows` (default 2000), `reduce` (`none` or `mean`) | `{probe, dims, coords, n_windows, windows, values}` (plus `unit`, or `unit_dim` and `units`, when the node states them; spec 0.2.19): the windows of one Features probe of the current offline run that end in `(start, stop]` (source samples). `n_windows` counts them; `windows` lists `[start, stop)` and `values` the windows' values (nested lists by `dims`, `null` for NaN): at most `max_windows` of them, evenly picked, or with `mean` one entry, their mean over the whole range |
 | `shutdown` | – | `"bye"`; the daemon exits |
 
 ## Status
@@ -94,7 +94,7 @@ remote GUI).
   `{ch_labels, sfreq, first_sample, n_filled, n_samples, bypassed, ch_classes,
   ch_scores}` (`n_filled` grows while the run goes; the classes are empty except
   on a rail of components), and `features` maps each Features probe that has
-  windows to `{dims, coords, n_windows}` (read them with `offline_features`).
+  windows to `{dims, coords, n_windows}` and its units as in `offline_features` (read them with `offline_features`).
 
 ## Errors
 

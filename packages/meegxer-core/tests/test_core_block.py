@@ -157,3 +157,25 @@ def test_bad_channels() -> None:
         SignalInfo(("Fz",), 500.0, bads=("Oz",))
     with pytest.raises(ChannelMismatchError):
         SignalInfo(("Fz", "Cz"), 500.0, bads=("Fz", "Fz"))
+
+
+def test_feature_units_one_or_per_entry() -> None:
+    """Spec 0.2.19: one unit for every value, or one per entry of a dimension."""
+    from meegxer.core.block import units_from_wire, units_wire
+
+    psd = FeatureBlock(np.ones((2, 3)), ("channel", "frequency"), (0, 100), 0.0,
+                       unit="V^2/Hz")  # fmt: skip
+    assert psd.unit_of() == "V^2/Hz" and psd.unit_of({"frequency": 2}) == "V^2/Hz"
+    fooof = FeatureBlock(np.ones((2, 2)), ("channel", "measure"), (0, 100), 0.0,
+                         unit_dim="measure", units=("1", "Hz"))  # fmt: skip
+    assert fooof.units == ("1", "Hz") and fooof.unit_of({"measure": 1}) == "Hz"
+    for block in (psd, fooof):
+        wire = units_wire(block.unit, block.unit_dim, block.units)
+        assert units_from_wire(wire) == (block.unit, block.unit_dim, block.units)
+    assert units_wire("", "", ()) == {}  # not stated: nothing on the wire
+    with pytest.raises(ValueError, match="one unit per"):
+        FeatureBlock(np.ones((2, 2)), ("channel", "measure"), (0, 100), 0.0,
+                     unit_dim="measure", units=("1",))  # fmt: skip
+    with pytest.raises(ValueError, match="unit_dim"):
+        FeatureBlock(np.ones((2, 2)), ("channel", "measure"), (0, 100), 0.0,
+                     unit_dim="band", units=("1", "1"))  # fmt: skip

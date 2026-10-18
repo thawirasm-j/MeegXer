@@ -30,7 +30,7 @@ import numpy.typing as npt
 
 from meegxer.core import settings
 from meegxer.core.batch import BatchScheduler
-from meegxer.core.block import Block, FeatureBlock, SignalInfo
+from meegxer.core.block import Block, FeatureBlock, SignalInfo, units_wire
 from meegxer.core.cache import DirectoryCache
 from meegxer.core.display import Decimator
 from meegxer.core.graph import Graph, GraphError
@@ -179,6 +179,7 @@ class FeatureStore:
     def __init__(self, first: FeatureBlock) -> None:
         self.dims = first.dims
         self.coords = {k: list(v) for k, v in first.coords.items()}
+        self.units = units_wire(first.unit, first.unit_dim, first.units)
         self.starts: list[int] = []
         self.stops: list[int] = []
         self.values: list[npt.NDArray[np.float32]] = []
@@ -196,7 +197,7 @@ class FeatureStore:
         ends = np.asarray(self.stops)
         idx = np.flatnonzero((ends > start) & (ends <= stop))
         out: dict[str, Any] = {"dims": list(self.dims), "coords": self.coords,
-                               "n_windows": int(idx.size)}  # fmt: skip
+                               "n_windows": int(idx.size), **self.units}  # fmt: skip
         if not idx.size:
             return {**out, "windows": [], "values": []}
         if reduce == "mean":
@@ -330,6 +331,7 @@ class OfflineJob:
                     "dims": list(f.dims),
                     "coords": f.coords,
                     "n_windows": len(f.stops),
+                    **f.units,
                 }
                 for pid, f in list(self.features.items())
             },

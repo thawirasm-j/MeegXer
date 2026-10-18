@@ -502,3 +502,24 @@ def test_a_script_chooses_its_menu_category(tmp_path: Path) -> None:
     )
     with pytest.raises(ScriptError, match="CATEGORY"):
         script_manifest(load_script(bad), bad)
+
+
+def test_a_feature_script_states_its_units(tmp_path: Path) -> None:
+    """``UNITS`` in a feature script reaches the host's windows through the
+    plugin protocol (spec 0.2.19): one unit per feature name."""
+    from meegxer.core.block import FeatureBlock
+    from meegxer.core.node import output_blocks
+    from meegxer.core.sources import SyntheticSource
+    from meegxer.core.stage import Stage, signal_fingerprint
+
+    body = BANDPOWER + '\n    UNITS = {"power": "V^2/Hz", "line_length": "V"}\n'
+    cls = script_class(write(tmp_path, "bp.py", body))
+    x = SyntheticSource({"duration": 2.0, "n_channels": 2, "sfreq": 200.0}).read(10**6)
+    assert x is not None
+    stage = Stage(cls(), {"window": 1.0, "step": 1.0})
+    try:
+        out = stage.transform(x, signal_fingerprint(x.info)).block
+    finally:
+        stage.processor.close()
+    first = next(w for w in output_blocks(out) if isinstance(w, FeatureBlock))
+    assert (first.unit_dim, first.units) == ("feature", ("V^2/Hz", "V"))
