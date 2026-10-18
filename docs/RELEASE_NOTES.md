@@ -5,6 +5,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 (`docs/RELEASING.md`). Install or upgrade: `uv tool install --python 3.14
 --prerelease allow meegxer` (or `uv tool upgrade meegxer`).
 
+## 0.3.0b2 (not released yet)
+
+- BIDS derivatives inherit the raw dataset's credits: `Authors`, `License`,
+  funding and acknowledgements, its name, links and DOI (as the source's).
+  The validator's TOO_FEW_AUTHORS warning goes away when the raw dataset lists
+  its authors.
+
 ## 0.3.0b1: first beta (2026-10-17)
 
 The first beta: every feature planned for v1 (`docs/DESIGN.md` §5) is in. It

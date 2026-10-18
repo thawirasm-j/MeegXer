@@ -48,9 +48,12 @@ node versions, fitted models, file hashes), which reruns it exactly. Feature
 tables (`*_features.tsv`) and session files are not yet covered by BIDS and are
 listed in `.bidsignore`.
 
-Add the people who made this dataset under `Authors` in
-`dataset_description.json`.
+`Authors`, `License` and the other credits in `dataset_description.json` come
+from the raw dataset's; add the people who made this dataset if it lists none.
 """
+# credits a derivative keeps from its raw dataset (BIDS: dataset_description)
+INHERITED = ("Authors", "License", "Acknowledgements", "HowToAcknowledge",
+             "Funding", "EthicsApprovals")  # fmt: skip
 
 
 def _manifest(name: str, input_type: str, description: str) -> Manifest:
@@ -202,7 +205,13 @@ def write_dataset_files(target: Target, graph: Any = None) -> None:
     data: dict[str, Any] = {}
     if desc_path.is_file():
         data = json.loads(desc_path.read_text(encoding="utf-8"))
-    data.setdefault("Name", "MeegXer derivatives")
+    raw = _raw_description(target.raw_root)
+    raw_name = raw.get("Name")
+    data.setdefault("Name", f"{raw_name} (MeegXer derivatives)"
+                    if _given(raw_name) else "MeegXer derivatives")  # fmt: skip
+    for key in INHERITED:
+        if key not in data and _given(raw.get(key)):
+            data[key] = raw[key]
     data.setdefault("BIDSVersion", BIDS_VERSION)
     data["DatasetType"] = "derivative"
     cite, extra = _pipeline_credits(graph) if graph is not None else ([], [])
@@ -211,15 +220,20 @@ def write_dataset_files(target: Target, graph: Any = None) -> None:
     data["GeneratedBy"] = [{"Name": "MeegXer", "Version": _version(),
                             "CodeURL": CODE_URL}, *extra, *others]  # fmt: skip
     links = list(data.get("ReferencesAndLinks", []))
-    links += [c for c in cite if c not in links]
+    links += [c for c in [*raw.get("ReferencesAndLinks", []), *cite]
+              if c not in links]  # fmt: skip
     if links:
         data["ReferencesAndLinks"] = links
     if target.raw_root is not None:
         data.setdefault("DatasetLinks", {})["raw"] = _relative(target.raw_root,
                                                                target.root)  # fmt: skip
         sources = data.setdefault("SourceDatasets", [])
-        if {"URL": "bids:raw:"} not in sources:
-            sources.append({"URL": "bids:raw:"})
+        entry = next((e for e in sources if e.get("URL") == "bids:raw:"), None)
+        if entry is None:
+            entry = {"URL": "bids:raw:"}
+            sources.append(entry)
+        if _given(raw.get("DatasetDOI")):
+            entry.setdefault("DOI", raw["DatasetDOI"])
     desc_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     ignore = target.root / ".bidsignore"
     lines = ignore.read_text(encoding="utf-8").splitlines() if ignore.is_file() else []
@@ -229,6 +243,29 @@ def write_dataset_files(target: Target, graph: Any = None) -> None:
     readme = target.root / "README.md"
     if not readme.is_file() and not (target.root / "README").is_file():
         readme.write_text(README, encoding="utf-8")
+
+
+def _raw_description(raw_root: Path | None) -> dict[str, Any]:
+    """The raw dataset's dataset_description.json, or {} without one."""
+    path = None if raw_root is None else raw_root / "dataset_description.json"
+    if path is None or not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _given(value: Any) -> bool:
+    """Not empty and not a placeholder such as MNE-BIDS's "[Unspecified]"."""
+    values = value if isinstance(value, list) else [value]
+    return any(
+        isinstance(v, (str, dict))
+        and v
+        and not (isinstance(v, str) and v.strip().startswith("[Unspecified"))
+        for v in values
+    )
 
 
 def _write_description(path: Path, description: str) -> Path:

@@ -82,10 +82,10 @@ BIDS derivatives recommend.
   `.bidsignore`, so the validator skips it, as are feature tables
   (`*_features.tsv`, `*_features.json`), which BIDS does not cover yet.
 - **`README.md`:** written once if the folder has no README: what made the
-  dataset and where to add its `Authors`.
+  dataset and where its credits come from.
 
-The BIDS validator (schema 1.2.7) then reports no errors; it warns that
-`dataset_description.json` lists no `Authors` until you add them.
+The BIDS validator (schema 1.2.7) then reports no errors and, when the raw
+dataset lists its `Authors`, no warnings (otherwise TOO_FEW_AUTHORS).
 
 ## `dataset_description.json`
 
@@ -109,6 +109,14 @@ Created on the first write and updated after:
 `DatasetLinks.raw` is the raw dataset relative to the derivatives folder (absent
 when the input is not in a BIDS dataset). Existing fields are kept; MeegXer's
 `GeneratedBy` entry is replaced with the current version.
+
+**Inherited from the raw dataset** (its `dataset_description.json`), when the
+derivative does not have them yet: `Authors`, `License`, `Acknowledgements`,
+`HowToAcknowledge`, `Funding` and `EthicsApprovals`; `Name` becomes
+"<raw Name> (MeegXer derivatives)"; the raw `ReferencesAndLinks` come before the
+pipeline's; the raw `DatasetDOI` goes into the `bids:raw:` entry of
+`SourceDatasets` as its `DOI` (never this dataset's `DatasetDOI`). Placeholders
+(MNE-BIDS's "[Unspecified]") are not inherited. What you change later is kept.
 
 `ReferencesAndLinks` gathers the `references` of every node in the pipeline
 (manifest, spec 0.2.12), each once, as text with its DOI link; references already
