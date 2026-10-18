@@ -63,3 +63,8 @@ def test_filters_reach_the_display_and_the_cache(tmp_path) -> None:  # type: ign
     cache.put("k", CachedOutput(Block(np.zeros((2, 10)), info, 0, 0.0)))
     got = cache.get("k")
     assert got is not None and got.block.info.filters == FILTERS
+    # an entry from before filters were recorded is a miss, not "no filters"
+    with np.load(tmp_path / "k.npz") as npz:
+        old = {name: npz[name] for name in npz.files if name != "filters"}
+    np.savez(tmp_path / "old.npz", allow_pickle=False, **old)
+    assert cache.get("old") is None

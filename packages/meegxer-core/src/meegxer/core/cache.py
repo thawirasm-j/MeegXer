@@ -85,6 +85,8 @@ class DirectoryCache:
         if not path.is_file():
             return None
         with np.load(path, allow_pickle=False) as npz:
+            if "filters" not in npz:  # written before 0.3.1 (spec 0.2.19): its
+                return None  # stages' filters are unknown, so compute it again
             positions = npz["positions"] if "positions" in npz else np.empty((0, 3))
             info = SignalInfo(
                 tuple(str(x) for x in npz["ch_labels"]),
@@ -98,9 +100,7 @@ class DirectoryCache:
                     else (float(p[0]), float(p[1]), float(p[2]))
                     for p in positions
                 ),
-                filters=filters_from_wire(
-                    json.loads(str(npz["filters"])) if "filters" in npz else None
-                ),
+                filters=filters_from_wire(json.loads(str(npz["filters"]))),
             )
             block = Block(
                 npz["data"], info, int(npz["sample_index"]), float(npz["timestamp"])
