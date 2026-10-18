@@ -169,6 +169,14 @@ uv run meegxer session check sub-01.meegxer.json   # what would be reused or ref
 uv run meegxer run sub-01.meegxer.json             # same output, byte for byte
 ```
 
+To send a session to someone else, share a copy that names no files or folders
+(`docs/DEIDENTIFICATION.md`); they rerun it on their own recording:
+
+```bash
+uv run meegxer session share sub-01.meegxer.json shared.meegxer.json
+uv run meegxer run shared.meegxer.json -i their.set -o their_clean.set
+```
+
 Write processed recordings into a BIDS derivatives dataset (`<dataset>/derivatives/meegxer`,
 layout in `spec/bids-derivatives.md`), one recording or a whole dataset; finished
 recordings are skipped on a rerun, so an interrupted run continues:

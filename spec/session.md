@@ -116,6 +116,34 @@ Paths in `pipeline` parameters named `path` or `root`, in a source's `recording`
 file's folder unless absolute. MeegXer writes paths inside that folder as relative
 paths, so a session folder can be moved or zipped as a whole.
 
+### Sharing
+
+A session can hold identifying names: paths with a user's folders, and file names
+that name a subject (`JaneDoe_2024-05-06.edf`). `meegxer session share IN OUT`
+(or *Share session…* in the GUI, or `meegxer session save --share-safe`) writes a
+copy that names no file or folder:
+
+| Field | Becomes |
+|---|---|
+| The source's `path` / `root` | `<input>.ext` / `<input-root>` |
+| A writer's `path` | `<output-N>.ext` (the same file keeps the same N) |
+| A BIDS writer's `root` | `""` (its default: the raw dataset's `derivatives/meegxer`) |
+| `recording.montage` (a file), `recording.events.file` | `<montage>.ext`, `<events>.ext` |
+| `inputs` / `outputs` paths | the same placeholders; `sha256` kept |
+| A model's `fitted_on.stream_id` (a file source's file name) | `<input>.ext` (reloading compares the `fingerprint`, a one-way hash) |
+| A local plugin's `command` | file names only (no folders) |
+
+A placeholder is `<word>` or `<word-N>` with the original extension; it is not a
+path, so reading and writing leave it as it is. Kept: hashes (they confirm a file
+someone already has and reveal nothing else), models, node versions, the
+environment, and `name` and `description`, which are the user's own words: the
+GUI and CLI show them and offer to remove them (`--drop-text`).
+
+Rerunning a shared session needs the recording: `meegxer run OUT -i FILE -o
+RESULT` (or `--bids ROOT`). Without `-i`, the run stops and says so; writers whose
+path is a placeholder write nothing (`-o` gives the output). A placeholder montage
+or events file is left out on loading, with a warning.
+
 ## Reloading
 
 | Item | If it differs from what is installed or found |

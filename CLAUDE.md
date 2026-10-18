@@ -104,7 +104,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - `uv run meegxer nodes`; `uv run meegxer run pipeline.json -i rec.set -o out.set`.
 - Sessions (`spec/session.md`): `meegxer run … --session out.meegxer.json`,
   `meegxer run out.meegxer.json`, `meegxer session check FILE`,
-  `meegxer session save FILE` (from the daemon, with calibrated models).
+  `meegxer session save FILE` (from the daemon, with calibrated models),
+  `meegxer session share IN OUT` (no file names; `docs/DEIDENTIFICATION.md`).
 - BIDS derivatives (`spec/bids-derivatives.md`): `meegxer run … --bids-out DIR`,
   `meegxer run PIPELINE --bids RAW_ROOT [--subjects 01,02] [--task T] [--overwrite]`.
 - Live: `uv run meegxer daemon --pipeline live.json --start`, then `meegxer status`,

@@ -100,9 +100,11 @@ def run(
         SessionError,
         adopt_models,
         build_session,
+        drop_shared_sinks,
         load_session,
         model_status,
         read_session,
+        shared_input_hint,
         sink_outputs,
         write_session,
     )
@@ -121,6 +123,11 @@ def run(
         if input is not None:
             source = FileSource({"path": str(input)})
             graph.replace(graph.source.id, source)
+        elif hint := shared_input_hint(graph):
+            raise SessionError(hint)
+        for node_id in drop_shared_sinks(graph):
+            typer.echo(f"note: {node_id} writes nowhere (shared without its file "
+                       "name); -o gives the output")  # fmt: skip
         if output is not None:
             sink_name = _SINKS.get(output.suffix.lower())
             if sink_name is None:
@@ -210,7 +217,12 @@ def _run_bids(
         with_recording,
     )
     from meegxer.core.registry import Registry
-    from meegxer.core.session import adopt_models, load_session, read_session
+    from meegxer.core.session import (
+        adopt_models,
+        drop_shared_sinks,
+        load_session,
+        read_session,
+    )
     from meegxer.core.sources import BidsSource
 
     try:
@@ -250,6 +262,7 @@ def _run_bids(
                                      RecordingOverrides.from_dict(settings))
                       if settings else BidsSource(params))  # fmt: skip
             graph.replace(graph.source.id, source)
+            drop_shared_sinks(graph)  # a shared session's file writers
             writer = ensure_writer(graph, bids_out, overwrite)
             target = target_for(graph, writer.params)
             # the session file is written last: without it the recording is
@@ -293,6 +306,7 @@ def session_check(
         load_session,
         model_status,
         read_session,
+        shared_input_hint,
     )
 
     try:
@@ -301,7 +315,10 @@ def session_check(
             Registry.from_entry_points(),
             allow_version_mismatch=allow_version_mismatch,
         )
-        finite = loaded.graph.source.manifest.availability != "online"
+        shared = shared_input_hint(loaded.graph)
+        if shared:  # no recording to fingerprint until one is given
+            loaded.warnings.append(shared)
+        finite = not shared and loaded.graph.source.manifest.availability != "online"
         fps = offline_input_fingerprints(loaded.graph) if finite else {}
         if finite:
             adopt_models(loaded, fps)
@@ -322,6 +339,12 @@ def session_check(
 def session_save(
     file: Annotated[Path, typer.Argument(help="Where to write (NAME.meegxer.json).")],
     name: Annotated[str | None, typer.Option(help="Session name.")] = None,
+    share_safe: Annotated[
+        bool, typer.Option(help="Name no files (see `meegxer session share`).")
+    ] = False,
+    drop_text: Annotated[
+        bool, typer.Option(help="With --share-safe: remove the name and description.")
+    ] = False,
     control: Annotated[
         str, typer.Option(help="Daemon control endpoint.")
     ] = "tcp://127.0.0.1:5555",
@@ -331,8 +354,55 @@ def session_save(
 
     session = _call(control, "get_session", name=name)
     assert isinstance(session, dict)
+    if share_safe:
+        session = _share(session, drop_text)
     write_session(file, session)
     typer.echo(f"wrote {file}")
+
+
+@session_app.command("share")
+def session_share(
+    file: Annotated[Path, typer.Argument(help="Session to share.")],
+    out: Annotated[Path, typer.Argument(help="Where to write the shareable copy.")],
+    drop_text: Annotated[
+        bool, typer.Option(help="Remove the name and description without asking.")
+    ] = False,
+) -> None:
+    """Write a copy of a session that names no files or folders (paths become
+    placeholders such as <input>.set; hashes and models are kept). Rerun it
+    with `meegxer run OUT -i RECORDING -o RESULT`."""
+    from meegxer.core.session import read_session, write_session
+
+    try:
+        session = read_session(file)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    write_session(out, _share(session, drop_text))
+    typer.echo(f"wrote {out} (no file or folder names)")
+
+
+def _share(session: dict[str, object], drop_text: bool) -> dict[str, object]:
+    """The share-safe copy, after the reminder about the free text it keeps."""
+    import sys
+
+    from meegxer.core.session import free_text, share_safe
+
+    shared = share_safe(session)
+    text = free_text(shared)
+    if text and not drop_text:
+        typer.echo("The session keeps the text you wrote; check that it names no "
+                   "one:")  # fmt: skip
+        for key, value in text.items():
+            typer.echo(f"  {key}: {value}")
+        if sys.stdin.isatty():
+            drop_text = typer.confirm("Remove it?", default=False)
+        else:
+            typer.echo("(--drop-text removes it)")
+    if drop_text:
+        for key in text:
+            shared.pop(key, None)
+    return shared
 
 
 ControlOpt = Annotated[str, typer.Option(help="Daemon control endpoint.")]
