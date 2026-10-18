@@ -226,6 +226,18 @@ class Sink(_ConfiguredNode):
 
     role: ClassVar[NodeRole] = NodeRole.SINK
 
+    def __init__(self, params: Mapping[str, object] | None = None) -> None:
+        super().__init__(params)
+        self.skipped: list[str] = []  # saves skipped, why (the run went on)
+
+    def keep_existing(self, path: Path) -> bool:
+        """Whether ``path`` exists and may not be replaced (``overwrite`` off): the
+        save is skipped, with a note in ``skipped``, and the run goes on."""
+        if not path.exists() or self.params.get("overwrite"):
+            return False
+        self.skipped.append(f"{path} exists, not saved (overwrite replaces it)")
+        return True
+
     @abstractmethod
     def write(self, block: AnyBlock) -> None: ...
 

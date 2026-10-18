@@ -33,10 +33,12 @@ def test_feature_tsv(tmp_path: Path) -> None:
     assert rows[0][-1] == "Cz|beta" and len(rows) == 3
     assert rows[2][:2] == ["100", "200"] and float(rows[2][3]) == 2.5
 
-    with pytest.raises(FileExistsError):
-        again = FeatureTsvSink({"path": str(path)})
-        again.write(features(0, 1.0))
-        again.close()
+    before = path.read_bytes()  # an existing file is kept, its save skipped
+    again = FeatureTsvSink({"path": str(path)})
+    again.write(features(0, 1.0))
+    again.close()
+    assert path.read_bytes() == before
+    assert again.skipped and "not saved" in again.skipped[0]
 
 
 def test_feature_tsv_writes_missing_values_as_n_a(tmp_path: Path) -> None:

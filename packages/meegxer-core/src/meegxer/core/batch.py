@@ -122,6 +122,7 @@ class BatchResult:
     computed: list[str] = field(default_factory=list)
     cached: list[str] = field(default_factory=list)
     fitted: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)  # saves of existing files
 
 
 class BatchScheduler:
@@ -188,6 +189,8 @@ class BatchScheduler:
                     for block in upstream:
                         node.impl.write(block)
                     node.impl.close()
+                    result.skipped.extend(f"{node.id}: {note}"
+                                          for note in node.impl.skipped)  # fmt: skip
                 remaining[node.input_node] -= 1  # type: ignore[index]
                 self._release(graph, node.input_node, remaining, streams,  # type: ignore[arg-type]
                               keep_ids, result)  # fmt: skip

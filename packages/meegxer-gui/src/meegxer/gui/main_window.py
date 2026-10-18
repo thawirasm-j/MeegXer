@@ -1015,6 +1015,8 @@ class MainWindow(QMainWindow):
         self.offline_state = state
         if state == "done":
             self.log(f"Offline run done in {offline.get('elapsed_s', 0):.1f} s.")
+            for note in offline.get("skipped", []):
+                self.log(f"Not saved: {note}")
         elif state == "error":
             self.log(f"Offline run failed: {offline.get('error')}")
         self._transport()

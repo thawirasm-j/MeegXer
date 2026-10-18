@@ -86,9 +86,11 @@ remote GUI).
 - `overruns`: blocks whose processing took longer than their duration.
 - `latency`: clock at the sinks minus the LSL timestamp of the block's last sample.
 - `source_*`: present when the source stream carries a `SAMPLE_INDEX` channel.
-- `offline`: present after `run_offline`: `{state, error, elapsed_s, n_samples,
+- `offline`: present after `run_offline`: `{state, error, skipped, elapsed_s, n_samples,
   sfreq, models, probes, features}`, where `state` is `running`, `done` or `error`,
-  `n_samples` is the length of the input and `sfreq` its rate, `models` lists the
+  `skipped` lists the saves a writer skipped because its file existed (without
+  `overwrite`; the run still finished), `n_samples` is the length of the input and
+  `sfreq` its rate, `models` lists the
   nodes with a fitted model once the run is done (offline runs fit on the whole
   input, or reuse a matching model), `probes` maps each probe id that has data to
   `{ch_labels, sfreq, first_sample, n_filled, n_samples, bypassed, ch_classes,

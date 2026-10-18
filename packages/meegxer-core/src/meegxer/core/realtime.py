@@ -397,6 +397,8 @@ class RealtimeScheduler:
                 if isinstance(node.impl, Sink):
                     try:
                         node.impl.close()
+                        notes = node.impl.skipped
+                        self.metrics.errors.extend(f"{node.id}: {n}" for n in notes)
                     except Exception:
                         self.metrics.errors.append(traceback.format_exc(limit=5))
             close = getattr(source_node.impl, "close", None)

@@ -111,13 +111,19 @@ def test_derivative_is_readable_by_bids_tools(tmp_path: Path) -> None:
     load_session(session, Registry.from_entry_points())  # a valid session
 
 
-def test_rerun_needs_overwrite_and_is_byte_identical(tmp_path: Path) -> None:
+def test_rerun_skips_existing_files_and_overwrite_is_byte_identical(
+    tmp_path: Path,
+) -> None:
     raw_root = make_dataset(tmp_path / "ds")
     run(bids_pipeline(raw_root))
     signal = next((raw_root / "derivatives").rglob("*_eeg.set"))
     first = signal.read_bytes()
-    with pytest.raises(FileExistsError, match="overwrite"):
-        run(bids_pipeline(raw_root))
+    session = next((raw_root / "derivatives").rglob("*_meegxer.json"))
+    kept = session.read_bytes()
+    graph = Graph.from_dict(bids_pipeline(raw_root), Registry.from_entry_points())
+    result = BatchScheduler().run(graph)  # runs to the end, saves nothing
+    assert [n.split(":")[0] for n in result.skipped] == ["out", "feat"]
+    assert signal.read_bytes() == first and session.read_bytes() == kept
     run(bids_pipeline(raw_root, overwrite=True))
     assert signal.read_bytes() == first
 

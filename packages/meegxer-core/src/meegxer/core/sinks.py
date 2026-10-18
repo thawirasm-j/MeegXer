@@ -86,7 +86,8 @@ class _RawFileSink(Sink):
         self._blocks.append(block)
 
     def close(self) -> None:
-        if not self._blocks:
+        if not self._blocks or self.keep_existing(self.path):
+            self._blocks.clear()
             return
         import mne
 
@@ -121,7 +122,7 @@ class SetSink(_RawFileSink):
     def close(self) -> None:
         written = bool(self._blocks)
         super().close()
-        if written:
+        if written and not self.skipped:
             with self.path.open("r+b") as fh:
                 if fh.read(10) == b"MATLAB 5.0":  # v5 MAT-file (not HDF5 v7.3)
                     fh.seek(0)
@@ -169,8 +170,9 @@ class FeatureTsvSink(Sink):
         if self._header is None:
             return
         path = Path(str(self.params["path"]))
-        if path.exists() and not self.params["overwrite"]:
-            raise FileExistsError(f"{path} exists (set overwrite to replace it)")
+        if self.keep_existing(path):
+            self._rows.clear()
+            return
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh, delimiter="\t", lineterminator="\n")
