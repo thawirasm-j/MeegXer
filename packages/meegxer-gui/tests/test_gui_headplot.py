@@ -216,7 +216,7 @@ def test_hidden_channels_are_left_out_of_the_map() -> None:
     m = head(hidden=frozenset({"O1"}))
     assert isinstance(m, HeadMap)
     o1 = next(e for e in m.electrodes if e.label == "O1")
-    assert not o1.shown and o1.text.endswith("(hidden)")
+    assert not o1.shown and o1.text.endswith("(not EEG: off the map)")
 
 
 def test_maps_explain_why_they_cannot_be_drawn() -> None:
@@ -251,8 +251,11 @@ def test_the_spectrum_view_shows_the_head_and_its_band(qapp: QApplication) -> No
     v.band_menu.activated.emit(1)  # theta chosen
     assert v.band_range() == (4.0, 8.0)
 
-    v.head.clicked.emit("O1")  # clicking an electrode hides its channel
+    v.head.clicked.emit("O1")  # clicking an electrode hides its channel's curve
     assert "O1" in v.channels.hidden
+    v.refresh(lambda p, s: main, "main", [])  # the map keeps every EEG channel
+    assert isinstance(v.head.map, HeadMap)
+    assert next(e for e in v.head.map.electrodes if e.label == "O1").shown
     v.head.clicked.emit("O1")
     assert "O1" not in v.channels.hidden
 
@@ -409,4 +412,23 @@ def test_the_view_can_remove_the_aperiodic_fit(qapp: QApplication) -> None:
     assert v.view_state()["spectrum"]["aperiodic"] is True
     v.set_view_state({"spectrum": {"aperiodic": False}})
     assert not v.aperiodic.isChecked() and v.measure.isEnabled()
+    dispose(qapp, v)
+
+
+def test_the_map_ignores_the_menu_but_not_channel_types(qapp: QApplication) -> None:
+    """The head plot maps every EEG channel with a position, whichever curves the
+    channel menu shows; a non-EEG channel stays off it even when shown."""
+    v = view(qapp)
+    main = window("main", OCCIPITAL)
+    v.types = {"Fp1": "eog"}
+    v.refresh(lambda p, s: main, "main", [])
+    for label in ("O1", "O2", "P3"):
+        v.channels.toggle_channel(label)  # their curves hidden
+    v.channels.toggle_channel("Fp1")  # the EOG-typed channel's curve shown
+    assert {"O1", "O2", "P3"} <= v.channels.hidden and "Fp1" not in v.channels.hidden
+    v.refresh(lambda p, s: main, "main", [])
+    assert isinstance(v.head.map, HeadMap)
+    by = {e.label: e for e in v.head.map.electrodes}
+    assert by["O1"].shown and by["O2"].shown and by["P3"].shown
+    assert not by["Fp1"].shown and by["Fp1"].text.endswith("off the map)")
     dispose(qapp, v)

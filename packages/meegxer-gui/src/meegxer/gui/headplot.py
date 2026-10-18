@@ -420,7 +420,7 @@ class HeadInput:
     relative: bool = False
     aperiodic: bool = False  # remove each channel's 1/f fit first
     db_range: float = DEFAULT_RANGE
-    hidden: frozenset[str] = frozenset()
+    hidden: frozenset[str] = frozenset()  # off the map (not EEG)
     compare_psd: FloatArray | None = None  # first comparison tap, same channels
     compare_labels: tuple[str, ...] = ()
     wheel: Mapping[str, tuple[float, float]] = field(default_factory=dict)
@@ -582,7 +582,7 @@ def render(
             p = 10 ** (value[i] / 10) if np.isfinite(value[i]) else float("nan")
             text = f"{lb}: {p:.3g} {unit} ({value[i]:.1f} dB)"
         if lb in data.hidden:
-            text += " (hidden)"
+            text += " (not EEG: off the map)"
         color = channel_style(lb, theme, data.wheel).color
         electrodes.append(Electrode(lb, x, y, color, bool(valid[i]), text))
     ramp = [(int(r), int(g), int(b)) for r, g, b in band_rgb]
@@ -596,7 +596,7 @@ def render(
 class HeadPlot(QWidget):
     """Draws a ``HeadMap``: the map, contour lines, head outline, electrodes and
     a colour scale. Hovering an electrode names it (``hovered``); clicking shows
-    or hides its channel (``clicked``)."""
+    or hides its channel's curve (``clicked``); the map keeps every EEG channel."""
 
     hovered = Signal(object)  # label or None
     clicked = Signal(str)

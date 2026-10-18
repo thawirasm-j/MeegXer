@@ -772,7 +772,11 @@ class SignalView(QWidget):
             relative=bool(self.measure.currentData()),
             aperiodic=self.aperiodic.isChecked(),
             db_range=float(self.db_range.currentData()),
-            hidden=frozenset(self.channels.hidden),
+            # every EEG channel, whichever curves the menu shows; EOG, EMG and
+            # other non-EEG channels stay off the map
+            hidden=frozenset(
+                lb for lb in win.labels if self.types.get(lb, "eeg") not in ("eeg", "")
+            ),
             compare_psd=None if first is None or not len(first[1]) else first[2],
             compare_labels=() if first is None else first[0].labels,
             wheel=self.wheel,
