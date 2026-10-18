@@ -12,18 +12,20 @@ See ``spec/control-api.md``.
 
 from __future__ import annotations
 
+import hmac
 import os
 import re
 import secrets
+import threading
 from pathlib import Path
 
 import zmq
-from zmq.auth.thread import ThreadAuthenticator
 
 from meegxer.core.settings import config_dir
 
 TOKEN_ENV = "MEEGXER_TOKEN"
 USER = "meegxer"
+ZAP_ENDPOINT = "inproc://zeromq.zap.01"  # fixed by ZeroMQ (RFC 27)
 
 
 def token_path(control_endpoint: str) -> Path:
@@ -71,22 +73,61 @@ def missing_token_hint(control_endpoint: str) -> str:
 
 
 class Guard:
-    """Server side: one token, checked by a ZAP handler on the daemon's context
-    for every socket that ``protect`` marked."""
+    """Server side: one token, checked by a ZAP handler (RFC 27) on the daemon's
+    context for every socket that ``protect`` marked.
+
+    A plain thread with a blocking poll: pyzmq's ThreadAuthenticator runs on
+    zmq.asyncio, which on Windows' default (Proactor) event loop needs tornado
+    and otherwise dies at once, leaving every login refused."""
 
     def __init__(self, context: zmq.Context[zmq.Socket[bytes]]) -> None:
         self.token = secrets.token_urlsafe(32)
-        self._auth = ThreadAuthenticator(context)
-        self._auth.start()
-        self._auth.configure_plain(domain="*", passwords={USER: self.token})
+        self._context = context
+        self._stop = threading.Event()
+        self._ready = threading.Event()
+        self._thread = threading.Thread(target=self._serve, name="zap",
+                                        daemon=True)  # fmt: skip
+        self._thread.start()
+        if not self._ready.wait(10):
+            raise RuntimeError("the daemon's token check did not start")
 
     @staticmethod
     def protect(socket: zmq.Socket[bytes]) -> None:
         """Before ``bind``: accept only clients with the token."""
         socket.plain_server = True
 
+    def _allowed(self, mechanism: bytes, credentials: list[bytes]) -> bool:
+        if mechanism != b"PLAIN" or len(credentials) != 2:
+            return False
+        user, password = credentials
+        return user == USER.encode() and hmac.compare_digest(
+            password, self.token.encode()
+        )
+
+    def _serve(self) -> None:
+        socket = self._context.socket(zmq.REP)
+        socket.setsockopt(zmq.LINGER, 0)
+        socket.bind(ZAP_ENDPOINT)
+        self._ready.set()
+        try:
+            while not self._stop.is_set():
+                if not socket.poll(100):
+                    continue
+                # version, request id, domain, address, identity, mechanism, creds
+                request = socket.recv_multipart()
+                version, request_id = request[0], request[1]
+                ok = len(request) >= 6 and self._allowed(request[5], request[6:])
+                socket.send_multipart([
+                    version, request_id, b"200" if ok else b"400",
+                    b"OK" if ok else b"invalid token", USER.encode() if ok else b"",
+                    b"",
+                ])  # fmt: skip
+        finally:
+            socket.close(linger=0)
+
     def stop(self) -> None:
-        self._auth.stop()
+        self._stop.set()
+        self._thread.join(5)
 
 
 def login(socket: zmq.Socket[bytes], token: str | None) -> None:
