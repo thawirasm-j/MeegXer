@@ -98,7 +98,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 ## Commands
 
 - `uv sync --all-packages`, then `uv run pytest`, `uv run ruff check .`,
-  `uv run ruff format --check .`, `uv run mypy`, `uv run lint-imports`.
+  `uv run ruff format --check .`, `uv run mypy` (CI also runs
+  `uv run mypy --platform win32`), `uv run lint-imports`.
 - `python tools/smoke_deps.py --python 3.14`: planned third-party deps install/import.
 - `uv run meegxer nodes`; `uv run meegxer run pipeline.json -i rec.set -o out.set`.
 - Sessions (`spec/session.md`): `meegxer run … --session out.meegxer.json`,

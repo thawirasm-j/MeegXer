@@ -21,6 +21,8 @@ jobs:
       - run: uv run --frozen ruff check .
       - run: uv run --frozen ruff format --check .
       - run: uv run --frozen mypy
+      - name: mypy as on Windows (platform-only names such as signal.SIGKILL)
+        run: uv run --frozen mypy --platform win32
       - run: uv run --frozen lint-imports
 
   test:
