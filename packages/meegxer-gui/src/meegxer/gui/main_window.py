@@ -40,7 +40,13 @@ from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame, FeatureFrame
 from meegxer.core.graph import positions_message
 from meegxer.core.notices import LOCAL_CODE_NOTICE
-from meegxer.core.session import is_session, read_session, write_session
+from meegxer.core.session import (
+    free_text,
+    is_session,
+    read_session,
+    share_safe,
+    write_session,
+)
 from meegxer.gui.buffers import FeatureBuffer, ProbeBuffer
 from meegxer.gui.chain import ChainView
 from meegxer.gui.colormaps import Maps
@@ -216,6 +222,7 @@ class MainWindow(QMainWindow):
             ("Open…", self.open_pipeline),
             ("Save…", self.save_pipeline),
             ("Save session…", self.save_session),
+            ("Share session…", self.share_session),
         ):
             b = QPushButton(text)
             b.clicked.connect(slot)
@@ -844,13 +851,34 @@ class MainWindow(QMainWindow):
         answer = QMessageBox.question(self, title, text)
         return answer == QMessageBox.StandardButton.Yes
 
-    def save_session(self) -> None:
+    def share_session(self) -> None:
+        """Save a session that names no files or folders (``share_safe``), to
+        send to others; asks about the free text it would keep."""
+        self.save_session(share=True)
+
+    def keep_free_text(self, text: dict[str, str]) -> bool:
+        """Whether a shared session keeps the text the user wrote (asked)."""
+        shown = "\n".join(f"{k.capitalize()}: {v}" for k, v in text.items())
+        box = QMessageBox(self)
+        box.setWindowTitle("Share session")
+        box.setText("The shared session keeps the text you wrote. Check that it "
+                    "names no one:\n\n" + shown)  # fmt: skip
+        keep = box.addButton("Keep it", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Remove it", QMessageBox.ButtonRole.DestructiveRole)
+        box.exec()
+        return box.clickedButton() is keep
+
+    def save_session(self, share: bool = False, path: str | None = None) -> None:
         """Save what is shown as a session, with the models fitted by the last
-        offline run (offline mode) or calibrated live."""
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save session", str(Path(self._start_dir()) / "session.meegxer.json"),
-            "MeegXer session (*.meegxer.json)",
-        )  # fmt: skip
+        offline run (offline mode) or calibrated live; with ``share``, without
+        any file or folder names (``meegxer.core.session.share_safe``)."""
+        title = "Share session" if share else "Save session"
+        default = "shared.meegxer.json" if share else "session.meegxer.json"
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(
+                self, title, str(Path(self._start_dir()) / default),
+                "MeegXer session (*.meegxer.json)",
+            )  # fmt: skip
         if not path:
             return
         self._remember_file(path, pipeline=True)
@@ -867,6 +895,12 @@ class MainWindow(QMainWindow):
         )
         if session is None:
             return
+        if share:
+            session = share_safe(session)
+            text = free_text(session)
+            if text and not self.keep_free_text(text):
+                for key in text:
+                    session.pop(key, None)
         try:
             write_session(path, session)
         except OSError as exc:
@@ -874,8 +908,9 @@ class MainWindow(QMainWindow):
             return
         models = ", ".join(session.get("models", {})) or "none"
         outputs = len(session.get("outputs", []))
+        shared = "; no file or folder names" if share else ""
         self.log(f"Saved session {path} (fitted models: {models}; "
-                 f"output files: {outputs}).")  # fmt: skip
+                 f"output files: {outputs}{shared}).")  # fmt: skip
 
     def save_pipeline(self) -> None:
         path, _ = QFileDialog.getSaveFileName(

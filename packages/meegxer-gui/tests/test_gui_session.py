@@ -98,6 +98,16 @@ def test_open_a_session_run_it_and_save_it_again(
         assert again["pipeline"]["nodes"][0]["params"]["path"] == "sub-01_raw.fif"
         assert (again["models"]["ica"]["content_hash"]
                 == original["models"]["ica"]["content_hash"])  # fmt: skip
+
+        shared = session_file.with_name("shared.meegxer.json")  # Share session…
+        monkeypatch.setattr(win, "keep_free_text", lambda text: False)  # remove it
+        win.save_session(share=True, path=str(shared))
+        text = shared.read_text()
+        data = json.loads(text)
+        assert "sub-01" not in text and "name" not in data
+        assert data["pipeline"]["nodes"][0]["params"]["path"] == "<input>.fif"
+        for key in ("data", "fingerprint", "content_hash"):  # the model itself
+            assert data["models"]["ica"][key] == again["models"]["ica"][key]
     finally:
         win.close()
 

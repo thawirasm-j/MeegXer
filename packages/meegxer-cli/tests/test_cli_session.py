@@ -77,3 +77,28 @@ def test_session_errors_are_reported(tmp_path: Path) -> None:
     bad.write_text(json.dumps({"meegxer_session": "9.0", "pipeline": {}}))
     result = runner.invoke(app, ["run", str(bad)])
     assert result.exit_code == 1 and "not supported" in result.output
+
+
+def test_a_shared_session_names_no_files_and_reruns_with_i(tmp_path: Path) -> None:
+    rec = recording(tmp_path / "JaneDoe_raw.fif")
+    pipeline = tmp_path / "clean.json"
+    pipeline.write_text(json.dumps({"spec_version": SPEC_VERSION, "nodes": [
+        {"id": "input", "node": "meegxer.core.file", "params": {"path": str(rec)}},
+        {"id": "hp", "node": "meegxer.nodes.iir_filter",
+         "params": {"kind": "highpass", "low": 1.0}}]}))  # fmt: skip
+    first = runner.invoke(app, ["run", str(pipeline), "-o",
+                                str(tmp_path / "JaneDoe_clean.set"), "--session",
+                                str(tmp_path / "s.meegxer.json")])  # fmt: skip
+    assert first.exit_code == 0, first.output
+    shared = tmp_path / "out" / "shared.meegxer.json"
+    result = runner.invoke(app, ["session", "share", str(tmp_path / "s.meegxer.json"),
+                                 str(shared), "--drop-text"])  # fmt: skip
+    assert result.exit_code == 0, result.output
+    assert "JaneDoe" not in shared.read_text()
+    alone = runner.invoke(app, ["run", str(shared)])
+    assert alone.exit_code == 1 and "-i FILE" in alone.output
+    again = runner.invoke(app, ["run", str(shared), "-i", str(rec), "-o",
+                                str(tmp_path / "again.set")])  # fmt: skip
+    assert again.exit_code == 0, again.output
+    assert "writes nowhere" in again.output  # the shared file writer is dropped
+    assert (tmp_path / "again.set").is_file()

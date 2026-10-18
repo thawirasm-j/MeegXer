@@ -19,7 +19,9 @@ import dataclasses
 import hashlib
 import json
 import math
+import os
 import platform
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -50,6 +52,8 @@ PACKAGES = (
 _ARRAY = "__array__"
 _FLOAT = "__float__"
 _NONFINITE = {"NaN": math.nan, "Infinity": math.inf, "-Infinity": -math.inf}
+# what a share-safe session holds instead of a path: <input>.edf, <output-2>.set
+_PLACEHOLDER = re.compile(r"<[a-z]+(?:-[a-z]+)?(?:-\d+)?>(?:\.[A-Za-z0-9.]+)?")
 
 
 class SessionError(ValueError):
@@ -280,13 +284,14 @@ def load_session(
             f"session format {session['meegxer_session']} is not supported "
             f"(this MeegXer reads {SESSION_FORMAT.split('.')[0]}.x)"
         )
+    pipeline, notes = _without_shared_files(session["pipeline"])
     try:
-        graph = Graph.from_dict(session["pipeline"], registry)
+        graph = Graph.from_dict(pipeline, registry)
     except LookupError as exc:  # UnknownNodeError: a node is not installed
         raise SessionError(_missing_node_hint(session, exc)) from exc
     except GraphError as exc:
         raise SessionError(f"pipeline: {exc}") from exc
-    loaded = LoadedSession(graph)
+    loaded = LoadedSession(graph, warnings=notes)
     mismatched = _check_nodes(session, graph, allow_version_mismatch, loaded)
     _install_models(session, graph, mismatched, loaded)
     _check_inputs(session, graph, strict, loaded)
@@ -395,8 +400,8 @@ def _check_inputs(
 ) -> None:
     for node_id, files in session.get("inputs", {}).items():
         for entry in files:
-            if "sha256" not in entry:
-                continue
+            if "sha256" not in entry or is_placeholder(entry["path"]):
+                continue  # a shared session names no files: nothing to compare
             path = Path(entry["path"])
             if not path.is_file():
                 message = f"inputs: {node_id!r} file {path} is missing"
@@ -457,30 +462,167 @@ def model_status(graph: Graph, input_fps: Mapping[str, str]) -> dict[str, str]:
     return status
 
 
+# -- sharing (spec/session.md, Sharing) ----------------------------------------------
+
+
+def is_placeholder(path: object) -> bool:
+    """Whether ``path`` is a share-safe placeholder (``<input>.edf``), not a file."""
+    return isinstance(path, str) and _PLACEHOLDER.fullmatch(path) is not None
+
+
+def _suffix(path: str) -> str:
+    name = re.split(r"[/\\]", path)[-1]
+    return "".join(Path(name).suffixes[-1:])
+
+
+def share_safe(session: Mapping[str, Any]) -> dict[str, Any]:
+    """A copy of ``session`` that names no file or folder: every path becomes a
+    placeholder that keeps only the extension (``<input>.set``, ``<output-1>.edf``,
+    ``<montage>.ced``), as does the stream a model was fitted on (its
+    fingerprint, a one-way hash, is what reloading compares). Hashes, models
+    and the free text (``name``,
+    ``description``) are kept; :func:`free_text` lists the text to check.
+    A shared session reruns on a recording given with ``-i`` (and ``-o``)."""
+    out = copy.deepcopy(dict(session))
+    places: dict[str, str] = {}
+    count = {"output": 0}
+
+    def key(path: str) -> str:
+        return os.path.normcase(os.path.abspath(path))
+
+    def output(path: str) -> str:
+        if key(path) not in places:
+            count["output"] += 1
+            places[key(path)] = f"<output-{count['output']}>{_suffix(path)}"
+        return places[key(path)]
+
+    nodes = out.get("pipeline", {}).get("nodes", [])
+    for index, node in enumerate(nodes):
+        params = node.get("params", {})
+        path, root = params.get("path"), params.get("root")
+        if index == 0:  # the source (first by construction)
+            if isinstance(path, str) and path and not is_placeholder(path):
+                params["path"] = places[key(path)] = f"<input>{_suffix(path)}"
+            if isinstance(root, str) and root and not is_placeholder(root):
+                params["root"] = "<input-root>"
+        else:
+            if isinstance(path, str) and path and not is_placeholder(path):
+                params["path"] = output(path)
+            if isinstance(root, str) and root:
+                params["root"] = ""  # BIDS writers: the default derivatives folder
+        recording = node.get("recording", {})
+        events = recording.get("events", {})
+        if isinstance(events.get("file"), str) and events["file"]:
+            events["file"] = f"<events>{_suffix(events['file'])}"
+        montage = recording.get("montage")
+        if isinstance(montage, str) and _is_file_montage(montage):
+            recording["montage"] = f"<montage>{_suffix(montage)}"
+    for files in out.get("inputs", {}).values():
+        for entry in files:
+            path = entry["path"]
+            entry["path"] = places.get(key(path)) or f"<input>{_suffix(path)}"
+    for entry in out.get("outputs", []):
+        entry["path"] = output(entry["path"])
+    for model in out.get("models", {}).values():
+        stream = model.get("fitted_on", {}).get("stream_id")
+        if stream and not is_placeholder(stream):  # a file source: its file name
+            model["fitted_on"]["stream_id"] = f"<input>{_suffix(stream)}"
+    for entry in out.get("nodes", {}).values():
+        provenance = entry.get("provenance", {})
+        if isinstance(provenance.get("command"), list):  # a local plugin's command
+            provenance["command"] = [re.split(r"[/\\]", str(a))[-1]
+                                     for a in provenance["command"]]  # fmt: skip
+    return out
+
+
+def free_text(session: Mapping[str, Any]) -> dict[str, str]:
+    """The text a person wrote into ``session`` (``name``, ``description``):
+    sharing keeps it, so it is shown for checking before a session leaves."""
+    return {k: str(session[k]) for k in ("name", "description") if session.get(k)}
+
+
+def _is_file_montage(montage: str) -> bool:
+    return "/" in montage or "\\" in montage or "." in montage  # not a built-in
+
+
+def _without_shared_files(
+    pipeline: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """The pipeline without the recording files a shared session left out
+    (placeholders), and a note for each."""
+    out = copy.deepcopy(dict(pipeline))
+    notes = []
+    for node in out.get("nodes", []):
+        recording = node.get("recording", {})
+        if is_placeholder(recording.get("montage")):
+            notes.append(f"{node['id']}: the montage file was left out when this "
+                         "session was shared; positions come from the recording "
+                         "(set recording.montage to use a file)")  # fmt: skip
+            del recording["montage"]
+        events = recording.get("events", {})
+        if is_placeholder(events.get("file")):
+            notes.append(
+                f"{node['id']}: the events file was left out when this "
+                "session was shared; the recording's own events are used"
+            )
+            del events["file"]
+    return out, notes
+
+
+def shared_input_hint(graph: Graph) -> str | None:
+    """Why ``graph`` cannot run as it is: its source names a placeholder (a
+    shared session), so the recording has to be given; None otherwise."""
+    params = graph.source.impl.params
+    if is_placeholder(params.get("path")):
+        return (
+            "this session was shared without file names: give the recording "
+            "with -i FILE"
+        )
+    if is_placeholder(params.get("root")):
+        return (
+            "this session was shared without file names: give the BIDS "
+            "dataset with --bids ROOT"
+        )
+    return None
+
+
+def drop_shared_sinks(graph: Graph) -> list[str]:
+    """Remove the sinks whose path a shared session left out; their ids."""
+    dropped = [n.id for n in graph.nodes if isinstance(n.impl, Sink)
+               and is_placeholder(n.impl.params.get("path"))]  # fmt: skip
+    for node_id in dropped:
+        graph.remove(node_id)
+    return dropped
+
+
 # -- files on disk -------------------------------------------------------------------
 
 
 def _map_paths(session: dict[str, Any], fix: Any) -> dict[str, Any]:
-    """Apply ``fix`` to every path a session holds (``spec/session.md``)."""
+    """Apply ``fix`` to every path a session holds (``spec/session.md``);
+    placeholders (a shared session) are not paths and stay as they are."""
     out = copy.deepcopy(session)
+
+    def keep_placeholder(p: str) -> str:
+        return p if is_placeholder(p) else str(fix(p))
+
     for node in out.get("pipeline", {}).get("nodes", []):
         params = node.get("params", {})
         for key in PATH_PARAMS:
             if isinstance(params.get(key), str) and params[key]:
-                params[key] = fix(params[key])
+                params[key] = keep_placeholder(params[key])
         recording = node.get("recording", {})
         events = recording.get("events", {})
         if isinstance(events.get("file"), str) and events["file"]:
-            events["file"] = fix(events["file"])
+            events["file"] = keep_placeholder(events["file"])
         montage = recording.get("montage")
-        if isinstance(montage, str) and ("/" in montage or "\\" in montage
-                                         or "." in montage):  # fmt: skip
-            recording["montage"] = fix(montage)  # a file, not a built-in name
+        if isinstance(montage, str) and _is_file_montage(montage):
+            recording["montage"] = keep_placeholder(montage)  # a file, not a name
     for files in out.get("inputs", {}).values():
         for entry in files:
-            entry["path"] = fix(entry["path"])
+            entry["path"] = keep_placeholder(entry["path"])
     for entry in out.get("outputs", []):
-        entry["path"] = fix(entry["path"])
+        entry["path"] = keep_placeholder(entry["path"])
     return out
 
 
@@ -527,7 +669,8 @@ def default_session_path(output: str | Path) -> Path:
 
 __all__ = [
     "SESSION_FORMAT", "LoadedSession", "SessionError", "adopt_models", "build_session",
-    "default_session_path", "environment", "is_session", "load_session",
-    "model_status", "read_session", "session_schema", "sha256_file",
-    "sink_outputs", "state_from_json", "state_to_json", "write_session",
+    "default_session_path", "drop_shared_sinks", "environment", "free_text",
+    "is_placeholder", "is_session", "load_session", "model_status", "read_session",
+    "session_schema", "sha256_file", "share_safe", "shared_input_hint", "sink_outputs",
+    "state_from_json", "state_to_json", "write_session",
 ]  # fmt: skip

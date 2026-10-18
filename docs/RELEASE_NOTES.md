@@ -19,6 +19,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   connect from elsewhere. The token is not encrypted: bind the engine to another
   network interface only on a trusted network. After upgrading, end any daemon
   an older version started: the new GUI and CLI cannot reach it.
+- **Share-safe sessions:** `meegxer session share IN OUT` (or *Share session…*
+  in the GUI) writes a copy that names no file or folder (`<input>.set`); models
+  and hashes stay, and the name and description you wrote are shown first, with
+  the offer to remove them. Rerun it with `-i RECORDING -o RESULT`. New guide:
+  `docs/DEIDENTIFICATION.md`.
 - **Supply chain:** every PyPI file carries a PEP 740 attestation (built by this
   repository's release workflow); each release has a CycloneDX SBOM; CI audits
   the locked dependencies for known vulnerabilities and runs CodeQL, also weekly.
