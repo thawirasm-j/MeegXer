@@ -95,7 +95,7 @@ remote GUI).
   nodes with a fitted model once the run is done (offline runs fit on the whole
   input, or reuse a matching model), `probes` maps each probe id that has data to
   `{ch_labels, sfreq, first_sample, n_filled, n_samples, bypassed, ch_classes,
-  ch_scores}` (`n_filled` grows while the run goes; the classes are empty except
+  ch_scores, filters}` (`filters` as in the display protocol; `n_filled` grows while the run goes; the classes are empty except
   on a rail of components), and `features` maps each Features probe that has
   windows to `{dims, coords, n_windows}` and its units as in `offline_features` (read them with `offline_features`).
 

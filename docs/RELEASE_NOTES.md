@@ -27,6 +27,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 - **Opening a pipeline or session runs no code:** a test now proves that a
   pipeline or session naming a custom script or local plugin you have not added
   (with the notice accepted) starts nothing, from the CLI, the daemon or a session.
+- **The 1/f fit skips filtered frequencies.** Filter strips now record what
+  they did on the stream (high-pass, low-pass, band-stop, notches; spec 0.2.19),
+  and *Remove 1/f* in the spectrum view and head plot leaves those bands out of
+  the fit: below 1.5x a high-pass cutoff, above 0.9x a low-pass cutoff and within
+  2 Hz of a notch. The specparam strip can do the same: *Fit unfiltered
+  frequencies only* (off by default) trims its range and bridges notches.
 - **Connectivity map:** a connectivity strip's feature view adds a head map
   with a line from the chosen channel (in *Show*, or click an electrode) to
   every other, coloured and thickened by its value.

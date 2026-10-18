@@ -34,6 +34,11 @@ class), in channel order:
 {"ch_classes": ["eye", "brain"], "ch_scores": [0.97, 0.81]}
 ```
 
+0.3 adds `filters` when the stream has been through any: the filters, in order,
+as in the plugin protocol's signal info (`plugin-protocol.md`, spec 0.2.19),
+e.g. `{"filters": [["highpass", 1.0, 0], ["notch", 50.0, 0]]}`. Viewers leave
+those bands out of a 1/f fit.
+
 ## Feature frames (0.2)
 
 A Features probe (`meegxer.core.feature_probe`, placed after a feature strip)

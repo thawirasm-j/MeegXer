@@ -84,6 +84,8 @@ class Window:
     bin_rate: float
     classes: tuple[str, ...] = ()  # ICs: ICLabel's class of each component
     scores: tuple[float, ...] = ()
+    # filters the stream went through: the 1/f fit leaves their bands out
+    filters: tuple[tuple[str, float, float], ...] = ()
 
 
 # provider(probe, seconds) -> Window or None
@@ -794,6 +796,7 @@ class SignalView(QWidget):
             compare_psd=None if first is None or not len(first[1]) else first[2],
             compare_labels=() if first is None else first[0].labels,
             wheel=self.wheel,
+            filters=win.filters,
         )
         if first is not None and first[1].shape != f.shape:
             data.compare_psd = None  # taps at different rates: no common grid
@@ -913,7 +916,7 @@ class SignalView(QWidget):
             for (win, f, p), (width, alpha) in zip(spectra, pens, strict=True):
                 if len(f) < 2:
                     continue
-                shown = flatten(f, p) if flat else 10 * np.log10(p + 1e-12)
+                shown = flatten(f, p, win.filters) if flat else 10 * np.log10(p + 1e-12)
                 hovered = [c for c in chans if win.labels[c] == self.hover]
                 for c in [c for c in chans if c not in hovered] + hovered:
                     st = styles[c]

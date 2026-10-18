@@ -63,6 +63,13 @@ reference.
 {"ch_labels": ["Fz", "Cz"], "sfreq": 250.0, "stream_id": "amp", "bads": []}
 ```
 
+**Filters (0.2.19).** `filters` (optional) lists the filters the stream has been
+through, in order, each `[kind, low, high]` in Hz: `highpass` (low), `lowpass`
+(high), `bandstop` (low to high) or `notch` (low), unused edges 0; e.g.
+`[["highpass", 1.0, 0], ["notch", 50.0, 0]]`. A 1/f fit can leave out the bands
+they changed. A result's info that names `filters` replaces the list (a filtering
+plugin appends its own); without it the output keeps the input's.
+
 ## Messages
 
 Every request carries `type` and an integer `id`; every reply carries the same `id`.

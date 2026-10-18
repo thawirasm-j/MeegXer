@@ -212,3 +212,36 @@ def test_empty_blocks_from_a_delaying_node_upstream_change_nothing(name: str) ->
     gappy = _stream(stage(), block, [0, 100, 0, 0] + [100] * 9 + [0])
     np.testing.assert_array_equal(gappy.data, plain.data)
     assert gappy.sample_index == plain.sample_index
+
+
+def test_filters_leave_their_mark_on_the_stream() -> None:
+    """Spec 0.2.19: each filter adds what it did to ``SignalInfo.filters`` (a
+    band-pass as a high- and a low-pass, notches only below Nyquist), causal
+    and zero-phase alike, and the marks add up along a chain."""
+    from meegxer.nodes.filters import FIRFilter
+
+    x = recording(sfreq=250.0)
+    bp = run(IIRFilter(), x, kind="bandpass", low=1.0, high=40.0)
+    assert bp.info.filters == (("highpass", 1.0, 0.0), ("lowpass", 0.0, 40.0))
+    hp = run(IIRFilterZeroPhase(), x, kind="highpass", low=0.5)
+    assert hp.info.filters == (("highpass", 0.5, 0.0),)
+    notch = run(NotchFilter(), bp, freq=50.0, harmonics=3)  # 150 Hz > Nyquist
+    assert notch.info.filters == (
+        *bp.info.filters, ("notch", 50.0, 0.0), ("notch", 100.0, 0.0))  # fmt: skip
+    zp = run(NotchFilterZeroPhase(), x, freq=60.0)
+    assert zp.info.filters == (("notch", 60.0, 0.0),)
+    stop = run(IIRFilter(), x, kind="bandstop", low=8.0, high=12.0)
+    assert stop.info.filters == (("bandstop", 8.0, 12.0),)
+    fir = run(FIRFilter(), x, kind="lowpass", high=40.0)
+    assert fir.info.filters == (("lowpass", 0.0, 40.0),)
+
+
+def test_a_filter_on_eeg_only_marks_the_merged_stream() -> None:
+    """A stage that filters the EEG channels and passes the EOG through keeps
+    the EEG's filters on the merged stream."""
+    x = recording()
+    types = ("eeg",) * 7 + ("eog",)
+    info = SignalInfo(x.info.ch_labels, x.info.sfreq, ch_types=types)
+    out = run(IIRFilter(), Block(x.data, info, 0, 0.0), kind="highpass", low=1.0)
+    assert out.info.ch_labels == x.info.ch_labels
+    assert out.info.filters == (("highpass", 1.0, 0.0),)

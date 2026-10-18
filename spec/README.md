@@ -40,7 +40,9 @@ define it.
     value, ASCII: `V^2/Hz`, `dB`; `"1"` is dimensionless) or, when the values
     along one dimension differ in unit, `unit_dim` and `units` (one per entry);
     both omitted means not stated (`plugin-protocol.md`). Feature tables write
-    the units into their JSON sidecar (`bids-derivatives.md`).
+    the units into their JSON sidecar (`bids-derivatives.md`). Signal info may
+    carry `filters`, the filters the stream has been through (`[kind, low,
+    high]`), so a 1/f fit can leave their bands out.
   - 0.2.18: a node's `input` may name a rail output of an earlier node,
     `"id:port"` (e.g. `"ica1:ics"`: a spectrum of the components). Signal info
     may carry per-channel `ch_classes` and `ch_scores` (e.g. ICLabel's most

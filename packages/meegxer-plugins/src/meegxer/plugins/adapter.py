@@ -28,6 +28,7 @@ from meegxer.core.node import (
     RailOutput,
     TransformResult,
 )
+from meegxer.core.passband import filters_from_wire, filters_wire
 from meegxer.core.ports import PortType
 from meegxer.core.serialization import State, hash_state
 from meegxer.plugins.wire import tree_from_wire, tree_to_wire
@@ -42,6 +43,7 @@ def _info_dict(info: SignalInfo) -> dict[str, Any]:
         "sfreq": info.sfreq,
         "stream_id": info.stream_id,
         "bads": list(info.bads),
+        **({"filters": filters_wire(info.filters)} if info.filters else {}),
     }
 
 
@@ -90,6 +92,9 @@ def _info_from(new: Mapping[str, Any], info: SignalInfo) -> SignalInfo:
         float(new.get("sfreq", info.sfreq)),
         new.get("stream_id", info.stream_id),
         tuple(new.get("bads", ())),
+        # a result's filters (spec 0.2.19), else the input's: a plugin that
+        # filters lists what the stream has been through
+        filters=filters_from_wire(new["filters"]) if "filters" in new else info.filters,
     )
 
 

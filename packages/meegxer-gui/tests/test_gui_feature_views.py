@@ -215,7 +215,8 @@ def test_offline_feature_and_ics_taps(
         assert win.doc.source is not None
         win.doc.source.params["path"] = str(rec)
         win.doc.source.recording = {"montage": "colin27_1020"}
-        for node in ["meegxer.nodes.ica", "meegxer.nodes.psd"]:
+        for node in ["meegxer.nodes.iir_filter", "meegxer.nodes.ica",
+                     "meegxer.nodes.psd"]:  # fmt: skip
             win.insert_strip(len(win.doc.strips), node)
         win.start()
         wait_for(qapp, lambda: win.offline_state in ("done", "error"), 180)
@@ -247,6 +248,10 @@ def test_offline_feature_and_ics_taps(
         assert isinstance(head, HeadMap), win.view.head.message
         assert {e.label for e in head.electrodes} == set(names)
         assert head.caption.endswith("8 of 8 components, back-projected")
+        # the band-pass reaches the view (spec 0.2.19): the 1/f fit skips it
+        shown = win._offline_window("tap_ica1__ics", 10.0)
+        assert shown is not None
+        assert shown.filters == (("highpass", 1.0, 0.0), ("lowpass", 0.0, 40.0))
     finally:
         win.close()
         dispose(qapp, win.stacked, win.recording_window, win)

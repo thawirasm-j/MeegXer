@@ -124,6 +124,7 @@ PARAMS: dict[str, str] = {
     "lziv": "Lempel–Ziv complexity",  # noqa: RUF001
     "bandwidth": "Multitaper bandwidth",
     "aperiodic": "Aperiodic mode",
+    "fit_unfiltered": "Fit unfiltered frequencies only",
     "max_n_peaks": "Maximum number of peaks",
     "peak_width_min": "Narrowest peak",
     "peak_width_max": "Widest peak",

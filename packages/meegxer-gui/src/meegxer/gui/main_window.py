@@ -42,6 +42,7 @@ from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame, FeatureFrame
 from meegxer.core.graph import positions_message
 from meegxer.core.notices import LOCAL_CODE_NOTICE
+from meegxer.core.passband import filters_from_wire
 from meegxer.core.session import (
     free_text,
     is_session,
@@ -1106,7 +1107,7 @@ class MainWindow(QMainWindow):
         origin = 0 if self._since_start() else newest  # bin 0 = the source's sample 0
         t = (np.arange(end - n, end) - origin) / buf.bin_rate
         return Window(probe, buf.labels, t, mins, maxs, bypassed, buf.bin_rate,
-                      buf.classes, buf.scores)  # fmt: skip
+                      buf.classes, buf.scores, buf.filters)  # fmt: skip
 
     def _offline_window(
         self, probe: str, seconds: float, offset: int | None = None
@@ -1143,6 +1144,7 @@ class MainWindow(QMainWindow):
             info["sfreq"] / size,
             tuple(info.get("ch_classes", ())),
             tuple(info.get("ch_scores", ())),
+            filters_from_wire(info.get("filters")),
         )
         self._offline_cache[probe] = (key, win)
         return win

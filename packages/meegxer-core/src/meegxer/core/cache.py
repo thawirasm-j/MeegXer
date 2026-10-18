@@ -19,6 +19,7 @@ from typing import Protocol
 import numpy as np
 
 from meegxer.core.block import Block, Event, SignalInfo
+from meegxer.core.passband import filters_from_wire, filters_wire
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +98,9 @@ class DirectoryCache:
                     else (float(p[0]), float(p[1]), float(p[2]))
                     for p in positions
                 ),
+                filters=filters_from_wire(
+                    json.loads(str(npz["filters"])) if "filters" in npz else None
+                ),
             )
             block = Block(
                 npz["data"], info, int(npz["sample_index"]), float(npz["timestamp"])
@@ -119,6 +123,7 @@ class DirectoryCache:
                     stream_id=np.array(block.info.stream_id),
                     bads=np.array(block.info.bads, dtype=str),
                     ch_types=np.array(block.info.ch_types, dtype=str),
+                    filters=np.array(json.dumps(filters_wire(block.info.filters))),
                     positions=np.array(
                         [
                             p if p is not None else (np.nan,) * 3

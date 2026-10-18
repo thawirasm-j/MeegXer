@@ -400,7 +400,8 @@ def _merge(
             for label in full.ch_labels
             if label in (processed.info.bads if label in picked else others.info.bads)
         )
-        info = dataclasses.replace(full, bads=bads)
+        # the filters are what the processed (EEG) channels went through
+        info = dataclasses.replace(full, bads=bads, filters=processed.info.filters)
         return Block(
             data, info, processed.sample_index, processed.timestamp, processed.bypassed
         )
@@ -417,6 +418,7 @@ def _merge(
         + (b.positions or (None,) * b.n_channels)
         if a.positions or b.positions
         else (),
+        filters=a.filters,  # what the processed (EEG) channels went through
     )
     return Block(
         np.vstack([processed.data, others.data]),
