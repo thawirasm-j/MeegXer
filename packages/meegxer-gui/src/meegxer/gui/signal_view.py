@@ -57,6 +57,7 @@ from meegxer.gui.headplot import (
     SCHEMES,
     SYMBOLS,
     HeadInput,
+    HeadMap,
     HeadPlot,
     Layout,
     PeakHold,
@@ -476,6 +477,10 @@ class SignalView(QWidget):
         self.styles: dict[tuple[tuple[str, ...], ...], list[ChannelStyle]] = {}
         self.wheel: dict[str, tuple[float, float]] = {}
         self.types: dict[str, str] = {}  # label -> channel type, when known
+        # components shown (e.g. the ICs rail): their sensors and mixing matrix
+        # (sensors x components, ICA's ``winv``), so the head plot maps the
+        # selected components' power back on the electrodes
+        self.mixing: tuple[tuple[str, ...], FloatArray] | None = None
         self.events: list[dict[str, Any]] = []
         self.names: dict[str, str] = {}  # probe -> what it shows, e.g. "after Notch"
         self.delays: dict[str, float] = {}  # live: ms behind the input tap
@@ -763,8 +768,17 @@ class SignalView(QWidget):
             return
         win, f, p = spectra[-1]
         first = spectra[0] if has_comparison else None
+        labels, note = win.labels, ""
+        if self.mixing is not None and self.mixing[1].shape[1] == len(win.labels):
+            picked = self.channels.selected(win.labels)
+            if not picked:
+                self._head_message("Select components to map their power")
+                return
+            labels, f, p = self._back_projected(win, picked)
+            first = None  # comparisons are other taps, not these sensors
+            note = f"{len(picked)} of {len(win.labels)} components, back-projected"
         data = HeadInput(
-            labels=win.labels,
+            labels=labels,
             f=f,
             psd=p,
             band=self.band_range(),
@@ -775,7 +789,7 @@ class SignalView(QWidget):
             # every EEG channel, whichever curves the menu shows; EOG, EMG and
             # other non-EEG channels stay off the map
             hidden=frozenset(
-                lb for lb in win.labels if self.types.get(lb, "eeg") not in ("eeg", "")
+                lb for lb in labels if self.types.get(lb, "eeg") not in ("eeg", "")
             ),
             compare_psd=None if first is None or not len(first[1]) else first[2],
             compare_labels=() if first is None else first[0].labels,
@@ -789,7 +803,7 @@ class SignalView(QWidget):
             key = (win.probe, data.band, data.relative, data.aperiodic, data.scheme)
             hold = lambda top: self.peak.update(key, top)  # noqa: E731
         else:  # offline the view often redraws the same spectra: skip the work
-            inputs = (data.labels, p.tobytes(), data.band, data.scheme,
+            inputs = (data.labels, note, p.tobytes(), data.band, data.scheme,
                       data.relative, data.aperiodic, data.db_range, data.hidden,
                       None if data.compare_psd is None else data.compare_psd.tobytes(),
                       id(self.theme), tuple(sorted(self.wheel.items())),
@@ -799,7 +813,25 @@ class SignalView(QWidget):
             self._head_inputs = inputs
         if live:
             self._head_inputs = None
-        self.head.show_map(render(data, self.theme, self._layouts, hold, self.maps))
+        shown = render(data, self.theme, self._layouts, hold, self.maps)
+        if note and isinstance(shown, HeadMap):
+            shown.caption = f"{shown.caption} · {note}"
+        self.head.show_map(shown)
+
+    def _back_projected(
+        self, win: Window, picked: list[int]
+    ) -> tuple[tuple[str, ...], FloatArray, FloatArray]:
+        """The sensors' spectra of the ``picked`` components alone: their
+        activations mixed back on the electrodes (``winv[:, picked] @ s``), so
+        one component gives its own scalp power and all of them the sensors'."""
+        assert self.mixing is not None
+        sensors, winv = self.mixing
+        mid = (win.mins + win.maxs) / 2 * UV
+        f, p = _psd_rows(winv[:, picked] @ mid[picked], win.bin_rate)
+        if self.panner.live and len(f):
+            p = self.smoother.update(f"{win.probe}>sensors", sensors, f, p,
+                                     time.monotonic())  # fmt: skip
+        return sensors, f, p
 
     def refresh(
         self, provider: Provider, main: str | None, comparisons: list[str]

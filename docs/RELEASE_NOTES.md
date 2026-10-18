@@ -27,6 +27,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 - **Opening a pipeline or session runs no code:** a test now proves that a
   pipeline or session naming a custom script or local plugin you have not added
   (with the notice accepted) starts nothing, from the CLI, the daemon or a session.
+- **IC head plot:** the ICs' spectrum view now has a head plot: the band power
+  of the components selected in the channel menu, mixed back on the electrodes
+  (one component: its own scalp power; all of them: the sensors'). Control API
+  0.2.5 adds `get_model`.
 - **Feature view hover:** near a line, the feature view draws it bold, marks
   its nearest point and names the line, where the point is and its value with
   the unit.

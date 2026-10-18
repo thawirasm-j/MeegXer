@@ -1,4 +1,4 @@
-# MeegXer control API (0.2.4, unstable)
+# MeegXer control API (0.2.5, unstable)
 
 JSON-RPC 2.0 over a ZeroMQ REQ/REP socket (CLAUDE.md rule 3). The daemon binds
 `tcp://127.0.0.1:5555` by default. Every request is one JSON object; every reply is
@@ -43,6 +43,7 @@ remote GUI).
 | `list_nodes` | – | installed node manifests: `name, version, role, type, availability, requires_fit, requires_positions, fit_events, latency_samples, description, authors, references, license, category, channel_types, live_params, inputs, outputs, params[]`, plus `origin`: `builtin`, `plugin` (a container image) or `custom` (a local plugin or custom script) (each param: `name, type, default, min, max, step, choices, unit, description, advanced, primary`) |
 | `load_pipeline` | `pipeline` (see `pipeline.schema.json`) | the normalised pipeline. Refused while running, or if any node cannot run live (offline-only, or a band-pass with `phase` `zero`). Fitted models of nodes with the same id, name and version are kept (as on a restart) |
 | `get_pipeline` | – | current pipeline, including live parameter changes |
+| `get_model` (0.2.5) | `node`, `offline` (optional) | `{node, model}`: the node's fitted model as readable JSON (as in a session, `session.md`), or `model: null` without one; of the loaded pipeline, or with `offline` true of the last offline run (the GUI reads ICA's unmixing from it for the IC head plot) |
 | `get_session` | `name`, `pipeline`, `offline` (all optional) | a session (`session.md`) of the loaded pipeline with the models calibrated live, or with `offline` true of the last finished offline run (its fitted models and written files). With `pipeline` (e.g. the GUI's), that pipeline is saved with the models of the nodes it shares. Paths absolute (the client writes the file, making paths relative to it) |
 | `load_session` | `session`, `allow_version_mismatch` (default false) | `{pipeline, models, dropped_models, warnings}`: loads the pipeline with its fitted models. Paths must be absolute (the client resolves them against the session file). Refused while running, and on a node version or plugin image mismatch unless allowed (that node's model is then dropped). An offline-only pipeline loads too (`start` then says why it cannot run live). The models seed the next `run_offline`; a model is used, live or offline, only if its fingerprint matches the input |
 | `start` | – | status. A restart builds fresh sources and sinks from the current pipeline and keeps fitted models (drop them with `clear_calibration`). A node with `requires_positions` whose good channels lack electrode positions stops the run before any data flows, with the reason in `errors` (offline runs: `state` `error`) |

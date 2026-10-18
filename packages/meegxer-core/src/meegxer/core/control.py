@@ -36,7 +36,12 @@ from meegxer.core.ports import Port
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.recording import builtin_montages, describe, lookup_positions
 from meegxer.core.registry import Registry, node_origin
-from meegxer.core.session import build_session, load_session, sink_outputs
+from meegxer.core.session import (
+    build_session,
+    load_session,
+    sink_outputs,
+    state_to_json,
+)
 from meegxer.core.stage import Stage
 
 DEFAULT_CONTROL = "tcp://127.0.0.1:5555"
@@ -145,6 +150,7 @@ class Daemon:
             "load_pipeline": self.load_pipeline,
             "get_pipeline": self.get_pipeline,
             "get_session": self.get_session,
+            "get_model": self.get_model,
             "load_session": self.load_session,
             "start": self.start,
             "stop": self.stop,
@@ -216,6 +222,20 @@ class Daemon:
             self._carry_models(source, graph)
         outputs = sink_outputs(graph) if offline else ()
         return build_session(graph, name=name, outputs=outputs)
+
+    def get_model(self, node: str, offline: bool = False) -> dict[str, Any]:
+        """One node's fitted model as readable JSON (``spec/session.md``), or
+        null without one: of the loaded pipeline, or with ``offline`` of the
+        last offline run (e.g. ICA's unmixing, for the IC head plot)."""
+        graph = self._offline.graph if offline and self._offline else self._graph
+        if graph is None:
+            raise RuntimeError("no pipeline loaded")
+        if node not in graph:
+            raise ValueError(f"no node {node!r}")
+        impl = graph[node].impl
+        model = impl.model if isinstance(impl, Stage) else None
+        data = None if model is None else state_to_json(model.data)
+        return {"node": node, "model": data}
 
     def load_session(
         self, session: dict[str, Any], allow_version_mismatch: bool = False
