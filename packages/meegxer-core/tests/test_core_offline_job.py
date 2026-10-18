@@ -118,6 +118,14 @@ def test_status_lists_the_models_the_run_fitted(daemon: Daemon) -> None:
     status = wait_done(daemon)
     assert status["state"] == "done", status["error"]
     assert status["models"] == ["ica"]
+    # get_model (control API 0.2.5): the fitted model as readable JSON
+    from meegxer.core.session import state_from_json
+
+    model = state_from_json(daemon.get_model("ica", offline=True)["model"])
+    assert model["winv"].shape == (8, 8) and len(model["channels"]) == 8
+    assert daemon.get_model("tap_ica", offline=True)["model"] is None  # a probe
+    with pytest.raises(ValueError, match="no node"):
+        daemon.get_model("nope", offline=True)
 
 
 def test_an_existing_output_is_kept_and_the_run_finishes(

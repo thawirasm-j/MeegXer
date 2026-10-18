@@ -432,3 +432,54 @@ def test_the_map_ignores_the_menu_but_not_channel_types(qapp: QApplication) -> N
     assert by["O1"].shown and by["O2"].shown and by["P3"].shown
     assert not by["Fp1"].shown and by["Fp1"].text.endswith("off the map)")
     dispose(qapp, v)
+
+
+def test_components_map_their_back_projected_power(qapp: QApplication) -> None:
+    """Item 2: on a rail of components the head plot maps the selected
+    components mixed back on the electrodes; all of them give the sensors."""
+    sensors = window("main", OCCIPITAL)
+    eeg = [i for i, lb in enumerate(LABELS) if lb != "EOG"]
+    labels = tuple(LABELS[i] for i in eeg)
+    x = (sensors.mins[eeg] + sensors.maxs[eeg]) / 2
+    winv = np.random.default_rng(5).standard_normal((len(eeg), len(eeg)))
+    s_ = np.linalg.solve(winv, x)  # activations: x = winv @ s
+    names = tuple(f"IC{i + 1:02d}" for i in range(len(eeg)))
+    ics = Window("ics", names, sensors.t, s_, s_, sensors.bypassed, RATE)
+    direct = Window("main", labels, sensors.t, x, x, sensors.bypassed, RATE)
+
+    v = view(qapp)
+    v.smoothing.setCurrentIndex(0)  # off: each refresh maps its own spectra
+    v.refresh(lambda p, s: direct, "main", [])
+    assert isinstance(v.head.map, HeadMap)
+    want = {e.label: e.text for e in v.head.map.electrodes}
+
+    v.mixing = (labels, winv)
+    v.refresh(lambda p, s: ics, "ics", [])
+    m = v.head.map
+    assert isinstance(m, HeadMap) and m.caption.endswith(
+        f"{len(eeg)} of {len(eeg)} components, back-projected"
+    )
+    assert {e.label: e.text for e in m.electrodes} == want  # all ICs: the sensors
+
+    for name in names[1:]:  # IC01 alone: its own scalp power
+        v.channels.toggle_channel(name)
+    v.refresh(lambda p, s: ics, "ics", [])
+    m = v.head.map
+    assert isinstance(m, HeadMap) and "1 of 9 components" in m.caption
+    one = winv[:, :1] @ s_[:1]
+    alone = Window("main", labels, sensors.t, one, one, sensors.bypassed, RATE)
+    v.mixing = None
+    v.refresh(lambda p, s: alone, "main", [])
+    assert isinstance(v.head.map, HeadMap)
+    assert {e.label: e.text for e in m.electrodes} == {
+        e.label: e.text for e in v.head.map.electrodes
+    }
+
+    v.mixing = (labels, winv)
+    v.refresh(lambda p, s: ics, "ics", [])  # the menu lists the ICs again
+    for name in names:  # none selected
+        v.channels.toggle_channel(name)
+    v.refresh(lambda p, s: ics, "ics", [])
+    assert v.head.map is None
+    assert v.head.message == "Select components to map their power"
+    dispose(qapp, v)

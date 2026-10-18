@@ -395,7 +395,11 @@ it never interrupts processing.
   colours inside a black-and-white ring, apart from the map's colours; hover names
   one and thickens its spectrum line, a click shows or hides the channel's curve.
   The map uses every EEG channel with a position, whichever curves the channel
-  menu shows; non-EEG channels (EOG, EMG, misc) stay off it. (A first
+  menu shows; non-EEG channels (EOG, EMG, misc) stay off it. On a rail of
+  components (the ICs) the map shows the components selected in the menu mixed
+  back on the electrodes (`winv[:, picked] @ s`, ICA's mixing matrix read from
+  the core with `get_model`): one component gives its own scalp power, all of
+  them the sensors' (as fed to ICA). (A first
   "spatial" scheme, the scalp colour wheel with power as opacity, was dropped:
   opacity shows magnitude poorly and the wheel's own lightness biased it.) Live,
   spectra (lines and head) are smoothed between refreshes by an exponential moving

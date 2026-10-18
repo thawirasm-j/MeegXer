@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 from PySide6.QtCore import QByteArray, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -46,6 +47,7 @@ from meegxer.core.session import (
     is_session,
     read_session,
     share_safe,
+    state_from_json,
     write_session,
 )
 from meegxer.gui.buffers import FeatureBuffer, ProbeBuffer
@@ -121,6 +123,8 @@ class MainWindow(QMainWindow):
         self.offline_state = ""
         self._feature_cache: dict[str, tuple[tuple[Any, ...], FeatureSeries]] = {}
         self._offline_cache: dict[str, tuple[tuple[int, int, int], Window]] = {}
+        # node -> (what it was read for, when, its sensors and mixing matrix)
+        self._mixing: dict[str, tuple[tuple[Any, ...], float, Any]] = {}
         app = QApplication.instance()
         if isinstance(app, QApplication):
             install_wheel_guard(app)  # wheel scrolls panels, not unfocused values
@@ -1154,7 +1158,36 @@ class MainWindow(QMainWindow):
             self.stacked.refresh(self.view, self._stacked_provider(main), main, comps)
             return
         provider = self._panned_provider(self.timeline, self.view.seconds(), main)
+        self.view.mixing = self._mixing_for(self.view_tap)
         self.view.refresh(provider, main, comps)
+
+    def _mixing_for(
+        self, tap: str | None
+    ) -> tuple[tuple[str, ...], npt.NDArray[np.float64]] | None:
+        """For a rail of components in the spectrum view (``ica1:ics``): the
+        sensors and mixing matrix of the node writing it (ICA's ``winv``), so
+        the head plot maps the selected components back on the electrodes.
+        Read from the core when the run changes, and live every 2 s (a
+        calibration replaces the model)."""
+        if tap is None or ":" not in tap or self.view.mode != "spectrum":
+            return None
+        node = tap.split(":", 1)[0]
+        offline = self.doc.mode == "offline"
+        key = (offline, self.offline_state if offline else "")
+        now = time.monotonic()
+        cached = self._mixing.get(node)
+        if cached is not None and cached[0] == key and (offline or now - cached[1] < 2):
+            return cached[2]  # type: ignore[no-any-return]
+        mixing = None
+        try:
+            reply = self.link.call("get_model", node=node, offline=offline)
+        except (RpcError, TimeoutError):
+            reply = None  # e.g. nothing loaded yet: no map until there is a model
+        model = state_from_json(reply["model"]) if reply and reply["model"] else None
+        if isinstance(model, dict) and "winv" in model and "channels" in model:
+            mixing = (tuple(model["channels"]), np.asarray(model["winv"], dtype=float))
+        self._mixing[node] = (key, now, mixing)
+        return mixing
 
     def _draw_features(self) -> None:
         """The tapped feature strip's windows over the feature view's span:

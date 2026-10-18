@@ -234,6 +234,19 @@ def test_offline_feature_and_ics_taps(
         actions = [a.text() for a in win.view.channels.menu().actions()
                    if a.isCheckable()]  # fmt: skip
         assert actions and actions[0].startswith("IC01 · ")
+        # spectrum: the head plot maps the components back on the electrodes,
+        # from ICA's mixing matrix read from the core (get_model)
+        from meegxer.gui.headplot import HeadMap
+
+        win.show()  # the head plot draws only when shown
+        win.view._set_mode("spectrum")
+        qapp.processEvents()
+        win.redraw()
+        assert win.view.mixing is not None and win.view.mixing[0] == tuple(names)
+        head = win.view.head.map
+        assert isinstance(head, HeadMap), win.view.head.message
+        assert {e.label for e in head.electrodes} == set(names)
+        assert head.caption.endswith("8 of 8 components, back-projected")
     finally:
         win.close()
         dispose(qapp, win.stacked, win.recording_window, win)
