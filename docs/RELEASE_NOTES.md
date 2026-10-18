@@ -5,7 +5,7 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 (`docs/RELEASING.md`). Install or upgrade: `uv tool install --python 3.14
 --prerelease allow meegxer` (or `uv tool upgrade meegxer`).
 
-## 0.3.0b2 (not released yet)
+## 0.3.1b1 (2026-10-18)
 
 - BIDS derivatives inherit the raw dataset's credits: `Authors`, `License`,
   funding and acknowledgements, its name, links and DOI (as the source's).
@@ -68,7 +68,7 @@ pipeline, session and plugin formats change only in compatible ways, and the
 work is fixing what the beta turns up. The manual release checks passed
 (`docs/TESTING.md`: acceptance test 5 on Windows with Docker, and the check on
 real BIDS data, ds004504); the EEGLAB read-back is still to be done, and
-anything it finds goes into 0.3.0b2.
+anything it finds goes into 0.3.1b1.
 
 ### What MeegXer does at this release
 

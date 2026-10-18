@@ -97,7 +97,7 @@ present, so re-running failed jobs finishes a partial release.
 - **Attestations (PEP 740):** every file is uploaded with a signed statement that
   this repository's Release workflow built it (Trusted Publishing, Sigstore).
   PyPI shows it as *Verified*; check a downloaded file with
-  `uvx pypi-attestations verify pypi --repository https://github.com/thawirasm-j/MeegXer pypi:meegxer-0.3.0b2-py3-none-any.whl`.
+  `uvx pypi-attestations verify pypi --repository https://github.com/thawirasm-j/MeegXer pypi:meegxer-0.3.1b1-py3-none-any.whl`.
 - **SBOM:** the tag's GitHub release gets `meegxer-<version>.cdx.json`, a
   CycloneDX 1.5 list of every locked dependency (`uv export --format
   cyclonedx1.5`). If the release does not exist yet, the workflow creates a draft
