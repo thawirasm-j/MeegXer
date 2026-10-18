@@ -137,6 +137,38 @@ def test_dataset_description_is_merged_not_replaced(tmp_path: Path) -> None:
     assert (deriv / "sub-01").is_dir() and (deriv / "sub-02").is_dir()
 
 
+def test_dataset_description_inherits_the_raw_credits(tmp_path: Path) -> None:
+    raw_root = make_dataset(tmp_path / "ds")
+    deriv = raw_root / "derivatives" / "meegxer" / "dataset_description.json"
+    run(bids_pipeline(raw_root, overwrite=True))
+    placeholder = json.loads(deriv.read_text())  # MNE-BIDS's "[Unspecified]"
+    assert "Authors" not in placeholder
+    assert placeholder["Name"] == "MeegXer derivatives"
+    raw_path = raw_root / "dataset_description.json"
+    raw = json.loads(raw_path.read_text())
+    raw.update({"Name": "Resting EEG", "Authors": ["A Author", "B Author"],
+                "License": "CC0", "Funding": ["Grant 1"],
+                "DatasetDOI": "doi:10.18112/openneuro.ds000000.v1.0.0",
+                "ReferencesAndLinks": ["https://example.org/paper"]})  # fmt: skip
+    raw_path.write_text(json.dumps(raw))
+    deriv.unlink()
+    run(bids_pipeline(raw_root, overwrite=True))
+    data = json.loads(deriv.read_text())
+    assert data["Name"] == "Resting EEG (MeegXer derivatives)"
+    assert data["Authors"] == ["A Author", "B Author"]
+    assert (data["License"], data["Funding"]) == ("CC0", ["Grant 1"])
+    assert "DatasetDOI" not in data  # the raw DOI names the source, not this
+    assert data["SourceDatasets"] == [
+        {"URL": "bids:raw:", "DOI": "doi:10.18112/openneuro.ds000000.v1.0.0"}
+    ]
+    assert data["ReferencesAndLinks"][0] == "https://example.org/paper"
+    data["Authors"] = ["Edited"]  # what the user changes is kept
+    deriv.write_text(json.dumps(data))
+    run(bids_pipeline(raw_root, overwrite=True))
+    again = json.loads(deriv.read_text())
+    assert again["Authors"] == ["Edited"] and len(again["SourceDatasets"]) == 1
+
+
 def test_file_input_takes_entities_from_its_name(tmp_path: Path) -> None:
     raw_root = make_dataset(tmp_path / "ds")
     edf = raw_root / "sub-01" / "eeg" / "sub-01_task-rest_eeg.edf"
