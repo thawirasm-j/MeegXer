@@ -2,8 +2,10 @@
 
 The daemon owns the pipeline and the real-time scheduler; clients (GUI, CLI,
 scripts) only talk to it through these methods. See ``spec/control-api.md``.
-The control socket binds to localhost by default and has no authentication, so
-binding it to other interfaces is only safe on a trusted network.
+The control and display sockets bind to localhost by default and accept only
+clients with the daemon's token (``meegxer.core.auth``). The token is not
+encrypted on the wire, so binding to other interfaces is only safe on a trusted
+network.
 """
 
 from __future__ import annotations
@@ -17,6 +19,14 @@ from typing import Any
 import zmq
 
 from meegxer.core import __version__
+from meegxer.core.auth import (
+    Guard,
+    login,
+    missing_token_hint,
+    read_token,
+    remove_token,
+    write_token,
+)
 from meegxer.core.display import DisplayPublisher, ZmqContext
 from meegxer.core.graph import Graph
 from meegxer.core.manifest import SPEC_VERSION, Manifest
@@ -107,13 +117,19 @@ class Daemon:
     ) -> None:
         self._own_registry = registry is None  # rescan_nodes rebuilds only our own
         self.registry = registry or Registry.from_entry_points()
-        self._context = context or zmq.Context.instance()
+        # its own context: the token check (ZAP) is one handler per context
+        self._own_context = context is None
+        self._context = context or zmq.Context()
+        self._guard = Guard(self._context)
         self._socket = self._context.socket(zmq.REP)
         self._socket.setsockopt(zmq.LINGER, 0)
+        Guard.protect(self._socket)
         self._socket.bind(control_endpoint)
         self.control_endpoint = self._socket.getsockopt_string(zmq.LAST_ENDPOINT)
-        self.display = DisplayPublisher(display_endpoint, context=self._context)
+        self.display = DisplayPublisher(display_endpoint, context=self._context,
+                                        secure=True)  # fmt: skip
         self.display_endpoint = self.display.endpoint
+        self.token_file = write_token(self.control_endpoint, self._guard.token)
         self._pipeline: dict[str, Any] | None = None
         self._graph: Graph | None = None
         self._scheduler: RealtimeScheduler | None = None
@@ -499,10 +515,18 @@ class Daemon:
             self._offline.discard()
         self._socket.close(linger=0)
         self.display.close()
+        self._guard.stop()
+        remove_token(self.control_endpoint, self._guard.token)
+        if self._own_context:
+            self._context.destroy(linger=0)
 
 
 class ControlClient:
-    """Synchronous JSON-RPC client; recovers from timeouts (lazy pirate)."""
+    """Synchronous JSON-RPC client; recovers from timeouts (lazy pirate).
+
+    Presents the daemon's token: ``token``, else ``MEEGXER_TOKEN``, else the
+    daemon's token file, read again on every reconnect (a restarted daemon has a
+    new one)."""
 
     def __init__(
         self,
@@ -510,16 +534,21 @@ class ControlClient:
         timeout: float = 5.0,
         *,
         context: ZmqContext | None = None,
+        token: str | None = None,
     ) -> None:
         self.endpoint = endpoint
         self.timeout = timeout
         self._context = context or zmq.Context.instance()
+        self._given_token = token
+        self.token: str | None = None
         self._socket = self._connect()
         self._next_id = 1
 
     def _connect(self) -> zmq.Socket[bytes]:
+        self.token = self._given_token or read_token(self.endpoint)
         socket = self._context.socket(zmq.REQ)
         socket.setsockopt(zmq.LINGER, 0)
+        login(socket, self.token)
         socket.connect(self.endpoint)
         return socket
 
@@ -529,9 +558,13 @@ class ControlClient:
         self._next_id += 1
         self._socket.send(json.dumps(request).encode())
         if not self._socket.poll(int(self.timeout * 1000)):
+            missing = self.token is None
             self._socket.close(linger=0)
             self._socket = self._connect()
-            raise TimeoutError(f"no reply from {self.endpoint} within {self.timeout} s")
+            hint = f" ({missing_token_hint(self.endpoint)})" if missing else ""
+            raise TimeoutError(
+                f"no reply from {self.endpoint} within {self.timeout} s{hint}"
+            )
         reply = json.loads(self._socket.recv())
         if "error" in reply:
             raise RpcError(reply["error"]["code"], reply["error"]["message"])

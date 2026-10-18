@@ -21,13 +21,14 @@ from meegxer.core.display import DisplaySubscriber
 class DisplayThread(QThread):
     frame = Signal(object)  # DisplayFrame
 
-    def __init__(self, endpoint: str) -> None:
+    def __init__(self, endpoint: str, token: str | None) -> None:
         super().__init__()
         self.endpoint = endpoint
+        self.token = token
         self._running = True
 
     def run(self) -> None:
-        subscriber = DisplaySubscriber(self.endpoint)
+        subscriber = DisplaySubscriber(self.endpoint, token=self.token)
         try:
             while self._running:
                 frame = subscriber.recv(timeout=0.2)
@@ -55,7 +56,7 @@ class DaemonLink(QObject):
         info = self.client.call("ping")
         self.version: str = info["version"]
         self.display_endpoint: str = info["display"]
-        self._display = DisplayThread(self.display_endpoint)
+        self._display = DisplayThread(self.display_endpoint, self.client.token)
         self._display.frame.connect(self.frame)
         self._display.start()
         self._timer = QTimer(self)

@@ -1,9 +1,31 @@
-# MeegXer control API (0.2.3, unstable)
+# MeegXer control API (0.2.4, unstable)
 
 JSON-RPC 2.0 over a ZeroMQ REQ/REP socket (CLAUDE.md rule 3). The daemon binds
 `tcp://127.0.0.1:5555` by default. Every request is one JSON object; every reply is
-one JSON object with either `result` or `error`. The socket has no authentication:
-bind it to a non-local interface only on a trusted network.
+one JSON object with either `result` or `error`.
+
+## Authentication (0.2.4)
+
+The daemon accepts a connection, on this socket and on the display socket
+(`display-protocol.md`), only with its token, checked by ZeroMQ's PLAIN mechanism
+(ZAP): username `meegxer`, password the token. The messages themselves carry no
+credentials.
+
+- When it starts, the daemon makes a random token (32 bytes, URL-safe base64) and
+  writes it to `<config folder>/daemon/<endpoint>.token`, where `<endpoint>` is
+  the bound control endpoint with every run of non-alphanumeric characters
+  replaced by `_` (`tcp_127_0_0_1_5555.token`). The file is readable by the user
+  only (mode 0600 in a 0700 folder; on Windows the config folder is private to
+  the account). The daemon removes it when it exits.
+- Clients take the token from `MEEGXER_TOKEN` if set, else from that file, and
+  read it again when they reconnect (a restarted daemon has a new token).
+- A client without the right token is not let in: its request times out. MeegXer's
+  clients then say whether they had no token file.
+
+PLAIN is not encrypted: the token keeps other users and programs on the same
+computer out, but on another interface anyone on the network path could read it.
+Bind to a non-local interface only on a trusted network (CurveZMQ comes with the
+remote GUI).
 
 ```json
 {"jsonrpc": "2.0", "method": "set_params", "params": {"node": "hp", "params": {"low": 0.5}}, "id": 7}

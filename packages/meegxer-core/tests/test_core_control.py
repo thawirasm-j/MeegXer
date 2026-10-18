@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 import zmq
 
+from meegxer.core.auth import login, read_token
 from meegxer.core.control import (
     INVALID_PARAMS,
     METHOD_NOT_FOUND,
@@ -107,6 +108,7 @@ def test_protocol_errors(daemon: tuple[Daemon, ControlClient]) -> None:
         client.call("calibrate", node="hp", seconds=1.0)
 
     raw: zmq.Socket[bytes] = zmq.Context.instance().socket(zmq.REQ)
+    login(raw, read_token(d.control_endpoint))
     raw.connect(d.control_endpoint)
     raw.send(b"{not json")
     assert raw.poll(5000)

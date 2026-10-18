@@ -11,6 +11,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   funding and acknowledgements, its name, links and DOI (as the source's).
   The validator's TOO_FEW_AUTHORS warning goes away when the raw dataset lists
   its authors.
+- CI also type-checks as on Windows (`mypy --platform win32`).
+- **The engine only talks to you.** The daemon writes an access token to a file
+  in your config folder that only you can read; the GUI, CLI and scripts present
+  it on the control and display channels, so other users and programs on the
+  computer cannot drive or watch it (control API 0.2.4). Set `MEEGXER_TOKEN` to
+  connect from elsewhere. The token is not encrypted: bind the engine to another
+  network interface only on a trusted network. After upgrading, end any daemon
+  an older version started: the new GUI and CLI cannot reach it.
 
 ## 0.3.0b1: first beta (2026-10-17)
 
