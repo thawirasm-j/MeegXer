@@ -8,6 +8,9 @@ name: Release
 # Each package is uploaded by its own job: one Trusted Publishing token exchange
 # can turn only one pending publisher into a project, so a single upload of all
 # six packages creates the first project and is refused for the rest.
+# Every upload carries PEP 740 attestations (signed provenance: this repository,
+# this workflow), and the tag's GitHub release gets a CycloneDX SBOM of the
+# locked dependencies (a draft release is made when there is none).
 
 on:
   push:
@@ -52,6 +55,38 @@ jobs:
           name: dist
           path: dist/
           if-no-files-found: error
+      - name: SBOM of the locked dependencies (CycloneDX)
+        run: >
+          uv export --frozen --all-packages --no-dev --format cyclonedx1.5
+          --output-file "meegxer-${GITHUB_REF_NAME#v}.cdx.json"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: sbom
+          path: meegxer-*.cdx.json
+          if-no-files-found: error
+
+  github-release:
+    name: SBOM on the GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # create the draft release, upload the SBOM
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: sbom
+      - name: Attach it (a draft release is made if there is none)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if ! gh release view "$tag" > /dev/null 2>&1; then
+            pre=""; case "$tag" in *a*|*b*|*rc*) pre="--prerelease";; esac
+            gh release create "$tag" --draft $pre --verify-tag --title "$tag" \
+              --notes "Release notes: docs/RELEASE_NOTES.md"
+          fi
+          gh release upload "$tag" meegxer-*.cdx.json --clobber
 
   testpypi:
     name: TestPyPI (${{ matrix.package }})
@@ -78,6 +113,7 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: dist/${{ matrix.package }}/
           skip-existing: true  # a rerun completes a partly uploaded release
+          attestations: true  # PEP 740 (the default; stated so it stays on)
 
   pypi:
     name: PyPI (${{ matrix.package }})
@@ -103,3 +139,4 @@ jobs:
         with:
           packages-dir: dist/${{ matrix.package }}/
           skip-existing: true  # a rerun completes a partly uploaded release
+          attestations: true  # PEP 740 (the default; stated so it stays on)

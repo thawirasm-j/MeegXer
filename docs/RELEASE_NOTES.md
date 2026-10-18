@@ -19,6 +19,9 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   connect from elsewhere. The token is not encrypted: bind the engine to another
   network interface only on a trusted network. After upgrading, end any daemon
   an older version started: the new GUI and CLI cannot reach it.
+- **Supply chain:** every PyPI file carries a PEP 740 attestation (built by this
+  repository's release workflow); each release has a CycloneDX SBOM; CI audits
+  the locked dependencies for known vulnerabilities and runs CodeQL, also weekly.
 
 ## 0.3.0b1: first beta (2026-10-17)
 
