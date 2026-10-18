@@ -10,13 +10,15 @@ for a peak; a peak's bandwidth is twice its Gaussian standard deviation (Hz).
 from __future__ import annotations
 
 import warnings
+from collections.abc import Sequence
 from typing import Any, ClassVar
 
 import numpy as np
 
-from meegxer.core.block import SignalInfo
+from meegxer.core.block import Filter, SignalInfo
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params
+from meegxer.core.passband import filtered_frequencies
 from meegxer.nodes.features import (
     SPECTRUM_PARAMS,
     WindowedFeatures,
@@ -35,6 +37,36 @@ def measures(aperiodic: str, bands: list[tuple[str, float, float]]) -> tuple[str
     peaks = [f"{name}_{field}" for name, _, _ in bands
              for field in ("frequency", "power", "bandwidth")]  # fmt: skip
     return (*head, *peaks, "r_squared", "error")
+
+
+def unfiltered_range(
+    freqs: np.ndarray, keep: np.ndarray, filters: Sequence[Filter]
+) -> tuple[np.ndarray, np.ndarray]:
+    """The fit range without the bands upstream filters changed: ``keep`` cut
+    to the span between the first and last unfiltered frequency, and the
+    filtered frequencies inside it (notches) to bridge."""
+    out = filtered_frequencies(freqs, filters)
+    clean = np.flatnonzero(keep & ~out)
+    if not clean.size:
+        return np.zeros_like(keep), np.zeros_like(keep)
+    span = np.zeros_like(keep)
+    span[clean[0] : clean[-1] + 1] = True
+    return keep & span, keep & span & out
+
+
+def bridged(
+    freqs: np.ndarray, psd: np.ndarray, keep: np.ndarray, bridge: np.ndarray
+) -> np.ndarray:
+    """``psd`` with the ``bridge`` frequencies replaced by a straight line in
+    log10 power between their unfiltered neighbours (specparam's
+    ``interpolate_spectrum``)."""
+    if not bridge.any():
+        return psd
+    clean = keep & ~bridge
+    out = np.log10(psd)
+    for row in out:
+        row[bridge] = np.interp(freqs[bridge], freqs[clean], row[clean])
+    return np.asarray(10**out)
 
 
 def measure_unit(name: str) -> str:
@@ -58,6 +90,11 @@ class SpecParam(WindowedFeatures):
              "unit": "Hz", "primary": True},
             {"name": "fmax", "type": "float", "default": 40.0, "min": 0.0,
              "unit": "Hz", "primary": True},
+            {"name": "fit_unfiltered", "type": "bool", "default": False,
+             "description": "Fit only frequencies no upstream filter changed: "
+                            "the range stops short of high-/low-pass edges "
+                            "(1.5x / 0.9x the cutoff) and notches (±2 Hz) are "
+                            "bridged in log power"},
             {"name": "aperiodic", "type": "enum", "default": "fixed",
              "choices": ["fixed", "knee"], "primary": True,
              "description": "Aperiodic mode: a straight line in log-log, or with "
@@ -99,12 +136,16 @@ class SpecParam(WindowedFeatures):
         fmin, fmax = float(params["fmin"]), float(params["fmax"])
         freqs, psd = spectrum(x, info.sfreq, params)
         keep = (freqs >= fmin) & (freqs <= fmax) & (freqs > 0)
+        bridge = np.zeros_like(keep)
+        if params["fit_unfiltered"]:
+            keep, bridge = unfiltered_range(freqs, keep, info.filters)
         if keep.sum() < 4:
             raise ValueError("specparam needs at least 4 frequencies in its range; "
                              "lengthen the window or widen the range")  # fmt: skip
         names = measures(aperiodic, bands)
         rows = np.full((x.shape[0], len(names)), np.nan)
-        for i, power in enumerate(np.maximum(psd[:, keep], np.finfo(float).tiny)):
+        psd = bridged(freqs, np.maximum(psd, np.finfo(float).tiny), keep, bridge)
+        for i, power in enumerate(psd[:, keep]):
             model = SpectralModel(
                 aperiodic_mode=aperiodic,
                 peak_width_limits=(float(params["peak_width_min"]),

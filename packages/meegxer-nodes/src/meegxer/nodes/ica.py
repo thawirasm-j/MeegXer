@@ -144,6 +144,7 @@ def component_info(model: State, info: SignalInfo) -> SignalInfo:
         info.stream_id,
         ch_classes=tuple(CLASSES[int(b)] for b in best),
         ch_scores=tuple(float(proba[i, b]) for i, b in enumerate(best)),
+        filters=info.filters,  # components mix the filtered channels
     )
 
 

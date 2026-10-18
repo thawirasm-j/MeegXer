@@ -483,3 +483,20 @@ def test_components_map_their_back_projected_power(qapp: QApplication) -> None:
     assert v.head.map is None
     assert v.head.message == "Select components to map their power"
     dispose(qapp, v)
+
+
+def test_the_1f_fit_leaves_out_what_the_filters_changed() -> None:
+    """Item 6: the GUI's aperiodic fit skips the bands the stream's filters
+    changed (below 1.5x a high-pass, around a notch), so the fit follows the
+    true 1/f slope."""
+    from meegxer.gui.headplot import aperiodic_fit
+
+    f = np.arange(0.25, 60.0, 0.25)
+    psd = (f**-2.0)[None]  # exponent 2
+    psd = psd / (1 + (3.0 / f)[None] ** 8)  # a 3 Hz order-4 Butterworth high-pass
+    psd[:, np.abs(f - 50.0) <= 1.0] *= 1e-3  # a notch's dip
+    filters = (("highpass", 3.0, 0.0), ("notch", 50.0, 0.0))
+    _, naive = aperiodic_fit(f, psd)
+    _, careful = aperiodic_fit(f, psd, filters=filters)
+    assert abs(careful[0] - 2.0) < 0.1
+    assert abs(naive[0] - 2.0) > 0.3

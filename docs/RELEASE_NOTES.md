@@ -5,7 +5,7 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 (`docs/RELEASING.md`). Install or upgrade: `uv tool install --python 3.14
 --prerelease allow meegxer` (or `uv tool upgrade meegxer`).
 
-## 0.3.0b2 (not released yet)
+## 0.3.1b1 (2026-10-18)
 
 - BIDS derivatives inherit the raw dataset's credits: `Authors`, `License`,
   funding and acknowledgements, its name, links and DOI (as the source's).
@@ -27,6 +27,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 - **Opening a pipeline or session runs no code:** a test now proves that a
   pipeline or session naming a custom script or local plugin you have not added
   (with the notice accepted) starts nothing, from the CLI, the daemon or a session.
+- **The 1/f fit skips filtered frequencies.** Filter strips now record what
+  they did on the stream (high-pass, low-pass, band-stop, notches; spec 0.2.19),
+  and *Remove 1/f* in the spectrum view and head plot leaves those bands out of
+  the fit: below 1.5x a high-pass cutoff, above 0.9x a low-pass cutoff and within
+  2 Hz of a notch. The specparam strip can do the same: *Fit unfiltered
+  frequencies only* (off by default) trims its range and bridges notches.
+  The offline cache recomputes outputs it kept from earlier versions once (they
+  do not record their filters).
 - **Connectivity map:** a connectivity strip's feature view adds a head map
   with a line from the chosen channel (in *Show*, or click an electrode) to
   every other, coloured and thickened by its value.
@@ -62,7 +70,7 @@ pipeline, session and plugin formats change only in compatible ways, and the
 work is fixing what the beta turns up. The manual release checks passed
 (`docs/TESTING.md`: acceptance test 5 on Windows with Docker, and the check on
 real BIDS data, ds004504); the EEGLAB read-back is still to be done, and
-anything it finds goes into 0.3.0b2.
+anything it finds goes into 0.3.1b1.
 
 ### What MeegXer does at this release
 

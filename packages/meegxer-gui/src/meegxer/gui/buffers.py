@@ -23,6 +23,7 @@ class ProbeBuffer:
         self.capacity = capacity_bins
         self.labels: tuple[str, ...] = ()
         self.classes: tuple[str, ...] = ()  # e.g. ICLabel's class of each IC
+        self.filters: tuple[tuple[str, float, float], ...] = ()  # gone through
         self.scores: tuple[float, ...] = ()
         self.sfreq = 0.0
         self.bin_size = 0
@@ -59,6 +60,7 @@ class ProbeBuffer:
         self.last_seq = frame.seq
         self.frames += 1
         self.classes, self.scores = frame.ch_classes, frame.ch_scores
+        self.filters = frame.filters
         start, stop = env.start_bin, env.start_bin + env.n_bins
         if start > self.end_bin:  # a gap: forget what the ring holds there
             self._clear(self.end_bin, start)

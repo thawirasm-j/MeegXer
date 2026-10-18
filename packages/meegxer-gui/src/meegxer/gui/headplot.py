@@ -53,6 +53,8 @@ from PySide6.QtWidgets import QToolTip, QWidget
 from scipy.interpolate import CloughTocher2DInterpolator
 from scipy.spatial import Delaunay, QhullError, cKDTree
 
+from meegxer.core.block import Filter
+from meegxer.core.passband import filtered_frequencies
 from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import RGB, channel_style, position
 from meegxer.gui.theme import Theme
@@ -124,16 +126,22 @@ def peak_frequency(f: FloatArray, psd: FloatArray, lo: float, hi: float) -> Floa
 
 
 def aperiodic_fit(
-    f: FloatArray, psd: FloatArray, lo: float = FIT_RANGE[0], hi: float = FIT_RANGE[1]
+    f: FloatArray,
+    psd: FloatArray,
+    lo: float = FIT_RANGE[0],
+    hi: float = FIT_RANGE[1],
+    filters: Sequence[Filter] = (),
 ) -> tuple[FloatArray, FloatArray]:
     """Each row's aperiodic fit log10(P) = offset - exponent * log10(f) over
     ``[lo, hi]`` Hz, as specparam's robust fit (fixed mode) makes it: a
     least-squares line, then a second one through the points that lie below the
-    first (where no peak lifts the spectrum). Vectorized over rows; NaN for rows
+    first (where no peak lifts the spectrum). Bands the stream's ``filters``
+    changed are left out (``passband.filtered_frequencies``), so a high-pass,
+    low-pass or notch does not bend the fit. Vectorized over rows; NaN for rows
     with too few usable points."""
     n_rows = psd.shape[0]
     offset, exponent = np.full(n_rows, np.nan), np.full(n_rows, np.nan)
-    keep = (f >= lo) & (f <= hi) & (f > 0)
+    keep = (f >= lo) & (f <= hi) & (f > 0) & ~filtered_frequencies(f, filters)
     if keep.sum() < 3:
         return offset, exponent
     x = np.log10(f[keep])
@@ -159,9 +167,12 @@ def aperiodic_fit(
     return offset, exponent
 
 
-def flatten(f: FloatArray, psd: FloatArray) -> FloatArray:
-    """Power above each row's aperiodic fit, in dB (NaN at 0 Hz)."""
-    offset, exponent = aperiodic_fit(f, psd)
+def flatten(
+    f: FloatArray, psd: FloatArray, filters: Sequence[Filter] = ()
+) -> FloatArray:
+    """Power above each row's aperiodic fit, in dB (NaN at 0 Hz); the fit
+    leaves out the bands ``filters`` changed."""
+    offset, exponent = aperiodic_fit(f, psd, filters=filters)
     with np.errstate(divide="ignore", invalid="ignore"):
         logf = np.where(f > 0, np.log10(np.where(f > 0, f, 1.0)), np.nan)
         fit = offset[:, None] - exponent[:, None] * logf
@@ -428,6 +439,7 @@ class HeadInput:
     compare_psd: FloatArray | None = None  # first comparison tap, same channels
     compare_labels: tuple[str, ...] = ()
     wheel: Mapping[str, tuple[float, float]] = field(default_factory=dict)
+    filters: tuple[Filter, ...] = ()  # the 1/f fit leaves their bands out
 
 
 def _power(
@@ -484,7 +496,7 @@ def render(
 
     def band_db(psd: FloatArray) -> FloatArray:
         if data.aperiodic:  # mean dB above the 1/f fit
-            return band_mean(data.f, flatten(data.f, psd), lo, hi)
+            return band_mean(data.f, flatten(data.f, psd, data.filters), lo, hi)
         return _db(_power(data.f, psd, (lo, hi), data.relative))
 
     if data.scheme == "change":
@@ -495,7 +507,8 @@ def render(
         value = np.array([main_db[index[lb]] - cmp_db[cmp_index[lb]]
                           if lb in cmp_index else np.nan for lb in placed])  # fmt: skip
     elif data.scheme == "peak":
-        psd = 10 ** (flatten(data.f, data.psd) / 10) if data.aperiodic else data.psd
+        psd = (10 ** (flatten(data.f, data.psd, data.filters) / 10)
+               if data.aperiodic else data.psd)  # fmt: skip
         value = peak_frequency(data.f, np.nan_to_num(psd, nan=-np.inf), lo, hi)[rows]
     else:
         value = band_db(data.psd)[rows]

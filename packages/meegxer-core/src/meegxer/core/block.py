@@ -8,6 +8,7 @@ rather than modify its input, because probes may hold the same block.
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import math
 from collections.abc import Mapping, Sequence
@@ -21,6 +22,10 @@ import numpy.typing as npt
 FloatArray = npt.NDArray[np.float64]
 IndexArray = npt.NDArray[np.intp]
 Position = tuple[float, float, float]
+# a filter a stream has been through: (kind, low, high) in Hz, kind highpass
+# (low), lowpass (high), bandstop (low-high) or notch (low); unused edges 0
+Filter = tuple[str, float, float]
+FILTER_KINDS = ("highpass", "lowpass", "bandstop", "notch")
 
 CHANNEL_TYPES = ("eeg", "eog", "emg", "ecg", "resp", "stim", "misc")
 DEFAULT_PROCESSED_TYPES = ("eeg",)
@@ -69,6 +74,9 @@ class SignalInfo:
     known at all. They describe the channels but do not change the data.
     ``ch_classes`` and ``ch_scores`` are attributes a classifier gave each channel
     (ICLabel for components: its most likely class and that probability), or empty.
+    ``filters`` lists the filters the stream has been through, in order (filter
+    nodes add theirs; spec 0.2.19): metadata, so it takes no part in equality and
+    a live change of a cutoff does not split the stream.
     """
 
     ch_labels: tuple[str, ...]
@@ -79,6 +87,7 @@ class SignalInfo:
     positions: tuple[Position | None, ...] = ()
     ch_classes: tuple[str, ...] = ()
     ch_scores: tuple[float, ...] = ()
+    filters: tuple[Filter, ...] = field(default=(), compare=False)
 
     def __post_init__(self) -> None:
         labels = tuple(self.ch_labels)
@@ -108,6 +117,11 @@ class SignalInfo:
         object.__setattr__(self, "ch_classes", classes)
         scores = tuple(float(s) for s in self.ch_scores)
         object.__setattr__(self, "ch_scores", scores)
+        filters = tuple((str(k), float(lo), float(hi)) for k, lo, hi in self.filters)
+        unknown_kinds = sorted({k for k, _, _ in filters} - set(FILTER_KINDS))
+        if unknown_kinds:
+            raise ValueError(f"unknown filter kinds: {unknown_kinds}")
+        object.__setattr__(self, "filters", filters)
         per_channel = (("ch_types", types), ("positions", positions),
                        ("ch_classes", classes), ("ch_scores", scores))  # fmt: skip
         for name, values in per_channel:
@@ -128,7 +142,12 @@ class SignalInfo:
             tuple(self.positions[i] for i in idx) if self.positions else (),
             tuple(self.ch_classes[i] for i in idx) if self.ch_classes else (),
             tuple(self.ch_scores[i] for i in idx) if self.ch_scores else (),
+            self.filters,
         )
+
+    def filtered(self, *filters: Filter) -> SignalInfo:
+        """This description with ``filters`` added after the earlier ones."""
+        return dataclasses.replace(self, filters=self.filters + tuple(filters))
 
     @property
     def n_channels(self) -> int:

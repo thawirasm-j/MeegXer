@@ -695,7 +695,8 @@ class RealtimeScheduler:
                 self._seq[probe_id] = seq + 1
                 self.display.publish(
                     DisplayFrame(probe_id, seq, info.ch_labels, info.sfreq, merged,
-                                 bypassed, info.ch_classes, info.ch_scores)
+                                 bypassed, info.ch_classes, info.ch_scores,
+                                 info.filters)
                 )  # fmt: skip
             items.clear()
         sfreq = self.graph.source.impl.info.sfreq  # type: ignore[union-attr]

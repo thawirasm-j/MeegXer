@@ -295,3 +295,29 @@ def test_feature_nodes_state_their_units() -> None:
     units = dict(zip(sp.coords["measure"], sp.units, strict=True))
     assert units["exponent"] == "1" and units["alpha_frequency"] == "Hz"
     assert units["offset"] == "log10(V^2/Hz)" and units["r_squared"] == "1"
+
+
+def test_specparam_can_fit_only_the_unfiltered_frequencies() -> None:
+    """``fit_unfiltered``: a high-pass bends the spectrum below ~2x its cutoff
+    and a notch carves a dip; leaving those out (range trimmed, notch bridged in
+    log power) recovers the exponent the filtering hid."""
+    from meegxer.nodes.filters import IIRFilter, NotchFilter
+
+    rng = np.random.default_rng(4)
+    x = np.stack([aperiodic_noise(int(32 * FS), 2.0, rng) for _ in range(2)])
+    x = 1e-5 * x / x.std()
+    stage = Stage(IIRFilter(), {"kind": "highpass", "low": 3.0, "order": 4})
+    hp = stage.transform(block_of(x), "fp").block
+    assert isinstance(hp, Block)
+    notched = Stage(NotchFilter(), {"freq": 25.0}).transform(hp, "fp").block
+    assert isinstance(notched, Block) and len(notched.info.filters) == 2
+    common = {"window": 32.0, "step": 32.0, "segment": 4.0, "fmin": 1.0,
+              "fmax": 45.0, "max_n_peaks": 0}  # fmt: skip
+
+    def exponent(**params: Any) -> float:
+        w = windows(SpecParam(), notched, **common, **params)[0]
+        return float(np.mean(w.data[:, w.coords["measure"].index("exponent")]))
+
+    naive, careful = exponent(), exponent(fit_unfiltered=True)
+    assert abs(careful - 2.0) < 0.15
+    assert abs(careful - 2.0) < abs(naive - 2.0) / 2

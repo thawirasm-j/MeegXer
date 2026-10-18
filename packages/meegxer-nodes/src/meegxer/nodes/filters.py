@@ -20,6 +20,7 @@ state); offline, with phase auto, the linear-phase design applied without delay
 
 from __future__ import annotations
 
+import dataclasses
 from functools import lru_cache
 from typing import ClassVar, Literal, cast
 
@@ -27,7 +28,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy import signal
 
-from meegxer.core.block import Block
+from meegxer.core.block import Block, Filter
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Mode, Params, Processor, TransformResult
 from meegxer.core.serialization import State
@@ -36,11 +37,36 @@ from meegxer.nodes._manifest import stream_manifest
 SosArray = npt.NDArray[np.float64]
 
 
-def _apply_sos(sos: SosArray, block: Block, state: State | None) -> TransformResult:
+def filters_of(kind: str, low: float, high: float) -> tuple[Filter, ...]:
+    """What a high-/low-/band-pass or band-stop leaves on the stream's info
+    (``SignalInfo.filters``): a band-pass is a high-pass and a low-pass."""
+    if kind == "highpass":
+        return (("highpass", low, 0.0),)
+    if kind == "lowpass":
+        return (("lowpass", 0.0, high),)
+    if kind == "bandpass":
+        return (("highpass", low, 0.0), ("lowpass", 0.0, high))
+    return (("bandstop", low, high),)
+
+
+def notch_filters(freq: float, harmonics: int, sfreq: float) -> tuple[Filter, ...]:
+    """The notches a notch cascade cuts (its harmonics below Nyquist)."""
+    return tuple(("notch", freq * k, 0.0) for k in range(1, harmonics + 1)
+                 if freq * k < sfreq / 2)  # fmt: skip
+
+
+def _tagged(block: Block, filters: tuple[Filter, ...]) -> Block:
+    return dataclasses.replace(block, info=block.info.filtered(*filters))
+
+
+def _apply_sos(
+    sos: SosArray, block: Block, state: State | None,
+    filters: tuple[Filter, ...] = (),
+) -> TransformResult:  # fmt: skip
     data = np.asarray(block.data)
     if data.shape[-1] == 0:  # an upstream delay (spec 0.2.5) can emit empty blocks
         # no "zi" yet means the first real sample still seeds it
-        return TransformResult(block, state or {})
+        return TransformResult(_tagged(block, filters), state or {})
     zi: npt.NDArray[np.float64]
     if state is None or "zi" not in state:
         zi_unit = signal.sosfilt_zi(sos)  # (n_sections, 2)
@@ -50,7 +76,8 @@ def _apply_sos(sos: SosArray, block: Block, state: State | None) -> TransformRes
         assert isinstance(stored, np.ndarray)
         zi = stored
     out, zf = signal.sosfilt(sos, data, axis=-1, zi=zi)
-    result = Block(out, block.info, block.sample_index, block.timestamp)
+    result = Block(out, block.info.filtered(*filters), block.sample_index,
+                   block.timestamp)  # fmt: skip
     return TransformResult(result, {"zi": zf})
 
 
@@ -148,7 +175,13 @@ class IIRFilter(Processor):
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
-        return _apply_sos(self.design(params, block.info.sfreq), block, state)
+        return _apply_sos(self.design(params, block.info.sfreq), block, state,
+                          IIRFilter.filters(params))  # fmt: skip
+
+    @staticmethod
+    def filters(params: Params) -> tuple[Filter, ...]:
+        return filters_of(str(params["kind"]), float(params["low"]),
+                          float(params["high"]))  # fmt: skip
 
 
 class NotchFilter(Processor):
@@ -182,10 +215,17 @@ class NotchFilter(Processor):
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
-        return _apply_sos(self.design(params, block.info.sfreq), block, state)
+        return _apply_sos(self.design(params, block.info.sfreq), block, state,
+                          NotchFilter.filters(params, block.info.sfreq))  # fmt: skip
+
+    @staticmethod
+    def filters(params: Params, sfreq: float) -> tuple[Filter, ...]:
+        return notch_filters(float(params["freq"]), int(params["harmonics"]), sfreq)
 
 
-def _apply_sos_zero_phase(sos: SosArray, block: Block) -> TransformResult:
+def _apply_sos_zero_phase(
+    sos: SosArray, block: Block, filters: tuple[Filter, ...] = ()
+) -> TransformResult:
     data = np.asarray(block.data)
     try:
         out = signal.sosfiltfilt(sos, data, axis=-1)
@@ -195,8 +235,9 @@ def _apply_sos_zero_phase(sos: SosArray, block: Block) -> TransformResult:
             f"samples): {exc}"
         ) from exc
     return TransformResult(
-        Block(out, block.info, block.sample_index, block.timestamp), {}
-    )
+        Block(out, block.info.filtered(*filters), block.sample_index,
+              block.timestamp), {}
+    )  # fmt: skip
 
 
 def _zero_phase_manifest(causal: Manifest, name: str, description: str) -> Manifest:
@@ -240,7 +281,8 @@ class IIRFilterZeroPhase(Processor):
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
-        return _apply_sos_zero_phase(IIRFilter.design(params, block.info.sfreq), block)
+        return _apply_sos_zero_phase(IIRFilter.design(params, block.info.sfreq),
+                                     block, IIRFilter.filters(params))  # fmt: skip
 
 
 class NotchFilterZeroPhase(Processor):
@@ -256,7 +298,9 @@ class NotchFilterZeroPhase(Processor):
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
         sos = NotchFilter.design(params, block.info.sfreq)
-        return _apply_sos_zero_phase(sos, block)
+        return _apply_sos_zero_phase(
+            sos, block, NotchFilter.filters(params, block.info.sfreq)
+        )
 
 
 @lru_cache(maxsize=64)
@@ -327,16 +371,18 @@ class FIRFilter(Processor):
     ) -> TransformResult:
         h = _fir_taps(str(params["kind"]), float(params["low"]),
                       float(params["high"]), block.info.sfreq, "minimum")  # fmt: skip
+        tags = filters_of(str(params["kind"]), float(params["low"]),
+                          float(params["high"]))  # fmt: skip
         data = np.asarray(block.data)
         if data.shape[-1] == 0:
-            return TransformResult(block, state or {})
+            return TransformResult(_tagged(block, tags), state or {})
         if state is None or "zi" not in state:
             zi = signal.lfilter_zi(h, [1.0])[None, :] * data[:, :1]
         else:
             zi = np.asarray(state["zi"])
         out, zf = signal.lfilter(h, [1.0], data, axis=-1, zi=zi)
-        result = Block(out, block.info, block.sample_index, block.timestamp,
-                       block.bypassed)  # fmt: skip
+        result = Block(out, block.info.filtered(*tags), block.sample_index,
+                       block.timestamp, block.bypassed)  # fmt: skip
         return TransformResult(result, {"zi": zf})
 
 
@@ -366,7 +412,7 @@ class FIRFilterZeroPhase(Processor):
             h_freq, method="fir", phase="zero", fir_design="firwin",
             verbose="error",
         )  # fmt: skip
+        info = block.info.filtered(*filters_of(kind, low, high))
         return TransformResult(
-            Block(out, block.info, block.sample_index, block.timestamp,
-                  block.bypassed), {}
-        )  # fmt: skip
+            Block(out, info, block.sample_index, block.timestamp, block.bypassed), {}
+        )

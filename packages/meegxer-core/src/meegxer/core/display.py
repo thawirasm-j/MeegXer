@@ -23,7 +23,14 @@ import numpy.typing as npt
 import zmq
 
 from meegxer.core.auth import Guard, login
-from meegxer.core.block import Block, FloatArray, units_from_wire, units_wire
+from meegxer.core.block import (
+    Block,
+    Filter,
+    FloatArray,
+    units_from_wire,
+    units_wire,
+)
+from meegxer.core.passband import filters_from_wire, filters_wire
 
 DISPLAY_PROTOCOL = "meegxer.display/0.3"
 _ACCEPTED = ("meegxer.display/0.1", "meegxer.display/0.2", DISPLAY_PROTOCOL)
@@ -90,6 +97,7 @@ class DisplayFrame:
     bypassed: tuple[str, ...] = ()  # nodes this data passed through unprocessed
     ch_classes: tuple[str, ...] = ()  # e.g. ICLabel's class of each component
     ch_scores: tuple[float, ...] = ()
+    filters: tuple[Filter, ...] = ()  # what the stream went through (0.3)
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +132,8 @@ def encode_frame(frame: DisplayFrame) -> list[bytes]:
     if frame.ch_classes:
         header["ch_classes"] = list(frame.ch_classes)
         header["ch_scores"] = list(frame.ch_scores)
+    if frame.filters:
+        header["filters"] = filters_wire(frame.filters)
     payload = np.stack([env.mins, env.maxs]).astype("<f4").tobytes()
     return [frame.probe.encode(), json.dumps(header).encode(), payload]
 
@@ -181,6 +191,7 @@ def decode_frame(parts: Sequence[bytes]) -> DisplayFrame | FeatureFrame:
         tuple(header.get("bypassed", ())),
         tuple(header.get("ch_classes", ())),
         tuple(float(s) for s in header.get("ch_scores", ())),
+        filters_from_wire(header.get("filters")),
     )
 
 

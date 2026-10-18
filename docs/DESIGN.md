@@ -393,7 +393,10 @@ it never interrupts processing.
   maximum is on a band edge are left out). **Remove 1/f** divides each channel's
   spectrum by its aperiodic fit over 1–45 Hz (specparam's robust fixed-mode fit,
   vectorized: a least-squares line in log-log, then one through the points below
-  it): the spectrum shows dB above the fit, *Band power* the band's mean dB above
+  it), leaving out the bands the stream's filters changed (`SignalInfo.filters`,
+  which the filter strips fill: below 1.5x a high-pass cutoff, above 0.9x a
+  low-pass one, within 2 Hz of a notch; `core/passband.py`; the specparam strip
+  does the same with *Fit unfiltered frequencies only*): the spectrum shows dB above the fit, *Band power* the band's mean dB above
   it from 0 dB (on the 1/f line) up to the held top, *Power change* compares those
   values and *Peak frequency* finds the peak above the slope. Electrodes are drawn in their channel
   colours inside a black-and-white ring, apart from the map's colours; hover names

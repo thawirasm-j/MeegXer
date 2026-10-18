@@ -35,6 +35,7 @@ from meegxer.core.cache import DirectoryCache
 from meegxer.core.display import Decimator
 from meegxer.core.graph import Graph, GraphError
 from meegxer.core.node import AnyBlock, Probe
+from meegxer.core.passband import filters_wire
 from meegxer.core.probes import FeatureProbe, MemoryProbe
 from meegxer.core.stage import Stage
 
@@ -328,6 +329,7 @@ class OfflineJob:
                     "bypassed": p.bypassed,
                     "ch_classes": list(p.info.ch_classes),
                     "ch_scores": list(p.info.ch_scores),
+                    "filters": filters_wire(p.info.filters),
                 }
                 for pid, p in list(self.probes.items())
             },
