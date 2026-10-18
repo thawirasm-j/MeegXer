@@ -10,6 +10,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The jobs only read the code (CodeQL actions/missing-workflow-permissions);
+# the token gets nothing more, as in security.yml and release.yml.
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint, types, architecture contracts
