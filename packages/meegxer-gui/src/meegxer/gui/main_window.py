@@ -301,6 +301,7 @@ class MainWindow(QMainWindow):
         """Defaults from the settings, then what was remembered on top."""
         vis = self.settings["visualization"]
         self.view.maps = Maps.from_settings(vis)
+        self.feature_view.maps = self.view.maps
         self.view.set_view_state({"span": vis["span"], "spectrum": vis["spectrum"]})
         self.view.set_view_state(self.state.get("view", {}))
         self.set_advanced(
@@ -326,6 +327,7 @@ class MainWindow(QMainWindow):
         self.scale = settings["appearance"]["scale"] / 100
         self.apply_theme(resolve_theme(settings["appearance"]["theme"]))
         self.view.maps = Maps.from_settings(settings["visualization"])
+        self.feature_view.maps = self.view.maps
 
     def accept_settings(self, settings: dict[str, Any]) -> None:
         """Keep new settings: save them, and let a changed default replace what

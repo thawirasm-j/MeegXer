@@ -406,6 +406,10 @@ class HeadMap:
     unplaced: list[str]
     scale: tuple[str, str, list[RGB]]  # low label, high label, band colours
     caption: str
+    # lines between electrodes (connectivity): from, to, colour, width
+    links: list[tuple[tuple[float, float], tuple[float, float], RGB, float]] = field(
+        default_factory=list
+    )
 
 
 @dataclass
@@ -590,6 +594,64 @@ def render(
                    (scale[0], scale[1], ramp), caption)  # fmt: skip
 
 
+def render_links(
+    labels: Sequence[str],
+    values: FloatArray,
+    seed: str,
+    theme: Theme,
+    maps: Maps,
+    wheel: Mapping[str, tuple[float, float]] | None = None,
+    unit: str = "",
+    caption: str = "",
+) -> HeadMap | str:
+    """A connectivity map: a line from ``seed`` to every other placed channel,
+    coloured (and thickened) by its value in ``values`` (one per label). Values
+    of both signs (imaginary coherence) use the diverging map around 0, else
+    the sequential map from the lowest to the highest."""
+    xy = electrode_xy(labels, wheel)
+    if seed not in xy:
+        return f"{seed} has no position: set a montage in Recording settings"
+    placed = [lb for lb in labels if lb in xy]
+    v = np.array([values[labels.index(lb)] for lb in placed], dtype=float)
+    others = np.array([lb != seed for lb in placed]) & np.isfinite(v)
+    if not others.any():
+        return "No other channel to connect"
+    lo, hi = float(v[others].min()), float(v[others].max())
+    if lo < 0 < hi:
+        top = max(-lo, hi)
+        s = v / top
+        rgb = maps.diverging_rgb(s, theme)
+        strength = np.abs(s)
+        ramp = maps.diverging_rgb(np.linspace(-1, 1, 11), theme)
+        scale = (f"{-top:.3g}", f"{top:.3g}")
+    else:
+        span = hi - lo or 1.0
+        strength = (v - lo) / span
+        rgb = maps.sequential_rgb(strength, theme)
+        ramp = maps.sequential_rgb(np.linspace(0, 1, 10), theme)
+        scale = (f"{lo:.3g}", f"{hi:.3g}")
+    suffix = f" {unit}" if unit else ""
+    scale = (scale[0] + suffix, scale[1] + suffix)
+    sx, sy = xy[seed]
+    order = np.argsort(np.where(others, strength, -1))  # strongest drawn last
+    links = [((sx, sy), xy[placed[i]], (int(rgb[i][0]), int(rgb[i][1]),
+              int(rgb[i][2])), 1.0 + 3.0 * float(strength[i]))
+             for i in order if others[i]]  # fmt: skip
+    electrodes = []
+    for lb, value in zip(placed, v, strict=True):
+        x, y = xy[lb]
+        text = (f"{lb}: seed" if lb == seed else
+                f"{seed}–{lb}: {value:.3g}{suffix}" if np.isfinite(value)  # noqa: RUF001
+                else f"{seed}–{lb}: no value")  # noqa: RUF001  # fmt: skip
+        color = channel_style(lb, theme, wheel or {}).color
+        electrodes.append(Electrode(lb, x, y, color, lb == seed, text))
+    blank = np.zeros((GRID, GRID, 4), dtype=np.uint8)
+    colours: list[RGB] = [(int(r), int(g), int(b)) for r, g, b in ramp]
+    unplaced = [lb for lb in labels if lb not in xy]
+    return HeadMap(1.18, 1.0, blank, [], electrodes, unplaced,
+                   (scale[0], scale[1], colours), caption, links)  # fmt: skip
+
+
 # -- the widget ---------------------------------------------------------------------
 
 
@@ -712,6 +774,11 @@ class HeadPlot(QWidget):
             ear.cubicTo(self._to_px(side * 1.10, 0.14), self._to_px(side * 1.12, -0.14),
                         self._to_px(side * 0.99, -0.12))  # fmt: skip
             p.drawPath(ear)
+        for (x0, y0), (x1, y1), rgb, width in m.links:  # connectivity
+            pen = QPen(QColor(*rgb), width)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            p.setPen(pen)
+            p.drawLine(self._to_px(x0, y0), self._to_px(x1, y1))
         # electrodes: the channel colour inside a black and a white ring, so it
         # reads apart from the map whatever the colours around it
         dot = max(3.0, sq.width() / 60)

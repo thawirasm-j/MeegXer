@@ -335,3 +335,48 @@ def test_hovering_a_line_names_its_point_and_value(qapp: QApplication) -> None:
     view._mouse_moved(vb.mapViewToScene(QPointF(2.0, -120.0)))
     assert view.hover_text() == "Fz · 2 Hz: -120 dB"
     dispose(qapp, view)
+
+
+def test_connectivity_draws_lines_from_the_seed(qapp: QApplication) -> None:
+    """Item 3: channel x target windows add a head map with a line from the seed
+    (the channel chosen in *Show*, or a clicked electrode) to every other one,
+    coloured and thickened by its value."""
+    from meegxer.gui.headplot import HeadMap
+
+    view = FeatureView(load_theme("dark"))
+    labels = ("Fz", "Cz", "Pz", "O1")
+    conn = np.array([[1.0, 0.8, 0.2, 0.1], [0.8, 1.0, 0.5, 0.3],
+                     [0.2, 0.5, 1.0, 0.6], [0.1, 0.3, 0.6, 1.0]])  # fmt: skip
+    series = FeatureSeries("tap_conn1", ("channel", "target"),
+                           {"channel": labels, "target": labels},
+                           np.array([2.0]), conn[None], unit="1")  # fmt: skip
+    view.refresh(series, "Connectivity", 0.0, 10.0)
+    assert not view.head.isHidden()
+    m = view.head.map
+    assert isinstance(m, HeadMap) and m.caption.startswith("from Fz")
+    assert len(m.links) == 3  # Fz to each other channel
+    widths = {round(w, 6) for *_, w in m.links}
+    assert max(widths) == 4.0 and min(widths) == 1.0  # strongest Cz, weakest O1
+    assert m.links[-1][3] == 4.0  # the strongest is drawn last, on top
+    by = {e.label: e for e in m.electrodes}
+    assert by["Fz"].shown and by["Cz"].text == "Fz–Cz: 0.8"  # noqa: RUF001
+    assert (m.scale[0], m.scale[1]) == ("0.1", "0.8")
+
+    view.head.clicked.emit("Pz")  # a click makes Pz the seed
+    assert view.slice.currentText() == "Pz"
+    view.refresh(series, "Connectivity", 0.0, 10.0)
+    m = view.head.map
+    assert isinstance(m, HeadMap) and m.caption.startswith("from Pz")
+
+    signed = FeatureSeries("tap_conn1", series.dims, series.coords, series.t,
+                           (conn - 0.5)[None])  # fmt: skip
+    view.refresh(signed, "Connectivity", 0.0, 10.0)  # both signs: diverging
+    m = view.head.map
+    assert isinstance(m, HeadMap) and m.scale[0].startswith("-")
+
+    bands = FeatureSeries("tap_bp1", ("channel", "band"),
+                          {"channel": labels, "band": ("alpha",)},
+                          np.array([1.0]), np.ones((1, 4, 1)))  # fmt: skip
+    view.refresh(bands, "Band power", 0.0, 10.0)
+    assert view.head.isHidden()  # not connectivity: no map
+    dispose(qapp, view)

@@ -7,6 +7,10 @@
   (or per feature), a point at the end of each window. Live, time is seconds
   before now or since the start (as in the signal view); offline, recording time.
 
+- **Connectivity** (channel x target, e.g. wPLI): also a head map with a line
+  from the channel chosen in *Show* (the seed; or click an electrode) to every
+  other, coloured by its value (live the newest window, offline the mean).
+
 Hovering near a line names it: the line is drawn bold, its nearest point is
 marked and labelled with the line's name, where it is and its value.
 
@@ -28,7 +32,9 @@ from PySide6.QtCore import QEvent, QObject, QPointF
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from meegxer.core.block import unit_at
+from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import ChannelStyle, channel_styles_with
+from meegxer.gui.headplot import HeadPlot, render_links
 from meegxer.gui.signal_view import ChannelMenu, Panner, TracePlot, _pen
 from meegxer.gui.theme import Theme
 
@@ -172,8 +178,16 @@ class FeatureView(QWidget):
         self.legend.setObjectName("muted")
         bar.addWidget(self.legend)
         lay.addLayout(bar)
+        row = QHBoxLayout()
+        self.head = HeadPlot(theme)  # connectivity map, beside the plot
+        self.head.setMinimumWidth(240)
+        self.head.setVisible(False)
+        self.head.clicked.connect(self._seed_clicked)
+        row.addWidget(self.head, 0)
         self.plot = TracePlot(theme)
-        lay.addWidget(self.plot, 1)
+        row.addWidget(self.plot, 1)
+        lay.addLayout(row, 1)
+        self.maps = Maps()  # colour maps (Settings → Visualization)
         self.panner = Panner()
         lay.addWidget(self.panner)
         self.wheel: dict[str, tuple[float, float]] = {}
@@ -198,6 +212,45 @@ class FeatureView(QWidget):
     def apply_theme(self, theme: Theme) -> None:
         self.theme = theme
         self.plot.apply_theme(theme)
+        self.head.apply_theme(theme)
+
+    # -- connectivity map ---------------------------------------------------------
+
+    @staticmethod
+    def connectivity(series: FeatureSeries) -> bool:
+        """Channel-by-channel values (``channel`` x ``target``, same labels)."""
+        return {"channel", "target"} <= set(series.dims) and tuple(
+            series.coords.get("channel", ())
+        ) == tuple(series.coords.get("target", ()))
+
+    def _seed_clicked(self, label: str) -> None:
+        """Clicking an electrode makes it the seed: the *Show* entry with that
+        target (the other dimensions as they are)."""
+        others, names = self._slices
+        if "target" not in others:
+            return
+        current = names[self.slice.currentIndex()].split(" · ") if names else []
+        k = others.index("target")
+        for i, name in enumerate(names):
+            parts = name.split(" · ")
+            if parts[k] == label and all(
+                p == c for j, (p, c) in enumerate(zip(parts, current, strict=False))
+                if j != k
+            ):  # fmt: skip
+                self.slice.setCurrentIndex(i)
+                return
+
+    def _draw_links(
+        self, series: FeatureSeries, labels: tuple[str, ...],
+        chosen: dict[str, int], data: FloatArray, n: int,
+    ) -> None:  # fmt: skip
+        seed = str(_coords(series, "target")[chosen["target"]])
+        with np.errstate(all="ignore"):
+            values = np.nanmean(data[:, :, 0], axis=0)  # live: the newest window
+        what = "newest window" if self.panner.live else f"mean of {n} windows"
+        self.head.show_map(render_links(
+            labels, values, seed, self.theme, self.maps, self.wheel,
+            hover_unit(series, chosen), f"from {seed}, {what}"))  # fmt: skip
 
     # -- hover --------------------------------------------------------------------
 
@@ -306,6 +359,7 @@ class FeatureView(QWidget):
         return out
 
     def clear(self, message: str) -> None:
+        self.head.setVisible(False)
         self._lines = []
         self._update_hover()
         self.plot.draw([])
@@ -325,6 +379,8 @@ class FeatureView(QWidget):
         styles = self._styles(labels, sdim == "channel")
         chosen = self._set_slices(series)
         data = pick(series.values, series.dims, chosen)
+        links = self.connectivity(series) and "target" in chosen
+        self.head.setVisible(links)
         plot = self.plot.getPlotItem()
         layers = []
         n = series.n_windows or len(series.t)
@@ -360,6 +416,11 @@ class FeatureView(QWidget):
             self.legend.setText(f"{name}: over time ({count})")
             self.plot.draw(layers)
             self.plot.set_time(t0, t1)
+        if links:
+            if not self.panner.live:  # offline: the mean over the shown span
+                data = data[(series.t >= t0) & (series.t <= t1)] if len(data) else data
+            self._draw_links(series, labels, chosen, data[-1:] if self.panner.live
+                             else data, n)  # fmt: skip
         drawn = zip(chans, layers, strict=True)
         self._lines = [(labels[c], x, y, pen) for c, (x, y, pen) in drawn]
         self._update_hover()  # the pointer may now be near another line or point
