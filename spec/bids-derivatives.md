@@ -76,7 +76,8 @@ BIDS derivatives recommend.
 - **`_features.tsv`:** one row per window: `window_start`, `window_stop` (sample
   indices), `onset` (seconds), then one column per feature value named by its
   coordinates (`Fz|alpha`). Its sidecar describes every column, the node and its
-  parameters.
+  parameters, and gives each value column's `Units` when the node states them
+  (spec 0.2.19; `V^2/Hz`, `dB`, `1` for dimensionless).
 - **`_meegxer.json`:** the session of the run (`session.md`): pipeline, node
   versions and plugin images, fitted models, input and output hashes. Listed in
   `.bidsignore`, so the validator skips it, as are feature tables

@@ -241,3 +241,11 @@ def test_batch_pipeline_writes_band_power_rows(tmp_path: Path) -> None:
         rows = list(csv.reader(fh, delimiter="\t"))
     assert rows[0][:4] == ["window_start", "window_stop", "timestamp", "Fp1|delta"]
     assert len(rows) == 1 + 9  # 2 s windows every 1 s over 10 s
+
+
+def test_connectivity_and_complexity_units() -> None:
+    assert windows(Connectivity(), recording())[0].unit == "1"
+    w = windows(Complexity(), recording())[0]
+    units = dict(zip(w.coords["measure"], w.units, strict=True))
+    assert w.unit_dim == "measure" and units["hjorth_mobility"] == "1/sample"
+    assert set(units.values()) == {"1", "1/sample"}

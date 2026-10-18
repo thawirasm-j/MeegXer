@@ -124,3 +124,30 @@ def test_offline_runs_keep_feature_windows_for_the_view() -> None:
     mean = job.feature_windows("tap_windowmean1", 0, 200, 2000, "mean")
     assert mean["windows"] == [[0, 200]] and mean["n_windows"] == 10
     job.discard()
+
+
+def test_feature_units_travel_on_the_display_stream_and_offline() -> None:
+    """Display protocol 0.3 carries the window's units; 0.2 frames still decode
+    (no units); the offline store hands them to the view."""
+    import json
+
+    from meegxer.core.offline import FeatureStore
+
+    frame = FeatureFrame("tap", 0, (0, 100), 100.0, ("channel", "measure"),
+                         {"measure": ("exponent", "cf")}, np.ones((1, 2)),
+                         unit_dim="measure", units=("1", "Hz"))  # fmt: skip
+    back = decode_frame(encode_features(frame))
+    assert isinstance(back, FeatureFrame)
+    assert (back.unit, back.unit_dim, back.units) == ("", "measure", ("1", "Hz"))
+    parts = encode_features(FeatureFrame("tap", 0, (0, 100), 100.0, ("channel",),
+                                         {}, np.ones(2), unit="V^2"))  # fmt: skip
+    header = json.loads(parts[1])
+    assert header["unit"] == "V^2" and "units" not in header
+    old = {k: v for k, v in header.items() if k != "unit"}
+    old["protocol"] = "meegxer.display/0.2"
+    back_old = decode_frame([parts[0], json.dumps(old).encode(), parts[2]])
+    assert isinstance(back_old, FeatureFrame) and back_old.unit == ""
+
+    store = FeatureStore(FeatureBlock(np.ones(2), ("channel",), (0, 100), 0.0,
+                                      unit="V^2/Hz"))  # fmt: skip
+    assert store.windows(0, 100, 10, "none")["unit"] == "V^2/Hz"

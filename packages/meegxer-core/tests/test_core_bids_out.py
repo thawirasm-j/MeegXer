@@ -103,6 +103,8 @@ def test_derivative_is_readable_by_bids_tools(tmp_path: Path) -> None:
 
     rows = tsv(folder / f"{stem}_bp_features.tsv")
     assert rows and {"window_start", "window_stop", "onset"} <= set(rows[0])
+    columns = json.loads((folder / f"{stem}_bp_features.json").read_text())
+    assert columns["Fz|alpha"]["Units"] == "V^2"  # band power (spec 0.2.19)
     session = read_session(folder / f"{stem}_meegxer.json")
     outputs = {Path(o["path"]).name for o in session["outputs"]}
     assert f"{stem}_eeg.set" in outputs and f"{stem}_bp_features.tsv" in outputs

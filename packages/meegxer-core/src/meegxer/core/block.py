@@ -13,6 +13,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -276,6 +277,30 @@ def align_blocks(reference: Block, other: Block) -> tuple[Block, Block]:
 type Coordinate = tuple[str, ...] | tuple[float, ...]
 
 
+def unit_at(
+    unit: str, unit_dim: str, units: tuple[str, ...], index: Mapping[str, int]
+) -> str:
+    """The unit at ``index`` given a feature block's ``unit``/``unit_dim``/``units``
+    (``unit`` where the dimension is not chosen or there are no per-entry units)."""
+    if unit_dim and units and unit_dim in index:
+        return units[index[unit_dim]]
+    return unit
+
+
+def units_wire(unit: str, unit_dim: str, units: tuple[str, ...]) -> dict[str, Any]:
+    """A feature block's units as protocol fields (only those that are set)."""
+    out: dict[str, Any] = {"unit": unit} if unit else {}
+    if unit_dim:
+        out |= {"unit_dim": unit_dim, "units": list(units)}
+    return out
+
+
+def units_from_wire(wire: Mapping[str, Any]) -> tuple[str, str, tuple[str, ...]]:
+    """``(unit, unit_dim, units)`` from protocol fields (``units_wire``)."""
+    return (str(wire.get("unit", "")), str(wire.get("unit_dim", "")),
+            tuple(str(u) for u in wire.get("units", ())))  # fmt: skip
+
+
 @dataclass(frozen=True, eq=False, slots=True)
 class FeatureBlock:
     """Windowed features, e.g. PSD (channel x frequency) or band power.
@@ -283,6 +308,11 @@ class FeatureBlock:
     ``dims`` names each axis of ``data``; ``coords`` optionally labels the entries
     of a dimension (``coords["channel"]`` must hold channel labels). ``window`` is
     the source sample range ``[start, stop)`` the features were computed from.
+
+    ``unit`` is the unit of every value (``"V^2/Hz"``, ``"dB"``; ``"1"``:
+    dimensionless; ``""``: not stated). When the values of one dimension differ
+    in unit (specparam's measures), ``unit_dim`` names it and ``units`` gives the
+    unit of each of its entries, in order (spec 0.2.19).
     """
 
     data: FloatArray
@@ -291,6 +321,9 @@ class FeatureBlock:
     timestamp: float
     coords: Mapping[str, Coordinate] = field(default_factory=dict)
     stream_id: str = ""
+    unit: str = ""
+    unit_dim: str = ""
+    units: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         data = _readonly(self.data, ndim_min=1)
@@ -302,6 +335,11 @@ class FeatureBlock:
                 raise ValueError(f"coordinate for unknown dimension {dim!r}")
             if len(values) != data.shape[dims.index(dim)]:
                 raise ValueError(f"coordinate {dim!r} length does not match data")
+        if self.unit_dim or self.units:
+            if self.unit_dim not in dims:
+                raise ValueError(f"unit_dim {self.unit_dim!r} is not one of {dims}")
+            if len(self.units) != data.shape[dims.index(self.unit_dim)]:
+                raise ValueError(f"units must give one unit per {self.unit_dim!r}")
         start, stop = self.window
         _check_index("window start", start)
         if stop < start:
@@ -310,6 +348,11 @@ class FeatureBlock:
         object.__setattr__(self, "dims", dims)
         coords = {k: tuple(v) for k, v in self.coords.items()}
         object.__setattr__(self, "coords", MappingProxyType(coords))
+        object.__setattr__(self, "units", tuple(self.units))
+
+    def unit_of(self, index: Mapping[str, int] | None = None) -> str:
+        """The unit of the values at ``index`` (a position along ``unit_dim``)."""
+        return unit_at(self.unit, self.unit_dim, self.units, index or {})
 
 
 @dataclass(frozen=True, slots=True)

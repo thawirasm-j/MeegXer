@@ -62,7 +62,7 @@ from typing import Any, BinaryIO, ClassVar
 import numpy as np
 
 SDK = "meegxer-python/0.1.0"
-SPEC_VERSION = "0.2.18"
+SPEC_VERSION = "0.2.19"
 MAGIC = b"MXP1"
 _DTYPES = {"float32", "float64", "int32", "int64", "uint8", "bool"}
 
@@ -194,7 +194,8 @@ def from_wire(tree: Any, arrays: dict[str, np.ndarray]) -> Any:
 def _features_to_wire(
     windows: list, arrays: dict[str, np.ndarray], prefix: str = "f"
 ) -> list:
-    """Feature windows (dicts with window, dims, data, coords) for a result."""
+    """Feature windows (dicts with window, dims, data, and optionally coords,
+    timestamp, unit, unit_dim and units) for a result."""
     wire = []
     for i, w in enumerate(windows):
         name = f"{prefix}{i}"
@@ -206,6 +207,11 @@ def _features_to_wire(
                      "data": name})  # fmt: skip
         if w.get("timestamp") is not None:
             wire[-1]["timestamp"] = float(w["timestamp"])
+        if w.get("unit"):
+            wire[-1]["unit"] = str(w["unit"])
+        if w.get("unit_dim"):  # one unit per entry of that dimension
+            wire[-1]["unit_dim"] = str(w["unit_dim"])
+            wire[-1]["units"] = [str(u) for u in w["units"]]
     return wire
 
 

@@ -278,3 +278,20 @@ def test_ssvep_frequencies_are_parsed_strictly() -> None:
 def test_blockwise_equals_one_pass(proc: Any, params: dict[str, Any]) -> None:
     block = block_of(ssvep(10.0, seconds=5.0))
     assert check_blockwise_equivalence(proc, block, params, trials=2) == 0.0
+
+
+def test_feature_nodes_state_their_units() -> None:
+    """Spec 0.2.19: one unit per window, or one per specparam measure."""
+    b = block_of(1e-5 * np.random.default_rng(0).standard_normal((3, int(8 * FS))),
+                 ("O1", "Oz", "O2"))  # fmt: skip
+    assert windows(PSD(), b)[0].unit == "V^2/Hz"
+    assert windows(PSD(), b, db=True)[0].unit == "dB"
+    assert windows(BandPower(), b)[0].unit == "V^2"
+    assert windows(BandPower(), b, relative=True)[0].unit == "1"
+    assert windows(MorletPower(), b)[0].unit == "V^2"
+    assert windows(SSVEPCCA(), b)[0].unit == "1"
+    sp = windows(SpecParam(), b, bands="alpha:8-13")[0]
+    assert sp.unit_dim == "measure"
+    units = dict(zip(sp.coords["measure"], sp.units, strict=True))
+    assert units["exponent"] == "1" and units["alpha_frequency"] == "Hz"
+    assert units["offset"] == "log10(V^2/Hz)" and units["r_squared"] == "1"

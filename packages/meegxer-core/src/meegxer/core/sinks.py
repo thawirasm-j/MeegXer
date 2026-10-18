@@ -7,6 +7,7 @@ whole recording. Data are in volts, as MNE expects.
 from __future__ import annotations
 
 import csv
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import ClassVar, Literal
@@ -48,6 +49,15 @@ def feature_columns(block: FeatureBlock) -> list[str]:
         axes.append([str(v) for v in values])
     grid = np.array(np.meshgrid(*axes, indexing="ij")).reshape(len(axes), -1)
     return ["|".join(col) for col in grid.T]
+
+
+def feature_units(block: FeatureBlock) -> list[str]:
+    """The unit of each feature value, in ``data.ravel()`` order (``""``: none)."""
+    if not block.unit_dim:
+        return [block.unit] * block.data.size
+    axis = block.dims.index(block.unit_dim)
+    index = np.indices(block.data.shape)[axis].ravel()
+    return [block.units[i] for i in index]
 
 
 def tsv_value(value: float) -> str:
@@ -127,7 +137,8 @@ class EdfSink(_RawFileSink):
 
 class FeatureTsvSink(Sink):
     """One row per feature window: window bounds, timestamp, then one column per
-    feature value, named by its coordinates (``Fz|10.0``)."""
+    feature value, named by its coordinates (``Fz|10.0``). The values' units go
+    into a JSON sidecar next to it (``features.json``, BIDS style), when stated."""
 
     manifest: ClassVar[Manifest] = _sink_manifest(
         "meegxer.core.feature_tsv", "features"
@@ -139,6 +150,7 @@ class FeatureTsvSink(Sink):
             raise ValueError(f"{self.manifest.name}: 'path' is required")
         self._rows: list[list[str]] = []
         self._header: list[str] | None = None
+        self._units: list[str] = []
 
     def write(self, block: AnyBlock) -> None:
         if not isinstance(block, FeatureBlock):
@@ -146,6 +158,7 @@ class FeatureTsvSink(Sink):
         columns = feature_columns(block)
         if self._header is None:
             self._header = ["window_start", "window_stop", "timestamp", *columns]
+            self._units = feature_units(block)
         elif self._header[3:] != columns:
             raise ValueError("feature layout changed between blocks")
         values = [tsv_value(v) for v in block.data.ravel()]
@@ -163,4 +176,17 @@ class FeatureTsvSink(Sink):
             writer = csv.writer(fh, delimiter="\t", lineterminator="\n")
             writer.writerow(self._header)
             writer.writerows(self._rows)
+        if any(self._units):
+            sidecar = {
+                "window_start": {"Units": "sample"},
+                "window_stop": {"Units": "sample"},
+                "timestamp": {"Units": "s"},
+                **{
+                    c: {"Units": u}
+                    for c, u in zip(self._header[3:], self._units, strict=True)
+                    if u
+                },
+            }
+            path.with_suffix(".json").write_text(
+                json.dumps(sidecar, indent=2) + "\n", encoding="utf-8")  # fmt: skip
         self._rows.clear()

@@ -7,7 +7,8 @@
   (or per feature), a point at the end of each window. Live, time is seconds
   before now or since the start (as in the signal view); offline, recording time.
 
-Further dimensions (e.g. the band of band power) are chosen in *Show*. The
+Further dimensions (e.g. the band of band power) are chosen in *Show*. The value
+axis names the features' unit when the node states one (spec 0.2.19). The
 windows come from the core, decimated and lossy (rule 2): live from the display
 stream, offline from the run's feature store.
 """
@@ -22,6 +23,7 @@ import numpy.typing as npt
 import pyqtgraph as pg
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from meegxer.core.block import unit_at
 from meegxer.gui.colors import ChannelStyle, channel_styles_with
 from meegxer.gui.signal_view import ChannelMenu, Panner, TracePlot, _pen
 from meegxer.gui.theme import Theme
@@ -41,6 +43,27 @@ class FeatureSeries:
     t: FloatArray
     values: FloatArray
     n_windows: int = 0  # windows behind ``values`` (offline: averaged into one)
+    unit: str = ""  # as FeatureBlock
+    unit_dim: str = ""
+    units: tuple[str, ...] = ()
+
+
+def pretty_unit(unit: str) -> str:
+    """A unit for an axis label: ``V^2/Hz`` as ``V²/Hz``."""
+    return unit.replace("^2", "²").replace("^3", "³")
+
+
+def value_label(
+    series: FeatureSeries, chosen: dict[str, int], spectrum_db: bool = False
+) -> str:
+    """The value axis label for the shown slice ("value" without a unit; dB with
+    its reference when the view converted a power to dB)."""
+    unit = unit_at(series.unit, series.unit_dim, series.units, chosen)
+    if series.unit_dim and series.unit_dim not in chosen and len(set(series.units)) > 1:
+        unit = ""  # the curves differ in unit
+    if spectrum_db:
+        return f"dB (re 1 {pretty_unit(unit)})" if unit not in ("", "1") else "dB"
+    return f"value ({pretty_unit(unit)})" if unit not in ("", "1") else "value"
 
 
 def series_dim(dims: tuple[str, ...]) -> str | None:
@@ -128,8 +151,8 @@ class FeatureView(QWidget):
             itertools.product(*(range(len(_coords(series, d))) for d in others))
         )
         names = tuple(
-            " · ".join(str(_coords(series, d)[i]) for d, i in zip(others, combo,
-                                                                   strict=True))
+            " · ".join(self._entry(series, d, i) for d, i in zip(others, combo,
+                                                                 strict=True))
             for combo in values
         )  # fmt: skip
         if (others, names) != self._slices:
@@ -146,6 +169,14 @@ class FeatureView(QWidget):
             return {}
         combo = values[max(0, self.slice.currentIndex())]
         return dict(zip(others, combo, strict=True))
+
+    @staticmethod
+    def _entry(series: FeatureSeries, dim: str, i: int) -> str:
+        """One entry of *Show*, with its unit when units differ along ``dim``."""
+        name = str(_coords(series, dim)[i])
+        if dim == series.unit_dim and series.units[i] not in ("", "1"):
+            return f"{name} ({pretty_unit(series.units[i])})"
+        return name
 
     def _styles(self, labels: tuple[str, ...], channels: bool) -> list[ChannelStyle]:
         if channels:
@@ -172,7 +203,8 @@ class FeatureView(QWidget):
         self.channels.set_labels(labels)
         chans = self.channels.selected(labels)
         styles = self._styles(labels, sdim == "channel")
-        data = pick(series.values, series.dims, self._set_slices(series))
+        chosen = self._set_slices(series)
+        data = pick(series.values, series.dims, chosen)
         plot = self.plot.getPlotItem()
         layers = []
         n = series.n_windows or len(series.t)
@@ -182,12 +214,13 @@ class FeatureView(QWidget):
             with np.errstate(all="ignore"):
                 spectrum = np.nanmean(data, axis=0)  # one window live
             finite = spectrum[np.isfinite(spectrum)]
-            db = bool(finite.size) and bool((finite > 0).all())
+            db = (bool(finite.size) and bool((finite > 0).all())
+                  and value_label(series, chosen) != "value (dB)")  # fmt: skip
             shown = 10 * np.log10(spectrum) if db else spectrum
             for c in chans:
                 st = styles[c]
                 layers.append((freqs, shown[c], _pen(st.color, 1.4, 230, st.dashed)))
-            plot.setLabel("left", "dB" if db else "value")
+            plot.setLabel("left", value_label(series, chosen, spectrum_db=db))
             plot.setLabel("bottom", "frequency", units="Hz")
             what = "newest window" if self.panner.live else "mean over the span"
             self.legend.setText(f"{name}: spectrum ({what}, {count})")
@@ -198,7 +231,7 @@ class FeatureView(QWidget):
                 st = styles[c]
                 layers.append((series.t, data[:, c, 0],
                                _pen(st.color, 1.4, 230, st.dashed)))  # fmt: skip
-            plot.setLabel("left", "value")
+            plot.setLabel("left", value_label(series, chosen))
             plot.setLabel("bottom", "time", units="s")
             self.legend.setText(f"{name}: over time ({count})")
             self.plot.draw(layers)

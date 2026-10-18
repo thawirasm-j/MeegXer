@@ -111,6 +111,7 @@ class FeatureBuffer:
         self.dims: tuple[str, ...] = ()
         self.coords: dict[str, tuple[str | float, ...]] = {}
         self.sfreq = 0.0
+        self.units: tuple[str, str, tuple[str, ...]] = ("", "", ())
         self.windows: list[tuple[int, int]] = []
         self.values: list[FloatArray] = []
         self.last_seq = -1
@@ -125,6 +126,7 @@ class FeatureBuffer:
             self.dropped += frame.seq - self.last_seq - 1
         self.last_seq = frame.seq
         self.sfreq = frame.sfreq
+        self.units = (frame.unit, frame.unit_dim, frame.units)
         self.windows.append(frame.window)
         self.values.append(np.asarray(frame.values, dtype=float))
         if len(self.windows) > self.capacity:

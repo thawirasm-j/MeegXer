@@ -134,6 +134,20 @@ stream is cut, so a plugin that wants exact times anchors them to its first bloc
 (keeping that anchor in `state`). The result must not depend on how the stream is cut into blocks
 (acceptance test 1), so a windowing plugin keeps its unfinished window in `state`.
 
+**Feature units (0.2.19).** A feature window may state its unit: `unit` for every
+value (`"V^2/Hz"`, `"dB"`, `"Hz"`; `"1"` for a dimensionless value such as
+coherence), or, when the values along one dimension differ in unit, `unit_dim`
+(one of `dims`) and `units`, one unit per entry of that dimension, in order:
+
+```json
+{"window": [1000, 1500], "dims": ["channel", "measure"],
+ "coords": {"measure": ["exponent", "peak_frequency"]},
+ "unit_dim": "measure", "units": ["1", "Hz"], "data": "f0"}
+```
+
+Units are plain ASCII (`^` for powers). Without them the unit is not stated;
+hosts show the values unlabelled and write no unit.
+
 **Rails (0.2.17).** A plugin whose manifest has extra ports (each naming a
 `rail`, see `manifest.schema.json`) gets a `rails` object in `transform` and in
 `fit`, by input port name, over the same samples as `data`:

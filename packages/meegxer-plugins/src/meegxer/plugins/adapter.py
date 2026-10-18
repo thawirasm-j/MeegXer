@@ -12,7 +12,14 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-from meegxer.core.block import Block, Event, FeatureBlock, SignalInfo
+from meegxer.core.block import (
+    Block,
+    Event,
+    FeatureBlock,
+    SignalInfo,
+    units_from_wire,
+    units_wire,
+)
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import (
     Params,
@@ -52,7 +59,8 @@ def _windows_to_wire(
         arrays[name] = np.asarray(w.data, dtype=np.float64)
         wire.append({"window": list(w.window), "dims": list(w.dims),
                      "coords": {k: list(v) for k, v in w.coords.items()},
-                     "data": name, "timestamp": w.timestamp})  # fmt: skip
+                     "data": name, "timestamp": w.timestamp,
+                     **units_wire(w.unit, w.unit_dim, w.units)})  # fmt: skip
     return wire
 
 
@@ -71,7 +79,8 @@ def _windows_from_wire(
         coords = {str(k): tuple(v) for k, v in (w.get("coords") or {}).items()}
         data = np.asarray(arrays[w["data"]], dtype=np.float64)
         windows.append(FeatureBlock(data, tuple(w["dims"]), (start, stop),
-                                    timestamp, coords, info.stream_id))  # fmt: skip
+                                    timestamp, coords, info.stream_id,
+                                    *units_from_wire(w)))  # fmt: skip
     return tuple(windows)
 
 

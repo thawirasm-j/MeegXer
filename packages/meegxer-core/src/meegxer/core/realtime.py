@@ -703,7 +703,8 @@ class RealtimeScheduler:
                 self._seq[probe_id] = seq + 1
                 self.display.publish(
                     FeatureFrame(probe_id, seq, w.window, sfreq, w.dims,
-                                 dict(w.coords), w.data)
+                                 dict(w.coords), w.data, w.unit, w.unit_dim,
+                                 w.units)
                 )  # fmt: skip
             windows.clear()
 

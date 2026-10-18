@@ -60,8 +60,9 @@ One PR per item, as before. Items keep their IDs (M9.1 …) in commits and PRs.
    guide for EDF and BIDS outputs.
 6. **Pipelines never run code:** a test that loading a pipeline or session cannot
    start a custom script or plugin without the accepted notice.
-7. **Feature units:** manifests declare units for feature outputs; the feature
-   view and tables show them.
+7. **Feature units:** each feature window states its unit (one for every value,
+   or one per entry along a dimension, e.g. specparam's measures; spec 0.2.19);
+   the feature view and tables show them.
 8. **Robustness:** a channel-layout change mid-stream no longer stops the LSL
    feature outlet; live recording to disk survives a crash (writes are flushed
    and the file stays readable).

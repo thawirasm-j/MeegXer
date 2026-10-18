@@ -302,6 +302,18 @@ def _credits(module: ModuleType) -> dict[str, Any]:
     return out
 
 
+def _script_units(module: ModuleType, names: list[str]) -> dict[str, Any]:
+    """A feature script's ``UNITS``: one unit for every feature (``"V^2"``), or a
+    unit per feature name (``{"alpha": "V^2", "ratio": "1"}``); absent: none."""
+    units = getattr(module, "UNITS", None)
+    if isinstance(units, str):
+        return {"unit": units}
+    if isinstance(units, dict):
+        return {"unit_dim": "feature",
+                "units": [str(units.get(name, "")) for name in names]}  # fmt: skip
+    return {}
+
+
 class ScriptPlugin(Plugin):
     """Wraps ``process(raw, ...)`` (the whole recording in, the same shape out),
     ``transform(data, state, ...)`` with an optional ``fit(raw, ...)``, or
@@ -372,7 +384,8 @@ class ScriptPlugin(Plugin):
                             "dims": ["channel", "feature"],
                             "coords": {"channel": list(info["ch_labels"]),
                                        "feature": names},
-                            "data": values})  # fmt: skip
+                            "data": values,
+                            **_script_units(self.module, names)})  # fmt: skip
             nxt += step
         keep = min(max(nxt - start, 0), buffer.shape[1])
         buffer, start = buffer[:, keep:], start + keep

@@ -36,6 +36,11 @@ define it.
     (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
     with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
     session file next to each recording.
+  - 0.2.19: feature units. A feature window may carry `unit` (the unit of every
+    value, ASCII: `V^2/Hz`, `dB`; `"1"` is dimensionless) or, when the values
+    along one dimension differ in unit, `unit_dim` and `units` (one per entry);
+    both omitted means not stated (`plugin-protocol.md`). Feature tables write
+    the units into their JSON sidecar (`bids-derivatives.md`).
   - 0.2.18: a node's `input` may name a rail output of an earlier node,
     `"id:port"` (e.g. `"ica1:ics"`: a spectrum of the components). Signal info
     may carry per-channel `ch_classes` and `ch_scores` (e.g. ICLabel's most

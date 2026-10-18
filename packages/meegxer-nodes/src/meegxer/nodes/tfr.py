@@ -73,3 +73,8 @@ class MorletPower(WindowedFeatures):
         rounded = tuple(round(float(f), 6) for f in freqs)
         coords = {"channel": info.ch_labels, "frequency": rounded}
         return power, ("channel", "frequency"), coords
+
+    def units(
+        self, params: Params, coords: dict[str, tuple[Any, ...]]
+    ) -> str | tuple[str, tuple[str, ...]]:
+        return "dB" if params["db"] else "V^2"

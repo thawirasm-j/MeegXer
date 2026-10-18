@@ -1,4 +1,4 @@
-# MeegXer display protocol (`meegxer.display/0.2`, unstable)
+# MeegXer display protocol (`meegxer.display/0.3`, unstable)
 
 Decimated envelopes of every probe, and the windows of every Features probe,
 published by the core on a ZeroMQ PUB socket
@@ -56,7 +56,17 @@ seconds since the source's first sample (rule 8). Frames go out with the display
 flush; when a flush holds more than 16 windows of one probe, only the newest 16
 are sent (lossy, like envelopes).
 
-Viewers should accept 0.1 messages (envelopes without classes) as well.
+0.3 adds the window's units, as a plugin's feature result states them
+(`plugin-protocol.md`, spec 0.2.19): `unit`, or `unit_dim` and `units`, only when
+the node states them:
+
+```json
+{"protocol": "meegxer.display/0.3", "kind": "features", "probe": "tap_psd1",
+ "dims": ["channel", "frequency"], "unit": "V^2/Hz", "...": "..."}
+```
+
+Viewers should accept 0.1 messages (envelopes without classes) and 0.2 messages
+(feature windows without units) as well.
 
 ## Alignment
 

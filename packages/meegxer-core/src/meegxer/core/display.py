@@ -23,10 +23,10 @@ import numpy.typing as npt
 import zmq
 
 from meegxer.core.auth import Guard, login
-from meegxer.core.block import Block, FloatArray
+from meegxer.core.block import Block, FloatArray, units_from_wire, units_wire
 
-DISPLAY_PROTOCOL = "meegxer.display/0.2"
-_ACCEPTED = ("meegxer.display/0.1", DISPLAY_PROTOCOL)
+DISPLAY_PROTOCOL = "meegxer.display/0.3"
+_ACCEPTED = ("meegxer.display/0.1", "meegxer.display/0.2", DISPLAY_PROTOCOL)
 
 type ZmqContext = zmq.Context[zmq.Socket[bytes]]
 
@@ -103,6 +103,9 @@ class FeatureFrame:
     dims: tuple[str, ...]
     coords: dict[str, tuple[str | float, ...]]
     values: FloatArray
+    unit: str = ""  # display protocol 0.3, as FeatureBlock
+    unit_dim: str = ""
+    units: tuple[str, ...] = ()
 
 
 def encode_frame(frame: DisplayFrame) -> list[bytes]:
@@ -136,6 +139,7 @@ def encode_features(frame: FeatureFrame) -> list[bytes]:
         "dims": list(frame.dims),
         "coords": {k: list(v) for k, v in frame.coords.items()},
         "shape": list(frame.values.shape),
+        **units_wire(frame.unit, frame.unit_dim, frame.units),
     }
     payload = np.asarray(frame.values).astype("<f4").tobytes()
     return [frame.probe.encode(), json.dumps(header).encode(), payload]
@@ -156,6 +160,7 @@ def decode_frame(parts: Sequence[bytes]) -> DisplayFrame | FeatureFrame:
             tuple(header["dims"]),
             {k: tuple(v) for k, v in header.get("coords", {}).items()},
             values.astype(np.float64),
+            *units_from_wire(header),
         )
     n_ch, n_bins = len(header["ch_labels"]), header["n_bins"]
     arr: npt.NDArray[np.float32] = np.frombuffer(payload, dtype="<f4").reshape(

@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from meegxer.core import settings as core_settings
+from meegxer.core.block import units_from_wire
 from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame, FeatureFrame
 from meegxer.core.graph import positions_message
@@ -1189,7 +1190,8 @@ class MainWindow(QMainWindow):
             return None, t0, t1
         values = np.stack([buf.values[i] for i in idx])
         t = (ends[idx] - origin) / buf.sfreq
-        return FeatureSeries(probe, buf.dims, buf.coords, t, values), t0, t1
+        series = FeatureSeries(probe, buf.dims, buf.coords, t, values, 0, *buf.units)
+        return series, t0, t1
 
     def _offline_features(
         self, probe: str, seconds: float
@@ -1216,7 +1218,8 @@ class MainWindow(QMainWindow):
         values = np.array(reply["values"], dtype=float)
         stops = np.array([w[1] for w in reply["windows"]], dtype=float)
         series = FeatureSeries(probe, dims, coords, stops / sfreq, values,
-                               int(reply["n_windows"]))  # fmt: skip
+                               int(reply["n_windows"]),
+                               *units_from_wire(reply))  # fmt: skip
         self._feature_cache[probe] = (key, series)
         return series, t0, t1
 

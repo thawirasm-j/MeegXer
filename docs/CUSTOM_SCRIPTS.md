@@ -188,6 +188,11 @@ def features(data, info, fmin: float = 8.0, fmax: float = 13.0):
   `features` then receives them too.
 - Optional `info`, as for `transform`. A window that is still incomplete at the end
   of a recording is dropped, as the built-in feature strips do.
+- Optional `UNITS` at the top of the script states the values' units, shown in the
+  feature view and recorded by the writers: one for every feature
+  (`UNITS = "V^2"`) or one per feature name
+  (`UNITS = {"alpha_power": "V^2/Hz", "line_length": "V"}`). Use `"1"` for a
+  dimensionless value.
 
 Octave/EEGLAB scripts (`function EEG = process(EEG, ...)`) are planned next.
 

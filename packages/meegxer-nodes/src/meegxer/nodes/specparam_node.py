@@ -37,6 +37,15 @@ def measures(aperiodic: str, bands: list[tuple[str, float, float]]) -> tuple[str
     return (*head, *peaks, "r_squared", "error")
 
 
+def measure_unit(name: str) -> str:
+    """specparam's units: power in log10(V^2/Hz), frequencies in Hz."""
+    if name in ("offset", "error") or name.endswith("_power"):
+        return "log10(V^2/Hz)"
+    if name.endswith(("_frequency", "_bandwidth")):
+        return "Hz"
+    return "Hz^exponent" if name == "knee" else "1"  # exponent, r_squared
+
+
 class SpecParam(WindowedFeatures):
     """Aperiodic offset, exponent (and knee), the strongest peak per band, and the
     fit quality (R², mean absolute error), per channel and window."""
@@ -116,6 +125,11 @@ class SpecParam(WindowedFeatures):
             rows[i] = _row(model, aperiodic, bands)
         coords = {"channel": info.ch_labels, "measure": names}
         return rows, ("channel", "measure"), coords
+
+    def units(
+        self, params: Params, coords: dict[str, tuple[Any, ...]]
+    ) -> str | tuple[str, tuple[str, ...]]:
+        return "measure", tuple(measure_unit(m) for m in coords["measure"])
 
 
 def _row(

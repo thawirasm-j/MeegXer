@@ -137,6 +137,13 @@ class WindowedFeatures(Processor):
         """As ``features``, for a node with a fitted model. Default: ``features``."""
         return self.features(x, info, params)
 
+    def units(
+        self, params: Params, coords: dict[str, tuple[Any, ...]]
+    ) -> str | tuple[str, tuple[str, ...]]:
+        """The unit of the values (``FeatureBlock.unit``), or ``(dim, units)`` when
+        each entry of ``dim`` has its own. Default: not stated."""
+        return ""
+
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
@@ -162,9 +169,13 @@ class WindowedFeatures(Processor):
         while nxt + n <= start + buffer.shape[1]:
             x = buffer[:, nxt - start : nxt - start + n]
             values, dims, coords = self.fitted_features(x, info, params, model)
+            units = self.units(params, coords)
+            unit, unit_dim, per = (units, "", ()) if isinstance(units, str) else (
+                "", *units)  # fmt: skip
             out.append(FeatureBlock(values, dims, (nxt, nxt + n),
                                     t_ref + (nxt - i_ref) / info.sfreq,
-                                    coords, info.stream_id))  # fmt: skip
+                                    coords, info.stream_id, unit, unit_dim,
+                                    tuple(per)))  # fmt: skip
             nxt += step
         keep = min(max(nxt - start, 0), buffer.shape[1])
         buffer, start = buffer[:, keep:], start + keep
@@ -204,6 +215,11 @@ class PSD(WindowedFeatures):
         rounded = tuple(round(float(f), 6) for f in freqs[keep])
         coords = {"channel": info.ch_labels, "frequency": rounded}
         return values, ("channel", "frequency"), coords
+
+    def units(
+        self, params: Params, coords: dict[str, tuple[Any, ...]]
+    ) -> str | tuple[str, tuple[str, ...]]:
+        return "dB" if params["db"] else "V^2/Hz"
 
 
 DEFAULT_BANDS = "delta:1-4, theta:4-8, alpha:8-13, beta:13-30, gamma:30-45"
@@ -264,6 +280,13 @@ class BandPower(WindowedFeatures):
         coords = {"channel": info.ch_labels, "band": tuple(b[0] for b in bands)}
         return values, ("channel", "band"), coords
 
+    def units(
+        self, params: Params, coords: dict[str, tuple[Any, ...]]
+    ) -> str | tuple[str, tuple[str, ...]]:
+        if params["db"]:
+            return "dB"
+        return "1" if params["relative"] else "V^2"
+
 
 class Connectivity(WindowedFeatures):
     """Channel-by-channel connectivity in one band per window (mne-connectivity):
@@ -320,6 +343,11 @@ class Connectivity(WindowedFeatures):
         coords = {"channel": info.ch_labels, "target": info.ch_labels}
         return np.asarray(full, dtype=float), ("channel", "target"), coords
 
+    def units(
+        self, params: Params, coords: dict[str, tuple[Any, ...]]
+    ) -> str | tuple[str, tuple[str, ...]]:
+        return "1"
+
 
 COMPLEXITY = ("perm_entropy", "sample_entropy", "spectral_entropy",
               "hjorth_mobility", "hjorth_complexity", "lziv")  # fmt: skip
@@ -354,6 +382,12 @@ class Complexity(WindowedFeatures):
         rows = [[_measure(ant, m, ch, info.sfreq) for m in chosen] for ch in x]
         coords = {"channel": info.ch_labels, "measure": tuple(chosen)}
         return np.array(rows), ("channel", "measure"), coords
+
+    def units(
+        self, params: Params, coords: dict[str, tuple[Any, ...]]
+    ) -> str | tuple[str, tuple[str, ...]]:
+        per = {"hjorth_mobility": "1/sample"}  # antropy: per sample, not per second
+        return "measure", tuple(per.get(m, "1") for m in coords["measure"])
 
 
 def _measure(ant: Any, name: str, x: np.ndarray, sfreq: float) -> float:
