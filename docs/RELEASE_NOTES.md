@@ -27,6 +27,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 - **Opening a pipeline or session runs no code:** a test now proves that a
   pipeline or session naming a custom script or local plugin you have not added
   (with the notice accepted) starts nothing, from the CLI, the daemon or a session.
+- **An existing output no longer stops the run.** A file writer whose file
+  already exists (without `overwrite`) keeps it and skips its save, with a
+  note (`skipped: …` in the CLI, *Not saved* in the GUI log); every other node
+  and writer still runs to the end.
 - **Feature units:** feature strips state the unit of their values (PSD
   `V^2/Hz`, band power `V^2`, relative power and connectivity dimensionless,
   specparam per measure). The feature view labels its value axis with it, *Show*

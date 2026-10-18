@@ -21,7 +21,7 @@ Both are offline only (they need the whole recording) and take these parameters:
 | `root` | `<raw dataset>/derivatives/meegxer` | the derivatives dataset folder; required when the input is not inside a BIDS dataset |
 | `desc` | `clean` | the `desc-` label of the outputs (letters and digits) |
 | `subject`, `session`, `task`, `run` | from the input | override the entities (for inputs whose names carry none) |
-| `overwrite` | `false` | replace this recording's files if they exist |
+| `overwrite` | `false` | replace this recording's files if they exist; otherwise the run still goes to the end and only this save is skipped (noted) |
 
 Entities come from the input: the parameters of a `meegxer.core.bids` source, or
 the BIDS-style file name of a `meegxer.core.file` source

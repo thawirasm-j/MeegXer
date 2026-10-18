@@ -321,11 +321,6 @@ class _BidsSink(Sink):
             raise RuntimeError(f"{self.manifest.name} runs in batch runs only")
         return target_for(self._graph, self.params)
 
-    def _claim(self, path: Path) -> Path:
-        if path.exists() and not self.params["overwrite"]:
-            raise FileExistsError(f"{path} exists (set overwrite to replace it)")
-        return path
-
 
 class BidsWriter(_BidsSink):
     """The processed recording, its sidecars and the run's session file in a
@@ -350,7 +345,10 @@ class BidsWriter(_BidsSink):
         if not self._blocks:
             return
         target = self.target = self._target()
-        signal_path = self._claim(target.path("eeg.set"))
+        signal_path = target.path("eeg.set")
+        if self.keep_existing(signal_path):  # its sidecars and session stay too
+            self._blocks.clear()
+            return
         target.folder.mkdir(parents=True, exist_ok=True)
         write_dataset_files(target, self._graph)
         whole = concat_blocks(self._blocks)
@@ -472,7 +470,10 @@ class BidsFeatures(_BidsSink):
             return
         target = self._target()
         upstream = str(self._graph[self._node_id].input).replace(":", "-")
-        table = self._claim(target.path(f"{upstream}_features.tsv"))
+        table = target.path(f"{upstream}_features.tsv")
+        if self.keep_existing(table):
+            self._blocks.clear()
+            return
         target.folder.mkdir(parents=True, exist_ok=True)
         write_dataset_files(target, self._graph)
         sfreq = self._graph.source.impl.info.sfreq

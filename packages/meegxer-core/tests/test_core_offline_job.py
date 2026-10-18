@@ -118,3 +118,19 @@ def test_status_lists_the_models_the_run_fitted(daemon: Daemon) -> None:
     status = wait_done(daemon)
     assert status["state"] == "done", status["error"]
     assert status["models"] == ["ica"]
+
+
+def test_an_existing_output_is_kept_and_the_run_finishes(
+    daemon: Daemon, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MEEGXER_OFFLINE_DIR", str(tmp_path / "offline"))
+    out = tmp_path / "out.set"
+    out.write_bytes(b"kept")
+    doc = {**PIPELINE, "nodes": [*PIPELINE["nodes"],
+           {"id": "out", "node": "meegxer.core.set_writer", "input": "bp",
+            "params": {"path": str(out)}}]}  # fmt: skip
+    daemon.run_offline(doc)
+    status = wait_done(daemon)
+    assert status["state"] == "done", status["error"]
+    assert status["skipped"] and status["skipped"][0].startswith("out: ")
+    assert out.read_bytes() == b"kept"

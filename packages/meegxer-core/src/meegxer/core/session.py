@@ -243,10 +243,12 @@ def build_session(
 
 
 def sink_outputs(graph: Graph) -> list[Path]:
-    """The files the graph's sinks wrote (those that exist)."""
+    """The files the graph's sinks wrote (those that exist; not a file a sink
+    kept because it existed)."""
     paths = []
     for node in graph.nodes:
-        if isinstance(node.impl, Sink) and "path" in node.impl.params:
+        if (isinstance(node.impl, Sink) and "path" in node.impl.params
+                and not node.impl.skipped):  # fmt: skip
             path = Path(str(node.impl.params["path"]))
             if path.is_file():
                 paths.append(path)

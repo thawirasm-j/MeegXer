@@ -253,6 +253,7 @@ class OfflineJob:
         self.cache_dir = root / "cache"
         self.state = "pending"
         self.error = ""
+        self.skipped: list[str] = []  # saves skipped: the file existed
         self.started = 0.0
         self.finished = 0.0
         self.n_total = 0
@@ -286,7 +287,10 @@ class OfflineJob:
             self.sfreq = float(source.info.sfreq)  # type: ignore[union-attr]
             self.folder.mkdir(parents=True, exist_ok=True)
             self.cache_dir.mkdir(parents=True, exist_ok=True)
-            BatchScheduler(cache=DirectoryCache(self.cache_dir)).run(self.graph)
+            result = BatchScheduler(cache=DirectoryCache(self.cache_dir)).run(
+                self.graph
+            )
+            self.skipped = result.skipped
             for store in self.probes.values():
                 store.close()
             self.state = "done"
@@ -302,6 +306,7 @@ class OfflineJob:
         return {
             "state": self.state,
             "error": self.error,
+            "skipped": list(self.skipped),
             "elapsed_s": round(end - self.started, 3) if self.started else 0.0,
             "n_samples": self.n_total,
             "sfreq": self.sfreq,

@@ -50,7 +50,13 @@ def run(
     cache_dir: Annotated[
         Path | None, typer.Option(help="Reuse unchanged node outputs from here.")
     ] = None,
-    overwrite: Annotated[bool, typer.Option(help="Replace existing output.")] = False,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            help="Replace existing output (else an existing file is kept, "
+            "its save skipped)."
+        ),
+    ] = False,
     allow_version_mismatch: Annotated[
         bool,
         typer.Option(
@@ -182,7 +188,9 @@ def run(
         typer.echo(f"from cache: {', '.join(result.cached)}")
     if result.fitted:
         typer.echo(f"fitted: {', '.join(result.fitted)}")
-    if output is not None:
+    for note in result.skipped:
+        typer.echo(f"skipped: {note}")
+    if output is not None and not any(str(output) in n for n in result.skipped):
         typer.echo(f"wrote {output}")
     if session is not None:
         typer.echo(f"wrote {session}")

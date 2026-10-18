@@ -69,3 +69,24 @@ def test_run_reports_errors(tmp_path: Path) -> None:
     assert result.exit_code == 1 and "error" in result.output
     bad = runner.invoke(app, ["run", str(pipeline), "-o", str(tmp_path / "x.mp3")])
     assert bad.exit_code == 1 and "unsupported" in bad.output
+
+
+def test_an_existing_output_is_kept_and_the_run_goes_on(tmp_path: Path) -> None:
+    """A writer whose file exists skips its save with a note; the other writers
+    still write and the command succeeds (--overwrite replaces it)."""
+    out, table = tmp_path / "out.set", tmp_path / "bp.tsv"
+    pipeline = write_json(tmp_path / "pipeline.json", [
+        {"id": "input", "node": "meegxer.core.synthetic",
+         "params": {"duration": 4, "sfreq": 250}},
+        {"id": "bp", "node": "meegxer.nodes.band_power"},
+        {"id": "table", "node": "meegxer.core.feature_tsv",
+         "params": {"path": str(table)}},
+    ])  # fmt: skip
+    out.write_bytes(b"kept")
+    result = runner.invoke(app, ["run", str(pipeline), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "skipped:" in result.output and f"wrote {out}" not in result.output
+    assert out.read_bytes() == b"kept" and table.is_file()
+    result = runner.invoke(app, ["run", str(pipeline), "-o", str(out), "--overwrite"])
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes() != b"kept" and "skipped:" in result.output  # the table
