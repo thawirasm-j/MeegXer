@@ -22,6 +22,7 @@ import numpy as np
 import numpy.typing as npt
 import zmq
 
+from meegxer.core.auth import Guard, login
 from meegxer.core.block import Block, FloatArray
 
 DISPLAY_PROTOCOL = "meegxer.display/0.2"
@@ -190,11 +191,14 @@ class DisplayPublisher:
         *,
         context: ZmqContext | None = None,
         high_water_mark: int = 8,
+        secure: bool = False,
     ) -> None:
         self._context = context or zmq.Context.instance()
         self._socket = self._context.socket(zmq.PUB)
         self._socket.setsockopt(zmq.SNDHWM, high_water_mark)
         self._socket.setsockopt(zmq.LINGER, 0)
+        if secure:  # only subscribers with the daemon's token
+            Guard.protect(self._socket)
         self._socket.bind(endpoint)
         self.endpoint = self._socket.getsockopt_string(zmq.LAST_ENDPOINT)
         self.sent = 0
@@ -225,10 +229,12 @@ class DisplaySubscriber:
         probes: Sequence[str] = (),
         *,
         context: ZmqContext | None = None,
+        token: str | None = None,
     ) -> None:
         self._context = context or zmq.Context.instance()
         self._socket = self._context.socket(zmq.SUB)
         self._socket.setsockopt(zmq.LINGER, 0)
+        login(self._socket, token)
         self._socket.setsockopt(zmq.RCVHWM, 32)
         for probe in probes or [""]:
             self._socket.setsockopt(zmq.SUBSCRIBE, probe.encode())

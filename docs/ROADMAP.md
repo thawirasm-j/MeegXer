@@ -50,8 +50,9 @@ One PR per item, as before. Items keep their IDs (M9.1 …) in commits and PRs.
 2. **CI catches platform type errors:** a `mypy --platform win32` step in the lint
    job (the beta check found one only on Windows).
 3. **Control-channel token:** the daemon writes a per-session token to a file only
-   the user can read; every control call carries it. The display stream stays
-   bound to this computer until a remote GUI needs it (then CurveZMQ for both).
+   the user can read; ZeroMQ checks it (PLAIN, via ZAP) on the control and the
+   display socket alike. CurveZMQ (encryption) replaces PLAIN when a remote GUI
+   needs it.
 4. **Supply chain:** pip-audit and CodeQL in CI, PyPI attestations (PEP 740), an
    SBOM attached to each release.
 5. **Share-safe sessions:** an option that strips absolute paths, subject

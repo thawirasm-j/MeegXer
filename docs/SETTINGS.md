@@ -9,7 +9,9 @@ launches in **`state.json`**, both in the MeegXer config folder:
 | macOS, Linux | `$XDG_CONFIG_HOME/meegxer` (default `~/.config/meegxer`) |
 | Any | `MEEGXER_CONFIG_DIR`, if set |
 
-The installed plugins list (`plugins.json`) lives there too.
+The installed plugins list (`plugins.json`) lives there too, and while the engine
+runs, its access token (`daemon/*.token`, readable by you only), which the GUI and
+CLI use to connect to it.
 
 In the GUI: **⚙** in the top bar, or **Ctrl+,**. Every change previews at once;
 **OK** keeps it, **Cancel** goes back. **Reset to defaults** puts every setting back;

@@ -4,7 +4,8 @@ Decimated envelopes of every probe, and the windows of every Features probe,
 published by the core on a ZeroMQ PUB socket
 (default `tcp://127.0.0.1:5556`; `ping` on the control API returns the endpoint).
 The stream is lossy by design (CLAUDE.md rule 2): the core never waits for a
-viewer, and a slow subscriber simply misses frames.
+viewer, and a slow subscriber simply misses frames. A subscriber connects with the
+daemon's token, as on the control socket (`control-api.md`, Authentication).
 
 ## Message
 
