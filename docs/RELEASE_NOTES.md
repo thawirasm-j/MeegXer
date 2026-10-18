@@ -24,6 +24,9 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   and hashes stay, and the name and description you wrote are shown first, with
   the offer to remove them. Rerun it with `-i RECORDING -o RESULT`. New guide:
   `docs/DEIDENTIFICATION.md`.
+- **Opening a pipeline or session runs no code:** a test now proves that a
+  pipeline or session naming a custom script or local plugin you have not added
+  (with the notice accepted) starts nothing, from the CLI, the daemon or a session.
 - **Supply chain:** every PyPI file carries a PEP 740 attestation (built by this
   repository's release workflow); each release has a CycloneDX SBOM; CI audits
   the locked dependencies for known vulnerabilities and runs CodeQL, also weekly.

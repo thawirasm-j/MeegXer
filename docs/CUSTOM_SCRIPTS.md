@@ -212,5 +212,12 @@ rules (HIPAA, GDPR, IRB approval). MeegXer records that you accepted this, and
 sessions record a SHA-256 of the script: reusing a session after the script
 changed is refused, so a result always names the code that made it.
 
+**Opening a pipeline or session runs no code.** Pipelines and sessions only
+name strips; a script runs only if *you* added it with the notice accepted. A
+pipeline or session from someone else that names a script you have not added
+stops with "not installed", and the script command a session records is never
+started from it (`packages/meegxer-plugins/tests/test_plugins_no_code_from_pipelines.py`
+checks this). To use their script, read it, then add it yourself.
+
 Sterile mode (planned) will run scripts and every other strip isolated in a
 container, away from the network and the rest of the computer.
