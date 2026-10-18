@@ -391,7 +391,9 @@ it never interrupts processing.
   it from 0 dB (on the 1/f line) up to the held top, *Power change* compares those
   values and *Peak frequency* finds the peak above the slope. Electrodes are drawn in their channel
   colours inside a black-and-white ring, apart from the map's colours; hover names
-  one and thickens its spectrum line, a click shows or hides the channel. (A first
+  one and thickens its spectrum line, a click shows or hides the channel's curve.
+  The map uses every EEG channel with a position, whichever curves the channel
+  menu shows; non-EEG channels (EOG, EMG, misc) stay off it. (A first
   "spatial" scheme, the scalp colour wheel with power as opacity, was dropped:
   opacity shows magnitude poorly and the wheel's own lightness biased it.) Live,
   spectra (lines and head) are smoothed between refreshes by an exponential moving
