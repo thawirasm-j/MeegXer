@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from meegxer.core.control import manifest_to_dict
 from meegxer.core.registry import Registry
 from meegxer.gui.colors import IC_CLASS_COLORS, class_style
-from meegxer.gui.feature_view import FeatureSeries, FeatureView, pick
+from meegxer.gui.feature_view import FeatureSeries, FeatureView, nearest_point, pick
 from meegxer.gui.pipeline_doc import FEATURE_PROBE, PROBE, PipelineDoc, tap_id
 from meegxer.gui.signal_view import SignalView, Window
 from meegxer.gui.theme import load_theme
@@ -267,4 +267,58 @@ def test_feature_view_labels_the_value_axis_with_the_unit(qapp: QApplication) ->
     view.slice.setCurrentIndex(1)
     view.refresh(fooof, "Specparam", 0.0, 10.0)
     assert left.labelText == "value (Hz)"
+    dispose(qapp, view)
+
+
+def test_nearest_point_picks_the_line_within_reach() -> None:
+    x = np.array([0.0, 1.0, 2.0, 3.0])
+    low, high = (x, np.zeros(4)), (x, np.full(4, 10.0))
+    # one data unit is 10 px on both axes: the pointer 0.5 above the low line
+    assert nearest_point([low, high], 1.4, 0.5, (0.1, 0.1)) == (0, 1)
+    assert nearest_point([low, high], 2.6, 9.6, (0.1, 0.1)) == (1, 3)
+    assert nearest_point([low, high], 1.5, 5.0, (0.1, 0.1)) is None  # 50 px off
+    # near the middle of a long segment, far from both its ends
+    sparse = (np.array([0.0, 10.0]), np.array([0.0, 0.0]))
+    assert nearest_point([sparse], 4.0, 0.5, (0.1, 0.1)) == (0, 0)
+    gaps = (np.array([0.0, 1.0, 2.0]), np.array([np.nan, 1.0, np.nan]))
+    assert nearest_point([gaps], 1.0, 1.0, (0.1, 0.1)) == (0, 1)
+
+
+def test_hovering_a_line_names_its_point_and_value(qapp: QApplication) -> None:
+    """Item 5: near a line, it is drawn bold, its nearest point is marked and
+    labelled with the line's name, where it is and its value with the unit."""
+    view = FeatureView(load_theme("dark"))
+    view.resize(800, 400)
+    view.show()
+    values = np.array([[[1.0], [4.0]], [[2.0], [5.0]], [[3.0], [6.0]]])
+    series = FeatureSeries("tap_bp1", ("channel", "band"),
+                           {"channel": ("Fz", "Cz"), "band": ("alpha",)},
+                           np.array([1.0, 2.0, 3.0]), values, unit="V^2")  # fmt: skip
+    view.refresh(series, "Band power", 0.0, 4.0)
+    qapp.processEvents()
+    vb = view.plot.getViewBox()
+    vb.setRange(xRange=(0.0, 4.0), yRange=(0.0, 7.0), padding=0)
+    qapp.processEvents()
+    width = view.plot._curves[1].opts["pen"].widthF()
+    view._mouse_moved(vb.mapViewToScene(QPointF(2.05, 5.05)))
+    assert view.hovered == ("Cz", 2.0, 5.0)
+    assert view.hover_text() == "Cz · t = 2.00 s: 5 V²"
+    assert view._marker.isVisible() and view._tag.isVisible()
+    assert view.plot._curves[1].opts["pen"].widthF() > width  # the line in bold
+
+    view.refresh(series, "Band power", 0.0, 4.0)  # a new frame keeps the hover
+    assert view.hovered == ("Cz", 2.0, 5.0)
+    view._mouse_moved(vb.mapViewToScene(QPointF(2.0, 3.5)))  # between the lines
+    assert view.hovered is None and not view._marker.isVisible()
+    assert view.plot._curves[1].opts["pen"].widthF() == width
+
+    psd = FeatureSeries("tap_psd1", ("channel", "frequency"),
+                        {"channel": ("Fz",), "frequency": (1.0, 2.0, 3.0)},
+                        np.array([1.0]), np.full((1, 1, 3), 1e-12),
+                        unit="V^2/Hz")  # fmt: skip
+    view.refresh(psd, "PSD", 0.0, 60.0)
+    vb.setRange(xRange=(0.0, 4.0), yRange=(-130.0, -110.0), padding=0)
+    qapp.processEvents()
+    view._mouse_moved(vb.mapViewToScene(QPointF(2.0, -120.0)))
+    assert view.hover_text() == "Fz · 2 Hz: -120 dB"
     dispose(qapp, view)

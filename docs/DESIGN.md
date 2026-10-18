@@ -343,7 +343,9 @@ it never interrupts processing.
     when its windows have a frequency dimension (live the newest window, offline
     the mean over the shown span; dB for positive values), else one line per
     channel over time, with *Show* choosing among further dimensions (the band
-    of band power). The ICs rail opens the signal view on the components,
+    of band power). Hovering near a line draws it bold, marks its nearest point
+    and labels it with the line's name, where it is and its value with the
+    unit ("Cz · t = 2.00 s: 5 V²"). The ICs rail opens the signal view on the components,
     coloured by ICLabel class and named "IC03 · eye 0.97" in the channel menu.
     The core sends the feature windows on the display stream (protocol 0.2,
     lossy) and keeps an offline run's windows for scrolling (`offline_features`).
