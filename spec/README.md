@@ -36,6 +36,10 @@ define it.
     (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
     with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
     session file next to each recording.
+  - 0.2.20: a string parameter may say it is a path: `path` is `file` (a file
+    to read), `folder` or `save` (a file to write), with optional `extensions`
+    (`[".set"]`) for the dialog's filter. Hosts offer a Browse button with the
+    matching dialog; the value stays a plain string.
   - 0.2.19: feature units. A feature window may carry `unit` (the unit of every
     value, ASCII: `V^2/Hz`, `dB`; `"1"` is dimensionless) or, when the values
     along one dimension differ in unit, `unit_dim` and `units` (one per entry);

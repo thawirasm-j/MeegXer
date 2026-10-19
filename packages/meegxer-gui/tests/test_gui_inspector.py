@@ -162,3 +162,47 @@ def test_an_output_chooses_the_feature_rail_it_reads(
     ins, _ = show(qapp, doc, psd.id, advanced=False)  # no rail output: no choice
     assert ins.findChild(QComboBox, "reads") is None
     dispose(qapp, ins)
+
+
+def test_path_parameters_have_a_browse_button(
+    qapp: QApplication, doc: PipelineDoc, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QFileDialog
+
+    from meegxer.gui.inspector import PathEdit
+
+    asked: list[tuple[str, str]] = []
+
+    def save(parent: Any, caption: str, start: str, filters: str) -> tuple[str, str]:
+        asked.append((start, filters))
+        return str(tmp_path / "clean"), ""  # typed without its extension
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", save)
+    doc.insert(len(doc.strips), "meegxer.core.set_writer")
+    writer = doc.strips[-1]
+    writer.params["path"] = str(tmp_path / "old.set")
+    ins, seen = show(qapp, doc, writer.id, advanced=True)
+    (edit,) = ins.findChildren(PathEdit)
+    assert edit.button.text() == "Browse…"
+    edit.button.click()
+    assert asked == [(str(tmp_path), "Supported files (*.set);;All files (*)")]
+    assert seen[-1] == (writer.id, "path", str(tmp_path / "clean.set"))
+    assert edit.text() == str(tmp_path / "clean.set")
+    dispose(qapp, ins)
+
+    picked = str(tmp_path / "rec.edf")
+    monkeypatch.setattr(QFileDialog, "getOpenFileName",
+                        lambda *a: (picked, ""))  # fmt: skip
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory",
+                        lambda *a: str(tmp_path))  # fmt: skip
+    doc.set_source("meegxer.core.file")
+    ins, seen = show(qapp, doc, "input", advanced=True)
+    ins.findChildren(PathEdit)[0].button.click()
+    assert seen[-1] == ("input", "path", picked)
+    dispose(qapp, ins)
+    doc.set_source("meegxer.core.bids")
+    ins, seen = show(qapp, doc, "input", advanced=True)
+    (root,) = [e for e in ins.findChildren(PathEdit) if e.kind == "folder"]
+    root.button.click()
+    assert seen[-1] == ("input", "root", str(tmp_path))
+    dispose(qapp, ins)

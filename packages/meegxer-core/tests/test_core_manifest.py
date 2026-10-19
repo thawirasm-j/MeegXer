@@ -73,6 +73,23 @@ def test_valid_manifest_loads() -> None:
         with_changes(params=[{"name": "x", "type": "bool", "default": 1}]),
         with_changes(params=[{"name": "x", "type": "enum", "default": "a"}]),
         with_changes(params=[{"name": "x", "type": "float", "default": 1, "foo": 2}]),
+        with_changes(
+            params=[{"name": "x", "type": "string", "default": "", "path": "url"}]
+        ),
+        with_changes(
+            params=[
+                {
+                    "name": "x",
+                    "type": "string",
+                    "default": "",
+                    "path": "file",
+                    "extensions": ["set"],
+                }
+            ]
+        ),
+        with_changes(
+            params=[{"name": "x", "type": "int", "default": 1, "path": "file"}]
+        ),
         with_changes(latency_samples=-1),
         with_changes(unexpected=True),
     ],
@@ -197,3 +214,15 @@ def test_availability_and_advanced_flags() -> None:
     assert Manifest.from_dict(with_changes(params=params)).params[0].advanced
     with pytest.raises(ManifestError):
         Manifest.from_dict(with_changes(availability="sometimes"))
+
+
+def test_string_params_may_name_a_path_kind() -> None:
+    m = Manifest.from_dict(with_changes(params=[
+        {"name": "rec", "type": "string", "default": "", "path": "file",
+         "extensions": [".set", ".edf"]},
+        {"name": "out", "type": "string", "default": "", "path": "folder"},
+    ]))  # fmt: skip
+    rec, out = m.params
+    assert (rec.path, rec.extensions) == ("file", (".set", ".edf"))
+    assert (out.path, out.extensions) == ("folder", ())
+    assert Manifest.from_dict(VALID).params[-1].path == ""  # plain text

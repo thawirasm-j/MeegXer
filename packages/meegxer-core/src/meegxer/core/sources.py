@@ -598,7 +598,16 @@ class FileSource(_RawSource):
 
     manifest: ClassVar[Manifest] = _source_manifest(
         "meegxer.core.file",
-        [{"name": "path", "type": "string", "default": "", "primary": True}],
+        [
+            {
+                "name": "path",
+                "type": "string",
+                "default": "",
+                "primary": True,
+                "path": "file",
+                "extensions": [".set", ".edf", ".bdf", ".vhdr", ".fif", ".gdf", ".cnt"],
+            }
+        ],
     )
 
     _COMPANIONS: ClassVar[dict[str, tuple[str, ...]]] = {
@@ -630,7 +639,13 @@ class BidsSource(_RawSource):
     manifest: ClassVar[Manifest] = _source_manifest(
         "meegxer.core.bids",
         [
-            {"name": "root", "type": "string", "default": ""},
+            {
+                "name": "root",
+                "type": "string",
+                "default": "",
+                "path": "folder",
+                "description": "The BIDS dataset (its top folder)",
+            },
             {"name": "subject", "type": "string", "default": "", "primary": True},
             {"name": "task", "type": "string", "default": "", "primary": True},
             {"name": "session", "type": "string", "default": ""},

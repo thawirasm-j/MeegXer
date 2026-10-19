@@ -18,7 +18,7 @@ import jsonschema
 
 from meegxer.core.ports import EVENTS_RAIL, Port, PortType
 
-SPEC_VERSION = "0.2.19"
+SPEC_VERSION = "0.2.20"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]
@@ -60,6 +60,8 @@ class ParamSpec:
     advanced: bool = False
     primary: bool = False
     step: float | None = None
+    path: str = ""  # "file", "folder" or "save": the string is a path (0.2.20)
+    extensions: tuple[str, ...] = ()
 
     def coerce(self, value: object) -> ParamValue:
         """Validate one value against this spec and return it in canonical form."""
@@ -163,6 +165,8 @@ class Manifest:
                 advanced=p.get("advanced", False),
                 primary=p.get("primary", False),
                 step=p.get("step"),
+                path=p.get("path", ""),
+                extensions=tuple(p.get("extensions", ())),
             )
             for p in data.get("params", [])
         )

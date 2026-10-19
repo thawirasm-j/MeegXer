@@ -340,6 +340,23 @@
             "default": {
               "type": "string"
             },
+            "path": {
+              "description": "The string is a path (spec 0.2.20): 'file' (an existing file to read), 'folder' (a folder) or 'save' (a file to write). UIs offer a Browse button with the matching dialog.",
+              "enum": [
+                "file",
+                "folder",
+                "save"
+              ]
+            },
+            "extensions": {
+              "description": "With path 'file' or 'save': the file name extensions the dialog offers, with the dot ('.set') (spec 0.2.20).",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^\\.[A-Za-z0-9._-]+$"
+              },
+              "uniqueItems": true
+            },
             "name": true,
             "description": true,
             "advanced": true,

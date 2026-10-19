@@ -63,7 +63,7 @@ def _manifest(name: str, input_type: str, description: str) -> Manifest:
         "description": description,
         "inputs": [{"name": "in", "type": input_type}], "outputs": [],
         "params": [
-            {"name": "root", "type": "string", "default": "",
+            {"name": "root", "type": "string", "default": "", "path": "folder",
              "description": "Derivatives folder "
                             "(default: <raw dataset>/derivatives/meegxer)"},
             {"name": "desc", "type": "string", "default": "clean", "primary": True,

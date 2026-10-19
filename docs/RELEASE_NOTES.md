@@ -5,6 +5,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 (`docs/RELEASING.md`). Install or upgrade: `uv tool install --python 3.14
 --prerelease allow meegxer` (or `uv tool upgrade meegxer`).
 
+## Next (not released yet)
+
+- **Browse buttons:** file and folder settings (the input file, a BIDS
+  dataset, an output file or folder) have a *Browse…* button next to the text
+  box that opens the right dialog: a file to open, a folder, or where to save
+  (the extension is added when you leave it out). Plugins get it by marking a
+  string parameter as a path (spec 0.2.20).
+
 ## 0.3.1b2 (2026-10-19)
 
 - **Project hygiene:** a security policy (`SECURITY.md`: report problems
