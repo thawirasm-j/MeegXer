@@ -24,7 +24,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   MeegXer crashes first, `meegxer recover rec.set` writes the file from the
   spool, losing at most the block being written (after a power cut, the last
   seconds the system had not yet saved); the next run of the same pipeline also
-  does it on its own, to `rec_recovered.set`, before it starts recording. Feature
+  does it on its own, to `rec_recovered.set`, before it starts recording. When
+  the GUI starts, it offers to recover any recording a crash left unfinished,
+  even from a pipeline you never saved: *Recover* (a file already there is
+  kept; the recording goes next to it as `…_recovered`), *Delete it* or *Ask me
+  later* (control API 0.2.6). Feature
   tables (TSV) are written row by row, so they are readable as they grow.
   Memory use no longer grows with the length of a recording.
 - A file writer whose input changes channels (or feature values) mid-run keeps

@@ -11,7 +11,9 @@ launches in **`state.json`**, both in the MeegXer config folder:
 
 The installed plugins list (`plugins.json`) lives there too, and while the engine
 runs, its access token (`daemon/*.token`, readable by you only), which the GUI and
-CLI use to connect to it.
+CLI use to connect to it. While a .set or EDF file is being recorded, `recordings/`
+holds a note of where (removed once the file is written), so the GUI can offer to
+recover a recording a crash left unfinished.
 
 In the GUI: **⚙** in the top bar, or **Ctrl+,**. Every change previews at once;
 **OK** keeps it, **Cancel** goes back. **Reset to defaults** puts every setting back;

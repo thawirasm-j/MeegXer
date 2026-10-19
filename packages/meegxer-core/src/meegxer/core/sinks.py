@@ -6,14 +6,21 @@ described by ``<file>.part.json``) and flushed, so a crash loses at most the blo
 being written: ``recover`` (``meegxer recover``) writes the file from the spool, and
 the next run of the same sink does so too, to ``<name>_recovered<suffix>``. Feature
 TSV rows are appended and flushed as they come. Data are in volts, as MNE expects.
+
+Each spool also leaves a marker in the config folder (``recordings/``: the file's
+path and the writing process), so a crashed run's recording is found again without
+its pipeline (``unfinished_recordings``; the GUI offers to recover it at start).
 """
 
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import os
+import sys
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Any, ClassVar, Literal
 
@@ -24,6 +31,7 @@ from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Sink
 from meegxer.core.ports import PortTypeError
 from meegxer.core.references import credits
+from meegxer.core.settings import config_dir
 
 
 def _sink_manifest(name: str, input_type: str) -> Manifest:
@@ -118,7 +126,7 @@ def recover(path: Path, output: Path | None = None, overwrite: bool = False) -> 
         if path.name.endswith(suffix):
             path = path.with_name(path.name[: -len(suffix)])
             break
-    data_path, header_path = spool_paths(path)
+    header_path = spool_paths(path)[1]
     if not header_path.is_file():
         raise FileNotFoundError(f"no spool for {path} ({header_path.name})")
     header, data = read_spool(path)
@@ -128,12 +136,88 @@ def recover(path: Path, output: Path | None = None, overwrite: bool = False) -> 
     if not data.shape[1]:
         raise ValueError(f"the spool of {path} holds no samples")
     write_raw(target, header["format"], data, header, overwrite=overwrite)
-    data_path.unlink(missing_ok=True)
-    header_path.unlink()
+    discard(path)
     return target
 
 
-def _free_name(path: Path, tag: str) -> Path:
+def _marker(path: Path) -> Path:
+    key = hashlib.sha256(str(path.resolve()).encode()).hexdigest()[:16]
+    return config_dir() / "recordings" / f"{key}.json"
+
+
+def _register(path: Path) -> None:
+    marker = _marker(path)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps({"path": str(path.resolve()), "pid": os.getpid()}),
+                      encoding="utf-8")  # fmt: skip
+
+
+def _unregister(path: Path) -> None:
+    _marker(path).unlink(missing_ok=True)
+
+
+def _process_alive(pid: int) -> bool:
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+        kernel32.CloseHandle(handle)
+        return code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # someone else's process
+    return True
+
+
+def unfinished_recordings() -> list[dict[str, Any]]:
+    """Recordings whose run ended before writing them (their spools are still
+    there and no running process writes them): ``path``, ``format``,
+    ``channels``, ``seconds`` and ``modified`` (ISO 8601, UTC) of each."""
+    folder = config_dir() / "recordings"
+    found = []
+    for marker in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+        try:
+            entry = json.loads(marker.read_text(encoding="utf-8"))
+            path, pid = Path(entry["path"]), int(entry["pid"])
+        except (OSError, ValueError, KeyError, TypeError):
+            marker.unlink(missing_ok=True)
+            continue
+        data_path, header_path = spool_paths(path)
+        if not header_path.is_file():  # written, recovered or deleted since
+            marker.unlink(missing_ok=True)
+            continue
+        if pid == os.getpid() or _process_alive(pid):
+            continue  # still being recorded
+        header = json.loads(header_path.read_text(encoding="utf-8"))
+        n = len(header["ch_labels"])
+        size = data_path.stat().st_size if data_path.exists() else 0
+        stamp = (data_path if data_path.exists() else header_path).stat().st_mtime
+        modified = datetime.fromtimestamp(stamp, UTC).isoformat(timespec="seconds")
+        found.append({
+            "path": str(path), "format": header["format"], "channels": n,
+            "seconds": size // (8 * n) / header["sfreq"] if n else 0.0,
+            "modified": modified,
+        })  # fmt: skip
+    return found
+
+
+def discard(path: Path) -> None:
+    """Delete a crashed run's spool (``path``: the file it was writing)."""
+    for spool_file in spool_paths(path):
+        spool_file.unlink(missing_ok=True)
+    _unregister(path)
+
+
+def free_name(path: Path, tag: str) -> Path:
+    """``<stem>_<tag><suffix>`` next to ``path``, numbered until it is free."""
     candidate = path.with_name(f"{path.stem}_{tag}{path.suffix}")
     k = 2
     while candidate.exists():
@@ -184,11 +268,10 @@ class _RawFileSink(Sink):
         data_path, header_path = spool_paths(self.path)
         if header_path.exists():  # left by a run that crashed
             if read_spool(self.path)[1].shape[1]:
-                done = recover(self.path, _free_name(self.path, "recovered"))
+                done = recover(self.path, free_name(self.path, "recovered"))
                 self.notes.append(f"recovered a crashed run's recording to {done.name}")
             else:  # it crashed before its first block: nothing to keep
-                data_path.unlink(missing_ok=True)
-                header_path.unlink()
+                discard(self.path)
         data_path.parent.mkdir(parents=True, exist_ok=True)
         info = block.info
         header = {"format": self.fmt, "ch_labels": list(info.ch_labels),
@@ -200,6 +283,7 @@ class _RawFileSink(Sink):
             fh.flush()
             os.fsync(fh.fileno())
         self._spool = data_path.open("wb")
+        _register(self.path)
         self._first = block
 
     def close(self) -> None:
@@ -210,8 +294,7 @@ class _RawFileSink(Sink):
         header, data = read_spool(self.path)
         write_raw(self.path, self.fmt, data, header,
                   overwrite=bool(self.params["overwrite"]))  # fmt: skip
-        for spool_file in spool_paths(self.path):
-            spool_file.unlink(missing_ok=True)
+        discard(self.path)
 
 
 class SetSink(_RawFileSink):

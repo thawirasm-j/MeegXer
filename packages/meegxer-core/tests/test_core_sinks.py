@@ -12,8 +12,10 @@ from meegxer.core.ports import PortTypeError
 from meegxer.core.sinks import (
     FeatureTsvSink,
     SetSink,
+    discard,
     recover,
     spool_paths,
+    unfinished_recordings,
     write_raw,
 )
 
@@ -218,3 +220,35 @@ def test_set_writer_skips_an_existing_file_without_spooling(tmp_path: Path) -> N
     sink.close()
     assert path.read_bytes() == b"old" and sink.skipped
     assert not any(p.exists() for p in spool_paths(path))
+
+
+def crash_while_recording(path: Path) -> None:
+    """A process that records two blocks to ``path`` and dies."""
+    script = f"""
+import os, numpy as np
+from meegxer.core.block import Block, SignalInfo
+from meegxer.core.sinks import SetSink
+sink = SetSink({{"path": {str(path)!r}}})
+info = SignalInfo(("Fz", "Cz"), 100.0)
+for k in range(2):
+    sink.write(Block(np.zeros((2, 150)), info, 150 * k, float(k)))
+os._exit(1)
+"""
+    assert subprocess.run([sys.executable, "-c", script], check=False).returncode == 1
+
+
+def test_unfinished_recordings_lists_crashed_runs_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MEEGXER_CONFIG_DIR", str(tmp_path / "config"))  # its own
+    crashed = tmp_path / "crashed.set"
+    crash_while_recording(crashed)
+    running = SetSink({"path": str(tmp_path / "running.set")})
+    running.write(signal(0, 10))  # this process still writes it
+    (found,) = unfinished_recordings()
+    assert found["path"] == str(crashed.resolve())
+    assert (found["format"], found["channels"], found["seconds"]) == ("eeglab", 2, 3.0)
+    running.close()  # written: its marker goes
+    discard(crashed)
+    assert unfinished_recordings() == []
+    assert not any(p.exists() for p in spool_paths(crashed))
