@@ -5,7 +5,7 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 (`docs/RELEASING.md`). Install or upgrade: `uv tool install --python 3.14
 --prerelease allow meegxer` (or `uv tool upgrade meegxer`).
 
-## Next (not released yet)
+## 0.3.1b2 (2026-10-19)
 
 - **Project hygiene:** a security policy (`SECURITY.md`: report problems
   privately through GitHub; only the latest release gets fixes), a contributing
