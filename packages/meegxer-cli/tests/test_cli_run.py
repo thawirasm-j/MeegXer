@@ -90,3 +90,20 @@ def test_an_existing_output_is_kept_and_the_run_goes_on(tmp_path: Path) -> None:
     result = runner.invoke(app, ["run", str(pipeline), "-o", str(out), "--overwrite"])
     assert result.exit_code == 0, result.output
     assert out.read_bytes() != b"kept" and "skipped:" in result.output  # the table
+
+
+def test_recover_writes_a_crashed_runs_recording(tmp_path: Path) -> None:
+    from meegxer.core.block import Block, SignalInfo
+    from meegxer.core.sinks import SetSink
+
+    path = tmp_path / "live.set"
+    crashed = SetSink({"path": str(path)})
+    crashed.write(Block(np.zeros((2, 250)), SignalInfo(("Fz", "Cz"), 250.0), 0, 0.0))
+    crashed._spool.close()  # type: ignore[union-attr]  # as if the process died
+    result = runner.invoke(app, ["recover", str(path) + ".part", "-o",
+                                 str(tmp_path / "saved.set")])  # fmt: skip
+    assert result.exit_code == 0, result.output
+    assert "wrote" in result.output
+    assert FileSource({"path": str(tmp_path / "saved.set")}).info.n_channels == 2
+    again = runner.invoke(app, ["recover", str(path)])
+    assert again.exit_code == 1 and "no spool" in again.output

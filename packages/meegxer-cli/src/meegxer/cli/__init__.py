@@ -190,6 +190,8 @@ def run(
         typer.echo(f"fitted: {', '.join(result.fitted)}")
     for note in result.skipped:
         typer.echo(f"skipped: {note}")
+    for note in result.notes:
+        typer.echo(f"note: {note}")
     if output is not None and not any(str(output) in n for n in result.skipped):
         typer.echo(f"wrote {output}")
     if session is not None:
@@ -366,6 +368,28 @@ def session_save(
         session = _share(session, drop_text)
     write_session(file, session)
     typer.echo(f"wrote {file}")
+
+
+@app.command()
+def recover(
+    file: Annotated[
+        Path, typer.Argument(help="The file a crashed run was writing, or its .part.")
+    ],
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write here instead.")
+    ] = None,
+    overwrite: Annotated[bool, typer.Option(help="Replace an existing file.")] = False,
+) -> None:
+    """Write the recording a crashed run left in its spool (FILE.part, next to
+    the .set or .edf it was writing), then remove the spool."""
+    from meegxer.core.sinks import recover as recover_spool
+
+    try:
+        written = recover_spool(file, output, overwrite)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"wrote {written}")
 
 
 @session_app.command("share")
