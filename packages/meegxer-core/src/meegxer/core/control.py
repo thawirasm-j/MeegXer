@@ -28,6 +28,7 @@ from meegxer.core.auth import (
     remove_token,
     write_token,
 )
+from meegxer.core.bids_batch import is_all_subjects, recordings_of
 from meegxer.core.display import DisplayPublisher, ZmqContext
 from meegxer.core.graph import Graph
 from meegxer.core.manifest import SPEC_VERSION, Manifest
@@ -45,6 +46,7 @@ from meegxer.core.session import (
 )
 from meegxer.core.sinks import discard as discard_spool
 from meegxer.core.sinks import free_name, recover, unfinished_recordings
+from meegxer.core.sources import BidsSource
 from meegxer.core.stage import Stage
 
 DEFAULT_CONTROL = "tcp://127.0.0.1:5555"
@@ -394,11 +396,22 @@ class Daemon:
     def describe_source(self, node: dict[str, Any]) -> dict[str, Any]:
         """Describe the recording a source entry (with its ``recording``
         overrides) would produce: channels before and after the overrides,
-        sampling rate, length and events. Opens the file or stream to read it."""
-        source = Graph.from_dict(
-            {"spec_version": SPEC_VERSION, "nodes": [{**node, "id": "input"}]},
-            self.registry,
-        )["input"].impl
+        sampling rate, length and events. Opens the file or stream to read it.
+        A BIDS input naming no subject (every subject) shows its first."""
+
+        def build(entry: dict[str, Any]) -> object:
+            return Graph.from_dict(
+                {"spec_version": SPEC_VERSION, "nodes": [{**entry, "id": "input"}]},
+                self.registry,
+            )["input"].impl
+
+        source = build(node)
+        if is_all_subjects(source):
+            assert isinstance(source, BidsSource)
+            first = recordings_of(source)
+            if not first:
+                raise RuntimeError("no matching EEG recordings in the dataset")
+            source = build({**node, "params": {**node.get("params", {}), **first[0]}})
         if not isinstance(source, Source):
             raise RuntimeError(f"{node.get('node')} is not a source")
         try:
@@ -444,10 +457,15 @@ class Daemon:
         if self._offline is not None and self._offline.state == "running":
             raise RuntimeError("an offline run is already in progress")
         graph = Graph.from_dict(pipeline, self.registry)
-        if self._offline_models is not None:
-            self._carry_models(self._offline_models, graph)
-        job = OfflineJob(graph)
-        self._offline_models = graph
+        if is_all_subjects(graph.source.impl):  # models fitted per recording
+            registry = self.registry
+            job = OfflineJob(graph, rebuild=lambda: Graph.from_dict(pipeline, registry))
+            self._offline_models = None
+        else:
+            if self._offline_models is not None:
+                self._carry_models(self._offline_models, graph)
+            job = OfflineJob(graph)
+            self._offline_models = graph
         if self._offline is not None:
             self._offline.discard()  # the previous run's files
         self._offline = job

@@ -218,22 +218,11 @@ def _run_bids(
     """One pipeline over many recordings of a BIDS dataset, one after another,
     each with a fresh graph (models fitted per recording)."""
     from meegxer.core.batch import BatchScheduler, offline_input_fingerprints
-    from meegxer.core.bids_out import ensure_writer, find_recordings, target_for
+    from meegxer.core.bids_batch import prepare_recording, recording_label
+    from meegxer.core.bids_out import find_recordings
     from meegxer.core.cache import DirectoryCache
-    from meegxer.core.node import Source
-    from meegxer.core.recording import (
-        RecordingOverrides,
-        recording_of,
-        with_recording,
-    )
     from meegxer.core.registry import Registry
-    from meegxer.core.session import (
-        adopt_models,
-        drop_shared_sinks,
-        load_session,
-        read_session,
-    )
-    from meegxer.core.sources import BidsSource
+    from meegxer.core.session import adopt_models, load_session, read_session
 
     try:
         document = read_session(pipeline)  # read once: a bad file stops here
@@ -252,9 +241,7 @@ def _run_bids(
     cache = DirectoryCache(cache_dir) if cache_dir else None
     done, skipped, failed = [], [], []
     for i, params in enumerate(recordings, 1):
-        short = {"subject": "sub", "session": "ses", "task": "task", "run": "run"}
-        label = "_".join(f"{short[k]}-{v}" for k, v in params.items()
-                         if v and k in short)  # fmt: skip
+        label = recording_label(params)
         prefix = f"[{i}/{len(recordings)}] {label}"
         try:
             loaded = load_session(
@@ -265,24 +252,14 @@ def _run_bids(
             graph = loaded.graph
             # the input's Recording settings (renames, types, montage, bad
             # channels) apply to every recording
-            first = graph.source.impl
-            assert isinstance(first, Source)
-            settings = recording_of(first)
-            source = (with_recording(BidsSource, params,
-                                     RecordingOverrides.from_dict(settings))
-                      if settings else BidsSource(params))  # fmt: skip
-            graph.replace(graph.source.id, source)
-            drop_shared_sinks(graph)  # a shared session's file writers
-            writer = ensure_writer(graph, bids_out, overwrite)
-            target = target_for(graph, writer.params)
-            # the session file is written last: without it the recording is
-            # unfinished (e.g. interrupted while writing) and is done again
-            if target.path("meegxer.json").exists() and not overwrite:
+            prepared = prepare_recording(graph, params, bids_out, overwrite)
+            target = prepared.target
+            if prepared.done:
                 skipped.append(label)
                 typer.echo(f"{prefix}: already done, skipped")
                 continue
-            if target.path("eeg.set").exists():
-                ensure_writer(graph, bids_out, True)  # replace the partial files
+            for note in prepared.notes:
+                typer.echo(f"{prefix}: note: {note}")
             adopt_models(loaded, offline_input_fingerprints(graph))
             result = BatchScheduler(block_size=block_size, cache=cache).run(graph)
         except Exception as exc:  # one bad recording does not stop the others

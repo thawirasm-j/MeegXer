@@ -98,7 +98,9 @@ A first look in the GUI, about five minutes, no EEG hardware needed:
    (EEGLAB `.set`, EDF/BDF, BrainVision, FIF) or *BIDS recording*, check
    channels and positions under *Recording…*, then **▶ Run offline**. Strips that learn (ICA) fit on the
    whole recording; scroll through it with the time bar. Click the ICs rail's
-   name to see the components coloured by ICLabel class.
+   name to see the components coloured by ICLabel class. With *BIDS recording*,
+   leave *Subject* empty to run every subject into the dataset's derivatives
+   (the views then show the last one).
 6. **Keep it:** *Save…* writes the chain as a pipeline file; *Save session…* also
    keeps the fitted models (ICA) so a rerun gives the same output.
 

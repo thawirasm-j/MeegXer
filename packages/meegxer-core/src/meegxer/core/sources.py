@@ -646,7 +646,14 @@ class BidsSource(_RawSource):
                 "path": "folder",
                 "description": "The BIDS dataset (its top folder)",
             },
-            {"name": "subject", "type": "string", "default": "", "primary": True},
+            {
+                "name": "subject",
+                "type": "string",
+                "default": "",
+                "primary": True,
+                "description": "Empty: every subject, one after another (offline), "
+                "into the dataset's BIDS derivatives",
+            },
             {"name": "task", "type": "string", "default": "", "primary": True},
             {"name": "session", "type": "string", "default": ""},
             {"name": "run", "type": "string", "default": ""},

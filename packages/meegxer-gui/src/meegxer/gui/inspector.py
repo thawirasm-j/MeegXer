@@ -39,6 +39,9 @@ from meegxer.gui.names import title
 from meegxer.gui.pipeline_doc import MAX_STRIP_PARAMS, PipelineDoc, StripNode
 from meegxer.gui.theme import DEFAULT_GROUPS, Theme
 
+# greyed text in an empty field: what leaving it empty means
+PLACEHOLDERS = {("meegxer.core.bids", "subject"): "All subjects"}
+
 CHANNEL_TYPES = ("eeg", "eog", "emg", "ecg", "resp", "misc")
 CHANNEL_TYPE_NAMES = {
     "eeg": "EEG",
@@ -434,6 +437,9 @@ class Inspector(QScrollArea):
                 continue
             if spec["type"] == "string":
                 editor.setMinimumWidth(260)
+                hint = PLACEHOLDERS.get((strip.node, name))
+                if hint and isinstance(editor, QLineEdit):
+                    editor.setPlaceholderText(hint)
             else:
                 editor.setFixedWidth(180)
             label = QLabel(param_label(name, spec))

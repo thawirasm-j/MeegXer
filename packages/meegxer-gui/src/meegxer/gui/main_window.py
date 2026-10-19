@@ -123,6 +123,7 @@ class MainWindow(QMainWindow):
         self.offline_sfreq = 0.0
         self.offline_total = 0
         self.offline_state = ""
+        self.offline_recordings: dict[str, Any] = {}  # an all-subjects BIDS run
         self._feature_cache: dict[str, tuple[tuple[Any, ...], FeatureSeries]] = {}
         self._offline_cache: dict[str, tuple[tuple[int, int, int], Window]] = {}
         # node -> (what it was read for, when, its sensors and mixing matrix)
@@ -782,6 +783,7 @@ class MainWindow(QMainWindow):
                 self.offline_features.clear()
                 self._offline_cache.clear()
                 self._feature_cache.clear()
+                self.offline_recordings = {}
                 self.log("Offline run started.")
             self._transport()
             return
@@ -1065,12 +1067,27 @@ class MainWindow(QMainWindow):
         sfreq = next((p["sfreq"] for p in self.offline_probes.values()), 0.0)
         span = int(self.view.seconds() * sfreq)
         self.timeline.set_extent(0, max(0, total - span), span, live=False)
+        recordings = offline.get("recordings") or {}
+        if recordings.get("index") != self.offline_recordings.get("index"):
+            self._offline_cache.clear()  # the views now show another recording
+            self._feature_cache.clear()
+            if recordings.get("current"):
+                self.log(f"Recording {recordings['index']}/{recordings['total']}: "
+                         f"{recordings['current']}")  # fmt: skip
+        self.offline_recordings = recordings
         state = offline.get("state", "")
         if state == self.offline_state:
             return
         self.offline_state = state
         if state == "done":
             self.log(f"Offline run done in {offline.get('elapsed_s', 0):.1f} s.")
+            if recordings:
+                done, skipped = recordings["done"], recordings["skipped"]
+                self.log(f"Recordings: done {len(done)}, skipped {len(skipped)} "
+                         f"(already done), failed {len(recordings['failed'])}. "
+                         f"Showing {recordings['current']}.")  # fmt: skip
+                for failure in recordings["failed"]:
+                    self.log(f"Failed: {failure}")
             for note in offline.get("skipped", []):
                 self.log(f"Not saved: {note}")
         elif state == "error":
@@ -1080,7 +1097,11 @@ class MainWindow(QMainWindow):
     def _meters(self, status: dict[str, Any]) -> None:
         m = self.meters
         if self.doc.mode == "offline":
-            m["state"].setText(f"offline: {self.offline_state or 'ready'}")
+            rec = self.offline_recordings
+            where = (f" {rec['index']}/{rec['total']} {rec['current']}"
+                     if rec.get("current") and self.offline_state == "running"
+                     else "")  # fmt: skip
+            m["state"].setText(f"offline: {self.offline_state or 'ready'}{where}")
             for key in ("load", "latency", "overruns", "display"):
                 m[key].setText("")
             return

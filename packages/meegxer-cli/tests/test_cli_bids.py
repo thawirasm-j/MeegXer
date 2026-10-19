@@ -109,3 +109,18 @@ def test_recording_settings_apply_to_every_recording(tmp_path: Path) -> None:
         name = f"sub-{subject}_task-rest_desc-clean_channels.tsv"
         channels = (folder / name).read_text()
         assert "FZ\tEEG" in channels and "Pz\tEEG\tV\tbad" in channels
+
+
+def test_a_plain_file_writer_is_left_out_of_a_dataset_run(tmp_path: Path) -> None:
+    root = dataset(tmp_path / "ds", ("01", "02"))
+    pipe = tmp_path / "clean.json"
+    pipe.write_text(json.dumps({"spec_version": SPEC_VERSION, "nodes": [
+        {"id": "input", "node": "meegxer.core.synthetic"},
+        {"id": "out", "node": "meegxer.core.set_writer",
+         "params": {"path": str(tmp_path / "one.set")}},
+    ]}))  # fmt: skip
+    result = runner.invoke(app, ["run", str(pipe), "--bids", str(root)])
+    assert result.exit_code == 0, result.output
+    assert "done 2, skipped 0, failed 0" in result.output
+    assert result.output.count("note: out: not written") == 2
+    assert not (tmp_path / "one.set").exists()  # each would overwrite the last
