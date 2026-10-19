@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import math
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -64,6 +66,67 @@ class _Number(QDoubleSpinBox):
         return f"{value:.{self.decimals()}f}".rstrip("0").rstrip(".")
 
 
+class PathEdit(QWidget):
+    """A path parameter (manifest ``path``, spec 0.2.20): its text box and a
+    Browse… button that opens the matching dialog (a file to read, a folder, or
+    a file to write). ``finished`` reports a final value, typed or browsed."""
+
+    finished = Signal()
+
+    def __init__(self, value: str, kind: str, extensions: list[str]) -> None:
+        super().__init__()
+        self.kind, self.extensions = kind, extensions
+        self.line = QLineEdit(value)
+        self.button = QPushButton("Browse…")
+        self.button.setToolTip({"file": "Choose a file", "folder": "Choose a folder",
+                                "save": "Choose where to save"}[kind])  # fmt: skip
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        lay.addWidget(self.line, 1)
+        lay.addWidget(self.button)
+        self.line.editingFinished.connect(self.finished)
+        self.button.clicked.connect(self.browse)
+
+    def text(self) -> str:
+        return self.line.text()
+
+    def _start(self) -> str:
+        current = Path(self.line.text()) if self.line.text() else None
+        if current is None:
+            return ""
+        return str(current if self.kind == "folder" or current.is_dir()
+                   else current.parent)  # fmt: skip
+
+    def _filter(self) -> str:
+        if not self.extensions:
+            return "All files (*)"
+        patterns = " ".join(f"*{e}" for e in self.extensions)
+        return f"Supported files ({patterns});;All files (*)"
+
+    def browse(self) -> None:
+        if self.kind == "folder":
+            chosen = QFileDialog.getExistingDirectory(self, "Choose a folder",
+                                                      self._start())  # fmt: skip
+        elif self.kind == "save":
+            chosen, _ = QFileDialog.getSaveFileName(self, "Save as", self._start(),
+                                                    self._filter())  # fmt: skip
+            if (
+                chosen
+                and self.extensions
+                and Path(chosen).suffix.lower()
+                not in {e.lower() for e in self.extensions}
+            ):
+                chosen += self.extensions[0]
+        else:
+            chosen, _ = QFileDialog.getOpenFileName(
+                self, "Choose a file", self._start(), self._filter()
+            )
+        if chosen:
+            self.line.setText(str(Path(chosen)))
+            self.finished.emit()
+
+
 def _nice(x: float) -> float:
     """The nearest of 1, 2 or 5 times a power of ten (0.1, 0.2, 0.5, 1, 2, ...)."""
     exponent = math.floor(math.log10(x))
@@ -107,6 +170,9 @@ def _editor(spec: dict[str, Any], value: Any) -> tuple[QWidget, Any]:
             combo.addItem(choice_label(spec["name"], choice), choice)
         combo.setCurrentIndex(max(0, combo.findData(value)))
         return combo, combo.currentIndexChanged
+    if kind == "string" and spec.get("path"):
+        edit = PathEdit(str(value), spec["path"], list(spec.get("extensions") or []))
+        return edit, edit.finished
     if kind == "string":
         line = QLineEdit(str(value))
         return line, line.editingFinished
@@ -143,7 +209,7 @@ def _value(widget: QWidget) -> Any:
         return widget.isChecked()
     if isinstance(widget, QComboBox):
         return widget.currentData()
-    if isinstance(widget, QLineEdit):
+    if isinstance(widget, QLineEdit | PathEdit):
         return widget.text()
     if isinstance(widget, QSpinBox | QDoubleSpinBox):
         return widget.value()

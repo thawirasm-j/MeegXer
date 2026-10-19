@@ -34,7 +34,7 @@ from meegxer.core.references import credits
 from meegxer.core.settings import config_dir
 
 
-def _sink_manifest(name: str, input_type: str) -> Manifest:
+def _sink_manifest(name: str, input_type: str, extension: str) -> Manifest:
     return Manifest.from_dict(
         {
             "spec_version": "0.2.0",
@@ -45,7 +45,14 @@ def _sink_manifest(name: str, input_type: str) -> Manifest:
             "inputs": [{"name": "in", "type": input_type}],
             "outputs": [],
             "params": [
-                {"name": "path", "type": "string", "default": "", "primary": True},
+                {
+                    "name": "path",
+                    "type": "string",
+                    "default": "",
+                    "primary": True,
+                    "path": "save",
+                    "extensions": [extension],
+                },
                 {"name": "overwrite", "type": "bool", "default": False},
             ],
             **credits(name),
@@ -300,7 +307,9 @@ class _RawFileSink(Sink):
 class SetSink(_RawFileSink):
     """EEGLAB .set (written with eeglabio through MNE)."""
 
-    manifest: ClassVar[Manifest] = _sink_manifest("meegxer.core.set_writer", "signal")
+    manifest: ClassVar[Manifest] = _sink_manifest(
+        "meegxer.core.set_writer", "signal", ".set"
+    )
     fmt = "eeglab"
 
     # The MAT-file header's descriptive text carries the platform and the time
@@ -312,7 +321,9 @@ class SetSink(_RawFileSink):
 class EdfSink(_RawFileSink):
     """EDF (written with edfio through MNE). EDF stores 16-bit samples."""
 
-    manifest: ClassVar[Manifest] = _sink_manifest("meegxer.core.edf_writer", "signal")
+    manifest: ClassVar[Manifest] = _sink_manifest(
+        "meegxer.core.edf_writer", "signal", ".edf"
+    )
     fmt = "edf"
 
 
@@ -322,7 +333,7 @@ class FeatureTsvSink(Sink):
     into a JSON sidecar next to it (``features.json``, BIDS style), when stated."""
 
     manifest: ClassVar[Manifest] = _sink_manifest(
-        "meegxer.core.feature_tsv", "features"
+        "meegxer.core.feature_tsv", "features", ".tsv"
     )
 
     def __init__(self, params: Mapping[str, object] | None = None) -> None:
