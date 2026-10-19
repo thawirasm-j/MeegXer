@@ -9,7 +9,7 @@ from meegxer.core.batch import BatchScheduler
 from meegxer.core.block import Block
 from meegxer.core.graph import Graph, GraphError
 from meegxer.core.manifest import Manifest
-from meegxer.core.node import Params, Processor, TransformResult
+from meegxer.core.node import AnyBlock, Params, Processor, TransformResult
 from meegxer.core.probes import MemoryProbe
 from meegxer.core.realtime import PacedSource, RealtimeScheduler
 from meegxer.core.serialization import State
@@ -210,8 +210,8 @@ def test_status_reports_timing_and_latency() -> None:
     from meegxer.core.sinks import SetSink
 
     class NullSink(SetSink):
-        def close(self) -> None:
-            pass
+        def write(self, block: AnyBlock) -> None:
+            pass  # writes nothing (writing spools to the file's folder)
 
     scheduler = run(
         Graph.chain([source(), Stage(Leaky()), NullSink({"path": "unused"})])

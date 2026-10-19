@@ -198,6 +198,10 @@ uv run meegxer status                                # terminal 2
 uv run meegxer set hp low=0.5
 ```
 
+A live recording to .set or EDF is spooled to disk as it comes (`rec.set.part`)
+and written when the run ends. If the run crashes, `uv run meegxer recover rec.set`
+writes the file from the spool.
+
 | Package | Role |
 |---|---|
 | `packages/meegxer-core` | headless engine (no GUI) |

@@ -17,6 +17,19 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   open it again with the new channel list, under the same name; `meegxer status`
   says so. Programs reading the stream see it end and must look it up again.
   Before, the whole run stopped.
+- **Live recordings survive a crash.** The .set and EDF writers no longer keep
+  the recording in memory until the end: each block goes to a spool next to the
+  file (`rec.set.part`, with `rec.set.part.json`) and is flushed at once. The
+  file is written from it when the run ends, the same file as before. If
+  MeegXer crashes first, `meegxer recover rec.set` writes the file from the
+  spool, losing at most the block being written (after a power cut, the last
+  seconds the system had not yet saved); the next run of the same pipeline also
+  does it on its own, to `rec_recovered.set`, before it starts recording. Feature
+  tables (TSV) are written row by row, so they are readable as they grow.
+  Memory use no longer grows with the length of a recording.
+- A file writer whose input changes channels (or feature values) mid-run keeps
+  what it received before the change and says so (`meegxer status`, or the
+  end of `meegxer run`), instead of ending the run or writing nothing.
 
 ## 0.3.1b1 (2026-10-18)
 
