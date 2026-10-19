@@ -12,6 +12,16 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   box that opens the right dialog: a file to open, a folder, or where to save
   (the extension is added when you leave it out). Plugins get it by marking a
   string parameter as a path (spec 0.2.20).
+- **Every subject of a BIDS dataset from the GUI:** leave *Subject* empty on
+  the BIDS input (it reads *All subjects*) and *Run* processes every matching
+  recording one after another, as `meegxer run … --bids` does: each into the
+  dataset's `derivatives/meegxer`, finished ones skipped, a failure not stopping
+  the rest. The bar shows `3/9 sub-03_task-rest`, the views follow the recording
+  being run, and at the end show the last subject; the log sums up what was
+  done, skipped or failed. The Recording window shows the first subject.
+- In a dataset run (GUI or `--bids`), a .set, EDF or feature-table writer with
+  one fixed file name is left out with a note (each recording would overwrite
+  the last); the BIDS writer saves every recording.
 
 ## 0.3.1b2 (2026-10-19)
 

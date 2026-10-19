@@ -22,6 +22,7 @@ import threading
 import time
 import traceback
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,8 @@ import numpy as np
 import numpy.typing as npt
 
 from meegxer.core import settings
-from meegxer.core.batch import BatchScheduler
+from meegxer.core.batch import BatchResult, BatchScheduler
+from meegxer.core.bids_batch import is_all_subjects, prepare_recording, recordings_of
 from meegxer.core.block import Block, FeatureBlock, SignalInfo, units_wire
 from meegxer.core.cache import DirectoryCache
 from meegxer.core.display import Decimator
@@ -37,6 +39,7 @@ from meegxer.core.graph import Graph, GraphError
 from meegxer.core.node import AnyBlock, Probe
 from meegxer.core.passband import filters_wire
 from meegxer.core.probes import FeatureProbe, MemoryProbe
+from meegxer.core.sources import BidsSource
 from meegxer.core.stage import Stage
 
 MAX_WINDOW_BINS = 20000
@@ -167,7 +170,7 @@ class StoreProbe(Probe):
             return
         store = self.job.probes.get(self.probe_id)
         if store is None:
-            store = ProbeStore(self.job.folder / self.probe_id, block.info,
+            store = ProbeStore(self.job.store_folder / self.probe_id, block.info,
                                self.job.n_total)  # fmt: skip
             self.job.probes[self.probe_id] = store
         store.write(block)
@@ -242,16 +245,38 @@ class FeatureStoreProbe(Probe):
 
 
 class OfflineJob:
-    """One background batch run of a graph."""
+    """One background batch run of a graph; or, for a BIDS input naming no
+    subject, one run per recording of its dataset (as ``meegxer run --bids``:
+    fresh graphs from ``rebuild``, outputs into BIDS derivatives), the views
+    showing the recording being run and, at the end, the last one."""
 
-    def __init__(self, graph: Graph, *, folder: Path | None = None) -> None:
+    def __init__(
+        self,
+        graph: Graph,
+        *,
+        folder: Path | None = None,
+        rebuild: Callable[[], Graph] | None = None,
+    ) -> None:
         online_only = [n.id for n in graph.nodes if not n.manifest.runs_offline]
         if online_only:
             raise GraphError(f"online-only nodes cannot run offline: {online_only}")
         self.graph = graph
         root = offline_dir()
         self.folder = folder or root / f"run-{os.getpid()}-{next(_job_numbers)}"
+        self.store_folder = self.folder
         self.cache_dir = root / "cache"
+        self.rebuild = rebuild
+        self.recordings: list[dict[str, str]] = []
+        self.progress: dict[str, Any] = {}
+        source = graph.source.impl
+        if is_all_subjects(source):
+            assert isinstance(source, BidsSource)
+            if rebuild is None:
+                raise GraphError("an all-subjects BIDS run needs its pipeline")
+            self.recordings = recordings_of(source)
+            if not self.recordings:
+                root_dir = source.params["root"]
+                raise GraphError(f"no matching EEG recordings in {root_dir}")
         self.state = "pending"
         self.error = ""
         self.skipped: list[str] = []  # saves skipped: the file existed
@@ -262,6 +287,10 @@ class OfflineJob:
         self.probes: dict[str, ProbeStore] = {}
         self.features: dict[str, FeatureStore] = {}
         self._thread: threading.Thread | None = None
+        if not self.recordings:
+            self._attach_stores(graph)
+
+    def _attach_stores(self, graph: Graph) -> None:
         for node in graph.nodes:  # probes write to disk as the run goes
             if isinstance(node.impl, FeatureProbe):
                 graph.replace(node.id, FeatureStoreProbe(self, node.id))
@@ -278,22 +307,59 @@ class OfflineJob:
         if self._thread is not None:
             self._thread.join(timeout)
 
+    def _run_graph(self, graph: Graph) -> BatchResult:
+        source = graph.source.impl
+        total = getattr(source, "n_samples", None)
+        if total is None:
+            raise GraphError("batch runs need a finite source (set a duration)")
+        self.n_total = int(total)
+        self.sfreq = float(source.info.sfreq)  # type: ignore[union-attr]
+        self.store_folder.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        result = BatchScheduler(cache=DirectoryCache(self.cache_dir)).run(graph)
+        for store in self.probes.values():
+            store.close()
+        return result
+
+    def _run_recordings(self) -> None:
+        """Every recording in turn. A finished one (its session file exists) is
+        skipped, except the last: it runs for the views, its files are kept."""
+        assert self.rebuild is not None
+        n = len(self.recordings)
+        done: list[str] = []
+        skipped: list[str] = []
+        failed: list[str] = []
+        self.progress = {"index": 0, "total": n, "current": "", "done": done,
+                         "skipped": skipped, "failed": failed}  # fmt: skip
+        for i, params in enumerate(self.recordings, 1):
+            graph = self.rebuild()
+            prepared = prepare_recording(graph, params, None, overwrite=False)
+            self.progress.update(index=i, current=prepared.label)
+            if prepared.done and i < n:
+                skipped.append(prepared.label)
+                continue
+            self.probes, self.features = {}, {}  # the views follow this recording
+            self.store_folder = self.folder / f"rec-{i}"
+            self._attach_stores(graph)
+            self.graph = graph
+            try:
+                result = self._run_graph(graph)
+            except Exception as exc:  # one bad recording does not stop the others
+                traceback.print_exc()
+                failed.append(f"{prepared.label}: {type(exc).__name__}: {exc}")
+                continue
+            (skipped if prepared.done else done).append(prepared.label)
+            notes = [*prepared.notes, *result.skipped]
+            self.skipped.extend(f"{prepared.label}: {s}" for s in notes)
+        if len(failed) == n:
+            raise RuntimeError(f"every recording failed; the first: {failed[0]}")
+
     def _run(self) -> None:
         try:
-            source = self.graph.source.impl
-            total = getattr(source, "n_samples", None)
-            if total is None:
-                raise GraphError("batch runs need a finite source (set a duration)")
-            self.n_total = int(total)
-            self.sfreq = float(source.info.sfreq)  # type: ignore[union-attr]
-            self.folder.mkdir(parents=True, exist_ok=True)
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
-            result = BatchScheduler(cache=DirectoryCache(self.cache_dir)).run(
-                self.graph
-            )
-            self.skipped = result.skipped
-            for store in self.probes.values():
-                store.close()
+            if self.recordings:
+                self._run_recordings()
+            else:
+                self.skipped = self._run_graph(self.graph).skipped
             self.state = "done"
         except Exception as exc:
             traceback.print_exc()
@@ -308,6 +374,9 @@ class OfflineJob:
             "state": self.state,
             "error": self.error,
             "skipped": list(self.skipped),
+            # an all-subjects BIDS run: the recording being run (counted from
+            # 1), of how many, and how each went
+            "recordings": dict(self.progress),
             "elapsed_s": round(end - self.started, 3) if self.started else 0.0,
             "n_samples": self.n_total,
             "sfreq": self.sfreq,
