@@ -34,6 +34,7 @@ from meegxer.core.ports import PortType
 from meegxer.core.rails import (
     UNBOUNDED,
     RailBuffer,
+    check_rates,
     events_input,
     rail_fingerprint,
     with_rails,
@@ -161,7 +162,7 @@ class BatchScheduler:
         labelled = any(isinstance(n.impl, Stage) and n.manifest.reads_events
                        for n in graph.nodes)  # fmt: skip
         self._events = recording_events(source) if labelled else ()
-        self._rail = EventsRail()
+        self._rail = EventsRail(source.info.sfreq)  # counted on the input's clock
         self._rail.add(self._events)
         self._graph = graph
         self._written = {}
@@ -232,15 +233,16 @@ class BatchScheduler:
         signal_in = [b for b in upstream if isinstance(b, Block)]
         if len(signal_in) != len(upstream):
             raise GraphError(f"{node.id}: processors take Signal input in v1")
+        rate = signal_in[0].info.sfreq if signal_in else None  # after a resampler
 
         if stage.status(input_fp) is not StageStatus.READY:
             # upstream strips' events follow from input_fp, so it names the
             # recording's only; the fit sees everything on the rail to its left
             assert self._graph is not None
-            trials = self._rail.visible_to(self._graph, node.id)
+            trials = self._rail.visible_to(self._graph, node.id, sfreq=rate)
             calibration = self._calibration(signal_in)
             rails = self._rails_for(node, calibration.sample_index,
-                                    calibration.stop_index)  # fmt: skip
+                                    calibration.stop_index, rate)  # fmt: skip
             stage.fit(calibration, input_fp, trials, rails)
             result.fitted.append(node.id)
         output_fp = stage.output_fingerprint(input_fp)
@@ -256,7 +258,7 @@ class BatchScheduler:
             if hit is not None:
                 result.cached.append(node.id)
                 result.events[node.id] = hit.events
-                self._rail.add(hit.events, node.id)
+                self._rail.add(hit.events, node.id, rate)
                 return list(split_block(hit.block, self.block_size))
 
         if stage.manifest.availability == "offline" and len(signal_in) > 1:
@@ -265,7 +267,9 @@ class BatchScheduler:
         out: Stream = []
         events: list[Event] = []
         for block in signal_in:
-            rails = self._rails_for(node, block.sample_index, block.stop_index)
+            rails = self._rails_for(
+                node, block.sample_index, block.stop_index, block.info.sfreq
+            )
             transformed = stage.transform(block, input_fp, rails)
             out.extend(_non_empty(transformed.block))
             events.extend(transformed.events)
@@ -276,7 +280,7 @@ class BatchScheduler:
             events.extend(tail.events)
             self._keep_rails(node.id, tail)
         result.events[node.id] = tuple(events)
-        self._rail.add(events, node.id)
+        self._rail.add(events, node.id, rate)  # counted on its input's clock
         result.computed.append(node.id)
         if cacheable and self.cache is not None and out:
             joined = concat_blocks([b for b in out if isinstance(b, Block)])
@@ -303,9 +307,10 @@ class BatchScheduler:
             )  # fmt: skip
 
     def _rails_for(
-        self, node: GraphNode, start: int, stop: int
+        self, node: GraphNode, start: int, stop: int, sfreq: float | None
     ) -> dict[str, RailInput] | None:
-        """The rails ``node`` reads, over ``[start, stop)`` (docs/RAILS.md)."""
+        """The rails ``node`` reads, over ``[start, stop)`` counted at ``sfreq``,
+        its input's rate (docs/RAILS.md)."""
         if not node.manifest.rail_inputs:
             return None
         assert self._graph is not None
@@ -314,7 +319,7 @@ class BatchScheduler:
         for port in node.manifest.rail_inputs:
             producer, output = sources[port.name]
             if not producer:  # the Events rail
-                seen = self._rail.visible_to(self._graph, node.id)
+                seen = self._rail.visible_to(self._graph, node.id, start, stop, sfreq)
                 rails[port.name] = events_input(seen, start, stop)
                 continue
             buffer = self._buffers.get((producer, output))
@@ -331,6 +336,8 @@ class BatchScheduler:
                     buffer.add(windows, UNBOUNDED)
             try:
                 rails[port.name] = buffer.take(start, stop)
+                if sfreq is not None:
+                    check_rates({port.name: rails[port.name]}, sfreq)
             except ValueError as exc:
                 raise GraphError(f"{node.id}: rail {port.name!r}: {exc}") from exc
         return rails

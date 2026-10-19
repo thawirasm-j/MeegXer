@@ -25,6 +25,17 @@ class RailError(ValueError):
     """A rail does not cover the samples a reader needs."""
 
 
+def check_rates(rails: Mapping[str, RailInput], sfreq: float) -> None:
+    """A Signal rail counts samples on its writer's clock: a reader at another
+    rate (a resampler between them) would cut it at the wrong samples."""
+    for port, data in rails.items():
+        if isinstance(data, Block) and data.info.sfreq != sfreq:
+            raise RailError(
+                f"rail {port!r} is at {data.info.sfreq:g} Hz but the strip reading "
+                f"it is at {sfreq:g} Hz: read it before the rate changes"
+            )
+
+
 class RailBuffer:
     """What a producer's extra output has written so far, for one reader port.
 

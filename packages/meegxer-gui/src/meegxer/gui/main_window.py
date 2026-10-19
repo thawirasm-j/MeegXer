@@ -1064,7 +1064,10 @@ class MainWindow(QMainWindow):
         self.offline_features = offline.get("features", {})
         self.offline_sfreq = float(offline.get("sfreq") or 0.0)
         total = self.offline_total = int(offline.get("n_samples") or 0)
-        sfreq = next((p["sfreq"] for p in self.offline_probes.values()), 0.0)
+        # the scrollbar counts the input's samples (taps after a resampler map)
+        sfreq = self.offline_sfreq or next(
+            (p["sfreq"] for p in self.offline_probes.values()), 0.0
+        )
         span = int(self.view.seconds() * sfreq)
         self.timeline.set_extent(0, max(0, total - span), span, live=False)
         recordings = offline.get("recordings") or {}
@@ -1152,10 +1155,12 @@ class MainWindow(QMainWindow):
         return main, comps
 
     def _live_reference(self, buf: ProbeBuffer) -> ProbeBuffer:
-        """The Main probe's buffer, so all probes line up by index."""
+        """The Main probe's buffer, so all probes line up by index (a tap after
+        a resampler counts other bins: its own)."""
         main, _ = self._shown()
         ref = self.buffers.get(main) if main else None
-        if ref is not None and ref.bin_size == buf.bin_size:
+        same = ref is not None and ref.bin_size == buf.bin_size
+        if ref is not None and same and ref.bin_rate == buf.bin_rate:
             return ref
         return buf
 
@@ -1170,6 +1175,11 @@ class MainWindow(QMainWindow):
         if buf is None or not buf.labels or not buf.bin_rate:
             return None
         ref = self._live_reference(buf)
+        if end is not None:  # the panner counts the Main probe's bins
+            main, _ = self._shown()
+            panned = self.buffers.get(main) if main else None
+            if panned is not None and panned.bin_rate != buf.bin_rate:
+                end = round(end * buf.bin_rate / panned.bin_rate)  # the same time
         newest = ref.end_bin
         end = newest if end is None else min(end, newest)
         n = max(2, int(seconds * buf.bin_rate))
@@ -1180,15 +1190,23 @@ class MainWindow(QMainWindow):
                       buf.classes, buf.scores, buf.filters)  # fmt: skip
 
     def _offline_window(
-        self, probe: str, seconds: float, offset: int | None = None
+        self,
+        probe: str,
+        seconds: float,
+        offset: int | None = None,
+        rate: float | None = None,
     ) -> Window | None:
-        """The window starting ``offset`` samples into the recording (default:
-        where the panner is)."""
+        """The window starting ``offset`` samples, counted at ``rate``, into the
+        recording (default: where the panner is, at the input's rate). A tap
+        after a resampler is at another rate: the same time (rule 8)."""
         info = self.offline_probes.get(probe)
         if info is None or not info.get("n_filled"):
             return None
         n = max(2, int(seconds * info["sfreq"]))
-        offset = self.timeline.position() if offset is None else offset
+        if offset is None:
+            offset, rate = self.timeline.position(), self.offline_sfreq
+        if rate and rate != info["sfreq"]:
+            offset = round(offset * info["sfreq"] / rate)
         start = info["first_sample"] + offset
         key = (start, n, int(info["n_filled"]))
         cached = self._offline_cache.get(probe)
@@ -1362,8 +1380,8 @@ class MainWindow(QMainWindow):
         span = int(seconds * info["sfreq"])
         total = int(info.get("n_samples") or 0)
         panner.set_extent(0, max(0, total - span), span, live=False)
-        offset = panner.position()
-        return lambda p, s: self._offline_window(p, s, offset=offset)
+        offset, rate = panner.position(), info["sfreq"]
+        return lambda p, s: self._offline_window(p, s, offset=offset, rate=rate)
 
     def show_stacked(self) -> None:
         self.stacked.show()

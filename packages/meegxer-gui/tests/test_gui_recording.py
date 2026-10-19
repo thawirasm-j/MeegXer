@@ -193,3 +193,34 @@ def test_non_eeg_channels_hidden_by_default_and_strips_can_include_them(
         assert "channel_types" not in nodes["notch1"]
     finally:
         win.close()
+
+
+def test_offline_taps_at_another_rate_show_the_same_time(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]]
+) -> None:
+    from typing import Any
+
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    asked: dict[str, int] = {}
+
+    def call(method: str, **kw: Any) -> dict[str, Any]:
+        asked[kw["probe"]] = kw["start"]
+        return {"ch_labels": ["Cz"], "mins": [0.0], "maxs": [0.0],
+                "bin_size": 1, "start_bin": kw["start"]}  # fmt: skip
+
+    try:
+        win.offline_sfreq = 1000.0  # the input's rate: the scrollbar's samples
+        win.offline_probes = {
+            p: {"sfreq": rate, "first_sample": 0, "n_filled": 10, "n_samples": 10}
+            for p, rate in [("tap_in", 1000.0), ("tap_rs", 250.0)]
+        }
+        win.call = call  # type: ignore[method-assign]
+        win._offline_window("tap_in", 1.0, offset=4000, rate=1000.0)
+        win._offline_window("tap_rs", 1.0, offset=4000, rate=1000.0)
+        assert asked == {"tap_in": 4000, "tap_rs": 1000}  # both 4 s in
+    finally:
+        win.close()

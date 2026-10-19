@@ -20,6 +20,7 @@ TITLES = {
     "meegxer.nodes.notch_zerophase": "Notch (zero-phase)",
     "meegxer.nodes.rereference": "Re-reference",
     "meegxer.nodes.pick_channels": "Pick channels",
+    "meegxer.nodes.resample": "Resample",
     "meegxer.nodes.iir_filter_zerophase": "IIR filter (zero-phase)",
     "meegxer.nodes.ica": "ICA + ICLabel",
     "meegxer.nodes.psd": "Power spectrum",

@@ -63,6 +63,12 @@ output strip chooses which line it draws from.
 - **Who adds to it:** any strip, through the events its transform emits.
 - **Who sees what:** a strip sees the input's events and those of the strips
   upstream of it, in sample-index order (`meegxer.core.events.EventsRail`).
+- **Across a rate change** (a Resample strip): the rail counts the input's
+  samples; a strip at another rate sees, and adds, events at its own rate,
+  mapped by the exact ratio of the rates to the nearest sample (rule 8). A
+  Signal rail is not mapped: reading one across a rate change stops with a
+  message (read it before the Resample strip). Feature rails and Features taps
+  after a rate change still count windows in the resampled samples.
 - **Live labelled calibration:** `calibrate NODE --seconds N` collects N s, then
   waits `marker_wait` (default 0.5 s) for markers still on their way, while
   processing goes on, and fits on the events inside the stretch.

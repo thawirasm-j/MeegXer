@@ -45,6 +45,7 @@ dependencies = [
 "meegxer.nodes.eog_regression" = "meegxer.nodes.artifacts:EOGRegression"
 "meegxer.nodes.rereference" = "meegxer.nodes.reference:Rereference"
 "meegxer.nodes.pick_channels" = "meegxer.nodes.reference:PickChannels"
+"meegxer.nodes.resample" = "meegxer.nodes.resample:Resample"
 "meegxer.nodes.ica" = "meegxer.nodes.ica:ICAClean"
 "meegxer.nodes.psd" = "meegxer.nodes.features:PSD"
 "meegxer.nodes.band_power" = "meegxer.nodes.features:BandPower"

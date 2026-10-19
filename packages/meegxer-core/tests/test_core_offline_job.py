@@ -142,3 +142,26 @@ def test_an_existing_output_is_kept_and_the_run_finishes(
     assert status["state"] == "done", status["error"]
     assert status["skipped"] and status["skipped"][0].startswith("out: ")
     assert out.read_bytes() == b"kept"
+
+
+def test_a_tap_after_upsampling_holds_the_whole_recording(
+    daemon: Daemon, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MEEGXER_OFFLINE_DIR", str(tmp_path))
+    pipeline = {
+        "spec_version": SPEC_VERSION,
+        "nodes": [
+            {"id": "input", "node": "meegxer.core.synthetic",
+             "params": {"duration": 2.0, "n_channels": 2, "sfreq": 250.0}},
+            {"id": "rs", "node": "meegxer.nodes.resample",
+             "params": {"sfreq": 1000.0}},
+            {"id": "tap_rs", "node": "meegxer.core.probe", "input": "rs",
+             "params": {"keep_seconds": 0.0}},
+        ],
+    }  # fmt: skip
+    daemon.run_offline(pipeline)
+    status = wait_done(daemon)
+    assert status["state"] == "done", status["error"]
+    tap = status["probes"]["tap_rs"]
+    assert tap["sfreq"] == 1000.0
+    assert tap["n_filled"] == tap["n_samples"] == 2000  # not cut at the input's 500

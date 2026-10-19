@@ -7,6 +7,17 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Resample** strip (Filters): change the sampling rate by an exact ratio
+  of the rates (e.g. 1000 → 250 Hz, 500 → 256 Hz) with a linear-phase
+  polyphase FIR, the same samples as `scipy.signal.resample_poly`, live and
+  offline alike, with no delay. Events keep their time: a strip after the
+  Resample strip sees them counted at its rate, and the views line up taps at
+  different rates. Ratios needing factors above 1000 are refused with a
+  message. Known limitation: a Features tap after a rate change, or a Signal
+  rail read across one, is not mapped yet (the second stops with a message).
+- Offline taps after upsampling now hold the whole recording (they were sized
+  by the input's sample count).
+
 - **Pick channels** strip (Reference & channels): keep channels by type (EEG
   only by default; EOG, ECG, … on request) and/or by name, and optionally drop
   the ones marked bad. A listed name the stream lacks, or whose type is off,

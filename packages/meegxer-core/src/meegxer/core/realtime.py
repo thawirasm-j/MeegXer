@@ -60,6 +60,7 @@ from meegxer.core.ports import PortType
 from meegxer.core.rails import (
     RailError,
     RailFeed,
+    check_rates,
     join_inputs,
     rail_fingerprint,
     with_rails,
@@ -361,6 +362,7 @@ class RealtimeScheduler:
                 return
             self._refresh_fingerprints()
             assert isinstance(source_node.impl, Source)
+            self._rail.sfreq = source.info.sfreq  # the rail counts on its clock
             played = recording_events(source_node.impl)  # a played recording's
             self._rail.add(played)
             self.metrics.input_events += len(played)
@@ -435,9 +437,11 @@ class RealtimeScheduler:
         keep = self._stop_index - round(EVENTS_KEEP_SECONDS * sfreq)
         for blocks, _ in self._calibration.values():
             if blocks:
-                keep = min(keep, blocks[0].sample_index)
+                first = blocks[0]
+                keep = min(keep, self._rail.index(first.sample_index, first.info.sfreq))
         for calibration, _, _ in self._fits.values():
-            keep = min(keep, calibration.sample_index)
+            keep = min(keep, self._rail.index(calibration.sample_index,
+                                              calibration.info.sfreq))  # fmt: skip
         self._rail.trim(keep)
 
     def _finish_fits(self, now: bool = False) -> None:
@@ -458,13 +462,16 @@ class RealtimeScheduler:
         assert isinstance(stage, Stage)
         events = (
             self._rail.visible_to(
-                self.graph, node.id, calibration.sample_index, calibration.stop_index
+                self.graph, node.id, calibration.sample_index,
+                calibration.stop_index, calibration.info.sfreq,
             )
             if stage.manifest.fit_events
             else ()
-        )
-        if stage.manifest.fit_events:
-            self._fitted.append((calibration.sample_index, calibration.stop_index))
+        )  # fmt: skip
+        if stage.manifest.fit_events:  # on the rail's clock, as markers arrive
+            rate = calibration.info.sfreq
+            first = self._rail.index(calibration.sample_index, rate)
+            self._fitted.append((first, self._rail.index(calibration.stop_index, rate)))
         try:
             stage.fit(calibration, self._input_fps[node.id], events, rails)
         except ValueError as exc:  # e.g. too few trials: say so, stay uncalibrated
@@ -565,10 +572,13 @@ class RealtimeScheduler:
         if stage.manifest.rail_inputs:
             feed = self._feed(node.id, block.info.sfreq)
             feed.push_main(block)
+            rate = block.info.sfreq
             try:
                 got = feed.ready(
-                    lambda a, b: self._rail.visible_to(self.graph, node.id, a, b)
+                    lambda a, b: self._rail.visible_to(self.graph, node.id, a, b, rate)
                 )
+                if got is not None:
+                    check_rates(got[1], rate)
             except RailError as exc:
                 self.metrics.errors.append(f"{node.id}: {exc}")
                 got = None
@@ -638,7 +648,7 @@ class RealtimeScheduler:
             return self._without_model(node, block)
         written.update(result.rails)
         self.metrics.events += len(result.events)
-        self._rail.add(result.events, node.id)
+        self._rail.add(result.events, node.id, block.info.sfreq)
         if isinstance(result.block, FeatureBlock):
             return (result.block,)
         if isinstance(result.block, Block) and result.block.n_samples == 0:

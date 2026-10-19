@@ -170,7 +170,9 @@ transform(block, model, state, params)        -> block_out, state, events
   fingerprint and model content), so a model fitted under different upstream
   conditions reports needs-refit and refuses to run.
 - **Stream processors:** block in → block out at the same rate (filters with carried
-  state, re-ref, ASR apply, ICA apply).
+  state, re-ref, ASR apply, ICA apply), or covering the same time at a new rate
+  (resample: output sample indices counted at the new rate, rule 8). A node that
+  changes the rate processes every channel; acceptance test 1 checks the span.
 - **Analysis processors:** windowed input → Features/Events at a lower rate (PSD,
   band power, connectivity, CCA, classifiers). They buffer input in `state` and
   return every window a block completes as a tuple of FeatureBlocks (none when no

@@ -208,3 +208,18 @@ def test_a_failed_labelled_fit_is_reported_and_the_run_goes_on() -> None:
     assert isinstance(stage, Stage) and stage.model is None
     assert scheduler.node_status(graph["labelled1"]) == "uncalibrated"
     assert scheduler.metrics.samples == 8000  # the run went on to the end
+
+
+def test_rail_maps_indices_for_a_strip_at_another_rate() -> None:
+    graph = Graph.chain([SyntheticSource({}), Stage(Detector()), Stage(Labelled())])
+    rail = EventsRail(100.0)  # counted on the input's clock
+    rail.add([Event(50, "cue", duration=10), Event(51, "near")])
+    rail.add([Event(10, "beat")], "detector1", 50.0)  # emitted at 50 Hz
+    assert [(e.sample_index, e.label) for e in rail.events()] == [
+        (20, "beat"), (50, "cue"), (51, "near")]  # fmt: skip
+    seen = rail.visible_to(graph, "labelled1", sfreq=50.0)
+    assert [(e.sample_index, e.duration) for e in seen] == [(10, 0), (25, 5), (26, 0)]
+    # a window at 50 Hz holds exactly the events that map into it
+    assert [e.label for e in rail.visible_to(graph, "labelled1", 25, 26, 50.0)] == [
+        "cue"]  # fmt: skip
+    assert rail.index(25, 50.0) == 50 and rail.index(25) == 25
