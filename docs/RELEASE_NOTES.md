@@ -11,6 +11,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   privately through GitHub; only the latest release gets fixes), a contributing
   guide (`CONTRIBUTING.md`), a code of conduct (Contributor Covenant 2.1), and
   issue and pull request templates.
+- **A layout change no longer ends a live run at the LSL outputs.** When a
+  strip's channels or feature values change mid-stream (a channel dropped, a
+  band added), the LSL output and the LSL feature output close their stream and
+  open it again with the new channel list, under the same name; `meegxer status`
+  says so. Programs reading the stream see it end and must look it up again.
+  Before, the whole run stopped.
 
 ## 0.3.1b1 (2026-10-18)
 

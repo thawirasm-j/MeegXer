@@ -202,3 +202,88 @@ def test_short_stability_lsl_in_to_lsl_out() -> None:
     assert status.get("source_gaps") == 0 and status.get("source_duplicates") == 0
     assert idx.size > 0 and np.all(np.diff(idx) == 1)  # no gaps, no duplicates out
     assert status["latency"]["p95_ms"] < 150
+
+
+def _labels(info: pylsl.StreamInfo) -> list[str]:
+    labels, ch = [], info.desc().child("channels").child("channel")
+    while not ch.empty():
+        labels.append(ch.child_value("label"))
+        ch = ch.next_sibling()
+    return labels
+
+
+def test_feature_outlet_reopens_when_the_layout_changes() -> None:
+    name = unique("mx-feat-re")
+    sink = LslFeatureSink({"stream_name": name})
+    t0 = pylsl.local_clock()
+    two = FeatureBlock(np.ones((2, 1)), ("channel", "band"), (0, 100), t0,
+                       {"channel": ("Fz", "Cz"), "band": ("alpha",)})  # fmt: skip
+    coords = {"channel": ("Fz", "Cz", "Pz"), "band": ("alpha",)}
+    three = FeatureBlock(np.full((3, 1), 2.0), ("channel", "band"), (50, 150),
+                         t0 + 0.2, coords)  # fmt: skip
+    sink.write(two)
+    sink.write(three)  # used to raise and end the live run
+    assert sink.notes == [
+        "feature layout changed at sample 50: outlet reopened with 3 values"
+    ]
+    streams = pylsl.resolve_byprop("name", name, timeout=5.0)
+    assert len(streams) == 1  # the old outlet is gone
+    assert _labels(pylsl.StreamInlet(streams[0]).info()) == [
+        "Fz|alpha",
+        "Cz|alpha",
+        "Pz|alpha",
+    ]
+    sink.close()
+
+
+def test_signal_outlet_reopens_when_the_channels_change() -> None:
+    name = unique("mx-rt-re")
+    sink = LslSink({"stream_name": name})
+    t0 = pylsl.local_clock()
+    sink.write(Block(np.zeros((2, 10)), SignalInfo(("Fz", "Cz"), 100.0), 0, t0))
+    sink.write(Block(np.zeros((1, 10)), SignalInfo(("Fz",), 100.0), 10, t0 + 0.1))
+    assert sink.notes == [
+        "channel layout changed at sample 10: outlet reopened with 1 channels"
+    ]
+    streams = pylsl.resolve_byprop("name", name, timeout=5.0)
+    assert len(streams) == 1
+    assert _labels(pylsl.StreamInlet(streams[0]).info()) == ["Fz"]
+    sink.close()
+
+
+def test_live_run_goes_on_when_the_outlet_layout_changes() -> None:
+    from typing import ClassVar
+
+    from meegxer.core.manifest import Manifest
+    from meegxer.core.node import Params, Processor, TransformResult
+    from meegxer.core.serialization import State
+    from meegxer.core.stage import Stage
+
+    class DropAfter(Processor):
+        """Drops the last channel from sample 500 on (a layout change)."""
+
+        manifest: ClassVar[Manifest] = Manifest.from_dict({
+            "spec_version": "0.2.0", "name": "test.drop_after", "version": "0.1.0",
+            "type": "stream", "inputs": [{"name": "in", "type": "signal"}],
+            "outputs": [{"name": "out", "type": "signal"}], "params": [],
+        })  # fmt: skip
+
+        def transform(
+            self, block: Block, model: State, state: State | None, params: Params
+        ) -> TransformResult:
+            if block.sample_index < 500:
+                return TransformResult(block, {})
+            info = SignalInfo(block.info.ch_labels[:-1], block.info.sfreq)
+            out = Block(block.data[:-1], info, block.sample_index, block.timestamp)
+            return TransformResult(out, {})
+
+    run = RealtimeScheduler(Graph.chain([
+        SyntheticSource({"duration": 2.0, "n_channels": 4, "sfreq": 500.0}),
+        Stage(DropAfter(), {}),
+        LslSink({"stream_name": unique("mx-live-re")}),
+    ]))  # fmt: skip
+    run.start()
+    assert run.wait(15)
+    status = run.status()
+    assert status["samples"] == 1000  # used to stop at the change
+    assert any("outlet reopened with 3 channels" in e for e in status["errors"])

@@ -303,7 +303,8 @@ whole-recording `hilbert` away from the recording's ends (median 0.03 %);
 connectivity and complexity equal direct mne-connectivity/antropy calls and give
 the expected answers on signals with known coupling and regularity. Tapping a feature
 rail shows its feature view (a spectrum, or values over time; live and offline).
-Not yet: a strip's channel layout changing mid-stream stops the feature outlets.
+A strip's channel layout changing mid-stream reopens the LSL outlets with the new
+layout (M9.8; before, it stopped the run).
 
 **Decided**
 - Features → Sink only in v1 (view, export, LSL feature stream); Features → Processor
