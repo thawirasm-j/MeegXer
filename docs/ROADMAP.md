@@ -72,15 +72,21 @@ One PR per item, as before. Items keep their IDs (M9.1 …) in commits and PRs.
 ### M10: Research workflows (0.4.0bN)
 
 1. **Resample and channel-pick strips** (rule 8 already defines how a rate change
-   maps indices).
+   maps indices). Decided: the pick strip keeps channels by type and by name and
+   can drop bad ones; the resampler is a streamed polyphase FIR (one path, live
+   and offline); events stay on the input's clock and readers map them by the
+   exact ratio of the rates.
 2. **Epoching and the events writer:** epochs around events on the Events rail,
    written as `.fif`/`.set` epoch files and BIDS derivatives; an events writer
-   (`events.tsv`).
+   (`events.tsv`). Decided: epochs are a side rail (the epoched signal beside the
+   chain), not a new port type.
 3. **ERP view:** a tap on epochs shows the averaged ERP per condition, live
    (running average) and offline, with the channel and condition choices of the
    feature view.
 4. **Bad segments:** amplitude, flat-line and jump thresholds write `BAD_` spans
-   onto the Events rail; fits, epochs and writers honour them.
+   onto the Events rail; fits, epochs and writers honour them. Decided: using
+   them is a parameter of each strip that could (off, or the span labels to
+   honour), not automatic.
 5. **XDF input** (pyxdf): LabRecorder files, a signal plus marker streams placed on
    the signal's sample index as live markers are.
 6. **EEGLAB decompositions (4b):** a `.set` with `icaweights` starts the ICs rail at

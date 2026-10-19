@@ -1,4 +1,5 @@
-"""Re-referencing: common average or a chosen set of reference channels."""
+"""Re-referencing (common average or chosen reference channels) and picking
+channels."""
 
 from __future__ import annotations
 
@@ -6,7 +7,7 @@ from typing import ClassVar
 
 import numpy as np
 
-from meegxer.core.block import Block, match_channels
+from meegxer.core.block import CHANNEL_TYPES, Block, SignalInfo, match_channels
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, Processor, TransformResult
 from meegxer.core.serialization import State
@@ -80,3 +81,52 @@ class Rereference(Processor):
             block.timestamp,
         )
         return TransformResult(out, {})
+
+
+class PickChannels(Processor):
+    """Keep some channels, drop the rest.
+
+    A channel is kept when its type is switched on (``keep_eeg``, ``keep_eog``,
+    …; channels of unknown type count as EEG) and, when ``keep_labels`` lists
+    labels, it is one of them; with ``drop_bads`` on, channels marked bad go too.
+    A listed label the stream lacks, or whose type is off, is an error rather
+    than a silent drop. Channels keep the stream's order. Stateless.
+    """
+
+    manifest: ClassVar[Manifest] = stream_manifest(
+        "meegxer.nodes.pick_channels",
+        "0.1.0",
+        [
+            {"name": "keep_labels", "type": "string", "default": "", "primary": True,
+             "description": "Comma-separated labels to keep (empty: every "
+                            "channel of the types switched on)"},
+            *[{"name": f"keep_{t}", "type": "bool", "default": t == "eeg",
+               "description": f"Keep {t.upper()} channels"} for t in CHANNEL_TYPES],
+            {"name": "drop_bads", "type": "bool", "default": False,
+             "description": "Drop channels marked bad"},
+        ],
+        description="Keep the chosen channels (by type, by name, without bad ones).",
+        live_params=["keep_labels", *[f"keep_{t}" for t in CHANNEL_TYPES], "drop_bads"],
+        channel_types=list(CHANNEL_TYPES),  # it sees every channel and chooses
+    )  # fmt: skip
+
+    @staticmethod
+    def kept(info: SignalInfo, params: Params) -> list[str]:
+        types = [t for t in CHANNEL_TYPES if params[f"keep_{t}"]]
+        of_types = set(info.labels_of_types(types))
+        named = _labels(params["keep_labels"])
+        match_channels(info.ch_labels, named)  # every listed label must exist
+        off = [label for label in named if label not in of_types]
+        if off:
+            raise ValueError(f"listed channels of a type switched off: {off}")
+        wanted = set(named) if named else of_types
+        bads = set(info.bads) if params["drop_bads"] else set()
+        chosen = [c for c in info.ch_labels if c in wanted and c not in bads]
+        if not chosen:
+            raise ValueError("no channel is kept")
+        return chosen
+
+    def transform(
+        self, block: Block, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        return TransformResult(block.pick(self.kept(block.info, params)), {})
