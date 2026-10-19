@@ -196,10 +196,10 @@ uv run meegxer run clean.json -i DS\sub-01\eeg\sub-01_task-TASK_eeg.EXT --bids-o
 
 ### B4. Open the outputs elsewhere
 
-- [ ] **EEGLAB:** `EEG = pop_loadset('…_desc-clean_eeg.set');` loads; channel
+- [x] **EEGLAB:** `EEG = pop_loadset('…_desc-clean_eeg.set');` loads; channel
       names and count match; `pop_eegplot(EEG)` looks filtered (no slow drift,
       no mains line); events are present.
-- [ ] **MNE-BIDS** (Python):
+- [x] **MNE-BIDS** (Python):
       ```python
       import mne_bids
 
@@ -256,7 +256,7 @@ uv run meegxer run clean.json --bids DS --subjects 01 --task TASK --overwrite
 
 - [x] Finishes with `fitted: ica`.
 - [x] `_meegxer.json` holds `models.ica` (readable JSON arrays).
-- [ ] Eye blinks are visibly reduced in the cleaned data (EEGLAB/MNE plot).
+- [x] Eye blinks are visibly reduced in the cleaned data (EEGLAB/MNE plot).
 - [x] `uv run meegxer session check DS\derivatives\meegxer\sub-01\eeg\sub-01_task-TASK_desc-clean_meegxer.json`
       reports `model ica: reused`.
 
@@ -273,9 +273,9 @@ uv run meegxer run clean.json --bids DS --subjects 01 --task TASK --overwrite
 |---|---|---|
 | Dataset (name / source), subjects, task, format | ds004504 (OpenNeuro), sub-001 to sub-009, eyesclosed, EEGLAB .set | |
 | B3 single recording | pass | |
-| B4 EEGLAB / MNE-BIDS read-back | partial | EEGLAB / MNE-BIDS unavailable on personal computer (will test again at the lab) |
+| B4 EEGLAB / MNE-BIDS read-back | pass | 0.3.1 (main after M9.8), Linux, sub-001: EEGLAB (Octave, `pop_loadset` + `eeg_checkset`) loads 19 ch, labels in order, 500 Hz, 599.8 s; it notes "xmax adjusted" (eeglabio 0.1.4 writes xmax = n/srate, one sample late; harmless). MNE-BIDS reads it, 19 ch; PSD below 0.6 Hz 3e-9 → 1e-14 V²/Hz, 49–51 Hz at its neighbours' level |
 | B4 validator on derivatives (errors / warnings) | pass | no errors; TOO_FEW_AUTHORS only (after PR #54) |
 | B5 whole dataset: done / failed, time per recording | done | not measured |
 | B5 rerun skip, interrupt and resume | pass | |
-| B6 ICA (blinks reduced, session check) | partial | EEGLAB / MNE-BIDS unavailable on personal computer (will test again at the lab) |
+| B6 ICA (blinks reduced, session check) | pass | Same run: ICA removed 3 components, all ICLabel eye (≥ 0.92); frontal (Fp1/Fp2, 0.5–8 Hz) events over 75 µV 15 → 0, p99.9 86 → 17 µV. Alpha (8–12 Hz, all channels) 35 % lower than without ICA: eye-component content in frontal channels |
 | B7 GUI offline BIDS writer | pass | |

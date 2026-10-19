@@ -28,12 +28,31 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   the GUI starts, it offers to recover any recording a crash left unfinished,
   even from a pipeline you never saved: *Recover* (a file already there is
   kept; the recording goes next to it as `…_recovered`), *Delete it* or *Ask me
-  later* (control API 0.2.6). Feature
-  tables (TSV) are written row by row, so they are readable as they grow.
-  Memory use no longer grows with the length of a recording.
+  later* (control API 0.2.6). Feature tables (TSV) are written row by row, so
+  they are readable as they grow. Memory use no longer grows with the length of
+  a recording.
 - A file writer whose input changes channels (or feature values) mid-run keeps
   what it received before the change and says so (`meegxer status`, or the
   end of `meegxer run`), instead of ending the run or writing nothing.
+- Checked on real data (OpenNeuro ds004504, `docs/TESTING.md` B4 and B6): the
+  cleaned derivative loads in EEGLAB and MNE-BIDS with every channel, drift and
+  mains line removed; ICA removed the three eye components and with them the
+  blinks.
+
+### Known limitations
+
+- **Sterile mode is not there yet.** Built-in strips and custom scripts run on
+  your computer with your permissions; only plugin images run in a container.
+- **ICA needs positions for every channel it processes.** A recording that
+  stores EOG channels as EEG must mark them EOG (Recording window) or give them
+  positions before ICA will start.
+- A file writer stops at a change of channels mid-run (it keeps what came
+  before); it does not start a second file.
+- EEGLAB notes "upper time limit (xmax) adjusted" when it opens a .set that
+  MeegXer wrote: eeglabio stores the end time one sample late. EEGLAB corrects
+  it as it loads; the data are not affected.
+- Acceptance test 3 (latency) is measured and reported (`meegxer status`,
+  `tools/stability_test.py`) but its target is still to be agreed.
 
 ## 0.3.1b1 (2026-10-18)
 
