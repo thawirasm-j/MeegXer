@@ -317,10 +317,14 @@ class LslSink(Sink):
             raise PortTypeError("lsl_out accepts Signal blocks only")
         if block.n_samples == 0:
             return
+        if self._outlet is not None and block.info.ch_labels != self._labels:
+            self._outlet = None  # ends the stream; consumers re-resolve it
+            self.notes.append(
+                f"channel layout changed at sample {block.sample_index}: "
+                f"outlet reopened with {len(block.info.ch_labels)} channels"
+            )
         if self._outlet is None:
             self._outlet = self._open(block.info)
-        elif block.info.ch_labels != self._labels:
-            raise ValueError("lsl_out: channel layout changed while streaming")
         data = block.data / _UNIT_SCALE[str(self.params["unit"])]
         if self.params["include_index"]:
             data = np.vstack([data, block.sample_indices()[None, :]])
@@ -381,10 +385,14 @@ class LslFeatureSink(Sink):
         if not isinstance(block, FeatureBlock):
             raise PortTypeError("lsl_features_out accepts Features blocks only")
         columns = feature_columns(block)
+        if self._outlet is not None and columns != self._columns:
+            self._outlet = None  # ends the stream; consumers re-resolve it
+            self.notes.append(
+                f"feature layout changed at sample {block.window[0]}: "
+                f"outlet reopened with {len(columns)} values"
+            )
         if self._outlet is None:
             self._outlet = self._open(columns)
-        elif columns != self._columns:
-            raise ValueError("lsl_features_out: feature layout changed while streaming")
         sample = [float(v) for v in block.data.ravel()]
         self._outlet.push_sample(sample, timestamp=block.timestamp)
 

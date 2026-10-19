@@ -540,6 +540,10 @@ class RealtimeScheduler:
                 for item in output_blocks(upstream):  # feature windows one by one
                     node.impl.write(item)
                     sink_hit = True
+                if node.impl.notes:
+                    notes = node.impl.notes
+                    self.metrics.errors.extend(f"{node.id}: {n}" for n in notes)
+                    node.impl.notes.clear()
             self.metrics.stages.setdefault(node.id, StageMetrics()).add(
                 time.perf_counter() - started
             )

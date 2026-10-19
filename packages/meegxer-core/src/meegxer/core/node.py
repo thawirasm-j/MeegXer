@@ -229,6 +229,7 @@ class Sink(_ConfiguredNode):
     def __init__(self, params: Mapping[str, object] | None = None) -> None:
         super().__init__(params)
         self.skipped: list[str] = []  # saves skipped, why (the run went on)
+        self.notes: list[str] = []  # what changed mid-run (the run went on)
 
     def keep_existing(self, path: Path) -> bool:
         """Whether ``path`` exists and may not be replaced (``overwrite`` off): the
