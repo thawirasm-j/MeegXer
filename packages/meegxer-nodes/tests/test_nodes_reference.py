@@ -78,3 +78,47 @@ def test_exclusion_errors() -> None:
 
 def test_reref_with_bads_blockwise_equals_one_pass() -> None:
     check_blockwise_equivalence(Rereference(), BAD_BLOCK, {"exclude": "M2"})
+
+
+TYPED = SignalInfo(("Fz", "Cz", "VEOG", "ECG", "Pz"), 100.0, bads=("Pz",),
+                   ch_types=("eeg", "eeg", "eog", "ecg", "eeg"))  # fmt: skip
+TYPED_BLOCK = Block(np.random.default_rng(1).standard_normal((5, 300)), TYPED, 0, 0.0)
+
+
+def pick(**params: object) -> Block:
+    from meegxer.nodes.reference import PickChannels
+
+    stage = Stage(PickChannels(), params)
+    out = stage.transform(TYPED_BLOCK, signal_fingerprint(TYPED))
+    assert isinstance(out.block, Block)
+    return out.block
+
+
+def test_pick_keeps_eeg_by_default_and_types_on_request() -> None:
+    assert pick().info.ch_labels == ("Fz", "Cz", "Pz")
+    both = pick(keep_eog=True)
+    assert both.info.ch_labels == ("Fz", "Cz", "VEOG", "Pz")  # stream order
+    np.testing.assert_array_equal(both.data, TYPED_BLOCK.data[[0, 1, 2, 4]])
+    assert both.info.ch_types == ("eeg", "eeg", "eog", "eeg")
+    assert pick(keep_eeg=False, keep_ecg=True).info.ch_labels == ("ECG",)
+
+
+def test_pick_by_name_and_drop_bads() -> None:
+    assert pick(keep_labels="Pz, Fz").info.ch_labels == ("Fz", "Pz")
+    out = pick(drop_bads=True)
+    assert out.info.ch_labels == ("Fz", "Cz") and out.info.bads == ()
+    assert pick().info.bads == ("Pz",)  # kept bads stay marked
+    with pytest.raises(ChannelMismatchError):
+        pick(keep_labels="Oz")  # a label the stream lacks
+    with pytest.raises(ValueError, match="type switched off"):
+        pick(keep_labels="VEOG")  # EOG is off
+    with pytest.raises(ValueError, match="no channel is kept"):
+        pick(keep_labels="Pz", drop_bads=True)
+
+
+def test_pick_is_blockwise_equivalent() -> None:
+    from meegxer.nodes.reference import PickChannels
+
+    check_blockwise_equivalence(PickChannels(), TYPED_BLOCK, {"keep_eog": True})
+    params = {"keep_labels": "Cz,Pz", "drop_bads": True}
+    check_blockwise_equivalence(PickChannels(), TYPED_BLOCK, params)

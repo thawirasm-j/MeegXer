@@ -7,6 +7,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Pick channels** strip (Reference & channels): keep channels by type (EEG
+  only by default; EOG, ECG, … on request) and/or by name, and optionally drop
+  the ones marked bad. A listed name the stream lacks, or whose type is off,
+  stops with a message instead of being dropped silently.
+
 - **Browse buttons:** file and folder settings (the input file, a BIDS
   dataset, an output file or folder) have a *Browse…* button next to the text
   box that opens the right dialog: a file to open, a folder, or where to save
