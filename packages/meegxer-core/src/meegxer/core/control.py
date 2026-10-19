@@ -14,6 +14,7 @@ import json
 import sys
 import threading
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import zmq
@@ -42,6 +43,8 @@ from meegxer.core.session import (
     sink_outputs,
     state_to_json,
 )
+from meegxer.core.sinks import discard as discard_spool
+from meegxer.core.sinks import free_name, recover, unfinished_recordings
 from meegxer.core.stage import Stage
 
 DEFAULT_CONTROL = "tcp://127.0.0.1:5555"
@@ -166,6 +169,8 @@ class Daemon:
             "run_offline": self.run_offline,
             "offline_window": self.offline_window,
             "offline_features": self.offline_features,
+            "unfinished_recordings": self.unfinished_recordings,
+            "recover_recording": self.recover_recording,
             "shutdown": self.shutdown,
         }
 
@@ -410,6 +415,23 @@ class Daemon:
         found, unmatched = lookup_positions(list(labels), str(montage))
         return {"positions": {k: list(v) for k, v in found.items()},
                 "unmatched": unmatched}  # fmt: skip
+
+    def unfinished_recordings(self) -> list[dict[str, Any]]:
+        """Recordings a crashed run left in their spools (``sinks.py``)."""
+        return unfinished_recordings()
+
+    def recover_recording(self, path: str, discard: bool = False) -> dict[str, Any]:
+        """Write an unfinished recording (to its own name, or ``<name>_recovered``
+        when that exists), or with ``discard`` delete it: ``{path}``, the file
+        written, or ``null``. Only recordings ``unfinished_recordings`` lists."""
+        if path not in {r["path"] for r in unfinished_recordings()}:
+            raise ValueError(f"no unfinished recording at {path}")
+        target = Path(path)
+        if discard:
+            discard_spool(target)
+            return {"path": None}
+        output = free_name(target, "recovered") if target.exists() else target
+        return {"path": str(recover(target, output))}
 
     def run_offline(self, pipeline: dict[str, Any]) -> dict[str, Any]:
         """Run ``pipeline`` over its whole (finite) input in the background; its

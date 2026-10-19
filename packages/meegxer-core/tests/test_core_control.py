@@ -226,3 +226,16 @@ def test_reloading_the_pipeline_keeps_fitted_models() -> None:
     finally:
         d.stop()
         d.close()
+
+
+def test_recover_recording_takes_only_listed_recordings(
+    daemon: tuple[Daemon, ControlClient], tmp_path: Any, monkeypatch: Any
+) -> None:
+    monkeypatch.setenv("MEEGXER_CONFIG_DIR", str(tmp_path / "config"))  # its own
+    _, client = daemon
+    victim = tmp_path / "precious.set"
+    victim.write_bytes(b"keep")
+    with pytest.raises(RpcError, match="no unfinished recording"):
+        client.call("recover_recording", path=str(victim), discard=True)
+    assert victim.read_bytes() == b"keep"
+    assert client.call("unfinished_recordings") == []

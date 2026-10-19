@@ -9,6 +9,7 @@ from typing import Any
 import mne
 import numpy as np
 import pytest
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from meegxer.core.batch import BatchScheduler
@@ -144,3 +145,60 @@ def test_version_mismatch_asks_before_loading(
         assert ica["calibrated"] is False  # its model was dropped: calibrate again
     finally:
         win.close()
+
+
+def test_window_offers_to_recover_unfinished_recordings(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]],
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    import sys
+
+    from meegxer.core.sinks import spool_paths
+
+    def crash(path: Path) -> None:
+        script = (
+            "import os, numpy as np\n"
+            "from meegxer.core.block import Block, SignalInfo\n"
+            "from meegxer.core.sinks import SetSink\n"
+            f"sink = SetSink({{'path': {str(path)!r}}})\n"
+            "sink.write(Block(np.zeros((2, 200)), SignalInfo(('Fz', 'Cz'), 100.0),"
+            " 0, 0.0))\n"
+            "os._exit(1)\n"
+        )
+        subprocess.run([sys.executable, "-c", script], check=False)
+
+    keep, drop = tmp_path / "keep.set", tmp_path / "drop.set"
+    crash(keep)
+    crash(drop)
+    keep.write_bytes(b"a file already there")
+    asked: list[dict[str, Any]] = []
+    from meegxer.gui.main_window import MainWindow
+
+    def choose(self: Any, rec: dict[str, Any]) -> str:
+        asked.append(rec)
+        return "recover" if rec["path"].endswith("keep.set") else "discard"
+
+    monkeypatch.setattr(MainWindow, "recovery_choice", choose)
+    control, _ = daemon
+    window = _window(control)
+    pump(qapp, 1.0)  # the offer comes once the window is up
+    assert sorted(Path(r["path"]).name for r in asked) == ["drop.set", "keep.set"]
+    assert keep.read_bytes() == b"a file already there"  # kept, not replaced
+    recovered = tmp_path / "keep_recovered.set"
+    assert mne.io.read_raw_eeglab(recovered, verbose="error").n_times == 200
+    assert not any(p.exists() for p in [*spool_paths(keep), *spool_paths(drop)])
+
+    monkeypatch.undo()  # the real question: its text, and "Ask me later"
+    shown: list[str] = []
+
+    def answer() -> None:
+        box = next(w for w in qapp.topLevelWidgets()
+                   if isinstance(w, QMessageBox) and w.isVisible())  # fmt: skip
+        shown.append(box.text())
+        next(b for b in box.buttons() if b.text() == "Ask me later").click()
+
+    QTimer.singleShot(200, answer)
+    rec = {**asked[0], "seconds": 125.0, "modified": "2026-10-19T03:44:00+00:00"}
+    assert window.recovery_choice(rec) == "later"
+    assert "2 channels, 2 min 5 s" in shown[0]
+    window.close()

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -134,6 +135,7 @@ class MainWindow(QMainWindow):
         self._build()
         self._apply_view_settings()
         self._load_initial()
+        QTimer.singleShot(0, self.offer_recovery)  # once the window is up
         link.status.connect(self.on_status)
         link.frame.connect(self.on_frame)
         link.lost.connect(
@@ -854,6 +856,53 @@ class MainWindow(QMainWindow):
             self.log(f"Session: {warning}")
         models = ", ".join(reply.get("models", [])) or "none"
         self._structure_changed(f"Opened session {path} (fitted models: {models}).")
+
+    def offer_recovery(self) -> None:
+        """Offer to save each recording a crashed run left unfinished (the file
+        writers spool to disk until the run ends; control API 0.2.6)."""
+        for rec in self.call("unfinished_recordings") or []:
+            choice = self.recovery_choice(rec)
+            if choice == "later":
+                self.log(f"Unfinished recording {rec['path']} kept for later "
+                         "(or: meegxer recover).")  # fmt: skip
+                continue
+            reply = self.call("recover_recording", path=rec["path"],
+                              discard=choice == "discard")  # fmt: skip
+            if reply is None:
+                continue
+            if reply["path"] is None:
+                self.log(f"Deleted the unfinished recording {rec['path']}.")
+            else:
+                self.log(f"Recovered the unfinished recording to {reply['path']}.")
+
+    def recovery_choice(self, rec: dict[str, Any]) -> str:
+        """Asks what to do with an unfinished recording: ``recover``,
+        ``discard`` or ``later``."""
+        minutes, seconds = divmod(round(rec["seconds"]), 60)
+        when = datetime.fromisoformat(rec["modified"]).astimezone()
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Unfinished recording")
+        box.setText(
+            f"A run ended before it saved {Path(rec['path']).name}.\n\n"
+            f"{rec['channels']} channels, {minutes} min {seconds} s, last written "
+            f"{when:%d %b %Y %H:%M}\nin {Path(rec['path']).parent}\n\n"
+            "Recover it now? (A file already there is kept: the recording is "
+            "saved next to it as …_recovered.)"
+        )
+        recover = box.addButton("Recover", QMessageBox.ButtonRole.AcceptRole)
+        discard = box.addButton("Delete it", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Ask me later", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(recover)
+        box.exec()
+        clicked = box.clickedButton()
+        return (
+            "recover"
+            if clicked is recover
+            else "discard"
+            if clicked is discard
+            else "later"
+        )
 
     def _ask(self, title: str, text: str) -> bool:
         answer = QMessageBox.question(self, title, text)

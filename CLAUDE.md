@@ -112,7 +112,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   `meegxer set hp low=0.5`, `meegxer calibrate NODE --seconds 60`, `meegxer stop`,
   `meegxer clear-calibration [NODE]`, `meegxer passthrough NODE --on/--off`.
 - Crash recovery: file writers spool to `FILE.part` until the run ends;
-  `meegxer recover FILE [-o OUT]` writes the file a crashed run left.
+  `meegxer recover FILE [-o OUT]` writes the file a crashed run left; the GUI
+  offers it at start (markers in `<config>/recordings/`).
 - `uv run python tools/stability_test.py --minutes 30`: acceptance tests 2 and 3
   (`--plugin-image IMAGE` to include plugins).
 - GUI: `uv run meegxer-gui` (connects to the daemon on the default endpoint, or
