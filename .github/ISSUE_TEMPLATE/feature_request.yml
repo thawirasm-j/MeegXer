@@ -1,0 +1,20 @@
+name: Feature request
+description: A node, view or workflow MeegXer should have.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you want to do
+      description: The analysis or task, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+      description: The strip, view or command you have in mind; a reference (paper, EEGLAB/MNE function) if there is one.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead now
