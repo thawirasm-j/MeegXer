@@ -206,6 +206,9 @@ uv run meegxer set hp low=0.5
 | `packages/meegxer-gui` | PySide6 + pyqtgraph client |
 | `packages/meegxer-cli` | command-line interface (`meegxer`) |
 
+Contributions are welcome: see `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md`.
+Report security problems privately, as `SECURITY.md` describes.
+
 Licensed under GPL-3.0 (see `LICENSE`).
 
 ## Citing

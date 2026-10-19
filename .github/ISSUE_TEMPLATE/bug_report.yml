@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Security problems go privately (see SECURITY.md),
+        and please do not attach recordings of real people: a synthetic source
+        (`meegxer.core.synthetic`) or a public dataset is best.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The pipeline (or a session saved with `meegxer session share`) and the steps or command.
+      placeholder: |
+        1. Load pipeline.json
+        2. Run offline with ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Error message or log
+      description: Paste the error, the GUI log or the command output.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: MeegXer version
+      description: Output of `meegxer version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows 11, Windows 10, macOS, Linux, Raspberry Pi, Other]
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Where it happens
+      multiple: true
+      options: [GUI, CLI, Live (LSL), Offline (file / BIDS), Plugin or custom script, Not sure]

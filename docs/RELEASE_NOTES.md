@@ -5,6 +5,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 (`docs/RELEASING.md`). Install or upgrade: `uv tool install --python 3.14
 --prerelease allow meegxer` (or `uv tool upgrade meegxer`).
 
+## Next (not released yet)
+
+- **Project hygiene:** a security policy (`SECURITY.md`: report problems
+  privately through GitHub; only the latest release gets fixes), a contributing
+  guide (`CONTRIBUTING.md`), a code of conduct (Contributor Covenant 2.1), and
+  issue and pull request templates.
+
 ## 0.3.1b1 (2026-10-18)
 
 - BIDS derivatives inherit the raw dataset's credits: `Authors`, `License`,
