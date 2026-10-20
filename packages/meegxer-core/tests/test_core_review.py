@@ -62,7 +62,8 @@ def test_a_batch_run_asks_once_then_reuses_the_review(tmp_path: Path) -> None:
 
     result = BatchScheduler(review=review).run(graph_of(file))
     assert [(e.sample_index, e.label, e.duration) for e in result.events["rev"]] == [
-        (100, "BAD_muscle", 50), (300, "blink", 0)]  # fmt: skip
+        (100, "BAD_muscle", 50), (300, "blink", 0),
+        (150, "boundary", 50)]  # fmt: skip  # BAD spans are cut by default
     saved = load_review(file)
     assert saved is not None and len(saved.marks) == 2 and saved.upstream
     assert file.with_suffix(".json").is_file()
@@ -151,3 +152,121 @@ def test_an_offline_run_pauses_for_the_review(
     status = daemon.cancel_review()
     assert status["state"] == "error" and "cancelled" in status["error"]
     assert not file.exists()
+
+
+# -- rejected spans are cut out (docs/REVIEW.md) -------------------------------------
+
+
+def cut_graph(tmp_path: Path, after: list[dict[str, Any]]) -> Graph:
+    return Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": [
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"duration": 6.0, "n_channels": 2, "sfreq": 100.0}},
+        {"id": "rev", "node": "meegxer.core.review",
+         "params": {"file": str(tmp_path / "marks.tsv")}},
+        *after,
+    ]}, Registry.from_entry_points())  # fmt: skip
+
+
+def rejecting(req: ReviewRequest) -> list[Mark]:
+    return [Mark(2.0, 1.0, "BAD_muscle"), Mark(2.5, 1.0, "BAD_eyes"),
+            Mark(5.0, 0.2, "blink")]  # fmt: skip
+
+
+def test_rejected_spans_are_cut_with_a_boundary_and_do_not_leak(
+    tmp_path: Path,
+) -> None:
+    from meegxer.core.block import Block
+    from meegxer.core.stage import Stage, signal_fingerprint
+    from meegxer.nodes.filters import IIRFilter
+
+    hp = {"id": "hp", "node": "meegxer.nodes.iir_filter",
+          "params": {"kind": "highpass", "low": 1.0}}  # fmt: skip
+    graph = cut_graph(tmp_path, [hp])
+    result = BatchScheduler(block_size=37, review=rejecting).run(
+        graph, keep=["src", "hp"]
+    )
+    pieces = result.outputs["hp"]
+    assert isinstance(pieces, list) and all(isinstance(b, Block) for b in pieces)
+    pieces = [b for b in pieces if isinstance(b, Block)]
+    # overlapping BAD spans merged: [200, 350) cut; samples keep their index
+    assert [(b.sample_index, b.stop_index) for b in pieces] == [(0, 200), (350, 600)]
+    boundary = [e for e in result.events["rev"] if e.label == "boundary"]
+    assert [(e.sample_index, e.duration) for e in boundary] == [(350, 150)]
+    assert "blink" in [e.label for e in result.events["rev"]]  # not a reject word
+    # the piece after the cut is filtered as if it were a recording of its own
+    source = result.outputs["src"]
+    assert not isinstance(source, list)
+    alone = Stage(IIRFilter(), {"kind": "highpass", "low": 1.0}).for_mode("offline")
+    piece = source.slice(350, 600)
+    expected = alone.transform(piece, signal_fingerprint(piece.info)).block
+    assert isinstance(expected, Block)
+    np.testing.assert_array_equal(pieces[1].data, expected.data)
+
+
+def test_nothing_is_cut_without_reject_words(tmp_path: Path) -> None:
+    graph = cut_graph(tmp_path, [])
+    graph["rev"].impl.params["reject"] = ""
+    result = BatchScheduler(review=rejecting).run(graph, keep=["rev"])
+    assert not isinstance(result.outputs["rev"], list)
+
+
+def test_a_writer_saves_the_pieces_with_boundary_events(tmp_path: Path) -> None:
+    out = tmp_path / "clean.set"
+    writer = {"id": "w", "node": "meegxer.core.set_writer",
+              "params": {"path": str(out)}}  # fmt: skip
+    BatchScheduler(review=rejecting).run(cut_graph(tmp_path, [writer]))
+    raw = mne.io.read_raw_eeglab(out, verbose="error")
+    assert raw.n_times == 450  # 600 samples less the 150 cut
+    assert list(raw.annotations.description) == ["boundary"]
+    assert raw.annotations.onset[0] == pytest.approx(2.0, abs=0.011)
+
+
+def test_a_fit_after_a_cut_sees_only_the_kept_samples(tmp_path: Path) -> None:
+    from typing import ClassVar
+
+    from meegxer.core.block import Block
+    from meegxer.core.manifest import Manifest
+    from meegxer.core.node import Params, Processor, TransformResult
+    from meegxer.core.serialization import State
+    from meegxer.core.stage import Stage
+
+    class Fitted(Processor):
+        manifest: ClassVar[Manifest] = Manifest.from_dict({
+            "spec_version": SPEC_VERSION, "name": "test.fitted", "version": "0.1.0",
+            "type": "stream", "requires_fit": True, "params": [],
+            "inputs": [{"name": "in", "type": "signal"}],
+            "outputs": [{"name": "out", "type": "signal"}]})  # fmt: skip
+
+        def fit(self, calibration: Block, params: Params) -> State:
+            return {"n": calibration.n_samples}
+
+        def transform(
+            self, block: Block, model: State, state: State | None, params: Params
+        ) -> TransformResult:
+            return TransformResult(block, {})
+
+    graph = cut_graph(tmp_path, [])
+    graph.add(Stage(Fitted()), id="fitted")
+    BatchScheduler(review=rejecting).run(graph)
+    stage = graph["fitted"].impl
+    assert isinstance(stage, Stage) and stage.model is not None
+    assert stage.model.data["n"] == 450  # the 150 samples cut are not fitted on
+
+
+def test_bids_events_follow_the_processed_recordings_time() -> None:
+    from meegxer.core.bids_out import _events_rows
+    from meegxer.core.block import Block, SignalInfo
+
+    info = SignalInfo(("Cz",), 100.0)
+    pieces = [Block(np.zeros((1, 200)), info, 0, 0.0),
+              Block(np.zeros((1, 250)), info, 350, 0.0)]  # fmt: skip
+    events = [
+        {"onset": 1.0, "duration": 0.0, "label": "a"},  # before the cut
+        {"onset": 2.5, "duration": 0.0, "label": "b"},  # inside it: dropped
+        {"onset": 4.0, "duration": 0.5, "label": "c"},
+    ]  # after: 1.5 s earlier
+    assert _events_rows(events, pieces) == [
+        ["1.0", "0.0", "a"],
+        ["2.0", "0.0", "boundary"],
+        ["2.5", "0.5", "c"],
+    ]

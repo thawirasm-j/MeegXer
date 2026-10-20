@@ -18,7 +18,14 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any, ClassVar
 
-from meegxer.core.block import Block, FeatureBlock, SignalInfo, concat_blocks
+import numpy as np
+
+from meegxer.core.block import (
+    Block,
+    FeatureBlock,
+    SignalInfo,
+    contiguous_runs,
+)
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Sink, Source
 from meegxer.core.ports import PortTypeError
@@ -306,6 +313,33 @@ def _describe_chain(graph: Any, node_id: str) -> str:
 # -- the writers ---------------------------------------------------------------------
 
 
+def _events_rows(events: list[dict[str, Any]], pieces: list[Block]) -> list[list[str]]:
+    """The raw recording's events on the processed recording's time: shifted
+    past the spans cut before them, left out inside a cut, with a ``boundary``
+    row at each cut (docs/REVIEW.md)."""
+    sfreq = pieces[0].info.sfreq
+    spans = [(b.sample_index / sfreq, b.stop_index / sfreq) for b in pieces]
+    rows: list[tuple[float, float, str]] = []
+    for e in events:
+        onset = float(e["onset"])
+        removed = spans[0][0]  # the time before the first piece is not written
+        for k, (start, stop) in enumerate(spans):
+            if k:
+                removed += start - spans[k - 1][1]  # the cut before this piece
+            if onset < start:  # in a cut (or before the first piece)
+                break
+            if onset < stop:
+                rows.append((onset - removed, float(e.get("duration", 0.0)),
+                             str(e["label"])))  # fmt: skip
+                break
+    kept = 0.0
+    for start, stop in spans[:-1]:  # a boundary at the end of each piece but the last
+        kept += stop - start
+        rows.append((kept, 0.0, "boundary"))
+    rows.sort(key=lambda r: (r[0], r[2]))
+    return [[repr(o), repr(d), label] for o, d, label in rows]
+
+
 class _BidsSink(Sink):
     def __init__(self, params: Mapping[str, object] | None = None) -> None:
         super().__init__(params)
@@ -351,10 +385,14 @@ class BidsWriter(_BidsSink):
             return
         target.folder.mkdir(parents=True, exist_ok=True)
         write_dataset_files(target, self._graph)
-        whole = concat_blocks(self._blocks)
+        pieces = contiguous_runs(self._blocks)  # more than one: a review cut it
         sink = SetSink({"path": str(signal_path), "overwrite": True})
-        sink.write(whole)
+        for piece in pieces:
+            sink.write(piece)  # a boundary event at each cut
         sink.close()
+        first = pieces[0]
+        data = np.concatenate([b.data for b in pieces], axis=1)
+        whole = Block(data, first.info, first.sample_index, first.timestamp)
         self.written = [signal_path]
         self.written.append(self._sidecar(target, whole))
         self.written.append(self._channels(target, whole.info))
@@ -363,14 +401,16 @@ class BidsWriter(_BidsSink):
             "Channels of the processed recording: types, units and status "
             "after the recording's edits"))  # fmt: skip
         source = self._graph.source.impl
-        events = describe(source)["events"]
-        if events:
+        rows = _events_rows(describe(source)["events"], pieces)
+        if rows:
             path = target.path("events.tsv")
-            rows = [[repr(float(e["onset"])), repr(float(e.get("duration", 0.0))),
-                     str(e["label"])] for e in events]  # fmt: skip
             _write_tsv(path, ["onset", "duration", "trial_type"], rows)
             self.written.append(path)
             note = "Events of the raw recording, after renaming and dropping"
+            if len(pieces) > 1:
+                note += ("; spans a review rejected are cut out: onsets count the "
+                         "processed recording's time, events inside a cut are "
+                         "left out, and a 'boundary' event marks each cut")  # fmt: skip
             self.written.append(_write_description(target.path("events.json"), note))
         if whole.info.positions and any(p is not None for p in whole.info.positions):
             self.written.extend(self._electrodes(target, whole.info))

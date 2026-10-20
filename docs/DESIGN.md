@@ -194,7 +194,10 @@ transform(block, model, state, params)        -> block_out, state, events
 - Aligned by **sample index**, channels matched by **label**. The index counts the
   source's samples from its first (rule 8); a rate-changing node maps it by the
   exact ratio of the rates, so index / rate is the same time on either side and
-  probes at different rates still line up. Markers from a separate stream (the
+  probes at different rates still line up. A span a review strip rejects is
+  cut out but the index keeps counting: the stream has a gap there, with a
+  `boundary` event, and strips after it restart per piece (`docs/REVIEW.md`).
+  Markers from a separate stream (the
   LSL input's `marker_stream`) are placed on the signal's sample index once, at
   the inlet, from their LSL timestamp; downstream, events align by index only.
 - **Time axis:** offline, time since the recording's start; live, seconds before

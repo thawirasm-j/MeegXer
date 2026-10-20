@@ -5,8 +5,15 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 (`docs/RELEASING.md`). Install or upgrade: `uv tool install --python 3.14
 --prerelease allow meegxer` (or `uv tool upgrade meegxer`).
 
-## Next (not released yet)
+## 0.3.1b3 (2026-10-20)
 
+- **Rejected spans are cut out** (Review strip, `reject` parameter, default
+  `BAD`). The samples after a cut keep their index and a `boundary` event marks
+  the cut. Every strip after it restarts per piece, so filters don't leak
+  across a cut, and fitted strips learn from the kept samples only. `.set`,
+  EDF and BIDS outputs save the joined pieces with boundary events; BIDS
+  `events.tsv` onsets follow the processed recording's time
+  (`docs/REVIEW.md`).
 - **Review strip** (Event detection): mark a recording by hand: bad segments
   (`BAD_muscle`, …), states, any label over a span. The marks go on the Events
   rail for the strips after it, and are saved next to each recording (in its
@@ -53,6 +60,17 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 - In a dataset run (GUI or `--bids`), a .set, EDF or feature-table writer with
   one fixed file name is left out with a note (each recording would overwrite
   the last); the BIDS writer saves every recording.
+
+### Known limitations
+
+- **The review window is a first version:** it marks spans on the main
+  signal view. The stacked review window (annotate and reject tools,
+  reviewed vs not-yet-reviewed colouring) and epoch review come next.
+- A strip that reads rails cannot fit on a stream a review cut (it says so),
+  and strips after a cut are not cached.
+- A Features tap after a Resample strip counts its windows in the resampled
+  samples; the views do not map it yet.
+- The limitations of 0.3.1b2 below still hold.
 
 ## 0.3.1b2 (2026-10-19)
 

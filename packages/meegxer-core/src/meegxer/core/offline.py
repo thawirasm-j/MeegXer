@@ -96,6 +96,8 @@ class ProbeStore:
             self.first_index = block.sample_index
         lo = block.sample_index - self.first_index
         hi = min(lo + block.n_samples, self.n_total)
+        if lo > self.filled:  # a cut (review strip): blank, not zeros
+            self.samples[:, self.filled : min(lo, self.n_total)] = np.nan
         self.samples[:, lo:hi] = block.data[:, : hi - lo]
         for k, (_, env, decimator) in enumerate(self.levels):
             got = decimator.feed(block)

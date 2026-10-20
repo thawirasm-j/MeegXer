@@ -13,7 +13,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 
-from meegxer.core.block import Block, Event, FeatureBlock, concat_blocks
+from meegxer.core.block import (
+    Block,
+    Event,
+    FeatureBlock,
+    concat_blocks,
+    contiguous_runs,
+)
 from meegxer.core.node import RailInput, RailOutput
 from meegxer.core.ports import Port, PortType
 from meegxer.core.serialization import fingerprint
@@ -86,29 +92,23 @@ class RailBuffer:
             return tuple(w for w in self._windows if start < w.window[1] <= stop)
         if not self._blocks:
             raise RailError(f"the rail has no samples for [{start}, {stop})")
-        joined = self._joined()
-        if not joined.sample_index <= start <= stop <= joined.stop_index:
-            raise RailError(
-                f"the rail covers [{joined.sample_index}, {joined.stop_index}), "
-                f"not [{start}, {stop})"
-            )
-        self._blocks = [joined]
-        return joined.slice(start, stop)
-
-    def _joined(self) -> Block:
-        if len(self._blocks) == 1:
-            return self._blocks[0]
-        return concat_blocks(self._blocks)
+        self._blocks = contiguous_runs(self._blocks)  # pieces when cut
+        for piece in self._blocks:
+            if piece.sample_index <= start <= stop <= piece.stop_index:
+                return piece.slice(start, stop)
+        covers = ", ".join(f"[{b.sample_index}, {b.stop_index})" for b in self._blocks)
+        raise RailError(f"the rail covers {covers}, not [{start}, {stop})")
 
     def drop_before(self, index: int) -> None:
         """Forget what lies before ``index`` (already handed over)."""
         if self.type is PortType.FEATURES:
             self._windows = [w for w in self._windows if w.window[1] > index]
             return
-        if self._blocks:
-            joined = self._joined()
-            lo = min(max(index, joined.sample_index), joined.stop_index)
-            self._blocks = [joined.slice(lo, joined.stop_index)]
+        self._blocks = [
+            b.slice(max(index, b.sample_index), b.stop_index)
+            for b in contiguous_runs(self._blocks)
+            if b.stop_index > index
+        ]
 
 
 def events_input(events: tuple[Event, ...], start: int, stop: int) -> tuple[Event, ...]:
