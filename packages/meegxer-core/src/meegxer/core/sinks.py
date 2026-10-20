@@ -99,12 +99,19 @@ def spool_paths(path: Path) -> tuple[Path, Path]:
 def write_raw(path: Path, fmt: Literal["eeglab", "edf"], data: np.ndarray,
               header: dict[str, Any], overwrite: bool) -> None:  # fmt: skip
     """Write channels x samples ``data`` (volts) as ``fmt``, with the labels, rate
-    and bad channels from a spool ``header``."""
+    and bad channels from a spool ``header``, and a ``boundary`` event at each cut
+    a review strip made (``boundaries``: ``[position in data, samples cut]``)."""
     import mne
 
     info = mne.create_info(list(header["ch_labels"]), header["sfreq"], ch_types="eeg")
     info["bads"] = list(header["bads"])
     raw = mne.io.RawArray(data, info, verbose="ERROR")
+    cuts = [pos for pos, _ in header.get("boundaries", []) if 0 < pos < data.shape[1]]
+    if cuts:
+        sfreq = float(header["sfreq"])
+        raw.set_annotations(mne.Annotations([p / sfreq for p in cuts],
+                                            [0.0] * len(cuts),
+                                            ["boundary"] * len(cuts)))  # fmt: skip
     path.parent.mkdir(parents=True, exist_ok=True)
     mne.export.export_raw(path, raw, fmt=fmt, overwrite=overwrite, verbose="ERROR")
     if fmt == "eeglab":
@@ -243,6 +250,8 @@ class _RawFileSink(Sink):
         self._spool: IO[bytes] | None = None
         self._first: Block | None = None
         self._next_index = 0
+        self._written = 0  # samples in the file so far
+        self._header: dict[str, Any] = {}
         self._stopped = False  # skipped, or the stream changed: write no more
 
     @property
@@ -259,17 +268,22 @@ class _RawFileSink(Sink):
                 self._stopped = True
                 return
             self._open(block)
-        elif block.info != self._first.info or block.sample_index != self._next_index:
+        elif block.info != self._first.info or block.sample_index < self._next_index:
             change = ("channels changed" if block.info != self._first.info
-                      else f"samples jump to {block.sample_index}")  # fmt: skip
+                      else f"samples jump back to {block.sample_index}")  # fmt: skip
             self.notes.append(f"{change} at sample {self._next_index}: "
                               f"{self.path.name} keeps what came before")  # fmt: skip
             self._stopped = True
             return
+        elif block.sample_index > self._next_index:  # a cut (review strip)
+            cut = block.sample_index - self._next_index
+            self._header.setdefault("boundaries", []).append([self._written, cut])
+            self._write_header()  # kept by a crash recovery too
         assert self._spool is not None
         self._spool.write(np.ascontiguousarray(block.data.T, dtype="<f8").tobytes())
         self._spool.flush()  # in the OS's hands: survives a crash of this process
         self._next_index = block.stop_index
+        self._written += block.n_samples
 
     def _open(self, block: Block) -> None:
         data_path, header_path = spool_paths(self.path)
@@ -281,17 +295,25 @@ class _RawFileSink(Sink):
                 discard(self.path)
         data_path.parent.mkdir(parents=True, exist_ok=True)
         info = block.info
-        header = {"format": self.fmt, "ch_labels": list(info.ch_labels),
-                  "sfreq": info.sfreq, "bads": list(info.bads),
-                  "sample_index": block.sample_index, "timestamp": block.timestamp,
-                  "dtype": "<f8", "order": "sample-major"}  # fmt: skip
-        with header_path.open("w", encoding="utf-8") as fh:
-            fh.write(json.dumps(header, indent=2) + "\n")
-            fh.flush()
-            os.fsync(fh.fileno())
+        self._header = {"format": self.fmt, "ch_labels": list(info.ch_labels),
+                        "sfreq": info.sfreq, "bads": list(info.bads),
+                        "sample_index": block.sample_index,
+                        "timestamp": block.timestamp,
+                        "dtype": "<f8", "order": "sample-major"}  # fmt: skip
+        self._write_header()
         self._spool = data_path.open("wb")
         _register(self.path)
         self._first = block
+
+    def _write_header(self) -> None:
+        """The spool's header, replaced whole (a crash leaves the old or the new)."""
+        header_path = spool_paths(self.path)[1]
+        tmp = header_path.with_name(header_path.name + ".tmp")
+        with tmp.open("w", encoding="utf-8") as fh:
+            fh.write(json.dumps(self._header, indent=2) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, header_path)
 
     def close(self) -> None:
         if self._spool is None:

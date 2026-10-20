@@ -37,6 +37,7 @@ from meegxer.core.serialization import State
 
 REVIEW_NODE = "meegxer.core.review"
 DEFAULT_LABELS = "BAD"
+BOUNDARY = "boundary"  # the event at a cut (EEGLAB's name for it)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +131,10 @@ class ReviewStrip(Processor):
                  "primary": True,
                  "description": "Comma-separated labels offered for marks "
                                 "(the input's event types are offered too)"},
+                {"name": "reject", "type": "string", "default": "BAD",
+                 "description": "Marks whose label starts with one of these "
+                                "comma-separated words are cut out, with a "
+                                "boundary event (empty: nothing is cut)"},
                 {"name": "file", "type": "string", "default": "", "path": "save",
                  "extensions": [".tsv"], "advanced": True,
                  "description": "Where the marks are saved (empty: next to "
@@ -150,9 +155,53 @@ class ReviewStrip(Processor):
         return TransformResult(block, {}, inside)
 
 
+def _words(text: object) -> list[str]:
+    return [s.strip() for s in str(text).split(",") if s.strip()]
+
+
+def rejected_spans(events: Sequence[Event], params: Params) -> list[tuple[int, int]]:
+    """The sample spans ``[start, stop)`` to cut: marks whose label starts with
+    a ``reject`` word, overlapping ones merged."""
+    words = tuple(_words(params["reject"]))
+    spans = sorted((e.sample_index, e.sample_index + e.duration) for e in events
+                   if words and e.duration and e.label.startswith(words))  # fmt: skip
+    merged: list[tuple[int, int]] = []
+    for lo, hi in spans:
+        if merged and lo <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+        else:
+            merged.append((lo, hi))
+    return merged
+
+
+def cut_blocks(
+    blocks: Sequence[Block], spans: Sequence[tuple[int, int]]
+) -> tuple[list[Block], tuple[Event, ...]]:
+    """``blocks`` without the samples in ``spans``: the samples after a cut keep
+    their index (rule 8), and a boundary event marks each cut that has signal
+    after it (its duration: the samples cut). Strips after it restart there
+    (``Stage.restart``), so nothing leaks across."""
+    out: list[Block] = []
+    for block in blocks:
+        start = block.sample_index
+        for lo, hi in spans:
+            if hi <= start or lo >= block.stop_index:
+                continue
+            if lo > start:
+                out.append(block.slice(start, lo))
+            start = max(start, hi)
+        if start < block.stop_index:
+            out.append(block.slice(start, block.stop_index))
+    first = blocks[0].sample_index if blocks else 0
+    stop = blocks[-1].stop_index if blocks else 0
+    boundaries = tuple(Event(hi, BOUNDARY, hi - lo, {"origin": "review"})
+                       for lo, hi in spans if first < hi < stop)  # fmt: skip
+    return out, boundaries
+
+
 def offered_labels(params: Params, seen: Sequence[str]) -> tuple[str, ...]:
-    own = [s.strip() for s in str(params["labels"]).split(",") if s.strip()]
-    return tuple(dict.fromkeys([*own, *sorted(set(seen))]))
+    own = _words(params["labels"])
+    return tuple(dict.fromkeys([*own, *sorted(set(seen) - {BOUNDARY})]))
 
 
 _SAFE = re.compile(r"[^A-Za-z0-9]")

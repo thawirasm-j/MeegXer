@@ -13,10 +13,19 @@ nodes are refused.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
-from meegxer.core.block import Block, Event, EventBlock, FeatureBlock, concat_blocks
+import numpy as np
+
+from meegxer.core.block import (
+    Block,
+    Event,
+    EventBlock,
+    FeatureBlock,
+    contiguous_runs,
+)
 from meegxer.core.cache import Cache, CachedOutput
 from meegxer.core.events import EventsRail
 from meegxer.core.graph import Graph, GraphError, GraphNode
@@ -47,10 +56,12 @@ from meegxer.core.review import (
     ReviewNeeded,
     ReviewRequest,
     ReviewStrip,
+    cut_blocks,
     load_review,
     marks_to_events,
     now_iso,
     offered_labels,
+    rejected_spans,
     review_path,
     save_review,
 )
@@ -131,7 +142,10 @@ class BatchResult:
     outputs are kept as block lists.
     """
 
-    outputs: dict[str, Block | list[FeatureBlock]] = field(default_factory=dict)
+    # kept streams: one Block, or its pieces when a review strip cut it
+    outputs: dict[str, Block | list[Block] | list[FeatureBlock]] = field(
+        default_factory=dict
+    )
     events: dict[str, tuple[Event, ...]] = field(default_factory=dict)
     fingerprints: dict[str, str] = field(default_factory=dict)
     computed: list[str] = field(default_factory=list)
@@ -261,7 +275,10 @@ class BatchScheduler:
             # recording's only; the fit sees everything on the rail to its left
             assert self._graph is not None
             trials = self._rail.visible_to(self._graph, node.id, sfreq=rate)
-            calibration = self._calibration(signal_in)
+            calibration, trials = self._calibration(signal_in, trials)
+            if len(contiguous_runs(signal_in)) > 1 and stage.manifest.rail_inputs:
+                raise GraphError(f"{node.id}: a strip reading rails cannot fit on "
+                                 "a stream cut by a review strip (yet)")  # fmt: skip
             rails = self._rails_for(node, calibration.sample_index,
                                     calibration.stop_index, rate)  # fmt: skip
             stage.fit(calibration, input_fp, trials, rails)
@@ -283,11 +300,20 @@ class BatchScheduler:
                 return list(split_block(hit.block, self.block_size))
 
         if stage.manifest.availability == "offline" and len(signal_in) > 1:
-            signal_in = [concat_blocks(signal_in)]  # offline nodes see everything
+            # offline nodes see everything: every piece between cuts at once
+            signal_in = contiguous_runs(signal_in)
         stage.state = None  # a batch run always starts the stream from scratch
         out: Stream = []
         events: list[Event] = []
+        previous: Block | None = None
         for block in signal_in:
+            if previous is not None and block.sample_index != previous.stop_index:
+                cut = stage.restart(input_fp)  # a cut: nothing leaks across it
+                if cut is not None:
+                    out.extend(_non_empty(cut.block))
+                    events.extend(cut.events)
+                    self._keep_rails(node.id, cut)
+            previous = block
             rails = self._rails_for(
                 node, block.sample_index, block.stop_index, block.info.sfreq
             )
@@ -300,12 +326,20 @@ class BatchScheduler:
             out.extend(_non_empty(tail.block))
             events.extend(tail.events)
             self._keep_rails(node.id, tail)
+        if isinstance(stage.processor, ReviewStrip):  # rejected spans go
+            spans = rejected_spans(stage.processor.marks, stage.params)
+            kept, boundaries = cut_blocks([b for b in out if isinstance(b, Block)],
+                                          spans)  # fmt: skip
+            out = list(kept)
+            events.extend(boundaries)
         result.events[node.id] = tuple(events)
         self._rail.add(events, node.id, rate)  # counted on its input's clock
         result.computed.append(node.id)
-        if cacheable and self.cache is not None and out:
-            joined = concat_blocks([b for b in out if isinstance(b, Block)])
-            self.cache.put(output_fp, CachedOutput(joined, tuple(events)))
+        signal_out = [b for b in out if isinstance(b, Block)]
+        if cacheable and self.cache is not None and signal_out:
+            runs = contiguous_runs(signal_out)
+            if len(runs) == 1:  # a cut stream is not cached (one block each)
+                self.cache.put(output_fp, CachedOutput(runs[0], tuple(events)))
         return out
 
     def _review_marks(
@@ -385,9 +419,8 @@ class BatchScheduler:
                 written = self._written.get((producer, output), [])
                 if port.type is PortType.SIGNAL:
                     joined = [b for b in written if isinstance(b, Block)]
-                    if joined:
-                        whole = concat_blocks(joined)
-                        buffer.add(whole, whole.stop_index)
+                    for piece in contiguous_runs(joined):  # one unless cut
+                        buffer.add(piece, piece.stop_index)
                 else:
                     windows = tuple(w for w in written if isinstance(w, FeatureBlock))
                     buffer.add(windows, UNBOUNDED)
@@ -399,16 +432,37 @@ class BatchScheduler:
                 raise GraphError(f"{node.id}: rail {port.name!r}: {exc}") from exc
         return rails
 
-    def _calibration(self, blocks: Sequence[Block]) -> Block:
+    def _calibration(
+        self, blocks: Sequence[Block], events: Sequence[Event] = ()
+    ) -> tuple[Block, tuple[Event, ...]]:
+        """What a fit sees: the input, its pieces joined when a review strip
+        cut it (the samples renumbered from the first, and the events in the
+        pieces with them; those in a cut are left out)."""
         if not blocks:
             raise GraphError("no data to calibrate on")
-        whole = concat_blocks(blocks)
-        if self.calibration_seconds is None:
-            return whole
-        n = round(self.calibration_seconds * whole.info.sfreq)
-        return whole.slice(
-            whole.sample_index, min(whole.stop_index, whole.sample_index + n)
-        )
+        runs = contiguous_runs(blocks)
+        whole = runs[0]
+        kept = tuple(events)
+        if len(runs) > 1:
+            data = np.concatenate([r.data for r in runs], axis=1)
+            whole = Block(data, whole.info, whole.sample_index, whole.timestamp)
+            moved: list[Event] = []
+            offset = 0  # samples cut so far
+            for prev, run in zip([None, *runs[:-1]], runs, strict=True):
+                if prev is not None:
+                    offset += run.sample_index - prev.stop_index
+                moved.extend(
+                    dataclasses.replace(e, sample_index=e.sample_index - offset)
+                    for e in events
+                    if run.sample_index <= e.sample_index < run.stop_index
+                )
+            kept = tuple(moved)
+        if self.calibration_seconds is not None:
+            n = round(self.calibration_seconds * whole.info.sfreq)
+            whole = whole.slice(
+                whole.sample_index, min(whole.stop_index, whole.sample_index + n)
+            )
+        return whole, kept
 
     @staticmethod
     def _release(
@@ -430,7 +484,8 @@ class BatchScheduler:
             return
         signal_blocks = [b for b in stream if isinstance(b, Block)]
         if signal_blocks and len(signal_blocks) == len(stream):
-            result.outputs[node_id] = concat_blocks(signal_blocks)
+            runs = contiguous_runs(signal_blocks)  # the pieces of a cut stream
+            result.outputs[node_id] = runs[0] if len(runs) == 1 else runs
         else:
             result.outputs[node_id] = [b for b in stream if isinstance(b, FeatureBlock)]
 

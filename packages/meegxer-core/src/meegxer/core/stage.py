@@ -359,6 +359,15 @@ class Stage:
             result = result._replace(block=self._join(labels, result.block))
         return result
 
+    def restart(self, input_fp: str) -> TransformResult | None:
+        """A cut in the stream (a review strip rejected a span, docs/REVIEW.md):
+        hand over what a delaying processor still holds, then start the next
+        piece from scratch, so nothing leaks across the cut."""
+        tail = self.flush(input_fp)
+        self.state = None
+        self._rest = []
+        return tail
+
     def _join(self, selected: tuple[str, ...], processed: Block) -> Block:
         """Merge processed channels with the untouched ones over the samples the
         processor returned (which may lag its input: a delaying node)."""

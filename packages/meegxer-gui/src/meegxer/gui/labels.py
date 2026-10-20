@@ -22,6 +22,7 @@ PARAMS: dict[str, str] = {
     "path": "File",
     "file": "Marks file",  # the review strip's sidecar
     "labels": "Labels offered",
+    "reject": "Cut out labels starting with",
     "root": "Dataset folder",
     "subject": "Subject",
     "session": "Session",

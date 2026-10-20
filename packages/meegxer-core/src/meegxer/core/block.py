@@ -271,6 +271,26 @@ def concat_blocks(blocks: Sequence[Block]) -> Block:
     return Block(data, first.info, first.sample_index, first.timestamp, bypassed)
 
 
+def contiguous_runs(blocks: Sequence[Block]) -> list[Block]:
+    """Blocks of one stream joined where they are contiguous: one block per
+    stretch between gaps (a stream cut by a review strip, docs/REVIEW.md)."""
+    runs: list[list[Block]] = []
+    for block in blocks:
+        if runs and block.sample_index == runs[-1][-1].stop_index:
+            runs[-1].append(block)
+        else:
+            runs.append([block])
+    return [run[0] if len(run) == 1 else concat_blocks(run) for run in runs]
+
+
+def gaps_of(blocks: Sequence[Block]) -> list[tuple[int, int]]:
+    """The cuts in a stream: ``[stop, start)`` of the samples missing between
+    one block and the next."""
+    return [(prev.stop_index, nxt.sample_index)
+            for prev, nxt in itertools.pairwise(blocks)
+            if nxt.sample_index > prev.stop_index]  # fmt: skip
+
+
 def align_blocks(reference: Block, other: Block) -> tuple[Block, Block]:
     """Overlay two blocks by sample index and channel label.
 

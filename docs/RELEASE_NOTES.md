@@ -7,6 +7,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Rejected spans are cut out** (Review strip, `reject` parameter, default
+  `BAD`). The samples after a cut keep their index and a `boundary` event marks
+  the cut. Every strip after it restarts per piece, so filters don't leak
+  across a cut, and fitted strips learn from the kept samples only. `.set`,
+  EDF and BIDS outputs save the joined pieces with boundary events; BIDS
+  `events.tsv` onsets follow the processed recording's time
+  (`docs/REVIEW.md`).
 - **Review strip** (Event detection): mark a recording by hand: bad segments
   (`BAD_muscle`, …), states, any label over a span. The marks go on the Events
   rail for the strips after it, and are saved next to each recording (in its

@@ -54,13 +54,44 @@ Built (PR 1, continuous marks):
     `NOT REVIEWED`, ends with a warning listing them, and exits with code 2
     (1 if a recording failed).
 
+Built (PR 2, cuts):
+
+- **Rejected spans are cut out.** A mark whose label starts with one of the
+  strip's `reject` words (default `BAD`; empty: nothing is cut) is removed
+  from the signal. Overlapping spans are merged first.
+- **Samples keep their index (rule 8).** After a cut the stream simply has a
+  gap: taps before and after the strip still line up, and every event keeps
+  its index. A `boundary` event (EEGLAB's name) sits at the first sample after
+  each cut; its duration is the number of samples cut.
+- **Nothing leaks across a cut.** At each gap the batch scheduler restarts
+  every strip after the review strip (`Stage.restart`):
+  - A delaying node hands over its tail (`flush`).
+  - Streaming state is dropped, and the next piece starts fresh, exactly as
+    if it were a recording of its own.
+  - Offline nodes (zero-phase filters) run on each piece separately.
+  - Fitted nodes (ICA, CSP) fit on the pieces joined, with the events in them.
+  This needs no change in any node, plugin or custom script.
+- **Not yet:** a strip that reads rails cannot fit on a cut stream (it says
+  so), and a cut output is not cached.
+- **Writers** save the pieces joined:
+  - `.set` and EDF get a `boundary` event at each cut (also after a crash
+    recovery).
+  - The BIDS writer's `events.tsv` gives onsets on the processed recording's
+    time: events inside a cut are left out, and a `boundary` row marks each
+    cut.
+- **Offline views** show a cut as a gap.
+
 Next:
 
-1. **Epochs side rail** (M10): epochs cut around events, as a rail.
-2. **Epoch review:** the same strip pulls epochs from that rail. Mark each one
+1. **Stacked review window:** the stacked view with tools below it to
+   annotate and reject spans, and the reviewed and not-yet-reviewed parts
+   shown in different colours.
+2. **Epochs side rail** (M10): epochs cut around events, as a rail.
+3. **Epoch review:** the same strip pulls epochs from that rail. Mark each one
    good or rejected, or give it a label (new or an existing event type).
-   Rejected epochs go on the rail as marks.
-3. **Live marks:** hotkeys add marks to the Events rail while recording.
+   A rejected epoch drops from the Epochs rail only; the continuous
+   signal stays whole.
+4. **Live marks:** hotkeys add marks to the Events rail while recording.
 
 Automated rejection needs no new machinery. A strip or a custom script emits
 events labelled `BAD_…` (amplitude, flatline, …); later strips choose which
