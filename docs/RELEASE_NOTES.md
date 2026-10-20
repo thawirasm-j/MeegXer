@@ -7,6 +7,21 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Review strip** (Event detection): mark a recording by hand: bad segments
+  (`BAD_muscle`, …), states, any label over a span. The marks go on the Events
+  rail for the strips after it, and are saved next to each recording (in its
+  BIDS derivatives for a BIDS input) as a BIDS events file, with what they
+  were made on.
+  - An offline run in the GUI pauses at the strip: the views show everything
+    before it, and a review window marks spans dragged on the signal view. In
+    an all-subjects run, it pauses at each recording not yet reviewed.
+  - If something upstream changes later, the next run asks you to confirm the
+    marks again.
+  - The CLI stops an unreviewed recording at the strip, says so, and exits with
+    code 2 (`docs/REVIEW.md`).
+  - Control API 0.2.8: `submit_review`, `cancel_review`, offline `state`
+    `review`.
+
 - **Resample** strip (Filters): change the sampling rate by an exact ratio
   of the rates (e.g. 1000 → 250 Hz, 500 → 256 Hz) with a linear-phase
   polyphase FIR, the same samples as `scipy.signal.resample_poly`, live and

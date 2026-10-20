@@ -74,6 +74,7 @@ CATEGORIES = {
     "meegxer.core.bids_features": "files",
     "meegxer.core.lsl_out": "streams",
     "meegxer.core.lsl_features_out": "streams",
+    "meegxer.core.review": "events",
 }
 
 

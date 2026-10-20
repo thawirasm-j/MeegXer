@@ -124,3 +124,18 @@ def test_a_plain_file_writer_is_left_out_of_a_dataset_run(tmp_path: Path) -> Non
     assert "done 2, skipped 0, failed 0" in result.output
     assert result.output.count("note: out: not written") == 2
     assert not (tmp_path / "one.set").exists()  # each would overwrite the last
+
+
+def test_unreviewed_recordings_stop_at_the_review_strip(tmp_path: Path) -> None:
+    root = dataset(tmp_path / "ds", ("01", "02"))
+    pipe = tmp_path / "review.json"
+    pipe.write_text(json.dumps({"spec_version": SPEC_VERSION, "nodes": [
+        {"id": "input", "node": "meegxer.core.synthetic"},
+        {"id": "rev", "node": "meegxer.core.review"},
+    ]}))  # fmt: skip
+    result = runner.invoke(app, ["run", str(pipe), "--bids", str(root)])
+    assert result.exit_code == 2, result.output
+    assert "sub-01_task-rest: NOT REVIEWED" in result.output
+    assert "warning: 2 not reviewed" in result.output
+    deriv = root / "derivatives" / "meegxer"
+    assert not list(deriv.rglob("*_eeg.set"))  # nothing processed past the strip

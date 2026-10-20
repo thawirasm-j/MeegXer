@@ -20,6 +20,8 @@ PARAMS: dict[str, str] = {
     "seed": "Random seed",
     "start_time": "Start time",
     "path": "File",
+    "file": "Marks file",  # the review strip's sidecar
+    "labels": "Labels offered",
     "root": "Dataset folder",
     "subject": "Subject",
     "session": "Session",

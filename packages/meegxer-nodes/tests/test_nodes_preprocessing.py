@@ -210,6 +210,7 @@ def test_every_built_in_processor_and_sink_has_a_category() -> None:
         assert manifest.references or name in (
             "meegxer.nodes.rereference", "meegxer.nodes.pick_channels",
             "meegxer.core.probe", "meegxer.core.feature_probe",
+            "meegxer.core.review",  # a person marks; no method to cite
         ) or manifest.role in ("source", "sink"), name  # fmt: skip
     for name, category in (("meegxer.nodes.fir_filter", "filters"),
                            ("meegxer.nodes.csd", "reference"),

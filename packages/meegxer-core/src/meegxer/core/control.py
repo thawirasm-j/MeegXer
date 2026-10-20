@@ -173,6 +173,8 @@ class Daemon:
             "run_offline": self.run_offline,
             "offline_window": self.offline_window,
             "offline_features": self.offline_features,
+            "submit_review": self.submit_review,
+            "cancel_review": self.cancel_review,
             "unfinished_recordings": self.unfinished_recordings,
             "recover_recording": self.recover_recording,
             "shutdown": self.shutdown,
@@ -454,7 +456,7 @@ class Daemon:
         files. Independent of the live pipeline, but not while it runs."""
         if self._scheduler is not None and self._scheduler.running:
             raise RuntimeError("stop the live pipeline before an offline run")
-        if self._offline is not None and self._offline.state == "running":
+        if self._offline is not None and self._offline.busy:
             raise RuntimeError("an offline run is already in progress")
         graph = Graph.from_dict(pipeline, self.registry)
         if is_all_subjects(graph.source.impl):  # models fitted per recording
@@ -471,6 +473,22 @@ class Daemon:
         self._offline = job
         job.start()
         return job.status()
+
+    def submit_review(self, marks: list[dict[str, Any]]) -> dict[str, Any]:
+        """The marks for the review strip the offline run waits at (state
+        ``review``): saved to its sidecar, and the run goes on."""
+        if self._offline is None:
+            raise RuntimeError("no offline run")
+        self._offline.submit_review(marks)
+        return self._offline.status()
+
+    def cancel_review(self) -> dict[str, Any]:
+        """Stop the offline run waiting at a review strip (nothing saved)."""
+        if self._offline is None:
+            raise RuntimeError("no offline run")
+        self._offline.cancel_review()
+        self._offline.join(5)
+        return self._offline.status()
 
     def offline_window(
         self, probe: str, start: int, n_samples: int, max_bins: int = 2000
