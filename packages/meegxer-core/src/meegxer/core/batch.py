@@ -40,6 +40,20 @@ from meegxer.core.rails import (
     with_rails,
 )
 from meegxer.core.recording import recording_events
+from meegxer.core.review import (
+    Mark,
+    Review,
+    ReviewCallback,
+    ReviewNeeded,
+    ReviewRequest,
+    ReviewStrip,
+    load_review,
+    marks_to_events,
+    now_iso,
+    offered_labels,
+    review_path,
+    save_review,
+)
 from meegxer.core.serialization import canonical_json, fingerprint
 from meegxer.core.stage import Stage, StageStatus, labelled_input, signal_fingerprint
 
@@ -134,12 +148,16 @@ class BatchScheduler:
         block_size: int | None = None,
         cache: Cache | None = None,
         calibration_seconds: float | None = None,
+        review: ReviewCallback | None = None,
     ) -> None:
         if block_size is not None and block_size < 1:
             raise ValueError("block_size must be >= 1")
         self.block_size = block_size
         self.cache = cache
         self.calibration_seconds = calibration_seconds
+        # asked for the marks of a review strip with no current review
+        # (docs/REVIEW.md); without it such a recording stops (ReviewNeeded)
+        self.review = review
         self._events: tuple[Event, ...] = ()  # the recording's, for labelled fits
         self._rail = EventsRail()  # those plus what strips emit (docs/RAILS.md)
         self._graph: Graph | None = None
@@ -234,6 +252,9 @@ class BatchScheduler:
         if len(signal_in) != len(upstream):
             raise GraphError(f"{node.id}: processors take Signal input in v1")
         rate = signal_in[0].info.sfreq if signal_in else None  # after a resampler
+        if isinstance(stage.processor, ReviewStrip):  # its marks are its output
+            marks = self._review_marks(node, stage, input_fp, signal_in, rate or 0.0)
+            input_fp = labelled_input(input_fp, marks)
 
         if stage.status(input_fp) is not StageStatus.READY:
             # upstream strips' events follow from input_fp, so it names the
@@ -286,6 +307,42 @@ class BatchScheduler:
             joined = concat_blocks([b for b in out if isinstance(b, Block)])
             self.cache.put(output_fp, CachedOutput(joined, tuple(events)))
         return out
+
+    def _review_marks(
+        self,
+        node: GraphNode,
+        stage: Stage,
+        input_fp: str,
+        signal_in: Sequence[Block],
+        rate: float,
+    ) -> tuple[Event, ...]:
+        """The marks of a review strip: its sidecar's when made on this input,
+        else a review asked for (docs/REVIEW.md), saved to the sidecar."""
+        assert self._graph is not None and isinstance(stage.processor, ReviewStrip)
+        try:
+            path = review_path(self._graph, node.id, stage.params)
+        except ValueError as exc:
+            raise GraphError(str(exc)) from exc
+        saved = load_review(path)
+        marks: tuple[Mark, ...]
+        if saved is not None and saved.upstream == input_fp:
+            marks = saved.marks
+        else:
+            seen = self._rail.visible_to(self._graph, node.id, sfreq=rate or None)
+            request = ReviewRequest(
+                node.id, path, input_fp,
+                "input changed" if saved is not None else "not reviewed",
+                saved.marks if saved is not None else (),
+                offered_labels(stage.params, [e.label for e in seen]),
+                sum(b.n_samples for b in signal_in) / rate if rate else 0.0,
+            )  # fmt: skip
+            if self.review is None:
+                raise ReviewNeeded(request)
+            marks = tuple(self.review(request))
+            save_review(path, Review(marks, input_fp, now_iso()), node.id)
+        events = marks_to_events(marks, rate)
+        stage.processor.marks = events
+        return events
 
     def _rail_streams(
         self, node: GraphNode, streams: dict[str, Stream], result: BatchResult

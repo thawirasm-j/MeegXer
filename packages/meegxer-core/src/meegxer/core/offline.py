@@ -40,6 +40,7 @@ from meegxer.core.graph import Graph, GraphError
 from meegxer.core.node import AnyBlock, Probe
 from meegxer.core.passband import filters_wire
 from meegxer.core.probes import FeatureProbe, MemoryProbe
+from meegxer.core.review import Mark, ReviewCancelled, ReviewRequest
 from meegxer.core.sources import BidsSource
 from meegxer.core.stage import Stage
 
@@ -290,6 +291,11 @@ class OfflineJob:
         self.probes: dict[str, ProbeStore] = {}
         self.features: dict[str, FeatureStore] = {}
         self._thread: threading.Thread | None = None
+        # a review strip waiting for its marks (docs/REVIEW.md): the run thread
+        # waits on the event; submit_review or cancel_review answers it
+        self.review_request: ReviewRequest | None = None
+        self._review_reply: list[Mark] | None = None
+        self._review_answered = threading.Event()
         if not self.recordings:
             self._attach_stores(graph)
 
@@ -319,10 +325,36 @@ class OfflineJob:
         self.sfreq = float(source.info.sfreq)  # type: ignore[union-attr]
         self.store_folder.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        result = BatchScheduler(cache=DirectoryCache(self.cache_dir)).run(graph)
+        result = BatchScheduler(cache=DirectoryCache(self.cache_dir),
+                                review=self._await_review).run(graph)  # fmt: skip
         for store in self.probes.values():
             store.close()
         return result
+
+    def _await_review(self, request: ReviewRequest) -> list[Mark]:
+        """Pause at a review strip until the GUI sends the marks (the views show
+        what the run has computed so far: everything before the strip)."""
+        self._review_reply = None
+        self._review_answered.clear()
+        self.review_request, self.state = request, "review"
+        self._review_answered.wait()
+        self.review_request = None
+        if self._review_reply is None:
+            raise ReviewCancelled("the review was cancelled")
+        self.state = "running"
+        return self._review_reply
+
+    def submit_review(self, marks: list[dict[str, Any]]) -> None:
+        """The marks for the strip the run waits at; the run goes on."""
+        if self.review_request is None:
+            raise RuntimeError("no review is waiting")
+        self._review_reply = [Mark.from_wire(m) for m in marks]
+        self._review_answered.set()
+
+    def cancel_review(self) -> None:
+        """Stop the run at the strip it waits at (nothing is saved)."""
+        self._review_reply = None
+        self._review_answered.set()
 
     def _run_recordings(self) -> None:
         """Every recording in turn. A finished one (its session file exists) is
@@ -347,6 +379,8 @@ class OfflineJob:
             self.graph = graph
             try:
                 result = self._run_graph(graph)
+            except ReviewCancelled:
+                raise  # the person reviewing stopped the whole run
             except Exception as exc:  # one bad recording does not stop the others
                 traceback.print_exc()
                 failed.append(f"{prepared.label}: {type(exc).__name__}: {exc}")
@@ -364,6 +398,8 @@ class OfflineJob:
             else:
                 self.skipped = self._run_graph(self.graph).skipped
             self.state = "done"
+        except ReviewCancelled as exc:
+            self.state, self.error = "error", str(exc)
         except Exception as exc:
             traceback.print_exc()
             self.state, self.error = "error", f"{type(exc).__name__}: {exc}"
@@ -373,9 +409,12 @@ class OfflineJob:
 
     def status(self) -> dict[str, Any]:
         end = self.finished if self.state in ("done", "error") else time.monotonic()
+        request = self.review_request
         return {
             "state": self.state,
             "error": self.error,
+            # state "review": the strip waiting for marks (docs/REVIEW.md)
+            "review": request.to_wire() if request is not None else None,
             "skipped": list(self.skipped),
             # an all-subjects BIDS run: the recording being run (counted from
             # 1), of how many, and how each went
@@ -430,8 +469,13 @@ class OfflineJob:
             raise KeyError(f"no offline features for probe {probe!r} (yet)")
         return {"probe": probe, **store.windows(start, stop, max_windows, reduce)}
 
+    @property
+    def busy(self) -> bool:
+        return self.state in ("running", "review")
+
     def discard(self) -> None:
         """Delete this run's files (after the run has stopped)."""
+        self.cancel_review()
         self.join(5)
         self.probes.clear()
         shutil.rmtree(self.folder, ignore_errors=True)

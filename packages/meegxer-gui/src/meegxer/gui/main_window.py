@@ -63,6 +63,7 @@ from meegxer.gui.labels import param_label
 from meegxer.gui.names import title
 from meegxer.gui.pipeline_doc import LIVE_ONLY_SOURCES, PipelineDoc, tap_id
 from meegxer.gui.recording_window import RecordingWindow
+from meegxer.gui.review_window import ReviewWindow
 from meegxer.gui.settings_dialog import SettingsDialog
 from meegxer.gui.signal_view import Panner, SignalView, StackedWindow, Window
 from meegxer.gui.theme import Theme, load_theme, stylesheet
@@ -123,6 +124,8 @@ class MainWindow(QMainWindow):
         self.offline_sfreq = 0.0
         self.offline_total = 0
         self.offline_state = ""
+        self.review_window: ReviewWindow | None = None  # a review strip waits
+        self._answered: dict[str, Any] | None = None  # until the run moves on
         self.offline_recordings: dict[str, Any] = {}  # an all-subjects BIDS run
         self._feature_cache: dict[str, tuple[tuple[Any, ...], FeatureSeries]] = {}
         self._offline_cache: dict[str, tuple[tuple[int, int, int], Window]] = {}
@@ -448,7 +451,8 @@ class MainWindow(QMainWindow):
     def _transport(self) -> None:
         live = self.doc.mode == "live"
         self.start_btn.setText("▶  Start" if live else "▶  Run offline")
-        self.start_btn.setEnabled(not self.running and self.offline_state != "running")
+        busy = self.offline_state in ("running", "review")
+        self.start_btn.setEnabled(not self.running and not busy)
         self.stop_btn.setVisible(live)
         self.stop_btn.setEnabled(self.running)
 
@@ -1079,6 +1083,7 @@ class MainWindow(QMainWindow):
                          f"{recordings['current']}")  # fmt: skip
         self.offline_recordings = recordings
         state = offline.get("state", "")
+        self._review(offline.get("review") if state == "review" else None)
         if state == self.offline_state:
             return
         self.offline_state = state
@@ -1096,6 +1101,46 @@ class MainWindow(QMainWindow):
         elif state == "error":
             self.log(f"Offline run failed: {offline.get('error')}")
         self._transport()
+
+    def _review(self, request: dict[str, Any] | None) -> None:
+        """Open the review window while the offline run waits at a review strip
+        (docs/REVIEW.md); close it when the run no longer waits."""
+        window = self.review_window
+        if request is not None and request == self._answered:
+            return  # answered; the run has not picked the answer up yet
+        if request is None:
+            self._answered = None
+            if window is not None:
+                window.answered = True  # answered elsewhere, or the run ended
+                window.close()
+                self.review_window = None
+            return
+        if window is not None and window.request == request:
+            return
+        if window is not None:  # the next strip, or the next recording
+            window.answered = True
+            window.close()
+        current = self.offline_recordings.get("current", "")
+        self.log(f"Review needed at {request['node']!r}"
+                 + (f" for {current}" if current else "")
+                 + f" ({request['reason']}); the run waits.")  # fmt: skip
+        self.review_window = ReviewWindow(
+            request, self.view, self.theme,
+            submit=lambda marks: self._answer_review("submit_review", marks=marks),
+            cancel=lambda: self._answer_review("cancel_review"),
+            recording=current,
+        )  # fmt: skip
+        self.review_window.show()
+        self.review_window.raise_()
+
+    def _answer_review(self, method: str, **params: Any) -> None:
+        if self.review_window is not None:
+            self._answered = self.review_window.request
+        self.review_window = None
+        if self.call(method, **params) is not None:
+            n = len(params.get("marks", []))
+            saved = f"Review saved ({n} mark{'s' if n != 1 else ''}); the run goes on."
+            self.log(saved if method == "submit_review" else "Review cancelled.")
 
     def _meters(self, status: dict[str, Any]) -> None:
         m = self.meters

@@ -102,6 +102,7 @@ def run(
     from meegxer.core.graph import GraphError
     from meegxer.core.node import Sink
     from meegxer.core.registry import Registry
+    from meegxer.core.review import ReviewNeeded
     from meegxer.core.session import (
         SessionError,
         adopt_models,
@@ -173,6 +174,9 @@ def run(
                     outputs=sink_outputs(graph),
                 ),
             )
+    except ReviewNeeded as exc:  # nothing past the strip runs unreviewed
+        typer.echo(f"warning: not reviewed, stopped: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
     except (
         GraphError,
         SessionError,
@@ -222,6 +226,7 @@ def _run_bids(
     from meegxer.core.bids_out import find_recordings
     from meegxer.core.cache import DirectoryCache
     from meegxer.core.registry import Registry
+    from meegxer.core.review import ReviewNeeded
     from meegxer.core.session import adopt_models, load_session, read_session
 
     try:
@@ -239,7 +244,7 @@ def _run_bids(
         raise typer.Exit(code=1)
     registry = Registry.from_entry_points()
     cache = DirectoryCache(cache_dir) if cache_dir else None
-    done, skipped, failed = [], [], []
+    done, skipped, failed, unreviewed = [], [], [], []
     for i, params in enumerate(recordings, 1):
         label = recording_label(params)
         prefix = f"[{i}/{len(recordings)}] {label}"
@@ -262,6 +267,10 @@ def _run_bids(
                 typer.echo(f"{prefix}: note: {note}")
             adopt_models(loaded, offline_input_fingerprints(graph))
             result = BatchScheduler(block_size=block_size, cache=cache).run(graph)
+        except ReviewNeeded as exc:  # stopped at the strip; the others go on
+            unreviewed.append(label)
+            typer.echo(f"{prefix}: NOT REVIEWED, stopped: {exc}", err=True)
+            continue
         except Exception as exc:  # one bad recording does not stop the others
             failed.append(label)
             typer.echo(f"{prefix}: FAILED: {exc}", err=True)
@@ -271,8 +280,14 @@ def _run_bids(
         typer.echo(f"{prefix}: wrote {target.path('eeg.set')}{fitted}")
     typer.echo(f"done {len(done)}, skipped {len(skipped)}, failed {len(failed)}"
                + (f": {', '.join(failed)}" if failed else ""))  # fmt: skip
+    if unreviewed:  # said last, so it is not missed
+        typer.echo(f"warning: {len(unreviewed)} not reviewed, so not processed "
+                   f"past the review strip: {', '.join(unreviewed)}; review them "
+                   "in the GUI (an offline run pauses for each)", err=True)  # fmt: skip
     if failed:
         raise typer.Exit(code=1)
+    if unreviewed:
+        raise typer.Exit(code=2)
 
 
 session_app = typer.Typer(no_args_is_help=True, help="Session files (reproducibility).")

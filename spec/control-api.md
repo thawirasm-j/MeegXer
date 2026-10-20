@@ -1,4 +1,4 @@
-# MeegXer control API (0.2.7, unstable)
+# MeegXer control API (0.2.8, unstable)
 
 JSON-RPC 2.0 over a ZeroMQ REQ/REP socket (CLAUDE.md rule 3). The daemon binds
 `tcp://127.0.0.1:5555` by default. Every request is one JSON object; every reply is
@@ -60,6 +60,8 @@ remote GUI).
 | `run_offline` | `pipeline` | offline status (below). Runs the pipeline over its whole, finite input in the background with the batch scheduler (offline variants such as the zero-phase band-pass apply). Its sinks write files. Its probes write their samples and min/max zoom levels to memory-mapped files in a temporary folder (`MEEGXER_OFFLINE_DIR`) as the run goes, so they can be viewed before it ends; the previous run's files are deleted. Processor outputs go to a disk cache capped at `MEEGXER_OFFLINE_CACHE_GB` (default 5). Fitted models of the previous offline run (or of the session loaded since) are reused where their fingerprint matches, otherwise refitted. Refused while the live pipeline runs or another offline run is in progress. **All subjects (0.2.7):** a BIDS input (`meegxer.core.bids`) with an empty `subject` stands for every recording of its dataset that matches its task, session and run; they run one after another as `meegxer run --bids` does (`spec/bids-derivatives.md`): each with a fresh graph and its own fitted models, its outputs in the dataset's BIDS derivatives (a BIDS writer is added if the chain has none; other file writers are left out, with a note in `skipped`), a recording whose session file exists skipped, one that fails not stopping the others. The probes show the recording being run, and at the end the last one (run even when finished, its files kept). The status's `recordings` is then `{index, total, current, done, skipped, failed}` (`index` counts from 1; `failed` entries carry the error) |
 | `offline_window` | `probe`, `start`, `n_samples`, `max_bins` (default 2000, ≤ 20000) | `{probe, ch_labels, sfreq, bin_size, start_bin, mins, maxs}`: min/max of samples `[start, start + n_samples)` of one probe of the current offline run in at most `max_bins` bins (`bin_size` 1 when zoomed in to single samples), clipped to what has been written; `mins`/`maxs` are channel × bin lists in volts (`null` where empty). Bin `k` covers samples `[k * bin_size, (k + 1) * bin_size)`, as on the display stream |
 | `offline_features` | `probe`, `start` (default 0), `stop` (default: the end), `max_windows` (default 2000), `reduce` (`none` or `mean`) | `{probe, dims, coords, n_windows, windows, values}` (plus `unit`, or `unit_dim` and `units`, when the node states them; spec 0.2.19): the windows of one Features probe of the current offline run that end in `(start, stop]` (source samples). `n_windows` counts them; `windows` lists `[start, stop)` and `values` the windows' values (nested lists by `dims`, `null` for NaN): at most `max_windows` of them, evenly picked, or with `mean` one entry, their mean over the whole range |
+| `submit_review` | `marks` (list of `{onset, duration, label}`, seconds from the recording's start) | offline status. **0.2.8:** answers the review strip the offline run waits at (`state` `review`): the marks are saved to its sidecar (`docs/REVIEW.md`) with the fingerprint of the strip's input, put on the Events rail, and the run goes on. Refused when no review is waiting |
+| `cancel_review` | – | offline status. **0.2.8:** stops the offline run waiting at a review strip (`state` `error`, `error` says it was cancelled); nothing is saved |
 | `unfinished_recordings` (0.2.6) | – | the recordings a run ended before writing (it crashed): `[{path, format, channels, seconds, modified}]`, from the spools the file writers leave (`path`: the file it was writing; `format`: `eeglab` or `edf`; `modified`: ISO 8601, UTC). A spool a running process still writes is not listed. The GUI offers to recover them when it starts |
 | `recover_recording` (0.2.6) | `path`, `discard` (default false) | `{path}`: writes an unfinished recording to `path`, or to `<name>_recovered<suffix>` when `path` exists, and removes its spool; with `discard` deletes the spool instead (`path: null`). Refused for a path `unfinished_recordings` does not list |
 | `shutdown` | – | `"bye"`; the daemon exits |
@@ -90,7 +92,12 @@ remote GUI).
 - `latency`: clock at the sinks minus the LSL timestamp of the block's last sample.
 - `source_*`: present when the source stream carries a `SAMPLE_INDEX` channel.
 - `offline`: present after `run_offline`: `{state, error, skipped, elapsed_s, n_samples,
-  sfreq, models, probes, features, recordings}`, where `state` is `running`, `done` or `error`,
+  sfreq, models, probes, features, recordings, review}`, where `state` is `running`,
+  `review` (0.2.8: the run waits at a review strip for `submit_review` or
+  `cancel_review`; `review` is then `{node, file, reason, marks, labels,
+  duration_s}`: `reason` `not reviewed` or `input changed`, `marks` those made on
+  another input, to confirm, `labels` the strip's and the input's event types;
+  otherwise `null`), `done` or `error`,
   `skipped` lists the saves a writer skipped because its file existed (without
   `overwrite`; the run still finished), `recordings` (0.2.7) is empty except for
   an all-subjects run (below), `n_samples` is the length of the input and
