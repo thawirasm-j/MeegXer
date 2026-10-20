@@ -11,7 +11,9 @@ Used by built-in tests now and the plugin conformance suite (M4).
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
+from fractions import Fraction
 
 import numpy as np
 
@@ -166,8 +168,16 @@ def check_blockwise_equivalence(
     reference, ref_events = _run(
         reference_stage, block, [block.n_samples], fp, rails, ref_written
     )
-    if reference.n_samples != block.n_samples:
-        raise ConformanceError("stream processors must return as many samples as given")
+    # as many samples as given, or (a rate change, rule 8) the span they cover
+    # at the new rate: index / rate is the same time on both sides
+    scale = Fraction(str(reference.info.sfreq)) / Fraction(str(block.info.sfreq))
+    first = math.ceil(block.sample_index * scale)
+    expected = math.ceil(block.stop_index * scale) - first
+    if (reference.sample_index, reference.n_samples) != (first, expected):
+        raise ConformanceError(
+            "stream processors must return as many samples as given "
+            f"(at a new rate, the same span: {expected} from sample {first})"
+        )
 
     rng = np.random.default_rng(seed)
     max_block = max_block or max(2, block.n_samples // 4)

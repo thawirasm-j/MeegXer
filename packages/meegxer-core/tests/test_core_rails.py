@@ -17,7 +17,7 @@ from meegxer.core.manifest import Manifest, ManifestError
 from meegxer.core.node import Params, Processor, RailInput, TransformResult
 from meegxer.core.ports import Port, PortType
 from meegxer.core.probes import MemoryProbe
-from meegxer.core.rails import RailBuffer, RailFeed
+from meegxer.core.rails import RailBuffer, RailError, RailFeed, check_rates
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.serialization import State
 from meegxer.core.sources import SyntheticSource
@@ -324,3 +324,10 @@ def test_a_node_can_take_a_rail_output_as_its_main_input() -> None:
     live = concat_blocks([b for b in live_probe.blocks if isinstance(b, Block)])
     assert live.sample_index == 0
     np.testing.assert_allclose(live.data, batch.data[:, : live.n_samples])
+
+
+def test_a_signal_rail_at_another_rate_is_refused() -> None:
+    rail = Block(np.zeros((1, 10)), SignalInfo(("IC1",), 250.0), 0, 0.0)
+    check_rates({"ics": rail, "events": ()}, 250.0)
+    with pytest.raises(RailError, match="before the rate changes"):
+        check_rates({"ics": rail}, 500.0)

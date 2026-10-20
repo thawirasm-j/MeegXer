@@ -363,6 +363,12 @@ class Stage:
         """Merge processed channels with the untouched ones over the samples the
         processor returned (which may lag its input: a delaying node)."""
         rest = concat_blocks(self._rest)
+        if processed.info.sfreq != rest.info.sfreq:
+            raise ValueError(
+                f"{self.manifest.name} changes the rate ({rest.info.sfreq:g} to "
+                f"{processed.info.sfreq:g} Hz), so it must process every channel: "
+                "the channels it leaves out would stay at the old rate"
+            )
         lo, hi = processed.sample_index, processed.stop_index
         if not rest.sample_index <= lo <= hi <= rest.stop_index:
             raise ValueError(

@@ -23,6 +23,7 @@ import time
 import traceback
 import warnings
 from collections.abc import Callable
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -170,8 +171,10 @@ class StoreProbe(Probe):
             return
         store = self.job.probes.get(self.probe_id)
         if store is None:
+            # a tap after a resampler holds the same span at its own rate
+            scale = Fraction(str(block.info.sfreq)) / Fraction(str(self.job.sfreq))
             store = ProbeStore(self.job.store_folder / self.probe_id, block.info,
-                               self.job.n_total)  # fmt: skip
+                               math.ceil(self.job.n_total * scale))  # fmt: skip
             self.job.probes[self.probe_id] = store
         store.write(block)
 
