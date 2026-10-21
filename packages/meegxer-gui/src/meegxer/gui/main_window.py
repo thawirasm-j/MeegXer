@@ -1124,14 +1124,16 @@ class MainWindow(QMainWindow):
         self.log(f"Review needed at {request['node']!r}"
                  + (f" for {current}" if current else "")
                  + f" ({request['reason']}); the run waits.")  # fmt: skip
-        self.review_window = ReviewWindow(
-            request, self.view, self.theme,
-            submit=lambda marks: self._answer_review("submit_review", marks=marks),
+        window = self.review_window = ReviewWindow(
+            request, self.theme,
+            submit=lambda marks, viewed: self._answer_review(
+                "submit_review", marks=marks, viewed=viewed),
             cancel=lambda: self._answer_review("cancel_review"),
             recording=current,
         )  # fmt: skip
-        self.review_window.show()
-        self.review_window.raise_()
+        window.setStyleSheet(stylesheet(self.theme, self.scale))
+        window.show()
+        window.raise_()
 
     def _answer_review(self, method: str, **params: Any) -> None:
         if self.review_window is not None:
@@ -1291,6 +1293,13 @@ class MainWindow(QMainWindow):
             self._draw_features()
             return
         main, comps = self._shown()
+        review = self.review_window
+        if review is not None and review.isVisible():  # the run waits for it
+            info = self.offline_probes.get(main) if main else None
+            info = info or next(iter(self.offline_probes.values()), None)
+            review.seek_rate = float(info["sfreq"]) if info else 0.0
+            provider = self._panned_provider(review.panner, review.seconds(), main)
+            review.refresh(self.view, provider, main, comps)
         if self.stacked.isVisible():  # the signal view rests meanwhile
             self.stacked.refresh(self.view, self._stacked_provider(main), main, comps)
             return

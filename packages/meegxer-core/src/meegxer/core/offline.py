@@ -40,7 +40,13 @@ from meegxer.core.graph import Graph, GraphError
 from meegxer.core.node import AnyBlock, Probe
 from meegxer.core.passband import filters_wire
 from meegxer.core.probes import FeatureProbe, MemoryProbe
-from meegxer.core.review import Mark, ReviewCancelled, ReviewRequest
+from meegxer.core.review import (
+    Mark,
+    ReviewAnswer,
+    ReviewCancelled,
+    ReviewRequest,
+    merge_spans,
+)
 from meegxer.core.sources import BidsSource
 from meegxer.core.stage import Stage
 
@@ -296,7 +302,7 @@ class OfflineJob:
         # a review strip waiting for its marks (docs/REVIEW.md): the run thread
         # waits on the event; submit_review or cancel_review answers it
         self.review_request: ReviewRequest | None = None
-        self._review_reply: list[Mark] | None = None
+        self._review_reply: ReviewAnswer | None = None
         self._review_answered = threading.Event()
         if not self.recordings:
             self._attach_stores(graph)
@@ -333,7 +339,7 @@ class OfflineJob:
             store.close()
         return result
 
-    def _await_review(self, request: ReviewRequest) -> list[Mark]:
+    def _await_review(self, request: ReviewRequest) -> ReviewAnswer:
         """Pause at a review strip until the GUI sends the marks (the views show
         what the run has computed so far: everything before the strip)."""
         self._review_reply = None
@@ -346,11 +352,16 @@ class OfflineJob:
         self.state = "running"
         return self._review_reply
 
-    def submit_review(self, marks: list[dict[str, Any]]) -> None:
-        """The marks for the strip the run waits at; the run goes on."""
+    def submit_review(
+        self, marks: list[dict[str, Any]], viewed: list[list[float]] | None = None
+    ) -> None:
+        """The marks for the strip the run waits at, and the spans looked at
+        (seconds); the run goes on."""
         if self.review_request is None:
             raise RuntimeError("no review is waiting")
-        self._review_reply = [Mark.from_wire(m) for m in marks]
+        self._review_reply = ReviewAnswer(
+            tuple(Mark.from_wire(m) for m in marks), merge_spans(viewed or [])
+        )
         self._review_answered.set()
 
     def cancel_review(self) -> None:

@@ -5,6 +5,20 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 (`docs/RELEASING.md`). Install or upgrade: `uv tool install --python 3.14
 --prerelease allow meegxer` (or `uv tool upgrade meegxer`).
 
+## Next (not released yet)
+
+- **Stacked review window:** the review window is now the stacked view of the
+  recording, with the review tools below it:
+  - A coverage bar shows the parts already looked at in green, rejected spans
+    in red and annotations in purple; click it to go there. *Next unreviewed*
+    (N) jumps to the first part not yet shown.
+  - *Annotate* (A) and *Reject* (R) mark the span under the band. Marks are
+    shaded on the traces with their label, and listed below (double-click to
+    show one, Delete to remove it). ←/→ page through the recording.
+  - Saving asks first if part of the recording was never shown. The spans
+    looked at are kept with the marks and shown again next time (control API
+    0.2.9).
+
 ## 0.3.1b3 (2026-10-20)
 
 - **Rejected spans are cut out** (Review strip, `reject` parameter, default

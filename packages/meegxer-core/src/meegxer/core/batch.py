@@ -52,6 +52,7 @@ from meegxer.core.recording import recording_events
 from meegxer.core.review import (
     Mark,
     Review,
+    ReviewAnswer,
     ReviewCallback,
     ReviewNeeded,
     ReviewRequest,
@@ -59,8 +60,10 @@ from meegxer.core.review import (
     cut_blocks,
     load_review,
     marks_to_events,
+    merge_spans,
     now_iso,
     offered_labels,
+    reject_words,
     rejected_spans,
     review_path,
     save_review,
@@ -369,11 +372,17 @@ class BatchScheduler:
                 saved.marks if saved is not None else (),
                 offered_labels(stage.params, [e.label for e in seen]),
                 sum(b.n_samples for b in signal_in) / rate if rate else 0.0,
+                reject_words(stage.params),
+                saved.viewed if saved is not None else (),
             )  # fmt: skip
             if self.review is None:
                 raise ReviewNeeded(request)
-            marks = tuple(self.review(request))
-            save_review(path, Review(marks, input_fp, now_iso()), node.id)
+            answer = self.review(request)
+            if not isinstance(answer, ReviewAnswer):  # just the marks
+                answer = ReviewAnswer(tuple(answer))
+            marks = tuple(answer.marks)
+            save_review(path, Review(marks, input_fp, now_iso(),
+                                     merge_spans(answer.viewed)), node.id)  # fmt: skip
         events = marks_to_events(marks, rate)
         stage.processor.marks = events
         return events

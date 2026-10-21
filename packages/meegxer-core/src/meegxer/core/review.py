@@ -69,6 +69,30 @@ class Review:
     marks: tuple[Mark, ...]
     upstream: str = ""  # fingerprint of the strip's input
     reviewed: str = ""  # when (ISO 8601, UTC)
+    viewed: tuple[tuple[float, float], ...] = ()  # spans looked at (s)
+
+
+Span = tuple[float, float]
+
+
+def merge_spans(spans: Sequence[Sequence[float]]) -> tuple[Span, ...]:
+    """Spans ``(start, stop)`` in seconds, sorted, overlapping ones merged."""
+    merged: list[Span] = []
+    for lo, hi in sorted((float(a), float(b)) for a, b in spans if b > a):
+        if merged and lo <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+        else:
+            merged.append((lo, hi))
+    return tuple(merged)
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewAnswer:
+    """What the person reviewing gives back: the marks, and the spans they
+    looked at (kept in the sidecar, shown as reviewed next time)."""
+
+    marks: tuple[Mark, ...]
+    viewed: tuple[Span, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,12 +106,15 @@ class ReviewRequest:
     previous: tuple[Mark, ...] = ()  # marks made on another input, to confirm
     labels: tuple[str, ...] = ()  # offered: the strip's, then the rail's
     duration_s: float = 0.0
+    reject: tuple[str, ...] = ()  # labels starting with these are cut out
+    viewed: tuple[Span, ...] = ()  # looked at in the review before
 
     def to_wire(self) -> dict[str, Any]:
         return {
             "node": self.node_id, "file": str(self.path), "reason": self.reason,
             "marks": [m.to_wire() for m in self.previous],
             "labels": list(self.labels), "duration_s": self.duration_s,
+            "reject": list(self.reject), "viewed": [list(v) for v in self.viewed],
         }  # fmt: skip
 
 
@@ -107,7 +134,7 @@ class ReviewCancelled(RuntimeError):
     """The person reviewing stopped the run."""
 
 
-ReviewCallback = Callable[[ReviewRequest], Sequence[Mark]]
+ReviewCallback = Callable[[ReviewRequest], "ReviewAnswer | Sequence[Mark]"]
 
 
 class ReviewStrip(Processor):
@@ -162,7 +189,7 @@ def _words(text: object) -> list[str]:
 def rejected_spans(events: Sequence[Event], params: Params) -> list[tuple[int, int]]:
     """The sample spans ``[start, stop)`` to cut: marks whose label starts with
     a ``reject`` word, overlapping ones merged."""
-    words = tuple(_words(params["reject"]))
+    words = reject_words(params)
     spans = sorted((e.sample_index, e.sample_index + e.duration) for e in events
                    if words and e.duration and e.label.startswith(words))  # fmt: skip
     merged: list[tuple[int, int]] = []
@@ -197,6 +224,10 @@ def cut_blocks(
     boundaries = tuple(Event(hi, BOUNDARY, hi - lo, {"origin": "review"})
                        for lo, hi in spans if first < hi < stop)  # fmt: skip
     return out, boundaries
+
+
+def reject_words(params: Params) -> tuple[str, ...]:
+    return tuple(_words(params["reject"]))
 
 
 def offered_labels(params: Params, seen: Sequence[str]) -> tuple[str, ...]:
@@ -252,7 +283,9 @@ def load_review(path: Path) -> Review | None:
     meta: dict[str, Any] = {}
     if _sidecar(path).is_file():
         meta = json.loads(_sidecar(path).read_text(encoding="utf-8")).get("MeegXer", {})
-    return Review(marks, str(meta.get("upstream", "")), str(meta.get("reviewed", "")))
+    viewed = merge_spans(meta.get("viewed", []))
+    return Review(marks, str(meta.get("upstream", "")), str(meta.get("reviewed", "")),
+                  viewed)  # fmt: skip
 
 
 def save_review(path: Path, review: Review, node_id: str) -> None:
@@ -269,7 +302,9 @@ def save_review(path: Path, review: Review, node_id: str) -> None:
         "duration": {"Description": "Length of the span", "Units": "s"},
         "trial_type": {"Description": "Label given in a manual review"},
         "MeegXer": {"strip": node_id, "upstream": review.upstream,
-                    "reviewed": review.reviewed},
+                    "reviewed": review.reviewed,
+                    # the spans looked at, in seconds from the recording's start
+                    "viewed": [[round(a, 6), round(b, 6)] for a, b in review.viewed]},
     }  # fmt: skip
     _sidecar(path).write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
