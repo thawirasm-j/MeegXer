@@ -474,12 +474,15 @@ class Daemon:
         job.start()
         return job.status()
 
-    def submit_review(self, marks: list[dict[str, Any]]) -> dict[str, Any]:
+    def submit_review(
+        self, marks: list[dict[str, Any]], viewed: list[list[float]] | None = None
+    ) -> dict[str, Any]:
         """The marks for the review strip the offline run waits at (state
-        ``review``): saved to its sidecar, and the run goes on."""
+        ``review``), and the spans looked at: saved to its sidecar, and the run
+        goes on."""
         if self._offline is None:
             raise RuntimeError("no offline run")
-        self._offline.submit_review(marks)
+        self._offline.submit_review(marks, viewed)
         return self._offline.status()
 
     def cancel_review(self) -> dict[str, Any]:

@@ -81,17 +81,38 @@ Built (PR 2, cuts):
     cut.
 - **Offline views** show a cut as a gap.
 
+Built (PR 3, the stacked review window): the review window is the stacked
+view (the probes chosen as Main and aux, every channel by default, its own
+span, spacing and panner) with the review tools below:
+
+- **Coverage bar:** the whole recording. Parts already shown are green,
+  rejected spans red, annotations purple, and the shown page is outlined.
+  Click to go there. *Next unreviewed* (N) jumps to the first part never
+  shown.
+- **Tools:** drag the band on the traces over a span, then:
+  - *Annotate* (A) labels it with the chosen label (the strip's, an input
+    event type, or a new one typed in).
+  - *Reject* (R) marks it to be cut out, with a label starting with a reject
+    word (the chosen label if it starts with one, else the first word,
+    `BAD`).
+  - Pages move with ←/→ or PgUp/PgDn.
+- **Marks:** shaded on the traces with their label at the top, and listed
+  below. Double-click a row to show that mark; Delete removes it. The
+  progress line reads `Reviewed 67% · 2 marks · 1.2 s rejected`.
+- **Save marks and continue** asks first if part of the recording was never
+  shown. The spans you looked at are saved with the marks (sidecar JSON,
+  `viewed`) and come back as green when that recording is reviewed again.
+  Control API 0.2.9: `submit_review` takes `viewed`, and the request carries
+  `reject` and `viewed`.
+
 Next:
 
-1. **Stacked review window:** the stacked view with tools below it to
-   annotate and reject spans, and the reviewed and not-yet-reviewed parts
-   shown in different colours.
-2. **Epochs side rail** (M10): epochs cut around events, as a rail.
-3. **Epoch review:** the same strip pulls epochs from that rail. Mark each one
+1. **Epochs side rail** (M10): epochs cut around events, as a rail.
+2. **Epoch review:** the same strip pulls epochs from that rail. Mark each one
    good or rejected, or give it a label (new or an existing event type).
    A rejected epoch drops from the Epochs rail only; the continuous
    signal stays whole.
-4. **Live marks:** hotkeys add marks to the Events rail while recording.
+3. **Live marks:** hotkeys add marks to the Events rail while recording.
 
 Automated rejection needs no new machinery. A strip or a custom script emits
 events labelled `BAD_…` (amplitude, flatline, …); later strips choose which

@@ -1014,6 +1014,9 @@ class StackedWindow(QWidget):
     def seconds(self) -> float:
         return float(self.span.currentData())
 
+    def shown(self, t0: float, t1: float) -> None:
+        """Called with the span drawn (seconds); the review window keeps it."""
+
     def closeEvent(self, event: QCloseEvent) -> None:
         super().closeEvent(event)
         self.closed.emit()
@@ -1081,6 +1084,7 @@ class StackedWindow(QWidget):
         t0, t1 = float(top.t[0]), float(top.t[-1]) + 1 / top.bin_rate
         self.plot.set_time(t0, t1)
         self.panner.show_span(t0, t1)
+        self.shown(t0, t1)
         y_key = (tuple(chans), spacing)
         if y_key != self._y_key:  # other rows: fit Y again, even after a zoom
             self._y_key = y_key

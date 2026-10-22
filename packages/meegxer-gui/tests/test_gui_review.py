@@ -9,6 +9,7 @@ from pathlib import Path
 
 import mne
 import numpy as np
+import pytest
 from PySide6.QtWidgets import QApplication
 
 from meegxer.core.review import Mark, load_review
@@ -53,25 +54,49 @@ def test_the_run_pauses_for_marks_and_goes_on(
         assert not win.start_btn.isEnabled()  # the run is not over
         labels = [window.label.itemText(i) for i in range(window.label.count())]
         assert labels[:2] == ["BAD_muscle", "BAD_eyes"]
+        assert window.reject_words == ("BAD",) and window.duration == 20.0
+        # the stacked traces fill, and what they show counts as looked at
+        pump_until(qapp, lambda: bool(window.viewed))
+        assert window.viewed[0][0] == 0.0 and window.coverage.shown_span is not None
 
-        window.label.setCurrentText("BAD_eyes")
-        window.selection.setRegion((2.0, 3.5))
-        window.mark_selection()
         window.label.setCurrentText("drowsy")  # a new label, typed in
-        window.selection.setRegion((10.0, 12.0))
-        window.mark_selection()
-        assert window.count.text() == "2 marks"
+        window.selection.setRegion((2.0, 3.5))
+        window.reject()  # not a reject word: the strip's first, BAD
+        window.selection.setRegion((4.0, 5.0))
+        window.annotate()
+        assert [m["label"] for m in window.marks] == ["BAD", "drowsy"]
+        assert [window.is_reject(m) for m in window.marks] == [True, False]
+        assert "2 marks" in window.progress.text()
+        assert "1.5 s rejected" in window.progress.text()
         assert sum(s.isVisible() for s in window._spans) == 2
-        window.submit()
+
+        window.page(1)  # the next page is shown, then counted
+        pump_until(qapp, lambda: window.viewed[-1][1] >= 15.0)
+        window.seek(17.0)
+        pump_until(qapp, lambda: window.viewed[-1][1] >= 20.0)
+        assert window.viewed == [(0.0, 20.0)]
+        window.submit()  # all looked at: no question
         pump_until(qapp, lambda: win.offline_state == "done")
         assert win.review_window is None
-        assert window.selection not in win.view.plot.getPlotItem().items
 
         saved = load_review(tmp_path / f"sub-01_raw_desc-{review.id}_events.tsv")
         assert saved is not None
-        assert saved.marks == (Mark(2.0, 1.5, "BAD_eyes"), Mark(10.0, 2.0, "drowsy"))
+        assert saved.marks == (Mark(2.0, 1.5, "BAD"), Mark(4.0, 1.0, "drowsy"))
+        assert saved.viewed == ((0.0, 20.0),)
         win.start()  # reviewed on this input: runs through without asking
         pump_until(qapp, lambda: win.offline_state == "done")
         assert win.review_window is None
     finally:
         win.close()
+
+
+def test_coverage_helpers() -> None:
+    from meegxer.gui.review_window import covered, first_gap, merge
+
+    spans = merge([(5.0, 8.0), (0.0, 2.0), (1.5, 3.0)])
+    assert spans == [(0.0, 3.0), (5.0, 8.0)]
+    assert covered(spans, 10.0) == pytest.approx(0.6)
+    assert first_gap(spans, 10.0) == 3.0
+    assert first_gap(spans, 10.0, after=6.0) == 8.0
+    assert first_gap([(0.0, 3.0), (5.0, 10.0)], 10.0, after=6.0) == 3.0  # wraps
+    assert first_gap([(0.0, 10.0)], 10.0) is None
