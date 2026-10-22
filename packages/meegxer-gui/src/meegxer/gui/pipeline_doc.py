@@ -315,10 +315,14 @@ class PipelineDoc:
         ]
 
     def tap_kind(self, key: str) -> str:
-        """``signal`` (after a strip on the signal), ``rail`` (a rail output,
-        e.g. the ICs) or ``features`` (after a feature strip)."""
+        """``signal`` (after a strip on the signal), ``rail`` (a Signal rail
+        output, e.g. the ICs) or ``features`` (after a feature strip, or a
+        Features rail output such as epochs)."""
         if ":" in key:
-            return "rail"
+            strip_id, port_name = key.split(":", 1)
+            ports = self.manifest(self.get(strip_id))["outputs"][1:]
+            kinds = {p["name"]: p["type"] for p in ports}
+            return "features" if kinds.get(port_name) == "features" else "rail"
         return "features" if self.produces_features(self.get(key)) else "signal"
 
     def group(self, strip: StripNode | str) -> Group:
@@ -654,13 +658,18 @@ class PipelineDoc:
                     }
                 )
             for port in self.manifest(strip)["outputs"][1:]:
-                if port.get("rail") and port["type"] == "signal":
+                if port.get("rail") and port["type"] in ("signal", "features"):
                     key = f"{strip.id}:{port['name']}"
-                    params = {"label": key, "keep_seconds": tap_keep_seconds}
+                    signal = port["type"] == "signal"
+                    params = (
+                        {"label": key, "keep_seconds": tap_keep_seconds}
+                        if signal
+                        else {"label": key, "keep_windows": FEATURE_KEEP_WINDOWS}
+                    )
                     nodes.append(
                         {
                             "id": tap_id(key),
-                            "node": PROBE,
+                            "node": PROBE if signal else FEATURE_PROBE,
                             "input": key,
                             "params": params,
                         }

@@ -7,6 +7,17 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Epochs** strip (Epochs, offline): cuts the signal around events onto an
+  `epochs` side rail and passes the signal on unchanged.
+  - Choose which events to cut around and the span (`tmin`/`tmax`, default
+    -0.2 to 0.8 s).
+  - The baseline before the event is subtracted by default.
+  - Epochs overlapping a `BAD…` mark, crossing a cut, or running off either
+    end of the recording are left out.
+  - Each epoch is a Features window `(epoch, channel, time)` labelled with its
+    event, so it can be tapped and read by later strips (`docs/RAILS.md`).
+  - A Features rail output now gets a Features tap in the GUI.
+
 - **Stacked review window:** the review window is now the stacked view of the
   recording, with the review tools below it:
   - A coverage bar shows the parts already looked at in green, rejected spans

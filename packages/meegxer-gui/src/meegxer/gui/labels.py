@@ -152,10 +152,14 @@ PARAMS: dict[str, str] = {
     "tmin": "Trial start",
     "tmax": "Trial end",
     "reg": "Covariance shrinkage",
+    "events": "Around events",
+    "baseline": "Baseline",
 }
 
 # (parameter name, value) -> label for enum choices
 CHOICES: dict[tuple[str, str], str] = {
+    ("baseline", "pre-stimulus"): "Before the event (tmin..0)",
+    ("baseline", "none"): "None",
     ("kind", "highpass"): "High-pass",
     ("kind", "lowpass"): "Low-pass",
     ("kind", "bandpass"): "Band-pass",

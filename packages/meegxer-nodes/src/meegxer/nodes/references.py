@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from meegxer.core.references import AUTHORS, LICENSE, MNE, Reference
 
+LUCK: Reference = {
+    "citation": "Luck SJ (2014). An Introduction to the Event-Related Potential "
+    "Technique, 2nd ed. MIT Press.",
+}
 SCIPY: Reference = {
     "citation": "Virtanen P, Gommers R, Oliphant TE, et al. (2020). SciPy 1.0: "
     "fundamental algorithms for scientific computing in Python. Nat Methods "
@@ -189,6 +193,7 @@ BY_NODE: dict[str, list[Reference]] = {
     "meegxer.nodes.rereference": [],
     "meegxer.nodes.pick_channels": [],
     "meegxer.nodes.resample": [SCIPY],
+    "meegxer.nodes.epochs": [LUCK, MNE],
     "meegxer.nodes.ica": [MNE, PICARD, EXTENDED_INFOMAX, INFOMAX, ICLABEL,
                           MNE_ICALABEL],
     "meegxer.nodes.psd": _SPECTRA,
@@ -215,6 +220,7 @@ CATEGORIES = {
     "meegxer.nodes.rereference": "reference",
     "meegxer.nodes.pick_channels": "reference",
     "meegxer.nodes.resample": "filters",
+    "meegxer.nodes.epochs": "epochs",
     "meegxer.nodes.interpolate_bads": "reference",
     "meegxer.nodes.csd": "reference",
     "meegxer.nodes.ica": "artifacts",

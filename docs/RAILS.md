@@ -92,6 +92,32 @@ output strip chooses which line it draws from.
   strip; an ICA strip after it rewrites it, drawn as the file's rail ending at the
   ICA strip and a new ICs rail starting there.
 
+## Epochs rail (built, offline)
+
+- **Who writes it:** the **Epochs** strip (`meegxer.nodes.epochs`, Epochs).
+  It passes the signal on unchanged and writes its `epochs` output (a Features
+  rail).
+- **What it carries:** one feature window per epoch.
+  - `dims` are `(epoch, channel, time)`.
+  - The `epoch` coordinate is the event's label; `time` is in seconds from the
+    event; the window is the epoch's sample span; the unit is volts.
+  - So no new port type is needed (rule 6): the schedulers, the plugin
+    protocol, Features taps and rail readers carry it as it is.
+- **What it reads:** the Events rail (the input's events, review marks, and
+  those of earlier strips).
+- **Parameters:**
+  - `events`: the labels to cut around (empty: every event).
+  - `tmin`/`tmax`: the epoch, in seconds from the event (default -0.2 to 0.8).
+  - `baseline`: `pre-stimulus` subtracts each channel's mean over tmin..0
+    (the default, MNE's `(None, 0)`); `none` keeps the signal as is.
+  - `reject` (default `BAD`): an epoch overlapping a mark whose label starts
+    with one of these words is left out.
+- **Left out:** an epoch across a cut (each piece between cuts is epoched on
+  its own), or one running off either end of the recording.
+- **Offline store:** the offline feature store keeps each epoch's label
+  (`offline_features` returns `labels`, control API 0.2.10). A Features tap on
+  the rail shows the epochs; the ERP view comes next.
+
 ## 4. Display (built)
 
 - The signal is the thick grey line; rails are thin coloured lines above the

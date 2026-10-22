@@ -399,3 +399,35 @@ def test_connectivity_draws_lines_from_the_seed(qapp: QApplication) -> None:
     view.refresh(bands, "Band power", 0.0, 10.0)
     assert view.head.isHidden()  # not connectivity: no map
     dispose(qapp, view)
+
+
+def test_an_epochs_rail_tap_draws_without_error(
+    qapp: QApplication,
+    daemon: tuple[str, subprocess.Popen[bytes]],
+    tmp_path: Path,
+) -> None:
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    info = mne.create_info(["Fz", "Cz", "Pz"], 250.0, "eeg")
+    raw = mne.io.RawArray(np.random.default_rng(2).standard_normal((3, 250 * 20))
+                          * 1e-5, info, verbose="error")  # fmt: skip
+    raw.set_annotations(mne.Annotations([2.0, 6.0, 10.0], [0.0] * 3, ["go"] * 3))
+    rec = tmp_path / "erp_raw.fif"
+    raw.save(rec, verbose="error")
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        assert win.doc.source is not None
+        win.doc.source.params["path"] = str(rec)
+        win.insert_strip(len(win.doc.strips), "meegxer.nodes.epochs")
+        win.start()
+        wait_for(qapp, lambda: win.offline_state in ("done", "error"), 60)
+        assert win.offline_state == "done", win.logbox.toPlainText()
+        win.click_tap("epochs1:epochs", False)
+        win.redraw()
+        assert win.views.currentWidget() is win.feature_view
+        assert "3 windows" in win.feature_view.legend.text()
+    finally:
+        win.close()
