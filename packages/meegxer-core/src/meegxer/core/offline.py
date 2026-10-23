@@ -199,11 +199,14 @@ class FeatureStore:
         self.starts: list[int] = []
         self.stops: list[int] = []
         self.values: list[npt.NDArray[np.float32]] = []
+        self.labels: list[str] = []  # an epoch's event label, per window
 
     def write(self, window: FeatureBlock) -> None:
         self.starts.append(window.window[0])
         self.stops.append(window.window[1])
         self.values.append(np.asarray(window.data, dtype=np.float32))
+        if "epoch" in self.dims:  # epochs: each window is one, with its label
+            self.labels.append(" ".join(map(str, window.coords.get("epoch", ()))))
 
     def windows(
         self, start: int, stop: int, max_windows: int, reduce: str
@@ -227,6 +230,7 @@ class FeatureStore:
             **out,
             "windows": [[int(self.starts[i]), int(self.stops[i])] for i in idx],
             "values": [_nested(self.values[i]) for i in idx],
+            **({"labels": [self.labels[i] for i in idx]} if self.labels else {}),
         }
 
 

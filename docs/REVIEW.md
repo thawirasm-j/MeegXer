@@ -105,14 +105,15 @@ span, spacing and panner) with the review tools below:
   Control API 0.2.9: `submit_review` takes `viewed`, and the request carries
   `reject` and `viewed`.
 
+Built: the **Epochs** strip writes the epochs side rail (`docs/RAILS.md`).
+
 Next:
 
-1. **Epochs side rail** (M10): epochs cut around events, as a rail.
-2. **Epoch review:** the same strip pulls epochs from that rail. Mark each one
+1. **Epoch review:** the same strip pulls epochs from that rail. Mark each one
    good or rejected, or give it a label (new or an existing event type).
    A rejected epoch drops from the Epochs rail only; the continuous
    signal stays whole.
-3. **Live marks:** hotkeys add marks to the Events rail while recording.
+2. **Live marks:** hotkeys add marks to the Events rail while recording.
 
 Automated rejection needs no new machinery. A strip or a custom script emits
 events labelled `BAD_…` (amplitude, flatline, …); later strips choose which
