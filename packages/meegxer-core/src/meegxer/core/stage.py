@@ -360,9 +360,9 @@ class Stage:
         return result
 
     def restart(self, input_fp: str) -> TransformResult | None:
-        """A cut in the stream (a review strip rejected a span, docs/REVIEW.md):
-        hand over what a delaying processor still holds, then start the next
-        piece from scratch, so nothing leaks across the cut."""
+        """A cut in the stream (a Reject segments strip cut a span,
+        docs/REVIEW.md): hand over what a delaying processor still holds, then
+        start the next piece from scratch, so nothing leaks across the cut."""
         tail = self.flush(input_fp)
         self.state = None
         self._rest = []

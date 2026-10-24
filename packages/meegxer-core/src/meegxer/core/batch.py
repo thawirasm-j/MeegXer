@@ -49,6 +49,7 @@ from meegxer.core.rails import (
     with_rails,
 )
 from meegxer.core.recording import recording_events
+from meegxer.core.reject_segments import RejectSegments
 from meegxer.core.review import (
     Mark,
     Review,
@@ -145,7 +146,7 @@ class BatchResult:
     outputs are kept as block lists.
     """
 
-    # kept streams: one Block, or its pieces when a review strip cut it
+    # kept streams: one Block, or its pieces when a Reject segments strip cut it
     outputs: dict[str, Block | list[Block] | list[FeatureBlock]] = field(
         default_factory=dict
     )
@@ -166,6 +167,7 @@ class BatchScheduler:
         cache: Cache | None = None,
         calibration_seconds: float | None = None,
         review: ReviewCallback | None = None,
+        reviewer: str = "",
     ) -> None:
         if block_size is not None and block_size < 1:
             raise ValueError("block_size must be >= 1")
@@ -175,6 +177,7 @@ class BatchScheduler:
         # asked for the marks of a review strip with no current review
         # (docs/REVIEW.md); without it such a recording stops (ReviewNeeded)
         self.review = review
+        self.reviewer = reviewer  # saved with each review made in this run
         self._events: tuple[Event, ...] = ()  # the recording's, for labelled fits
         self._rail = EventsRail()  # those plus what strips emit (docs/RAILS.md)
         self._graph: Graph | None = None
@@ -281,7 +284,8 @@ class BatchScheduler:
             calibration, trials = self._calibration(signal_in, trials)
             if len(contiguous_runs(signal_in)) > 1 and stage.manifest.rail_inputs:
                 raise GraphError(f"{node.id}: a strip reading rails cannot fit on "
-                                 "a stream cut by a review strip (yet)")  # fmt: skip
+                                 "a stream cut by a Reject segments strip "
+                                 "(yet)")  # fmt: skip
             rails = self._rails_for(node, calibration.sample_index,
                                     calibration.stop_index, rate)  # fmt: skip
             stage.fit(calibration, input_fp, trials, rails)
@@ -329,10 +333,12 @@ class BatchScheduler:
             out.extend(_non_empty(tail.block))
             events.extend(tail.events)
             self._keep_rails(node.id, tail)
-        if isinstance(stage.processor, ReviewStrip):  # rejected spans go
-            spans = rejected_spans(stage.processor.marks, stage.params)
+        if isinstance(stage.processor, RejectSegments):  # rejected spans go
+            assert self._graph is not None
+            seen = self._rail.visible_to(self._graph, node.id, sfreq=rate)
+            spans = rejected_spans(seen, stage.params)
             kept, boundaries = cut_blocks([b for b in out if isinstance(b, Block)],
-                                          spans)  # fmt: skip
+                                          spans, node.id)  # fmt: skip
             out = list(kept)
             events.extend(boundaries)
         result.events[node.id] = tuple(events)
@@ -363,7 +369,7 @@ class BatchScheduler:
         saved = load_review(path)
         marks: tuple[Mark, ...]
         if saved is not None and saved.upstream == input_fp:
-            marks = saved.marks
+            marks, review = saved.marks, saved
         else:
             seen = self._rail.visible_to(self._graph, node.id, sfreq=rate or None)
             request = ReviewRequest(
@@ -381,10 +387,14 @@ class BatchScheduler:
             if not isinstance(answer, ReviewAnswer):  # just the marks
                 answer = ReviewAnswer(tuple(answer))
             marks = tuple(answer.marks)
-            save_review(path, Review(marks, input_fp, now_iso(),
-                                     merge_spans(answer.viewed)), node.id)  # fmt: skip
+            review = Review(marks, input_fp, now_iso(), merge_spans(answer.viewed),
+                            self.reviewer)  # fmt: skip
+            save_review(path, review, node.id)
         events = marks_to_events(marks, rate)
         stage.processor.marks = events
+        stage.processor.record = {"reviewer": review.reviewer,
+                                  "reviewed": review.reviewed,
+                                  "upstream": review.upstream}  # fmt: skip
         return events
 
     def _rail_streams(
@@ -444,8 +454,8 @@ class BatchScheduler:
     def _calibration(
         self, blocks: Sequence[Block], events: Sequence[Event] = ()
     ) -> tuple[Block, tuple[Event, ...]]:
-        """What a fit sees: the input, its pieces joined when a review strip
-        cut it (the samples renumbered from the first, and the events in the
+        """What a fit sees: the input, its pieces joined when a Reject segments
+        strip cut it (the samples renumbered from the first, and the events in the
         pieces with them; those in a cut are left out)."""
         if not blocks:
             raise GraphError("no data to calibrate on")

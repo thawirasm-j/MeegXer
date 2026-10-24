@@ -75,6 +75,7 @@ CATEGORIES = {
     "meegxer.core.lsl_out": "streams",
     "meegxer.core.lsl_features_out": "streams",
     "meegxer.core.review": "events",
+    "meegxer.core.reject_segments": "artifacts",
 }
 
 

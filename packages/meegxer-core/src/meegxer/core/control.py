@@ -38,6 +38,7 @@ from meegxer.core.ports import Port
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.recording import builtin_montages, describe, lookup_positions
 from meegxer.core.registry import Registry, node_origin
+from meegxer.core.review import ReviewStrip
 from meegxer.core.session import (
     build_session,
     load_session,
@@ -318,6 +319,12 @@ class Daemon:
                 and previous.manifest.version == node.impl.manifest.version
             ):
                 node.impl.model = previous.model
+            if (
+                isinstance(previous, Stage)
+                and isinstance(previous.processor, ReviewStrip)
+                and isinstance(node.impl.processor, ReviewStrip)
+            ):
+                node.impl.processor.record = previous.processor.record  # who reviewed
 
     @staticmethod
     def _close_processors(graph: Graph) -> None:
@@ -450,10 +457,14 @@ class Daemon:
         output = free_name(target, "recovered") if target.exists() else target
         return {"path": str(recover(target, output))}
 
-    def run_offline(self, pipeline: dict[str, Any]) -> dict[str, Any]:
+    def run_offline(
+        self, pipeline: dict[str, Any], reviewer: str = ""
+    ) -> dict[str, Any]:
         """Run ``pipeline`` over its whole (finite) input in the background; its
         probes become scrollable envelopes (``offline_window``), its sinks write
-        files. Independent of the live pipeline, but not while it runs."""
+        files. Independent of the live pipeline, but not while it runs.
+        ``reviewer``: who reviews at its review strips (saved with each review,
+        docs/REVIEW.md)."""
         if self._scheduler is not None and self._scheduler.running:
             raise RuntimeError("stop the live pipeline before an offline run")
         if self._offline is not None and self._offline.busy:
@@ -461,12 +472,13 @@ class Daemon:
         graph = Graph.from_dict(pipeline, self.registry)
         if is_all_subjects(graph.source.impl):  # models fitted per recording
             registry = self.registry
-            job = OfflineJob(graph, rebuild=lambda: Graph.from_dict(pipeline, registry))
+            job = OfflineJob(graph, rebuild=lambda: Graph.from_dict(pipeline, registry),
+                             reviewer=str(reviewer))  # fmt: skip
             self._offline_models = None
         else:
             if self._offline_models is not None:
                 self._carry_models(self._offline_models, graph)
-            job = OfflineJob(graph)
+            job = OfflineJob(graph, reviewer=str(reviewer))
             self._offline_models = graph
         if self._offline is not None:
             self._offline.discard()  # the previous run's files

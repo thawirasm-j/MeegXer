@@ -15,7 +15,7 @@ before it.
   subtracted (MNE's ``baseline=(None, 0)``); ``none`` keeps the signal as is.
 - ``reject``: an epoch overlapping a mark whose label starts with one of these
   words (``BAD``) is left out (MNE's ``reject_by_annotation``). An epoch
-  across a cut a review strip made is left out too: its samples are not all
+  across a cut a Reject segments strip made is left out too: its samples are not all
   there (the strip gets each piece between cuts on its own).
 
 Offline only for now: it sees the whole recording (each piece between cuts).
@@ -34,7 +34,7 @@ from meegxer.core.node import Params, Processor, RailInput, TransformResult
 from meegxer.core.serialization import State
 from meegxer.nodes.references import credits
 
-BOUNDARY = "boundary"  # the event a review strip puts at a cut
+BOUNDARY = "boundary"  # the event a Reject segments strip puts at a cut
 
 
 def _words(text: object) -> tuple[str, ...]:

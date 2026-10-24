@@ -15,6 +15,9 @@ shows the recording; with no callback (the CLI) the recording stops there with
 :class:`ReviewNeeded`, so nothing is processed past an unreviewed strip. Marks
 made on another input are offered again to be confirmed, never reused silently
 (rule 7).
+
+A review produces events only. Cutting the rejected spans out is the Reject
+segments strip's job (``meegxer.core.reject_segments``), downstream.
 """
 
 from __future__ import annotations
@@ -70,6 +73,7 @@ class Review:
     upstream: str = ""  # fingerprint of the strip's input
     reviewed: str = ""  # when (ISO 8601, UTC)
     viewed: tuple[tuple[float, float], ...] = ()  # spans looked at (s)
+    reviewer: str = ""  # who reviewed (asked once per run)
 
 
 Span = tuple[float, float]
@@ -106,7 +110,7 @@ class ReviewRequest:
     previous: tuple[Mark, ...] = ()  # marks made on another input, to confirm
     labels: tuple[str, ...] = ()  # offered: the strip's, then the rail's
     duration_s: float = 0.0
-    reject: tuple[str, ...] = ()  # labels starting with these are cut out
+    reject: tuple[str, ...] = ()  # what the window's Reject key labels a span
     viewed: tuple[Span, ...] = ()  # looked at in the review before
 
     def to_wire(self) -> dict[str, Any]:
@@ -159,9 +163,9 @@ class ReviewStrip(Processor):
                  "description": "Comma-separated labels offered for marks "
                                 "(the input's event types are offered too)"},
                 {"name": "reject", "type": "string", "default": "BAD",
-                 "description": "Marks whose label starts with one of these "
-                                "comma-separated words are cut out, with a "
-                                "boundary event (empty: nothing is cut)"},
+                 "description": "Comma-separated labels the Reject key gives "
+                                "a span (a Reject segments strip after this "
+                                "one cuts them out)"},
                 {"name": "file", "type": "string", "default": "", "path": "save",
                  "extensions": [".tsv"], "advanced": True,
                  "description": "Where the marks are saved (empty: next to "
@@ -173,6 +177,8 @@ class ReviewStrip(Processor):
 
     def __init__(self) -> None:
         self.marks: tuple[Event, ...] = ()  # set by the batch run from the review
+        # who reviewed, when, on what input: kept in a session (spec/session.md)
+        self.record: dict[str, str] = {}
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
@@ -202,7 +208,7 @@ def rejected_spans(events: Sequence[Event], params: Params) -> list[tuple[int, i
 
 
 def cut_blocks(
-    blocks: Sequence[Block], spans: Sequence[tuple[int, int]]
+    blocks: Sequence[Block], spans: Sequence[tuple[int, int]], origin: str = ""
 ) -> tuple[list[Block], tuple[Event, ...]]:
     """``blocks`` without the samples in ``spans``: the samples after a cut keep
     their index (rule 8), and a boundary event marks each cut that has signal
@@ -221,7 +227,7 @@ def cut_blocks(
             out.append(block.slice(start, block.stop_index))
     first = blocks[0].sample_index if blocks else 0
     stop = blocks[-1].stop_index if blocks else 0
-    boundaries = tuple(Event(hi, BOUNDARY, hi - lo, {"origin": "review"})
+    boundaries = tuple(Event(hi, BOUNDARY, hi - lo, {"origin": origin})
                        for lo, hi in spans if first < hi < stop)  # fmt: skip
     return out, boundaries
 
@@ -285,7 +291,7 @@ def load_review(path: Path) -> Review | None:
         meta = json.loads(_sidecar(path).read_text(encoding="utf-8")).get("MeegXer", {})
     viewed = merge_spans(meta.get("viewed", []))
     return Review(marks, str(meta.get("upstream", "")), str(meta.get("reviewed", "")),
-                  viewed)  # fmt: skip
+                  viewed, str(meta.get("reviewer", "")))  # fmt: skip
 
 
 def save_review(path: Path, review: Review, node_id: str) -> None:
@@ -302,7 +308,7 @@ def save_review(path: Path, review: Review, node_id: str) -> None:
         "duration": {"Description": "Length of the span", "Units": "s"},
         "trial_type": {"Description": "Label given in a manual review"},
         "MeegXer": {"strip": node_id, "upstream": review.upstream,
-                    "reviewed": review.reviewed,
+                    "reviewed": review.reviewed, "reviewer": review.reviewer,
                     # the spans looked at, in seconds from the recording's start
                     "viewed": [[round(a, 6), round(b, 6)] for a, b in review.viewed]},
     }  # fmt: skip

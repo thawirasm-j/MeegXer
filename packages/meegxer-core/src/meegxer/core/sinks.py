@@ -100,7 +100,8 @@ def write_raw(path: Path, fmt: Literal["eeglab", "edf"], data: np.ndarray,
               header: dict[str, Any], overwrite: bool) -> None:  # fmt: skip
     """Write channels x samples ``data`` (volts) as ``fmt``, with the labels, rate
     and bad channels from a spool ``header``, and a ``boundary`` event at each cut
-    a review strip made (``boundaries``: ``[position in data, samples cut]``)."""
+    a Reject segments strip made (``boundaries``: ``[position in data, samples
+    cut]``)."""
     import mne
 
     info = mne.create_info(list(header["ch_labels"]), header["sfreq"], ch_types="eeg")
@@ -275,7 +276,7 @@ class _RawFileSink(Sink):
                               f"{self.path.name} keeps what came before")  # fmt: skip
             self._stopped = True
             return
-        elif block.sample_index > self._next_index:  # a cut (review strip)
+        elif block.sample_index > self._next_index:  # a cut (Reject segments)
             cut = block.sample_index - self._next_index
             self._header.setdefault("boundaries", []).append([self._written, cut])
             self._write_header()  # kept by a crash recovery too
