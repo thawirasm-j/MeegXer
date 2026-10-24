@@ -10,8 +10,9 @@ has computed so far: the taps before the strip. Below them:
   span outlined; a click moves there;
 - the **tools**: a band on the traces picks a span; *Annotate* (A) labels it
   with the chosen label (the strip's, one of the input's event types, or a new
-  one typed in), *Reject* (R) marks it to be cut out (a label starting with one
-  of the strip's reject words, `BAD` by default); pages move with ←/→ (or
+  one typed in), *Reject* (R) labels it as rejected (a label starting with one
+  of the strip's reject words, `BAD` by default; a Reject segments strip
+  downstream cuts it out); pages move with ←/→ (or
   PgUp/PgDn), *Next unreviewed* (N) jumps to the first part not looked at yet;
 - the **marks** table: double-click shows a mark, Delete removes it.
 
@@ -204,9 +205,10 @@ class ReviewWindow(StackedWindow):
         annotate.clicked.connect(self.annotate)
         tools.addWidget(annotate)
         reject = QPushButton("Reject (R)")
-        words = ", ".join(self.reject_words) or "nothing (the strip cuts nothing)"
-        reject.setToolTip(f"Mark the span under the band to be cut out (labels "
-                          f"starting with {words})")  # fmt: skip
+        words = ", ".join(self.reject_words) or "nothing (no reject labels set)"
+        reject.setToolTip(f"Label the span under the band as rejected (labels "
+                          f"starting with {words}); a Reject segments strip "
+                          "cuts it out")  # fmt: skip
         reject.setEnabled(bool(self.reject_words))
         reject.clicked.connect(self.reject)
         tools.addWidget(reject)

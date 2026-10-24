@@ -81,6 +81,7 @@ def test_a_batch_run_writes_the_epochs_rail_and_skips_epochs_over_a_cut(
          "recording": {"events": {"file": str(events)}}},
         {"id": "rev", "node": "meegxer.core.review",
          "params": {"file": str(tmp_path / "marks.tsv")}},
+        {"id": "rej", "node": "meegxer.core.reject_segments"},
         {"id": "ep", "node": "meegxer.nodes.epochs",
          "params": {"events": "go", "tmin": -0.2, "tmax": 0.5}},
         {"id": "tap", "node": "meegxer.core.feature_probe", "input": "ep:epochs",

@@ -47,6 +47,13 @@ def test_the_run_pauses_for_marks_and_goes_on(
         review.params["labels"] = "BAD_muscle, BAD_eyes"
         win._structure_changed("added")
         win.click_tap(hp.id, False)  # see the signal before the strip
+        asked: list[bool] = []
+
+        def ask_reviewer() -> str:
+            asked.append(True)
+            return "C. Rater"
+
+        win.ask_reviewer = ask_reviewer  # type: ignore[method-assign]
         win.start()
         pump_until(qapp, lambda: win.review_window is not None)
         window = win.review_window
@@ -83,9 +90,13 @@ def test_the_run_pauses_for_marks_and_goes_on(
         assert saved is not None
         assert saved.marks == (Mark(2.0, 1.5, "BAD"), Mark(4.0, 1.0, "drowsy"))
         assert saved.viewed == ((0.0, 20.0),)
-        win.start()  # reviewed on this input: runs through without asking
+        assert saved.reviewer == "C. Rater" and len(asked) == 1  # once per run
+        win.start()  # reviewed on this input: runs through without a review
         pump_until(qapp, lambda: win.offline_state == "done")
         assert win.review_window is None
+        win.ask_reviewer = lambda: None  # type: ignore[method-assign]
+        win.start()  # no name given: the run does not start
+        assert win.offline_state == "done"
     finally:
         win.close()
 

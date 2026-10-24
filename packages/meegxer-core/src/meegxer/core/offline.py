@@ -102,7 +102,7 @@ class ProbeStore:
             self.first_index = block.sample_index
         lo = block.sample_index - self.first_index
         hi = min(lo + block.n_samples, self.n_total)
-        if lo > self.filled:  # a cut (review strip): blank, not zeros
+        if lo > self.filled:  # a cut (Reject segments): blank, not zeros
             self.samples[:, self.filled : min(lo, self.n_total)] = np.nan
         self.samples[:, lo:hi] = block.data[:, : hi - lo]
         for k, (_, env, decimator) in enumerate(self.levels):
@@ -272,6 +272,7 @@ class OfflineJob:
         *,
         folder: Path | None = None,
         rebuild: Callable[[], Graph] | None = None,
+        reviewer: str = "",
     ) -> None:
         online_only = [n.id for n in graph.nodes if not n.manifest.runs_offline]
         if online_only:
@@ -282,6 +283,7 @@ class OfflineJob:
         self.store_folder = self.folder
         self.cache_dir = root / "cache"
         self.rebuild = rebuild
+        self.reviewer = reviewer  # saved with each review made in the run
         self.recordings: list[dict[str, str]] = []
         self.progress: dict[str, Any] = {}
         source = graph.source.impl
@@ -338,7 +340,8 @@ class OfflineJob:
         self.store_folder.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         result = BatchScheduler(cache=DirectoryCache(self.cache_dir),
-                                review=self._await_review).run(graph)  # fmt: skip
+                                review=self._await_review,
+                                reviewer=self.reviewer).run(graph)  # fmt: skip
         for store in self.probes.values():
             store.close()
         return result

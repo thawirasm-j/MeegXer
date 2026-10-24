@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -44,6 +45,7 @@ from meegxer.core.display import DisplayFrame, FeatureFrame
 from meegxer.core.graph import positions_message
 from meegxer.core.notices import LOCAL_CODE_NOTICE
 from meegxer.core.passband import filters_from_wire
+from meegxer.core.review import REVIEW_NODE
 from meegxer.core.session import (
     free_text,
     is_session,
@@ -771,6 +773,18 @@ class MainWindow(QMainWindow):
 
     # -- transport --------------------------------------------------------------------
 
+    def ask_reviewer(self) -> str | None:
+        """Who reviews at the pipeline's review strips, asked once per run and
+        saved with each review (None: the run is not started)."""
+        name, ok = QInputDialog.getText(
+            self, "Review", "This pipeline has a review step. Your name, saved "
+            "with each review:", text=str(self.state.get("reviewer", "")),
+        )  # fmt: skip
+        if not ok:
+            return None
+        self.state["reviewer"] = name.strip()
+        return name.strip()
+
     def start(self) -> None:
         problems = self.doc.problems()
         if problems:
@@ -779,8 +793,14 @@ class MainWindow(QMainWindow):
         if not self._positions_ready(self._describe_input()):
             return
         if self.doc.mode == "offline":
+            reviewer = ""
+            if any(s.node == REVIEW_NODE for s in self.doc.strips):
+                asked = self.ask_reviewer()
+                if asked is None:
+                    return
+                reviewer = asked
             pipeline = self.doc.to_pipeline(tap_keep_seconds=0.0)
-            result = self.call("run_offline", pipeline=pipeline)
+            result = self.call("run_offline", pipeline=pipeline, reviewer=reviewer)
             if result is not None:
                 self.offline_state = "running"
                 self.offline_probes.clear()
