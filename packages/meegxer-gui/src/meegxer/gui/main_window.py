@@ -1107,6 +1107,10 @@ class MainWindow(QMainWindow):
         if state == self.offline_state:
             return
         self.offline_state = state
+        if state in ("done", "review"):  # the strips' events too (a review's)
+            reply = self.call("offline_events")
+            if reply is not None:
+                self.view.events = list(reply["events"])
         if state == "done":
             self.log(f"Offline run done in {offline.get('elapsed_s', 0):.1f} s.")
             if recordings:

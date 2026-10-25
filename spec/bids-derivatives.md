@@ -41,7 +41,7 @@ For `sub-01_task-rest_eeg.set` and `desc` `clean`:
     ├── sub-01_task-rest_desc-clean_eeg.json
     ├── sub-01_task-rest_desc-clean_channels.tsv
     ├── sub-01_task-rest_desc-clean_channels.json
-    ├── sub-01_task-rest_desc-clean_events.tsv          (when the input has events)
+    ├── sub-01_task-rest_desc-clean_events.tsv          (when there are events)
     ├── sub-01_task-rest_desc-clean_events.json
     ├── sub-01_electrodes.tsv                           (when positions are known)
     ├── sub-01_electrodes.json
@@ -68,8 +68,10 @@ BIDS derivatives recommend.
 - **`_channels.tsv`:** `name`, `type` (BIDS upper case: `EEG`, `EOG`, `ECG`, `EMG`,
   `MISC`, `RESP`, `TRIG`), `units` (`V`), `status` (`good`/`bad`), after the edits
   of the Recording window.
-- **`_events.tsv`:** `onset`, `duration` (seconds), `trial_type` (the label after
-  renaming and dropping).
+- **`_events.tsv`:** `onset`, `duration` (seconds), `trial_type`: the input's
+  events (after renaming and dropping) and those the strips before the writer
+  put on the Events rail (a review's marks, a detector's), on the processed
+  recording's time. The `.set` file carries the same events.
 - **`_electrodes.tsv`:** `name`, `x`, `y`, `z` in metres (`n/a` where unknown);
   **`_coordsystem.json`:** `EEGCoordinateSystem` `CapTrak`, `EEGCoordinateUnits`
   `m` (MNE head coordinates).
