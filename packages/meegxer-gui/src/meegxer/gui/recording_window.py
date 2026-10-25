@@ -52,8 +52,13 @@ def _item(text: str, editable: bool = True) -> QTableWidgetItem:
     return item
 
 
+# inputs with a file to review at import (meegxer.core.import_review)
+REVIEWABLE = ("meegxer.core.file", "meegxer.core.bids")
+
+
 class RecordingWindow(QWidget):
     applied = Signal(dict)  # the new ``recording`` overrides
+    review_requested = Signal(dict)  # the source entry, to review at import
 
     def __init__(self, call: Call, theme: Theme) -> None:
         super().__init__()
@@ -80,6 +85,14 @@ class RecordingWindow(QWidget):
         self.status = QLabel("")
         self.status.setObjectName("muted")
         bar.addWidget(self.status, 1)
+        self.review_btn = QPushButton("Review…")
+        self.review_btn.setToolTip(
+            "Review the recording itself, before any pipeline: events, labelled "
+            "spans, bad channels and a crop, saved with the recording and used "
+            "by every pipeline (the raw file is not changed)"
+        )
+        self.review_btn.clicked.connect(lambda: self.review_requested.emit(self.entry))
+        bar.addWidget(self.review_btn)
         revert = QPushButton("Revert")
         revert.clicked.connect(lambda: self.load(self.entry))
         apply = QPushButton("Apply")
@@ -233,6 +246,7 @@ class RecordingWindow(QWidget):
             self.status.setText("Could not read the recording (see the log).")
             return False
         self.base, self.current = base, current
+        self.review_btn.setEnabled(entry.get("node") in REVIEWABLE)
         n = len(current["channels"])
         dur = current.get("duration_s")
         self.summary.setText(
@@ -355,6 +369,7 @@ class RecordingWindow(QWidget):
             {
                 "file": "Events come from the events file.",
                 "recording": "Events stored in the recording.",
+                "import review": "Events of the review at import (Review…).",
                 "none": "This input has no events.",
             }[origin]
             + f" {len(shown)} shown after renaming and dropping."

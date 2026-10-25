@@ -43,6 +43,7 @@ from meegxer.core.block import units_from_wire
 from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame, FeatureFrame
 from meegxer.core.graph import positions_message
+from meegxer.core.manifest import SPEC_VERSION
 from meegxer.core.notices import LOCAL_CODE_NOTICE
 from meegxer.core.passband import filters_from_wire
 from meegxer.core.review import REVIEW_NODE
@@ -75,6 +76,8 @@ DEFAULT_CHAIN: list[tuple[str, dict[str, Any]]] = [
     ("meegxer.nodes.iir_filter", {"kind": "highpass", "low": 1.0}),
     ("meegxer.nodes.notch", {}),
 ]
+
+IMPORT_TAP = "import_review"  # the tap of a review at import's run
 
 
 def resolve_theme(name: str) -> Theme:
@@ -127,6 +130,7 @@ class MainWindow(QMainWindow):
         self.offline_total = 0
         self.offline_state = ""
         self.review_window: ReviewWindow | None = None  # a review strip waits
+        self.import_window: ReviewWindow | None = None  # a review at import
         self._answered: dict[str, Any] | None = None  # until the run moves on
         self.offline_recordings: dict[str, Any] = {}  # an all-subjects BIDS run
         self._feature_cache: dict[str, tuple[tuple[Any, ...], FeatureSeries]] = {}
@@ -215,6 +219,7 @@ class MainWindow(QMainWindow):
         self.recording_window.start_dir = lambda: self._start_dir("data_dir")
         QShortcut(QKeySequence("Ctrl+,"), self, self.open_settings)
         self.recording_window.applied.connect(self.apply_recording)
+        self.recording_window.review_requested.connect(self.review_at_import)
 
     def _top_bar(self) -> QWidget:
         bar = QFrame()
@@ -1161,6 +1166,64 @@ class MainWindow(QMainWindow):
         window.show()
         window.raise_()
 
+    def review_at_import(self, entry: dict[str, Any]) -> None:
+        """Review the recording itself, before any pipeline (docs/REVIEW.md):
+        an offline run of the raw input shows it; the review is saved with the
+        recording and every pipeline reading it uses it."""
+        if self.running or self.offline_state in ("running", "review"):
+            self.log("Stop the running pipeline before reviewing at import.")
+            return
+        node = {"node": entry["node"], "params": dict(entry.get("params", {}))}
+        request = self.call("import_review_open", node=node)
+        if request is None:
+            return
+        reviewer = self.ask_reviewer()
+        if reviewer is None:
+            return
+        raw = {"id": "input", "node": node["node"],
+               "params": {**node["params"], "import_review": False}}  # fmt: skip
+        tap = {"id": IMPORT_TAP, "node": "meegxer.core.probe", "input": "input",
+               "params": {"keep_seconds": 0.0}}  # fmt: skip
+        pipeline = {"spec_version": SPEC_VERSION, "nodes": [raw, tap]}
+        if self.call("run_offline", pipeline=pipeline) is None:
+            return
+        self.offline_state = "running"
+        self.offline_probes.clear()
+        self._offline_cache.clear()
+        if self.import_window is not None:
+            self.import_window.answered = True
+            self.import_window.close()
+        name = Path(str(node["params"].get("path") or request["file"])).name
+        window = self.import_window = ReviewWindow(
+            request, self.theme,
+            submit=lambda marks, viewed, bads: self._save_import_review(
+                node, marks, viewed, bads, reviewer),
+            cancel=lambda: None, recording=name,
+            settings=self.settings.get("review"), import_mode=True,
+        )  # fmt: skip
+        window.probe = IMPORT_TAP
+        window.on_display = self.redraw
+        window.setStyleSheet(stylesheet(self.theme, self.scale))
+        window.show()
+        window.raise_()
+        self.log(f"Reviewing {name} at import (the raw recording).")
+
+    def _save_import_review(self, node: dict[str, Any], marks: list[dict[str, Any]],
+                            viewed: list[list[float]], bads: list[str],
+                            reviewer: str) -> None:  # fmt: skip
+        window = self.import_window
+        crop = window.crop_span() if window is not None else None
+        reply = self.call("save_import_review", node=node, marks=marks, bads=bads,
+                          crop=None if crop is None else list(crop),
+                          viewed=viewed, reviewer=reviewer)  # fmt: skip
+        if reply is None:
+            return
+        self.log(f"Review at import saved to {reply['file']}; every pipeline "
+                 "reading this recording uses it.")  # fmt: skip
+        if self.recording_window.isVisible():
+            self.recording_window.load(self.recording_window.entry)
+        self.use_recording_info(self._describe_input())
+
     def _answer_review(self, method: str, **params: Any) -> None:
         if self.review_window is not None:
             self._answered = self.review_window.request
@@ -1325,6 +1388,10 @@ class MainWindow(QMainWindow):
             return
         main, comps = self._shown()
         review = self.review_window
+        if review is None or not review.isVisible():  # else a review at import
+            review = self.import_window
+            if review is not None and review.probe:
+                main, comps = review.probe, []
         if review is not None and review.isVisible():  # the run waits for it
             info = self.offline_probes.get(main) if main else None
             info = info or next(iter(self.offline_probes.values()), None)
