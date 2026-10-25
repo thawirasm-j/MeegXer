@@ -10,12 +10,13 @@ import hashlib
 from collections.abc import Mapping
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 from scipy import signal
 
 from meegxer.core.block import Block, FloatArray, SignalInfo
+from meegxer.core.import_review import crop_events, find_import_review, review_files
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Source
 from meegxer.core.references import credits
@@ -34,6 +35,14 @@ _OCCIPITAL = {"O1", "O2", "Oz"}
 # Paul Kellet / J.O. Smith pinking filter (-10 dB/decade).
 _PINK_B = [0.049922035, -0.095993537, 0.050612699, -0.004408786]
 _PINK_A = [1.0, -2.494956002, 2.017265875, -0.522189400]
+
+
+# file and BIDS inputs: the review made at import (meegxer.core.import_review)
+IMPORT_REVIEW_PARAM: dict[str, object] = {
+    "name": "import_review", "type": "bool", "default": True, "advanced": True,
+    "description": "Use the review made at import (its events, bad channels "
+                   "and crop) when the recording has one",
+}  # fmt: skip
 
 
 def _source_manifest(
@@ -525,6 +534,7 @@ class _RawSource(Source):
         super().__init__(params)
         self._pos = 0
         self._annotations: list[dict[str, float | str]] = []
+        self.import_reviewed = False  # the review at import was applied
 
     def _load(self) -> mne.io.BaseRaw:
         raise NotImplementedError
@@ -542,20 +552,37 @@ class _RawSource(Source):
         raw.pick(mne.pick_types(raw.info, meg=True, eeg=True, seeg=True, ecog=True,
                                 dbs=True, fnirs=True, eog=True, ecg=True, emg=True,
                                 misc=True, resp=True, exclude=[]))  # fmt: skip
+        events: list[dict[str, Any]] = [
+            {"onset": float(a["onset"] - raw.first_time),
+             "duration": float(a["duration"]), "label": str(a["description"])}
+            for a in raw.annotations
+        ]  # fmt: skip
+        bads = [b for b in raw.info["bads"] if b in raw.ch_names]
+        found = (
+            find_import_review(self) if self.params.get("import_review", True) else None
+        )
+        if found is not None:  # docs/REVIEW.md: events, bad channels, crop
+            review = found[1]
+            if review.crop is not None:
+                t0, t1 = review.crop
+                last = raw.times[-1]
+                raw.crop(tmin=min(t0, last), tmax=last if t1 is None else min(t1, last),
+                         include_tmax=t1 is None)  # fmt: skip
+            events = crop_events([m.to_wire() for m in review.marks], review.crop)
+            bads += [b for b in review.bads if b in raw.ch_names and b not in bads]
+            self.import_reviewed = True
         data: FloatArray = np.asarray(raw.get_data(), dtype=np.float64)
         info = SignalInfo(
             tuple(raw.ch_names),
             float(raw.info["sfreq"]),
             self._stream_id(),
-            tuple(b for b in raw.info["bads"] if b in raw.ch_names),
+            tuple(bads),
             tuple(raw.get_channel_types()),
             tuple(_location(ch["loc"]) for ch in raw.info["chs"]),
         )
-        self._annotations = [
-            {"onset": float(a["onset"] - raw.first_time),
-             "duration": float(a["duration"]), "label": str(a["description"])}
-            for a in raw.annotations
-        ]  # fmt: skip
+        self._annotations = [{"onset": float(e["onset"]),
+                              "duration": float(e.get("duration", 0.0)),
+                              "label": str(e["label"])} for e in events]  # fmt: skip
         return data, info
 
     def annotations(self) -> list[dict[str, float | str]]:
@@ -587,7 +614,9 @@ class _RawSource(Source):
         return block
 
     def content_id(self) -> str:
-        return _hash_files(self._files())
+        """The recording's files, and the review at import it applies."""
+        reviewed = review_files(self) if self.params.get("import_review", True) else []
+        return _hash_files([*self._files(), *reviewed])
 
     def input_files(self) -> list[Path]:
         return self._files()
@@ -606,7 +635,8 @@ class FileSource(_RawSource):
                 "primary": True,
                 "path": "file",
                 "extensions": [".set", ".edf", ".bdf", ".vhdr", ".fif", ".gdf", ".cnt"],
-            }
+            },
+            IMPORT_REVIEW_PARAM,
         ],
     )
 
@@ -658,6 +688,7 @@ class BidsSource(_RawSource):
             {"name": "session", "type": "string", "default": ""},
             {"name": "run", "type": "string", "default": ""},
             {"name": "datatype", "type": "string", "default": "eeg"},
+            IMPORT_REVIEW_PARAM,
         ],
     )
 
