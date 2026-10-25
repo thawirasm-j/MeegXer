@@ -38,6 +38,7 @@ from meegxer.core.graph import Graph, GraphError
 from meegxer.core.manifest import SPEC_VERSION
 from meegxer.core.node import Sink, Source
 from meegxer.core.registry import Registry, canonical_name
+from meegxer.core.review import REVIEW_NODE, ReviewStrip
 from meegxer.core.serialization import State, hash_state
 from meegxer.core.stage import FittedModel, Stage
 
@@ -213,6 +214,9 @@ def build_session(
             entry["provenance"] = provenance
         if node.manifest.references:  # what to cite, so the session stands alone
             entry["references"] = [r.as_dict() for r in node.manifest.references]
+        processor = node.impl.processor if isinstance(node.impl, Stage) else None
+        if isinstance(processor, ReviewStrip) and processor.record:  # who reviewed
+            entry["review"] = dict(processor.record)
         nodes[node.id] = entry
         if isinstance(node.impl, Stage) and node.impl.model is not None:
             model = node.impl.model
@@ -512,6 +516,8 @@ def share_safe(session: Mapping[str, Any]) -> dict[str, Any]:
                 params["path"] = output(path)
             if isinstance(root, str) and root:
                 params["root"] = ""  # BIDS writers: the default derivatives folder
+            if node.get("node") == REVIEW_NODE and params.get("file"):
+                params["file"] = ""  # the marks: next to each recording
         recording = node.get("recording", {})
         events = recording.get("events", {})
         if isinstance(events.get("file"), str) and events["file"]:
@@ -534,6 +540,7 @@ def share_safe(session: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(provenance.get("command"), list):  # a local plugin's command
             provenance["command"] = [re.split(r"[/\\]", str(a))[-1]
                                      for a in provenance["command"]]  # fmt: skip
+        entry.get("review", {}).pop("reviewer", None)  # it names a person
     return out
 
 

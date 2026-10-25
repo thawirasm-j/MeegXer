@@ -7,6 +7,22 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Reject segments** strip (Artifacts, offline): cuts out spans whose label
+  starts with one of its `reject` words (default `BAD`), with a `boundary`
+  event at each cut and a fresh start for every strip after it. It reads the
+  Events rail, so it cuts the recording's own `BAD…` events, a review's marks
+  and a detector's alike.
+  - **The Review strip now produces events only** (Design v2 in
+    `docs/REVIEW.md`); its `reject` setting names the labels the window's
+    *Reject* key gives. **A pipeline from 0.3.1b3 with a Review strip no longer
+    cuts:** add a Reject segments strip after it to keep cutting.
+  - A GUI offline run with a Review strip asks the reviewer's name once, when
+    it starts. The name is saved with each review (sidecar JSON) and in the
+    session (`nodes.<id>.review`, with when and on what input); a shared
+    session leaves it out (control API 0.2.11).
+  - Sharing a session now also clears a Review strip's `file` (it could name
+    the subject).
+
 - **Epochs** strip (Epochs, offline): cuts the signal around events onto an
   `epochs` side rail and passes the signal on unchanged.
   - Choose which events to cut around and the span (`tmin`/`tmax`, default

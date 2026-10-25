@@ -5,7 +5,7 @@ a recording by hand: bad segments (`BAD_muscle`, `BAD_eyes`), states
 (`eyes_closed`, `drowsy`), anything with a label and a span. The marks go on
 the Events rail, where later strips see them like the recording's own events.
 
-## Design v2 (agreed 2026-10-24; not built yet)
+## Design v2 (agreed 2026-10-24; step 1 built)
 
 Who reviews, and what helps them:
 
@@ -108,7 +108,7 @@ Who reviews, and what helps them:
 
 1. **Events only, and the Reject segments strip.** The cutting moves out of
    the Review strip into its own strip. The reviewer's name is asked once per
-   run.
+   run. *Built* (see *Built: step 1* below).
 2. **Display essentials:**
    - montage (average reference by default; bipolar and Laplacian presets)
    - display filters
@@ -177,7 +177,8 @@ Built (PR 1, continuous marks):
     `NOT REVIEWED`, ends with a warning listing them, and exits with code 2
     (1 if a recording failed).
 
-Built (PR 2, cuts):
+Built (PR 2, cuts; since step 1 of Design v2 a Reject segments strip cuts,
+not the Review strip):
 
 - **Rejected spans are cut out.** A mark whose label starts with one of the
   strip's `reject` words (default `BAD`; empty: nothing is cut) is removed
@@ -229,6 +230,23 @@ span, spacing and panner) with the review tools below:
   `reject` and `viewed`.
 
 Built: the **Epochs** strip writes the epochs side rail (`docs/RAILS.md`).
+
+Built (step 1 of Design v2):
+
+- **The Review strip produces events only.** Its `reject` setting now names the
+  labels the window's *Reject* key gives a span; nothing is cut at the strip.
+- **Reject segments** (`meegxer.core.reject_segments`, *Artifacts*, offline)
+  does the cutting described in *PR 2* above. It reads the Events rail, so it
+  cuts every span whose label starts with one of its `reject` words (default
+  `BAD`): the recording's own events, a review's marks, a detector's. Its
+  `boundary` events carry its id as their origin. A pipeline made with 0.3.1b3
+  needs one added after its Review strip to keep cutting.
+- **The reviewer's name** is asked once when a GUI offline run with a Review
+  strip starts (remembered for next time in `state.json`; *Cancel* does not
+  start the run). It goes to `run_offline(reviewer)` (control API 0.2.11) and
+  is saved with each review made in that run: in the sidecar JSON
+  (`MeegXer.reviewer`) and in the session (`nodes.<id>.review`: `reviewer`,
+  `reviewed`, `upstream`). A shared session leaves the name out.
 
 Next: the order of work in *Design v2* above. Live marks (hotkeys that add
 marks to the Events rail while recording) come after it.

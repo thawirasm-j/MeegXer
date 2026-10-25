@@ -73,6 +73,16 @@
             "script": {"type": "string"}
           }
         },
+        "review": {
+          "description": "A review strip's review (docs/REVIEW.md): who reviewed (left out when the session is shared), when (ISO 8601, UTC), and the fingerprint of the input it was made on. The marks are in the review's own sidecar.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reviewer": {"type": "string"},
+            "reviewed": {"type": "string"},
+            "upstream": {"type": "string"}
+          }
+        },
         "references": {
           "description": "What to cite for this node, from its manifest (spec 0.2.12).",
           "type": "array",

@@ -8,11 +8,13 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import jsonschema
 import mne
 import numpy as np
 import pytest
 
 from meegxer.core.batch import BatchScheduler
+from meegxer.core.block import Block, Event
 from meegxer.core.control import Daemon
 from meegxer.core.graph import Graph, GraphError
 from meegxer.core.manifest import SPEC_VERSION
@@ -24,6 +26,7 @@ from meegxer.core.review import (
     load_review,
     review_path,
 )
+from meegxer.core.session import build_session, session_schema, share_safe
 
 
 def nodes(review: dict[str, Any], low: float = 1.0) -> list[dict[str, Any]]:
@@ -60,13 +63,22 @@ def test_a_batch_run_asks_once_then_reuses_the_review(tmp_path: Path) -> None:
         asked.append(req)
         return [Mark(1.0, 0.5, "BAD_muscle"), Mark(3.0, 0.0, "blink")]
 
-    result = BatchScheduler(review=review).run(graph_of(file))
+    graph = graph_of(file)
+    result = BatchScheduler(review=review, reviewer="A. Rater").run(graph, keep=["rev"])
     assert [(e.sample_index, e.label, e.duration) for e in result.events["rev"]] == [
-        (100, "BAD_muscle", 50), (300, "blink", 0),
-        (150, "boundary", 50)]  # fmt: skip  # BAD spans are cut by default
+        (100, "BAD_muscle", 50), (300, "blink", 0)]  # fmt: skip
+    assert not isinstance(result.outputs["rev"], list)  # events only: nothing cut
     saved = load_review(file)
     assert saved is not None and len(saved.marks) == 2 and saved.upstream
+    assert saved.reviewer == "A. Rater"
     assert file.with_suffix(".json").is_file()
+    entry = build_session(graph)["nodes"]["rev"]["review"]  # who, when, on what
+    assert entry == {"reviewer": "A. Rater", "reviewed": saved.reviewed,
+                     "upstream": saved.upstream}  # fmt: skip
+    jsonschema.validate(build_session(graph), session_schema())
+    shared = share_safe(build_session(graph))  # names no one, and no file
+    assert "reviewer" not in shared["nodes"]["rev"]["review"]
+    assert shared["pipeline"]["nodes"][2]["params"]["file"] == ""
 
     again = BatchScheduler().run(graph_of(file))  # made on this input: reused
     assert again.events["rev"] == result.events["rev"] and len(asked) == 1
@@ -130,7 +142,7 @@ def test_an_offline_run_pauses_for_the_review(
     monkeypatch.setenv("MEEGXER_OFFLINE_DIR", str(tmp_path / "offline"))
     file = tmp_path / "marks.tsv"
     pipeline = {"spec_version": SPEC_VERSION, "nodes": nodes({"file": str(file)})}
-    daemon.run_offline(pipeline)
+    daemon.run_offline(pipeline, reviewer="B. Rater")
     status = wait_for(daemon, {"review", "done", "error"})
     assert status["state"] == "review", status["error"]
     assert status["review"]["node"] == "rev" and status["review"]["marks"] == []
@@ -142,6 +154,9 @@ def test_an_offline_run_pauses_for_the_review(
     assert status["probes"]["tap"]["n_filled"] == 400  # it went on past the strip
     saved = load_review(file)
     assert saved is not None and saved.marks == (Mark(0.5, 1.0, "BAD_eyes"),)
+    assert saved.reviewer == "B. Rater"
+    session = daemon.get_session(offline=True)
+    assert session["nodes"]["rev"]["review"]["reviewer"] == "B. Rater"
 
     daemon.run_offline(pipeline)  # reviewed on this input: no pause
     assert wait_for(daemon, {"review", "done", "error"})["state"] == "done"
@@ -154,7 +169,7 @@ def test_an_offline_run_pauses_for_the_review(
     assert not file.exists()
 
 
-# -- rejected spans are cut out (docs/REVIEW.md) -------------------------------------
+# -- a Reject segments strip cuts rejected spans out (docs/REVIEW.md) ----------------
 
 
 def cut_graph(tmp_path: Path, after: list[dict[str, Any]]) -> Graph:
@@ -163,6 +178,7 @@ def cut_graph(tmp_path: Path, after: list[dict[str, Any]]) -> Graph:
          "params": {"duration": 6.0, "n_channels": 2, "sfreq": 100.0}},
         {"id": "rev", "node": "meegxer.core.review",
          "params": {"file": str(tmp_path / "marks.tsv")}},
+        {"id": "rej", "node": "meegxer.core.reject_segments"},
         *after,
     ]}, Registry.from_entry_points())  # fmt: skip
 
@@ -175,7 +191,6 @@ def rejecting(req: ReviewRequest) -> list[Mark]:
 def test_rejected_spans_are_cut_with_a_boundary_and_do_not_leak(
     tmp_path: Path,
 ) -> None:
-    from meegxer.core.block import Block
     from meegxer.core.stage import Stage, signal_fingerprint
     from meegxer.nodes.filters import IIRFilter
 
@@ -190,8 +205,7 @@ def test_rejected_spans_are_cut_with_a_boundary_and_do_not_leak(
     pieces = [b for b in pieces if isinstance(b, Block)]
     # overlapping BAD spans merged: [200, 350) cut; samples keep their index
     assert [(b.sample_index, b.stop_index) for b in pieces] == [(0, 200), (350, 600)]
-    boundary = [e for e in result.events["rev"] if e.label == "boundary"]
-    assert [(e.sample_index, e.duration) for e in boundary] == [(350, 150)]
+    assert result.events["rej"] == (Event(350, "boundary", 150, {"origin": "rej"}),)
     assert "blink" in [e.label for e in result.events["rev"]]  # not a reject word
     # the piece after the cut is filtered as if it were a recording of its own
     source = result.outputs["src"]
@@ -205,9 +219,25 @@ def test_rejected_spans_are_cut_with_a_boundary_and_do_not_leak(
 
 def test_nothing_is_cut_without_reject_words(tmp_path: Path) -> None:
     graph = cut_graph(tmp_path, [])
-    graph["rev"].impl.params["reject"] = ""
-    result = BatchScheduler(review=rejecting).run(graph, keep=["rev"])
-    assert not isinstance(result.outputs["rev"], list)
+    graph["rej"].impl.params["reject"] = ""
+    result = BatchScheduler(review=rejecting).run(graph, keep=["rej"])
+    assert not isinstance(result.outputs["rej"], list)
+
+
+def test_the_recordings_own_bad_spans_are_cut_too(tmp_path: Path) -> None:
+    events = tmp_path / "events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n1.0\t0.5\tBAD_acq\n")
+    graph = Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": [
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"duration": 3.0, "n_channels": 2, "sfreq": 100.0},
+         "recording": {"events": {"file": str(events)}}},
+        {"id": "rej", "node": "meegxer.core.reject_segments"},
+    ]}, Registry.from_entry_points())  # fmt: skip
+    result = BatchScheduler().run(graph, keep=["rej"])  # no review needed
+    pieces = result.outputs["rej"]
+    assert isinstance(pieces, list)
+    assert [(b.sample_index, b.stop_index) for b in pieces
+            if isinstance(b, Block)] == [(0, 100), (150, 300)]  # fmt: skip
 
 
 def test_a_writer_saves_the_pieces_with_boundary_events(tmp_path: Path) -> None:
@@ -224,7 +254,6 @@ def test_a_writer_saves_the_pieces_with_boundary_events(tmp_path: Path) -> None:
 def test_a_fit_after_a_cut_sees_only_the_kept_samples(tmp_path: Path) -> None:
     from typing import ClassVar
 
-    from meegxer.core.block import Block
     from meegxer.core.manifest import Manifest
     from meegxer.core.node import Params, Processor, TransformResult
     from meegxer.core.serialization import State

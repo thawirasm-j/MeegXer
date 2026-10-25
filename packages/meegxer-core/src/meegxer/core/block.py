@@ -273,7 +273,8 @@ def concat_blocks(blocks: Sequence[Block]) -> Block:
 
 def contiguous_runs(blocks: Sequence[Block]) -> list[Block]:
     """Blocks of one stream joined where they are contiguous: one block per
-    stretch between gaps (a stream cut by a review strip, docs/REVIEW.md)."""
+    stretch between gaps (a stream cut by a Reject segments strip,
+    docs/REVIEW.md)."""
     runs: list[list[Block]] = []
     for block in blocks:
         if runs and block.sample_index == runs[-1][-1].stop_index:
