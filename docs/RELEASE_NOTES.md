@@ -7,6 +7,15 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Review points:** the Review strip's new `points` setting names event
+  labels to step through (e.g. a detector's candidates). The review window
+  goes from point to point (◀/▶, ←/→), selects each to label and retime, keeps
+  each answer linked to its point (`review_point` in the marks file), and can
+  move on after each answer. A counter shows how many are answered.
+- **The review display is never locked:** the Review strip's display
+  settings are starting values, each *Reviewer's choice* by default (no more
+  -1/0 codes), and the reviewer can change them.
+
 - **Fixed: events reach the output files and the views.** A review's marks
   (and any strip's events) were put on the Events rail but never written:
   `.set` and EDF files only got cut boundaries, and the BIDS writer only the

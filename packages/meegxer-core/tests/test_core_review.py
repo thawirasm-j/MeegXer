@@ -314,7 +314,9 @@ def test_bad_channels_marked_in_review_become_the_streams_bads(
 
     file = tmp_path / "marks.tsv"
     graph = graph_of(file)
-    graph["rev"].impl.params.update(montage="longitudinal bipolar", lowpass=40.0)
+    graph["rev"].impl.params.update(
+        montage="longitudinal bipolar", lowpass="40", notch="off"
+    )  # the window opens with these
     asked: list[ReviewRequest] = []
 
     def review(req: ReviewRequest) -> ReviewAnswer:
@@ -323,7 +325,11 @@ def test_bad_channels_marked_in_review_become_the_streams_bads(
 
     result = BatchScheduler(review=review).run(graph, keep=["hp", "rev"])
     # the researcher's presets reach the window; the rest is the reviewer's
-    assert asked[0].display == {"montage": "longitudinal bipolar", "lowpass": 40.0}
+    assert asked[0].display == {
+        "montage": "longitudinal bipolar",
+        "lowpass": 40.0,
+        "notch": 0.0,
+    }
     assert asked[0].to_wire()["display"] == asked[0].display
     after, before = result.outputs["rev"], result.outputs["hp"]
     assert isinstance(after, Block) and isinstance(before, Block)
@@ -428,3 +434,44 @@ def test_the_views_get_the_runs_events(
         {"onset": 1.0, "duration": 0.5, "label": "spike", "origin": "review"}
     ]
     assert daemon.offline_events("hp")["events"] == []  # before the strip
+
+
+def test_review_points_are_offered_and_answers_keep_their_point(
+    tmp_path: Path,
+) -> None:
+    events = tmp_path / "events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n1.0\t0.5\tbeta\n"
+                      "2.0\t0\tstim\n3.0\t0.4\tbeta\n")  # fmt: skip
+    file = tmp_path / "marks.tsv"
+    graph = Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": [
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"duration": 5.0, "n_channels": 2, "sfreq": 100.0},
+         "recording": {"events": {"file": str(events)}}},
+        {"id": "rev", "node": "meegxer.core.review",
+         "params": {"file": str(file), "points": "beta"}},
+    ]}, Registry.from_entry_points())  # fmt: skip
+    asked: list[ReviewRequest] = []
+
+    def review(req: ReviewRequest) -> list[Mark]:
+        asked.append(req)
+        # the physician: the first is a spindle (retimed), the second is not
+        return [
+            Mark(0.9, 0.7, "spindle", point=1.0),
+            Mark(3.0, 0.4, "not_spindle", point=3.0),
+        ]
+
+    BatchScheduler(review=review).run(graph)
+    assert asked[0].points == (Mark(1.0, 0.5, "beta"), Mark(3.0, 0.4, "beta"))
+    assert asked[0].to_wire()["points"][0] == {"onset": 1.0, "duration": 0.5,
+                                               "label": "beta"}  # fmt: skip
+    saved = load_review(file)
+    assert saved is not None
+    assert [m.point for m in saved.marks] == [1.0, 3.0]
+    assert "review_point" in file.read_text().splitlines()[0]
+    # a mark from the wire keeps its point; one without has none
+    assert Mark.from_wire({"onset": 1, "label": "x", "point": 2.5}).point == 2.5
+    assert Mark.from_wire({"onset": 1, "label": "x"}).to_wire() == {
+        "onset": 1.0,
+        "duration": 0.0,
+        "label": "x",
+    }

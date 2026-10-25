@@ -103,7 +103,10 @@ remote GUI).
   spans looked at in the earlier review, `bads` (0.2.12) the channels
   marked bad then, `display` (0.2.12) the strip's display presets: any of
   `montage`, `highpass`, `lowpass`, `notch`, `sensitivity` (µV/mm), `page`
-  (s), fixed for the reviewer;
+  (s), the display the window opens with (the reviewer can change it),
+  `points` (0.2.13) the review points: the events the strip names, `{onset,
+  duration, label}`; a mark answering one carries its onset as `point`
+  (also in `submit_review`'s marks);
   otherwise `null`), `done` or `error`,
   `skipped` lists the saves a writer skipped because its file existed (without
   `overwrite`; the run still finished), `recordings` (0.2.7) is empty except for

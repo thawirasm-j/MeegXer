@@ -265,3 +265,79 @@ def test_spans_are_dragged_adjusted_and_channels_clicked(qapp: QApplication) -> 
     assert window.bads == ["F7"]
     window.answered = True
     window.close()
+
+
+def test_review_points_are_stepped_through_and_answered(qapp: QApplication) -> None:
+    from meegxer.gui.review_window import ReviewWindow
+    from meegxer.gui.theme import load_theme
+
+    points = [{"onset": 5.0, "duration": 1.0, "label": "beta"},
+              {"onset": 20.0, "duration": 0.5, "label": "beta"},
+              {"onset": 40.0, "duration": 0.8, "label": "beta"}]  # fmt: skip
+    request = {
+        "node": "rev",
+        "reason": "not reviewed",
+        "duration_s": 60.0,
+        "labels": ["spindle", "not_spindle"],
+        "reject": ["BAD"],
+        "marks": [],
+        "viewed": [],
+        "points": points,
+        "display": {"montage": "longitudinal bipolar", "lowpass": 30.0},
+    }
+    sent: list[tuple[object, ...]] = []
+    window = ReviewWindow(
+        request,
+        load_theme("dark"),
+        submit=lambda *a: sent.append(a),
+        cancel=lambda: None,
+    )
+    window.seek_rate = 100.0
+    # the strip's display is where the window starts; the reviewer can change it
+    assert window.montage.currentData() == "longitudinal bipolar"
+    assert window.montage.isEnabled() and window.filters["lowpass"].isEnabled()
+    assert window.filters["lowpass"].value() == 30.0
+    assert window.point_label.isVisibleTo(window)
+    assert window.point_label.text() == "Point –/3 · 0 answered"  # noqa: RUF001
+
+    window.step(1)  # → : the first point, selected
+    assert window.point_index == 0 and window.selection.getRegion() == (5.0, 6.0)
+    window.selection.setRegion((4.8, 6.3))  # the physician retimes it
+    window.mark_with(0)  # spindle; then on to the next point
+    first = window.marks[0]
+    assert (first["label"], first["onset"], first["point"]) == ("spindle", 4.8, 5.0)
+    assert window.point_index == 1 and window.point_label.text().endswith("1 answered")
+    window.auto_next.setChecked(False)
+    window.mark_with(1)  # not a spindle; stays at this point
+    assert window.marks[1]["point"] == 20.0 and window.point_index == 1
+    window.step(-1)  # back to the first: its answer is selected to change
+    assert window.editing is first
+    window.mark_with(1)  # relabelled
+    assert first["label"] == "not_spindle" and len(window.marks) == 2
+    assert window.coverage.points == [(5.0, True), (20.0, True), (40.0, False)]
+    window.page(1)  # away from the points: a new span answers none
+    window.select(50.0, 51.0)
+    window.mark_with(0)
+    assert "point" not in window.marks[-1]
+
+    from PySide6.QtWidgets import QMessageBox
+
+    asked: list[str] = []
+
+    def answer(*args: object) -> QMessageBox.StandardButton:
+        asked.append(str(args[2]))
+        return QMessageBox.StandardButton.Yes
+
+    original = QMessageBox.question
+    QMessageBox.question = answer  # type: ignore[assignment]
+    try:
+        window.submit()
+    finally:
+        QMessageBox.question = original  # type: ignore[method-assign]
+    assert asked and "1 of 3 review points" in asked[0]
+    marks = sent[0][0]
+    assert isinstance(marks, list) and [m.get("point") for m in marks] == [
+        5.0,
+        20.0,
+        None,
+    ]
