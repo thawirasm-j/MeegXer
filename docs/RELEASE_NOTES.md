@@ -23,6 +23,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
     bad channels after the strip (so interpolation and re-reference strips
     act on them).
   - Keys 1 to 9 mark the band with the first nine labels; **Undo** (Ctrl+Z).
+- **Marking in the review window:** drag on the traces from the start to the
+  end of a span (a click picks an instant); drag the tabs on its edges to
+  adjust it, past the page if need be (a tab at the border shows where it
+  ends). Click a mark to move its edges, relabel it or delete it.
+- **Channel names are clickable pills:** a click marks a channel bad or good
+  again; a right-click opens its menu.
 
 - **Reject segments** strip (Artifacts, offline): cuts out spans whose label
   starts with one of its `reject` words (default `BAD`), with a `boundary`

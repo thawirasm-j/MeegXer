@@ -216,6 +216,9 @@ class ChannelMenu(QToolButton):
             else f"Channels: {shown}/{len(self.labels)}"
         )
 
+    def show_all(self) -> None:
+        self._set(set())
+
     def toggle_channel(self, label: str) -> None:
         """Show or hide one channel (e.g. clicked on the head plot)."""
         hidden = set(self.hidden)
@@ -233,9 +236,23 @@ class TraceViewBox(pg.ViewBox):
     def __init__(self) -> None:
         super().__init__()
         self.setMouseEnabled(x=False, y=True)
+        # the review window draws spans with the left button (True: handled)
+        self.drag_handler: Callable[[Any], bool] | None = None
+        self.click_handler: Callable[[Any], bool] | None = None
 
     def wheelEvent(self, ev: Any, axis: int | None = None) -> None:
         super().wheelEvent(ev, axis=1)
+
+    def mouseDragEvent(self, ev: Any, axis: int | None = None) -> None:
+        left = ev.button() == Qt.MouseButton.LeftButton
+        if left and self.drag_handler is not None and self.drag_handler(ev):
+            return
+        super().mouseDragEvent(ev, axis)
+
+    def mouseClickEvent(self, ev: Any) -> None:
+        if self.click_handler is not None and self.click_handler(ev):
+            return
+        super().mouseClickEvent(ev)
 
     def mouseDoubleClickEvent(self, ev: Any) -> None:
         self.enableAutoRange(axis=pg.ViewBox.YAxis)
@@ -1027,6 +1044,10 @@ class StackedWindow(QWidget):
         """A channel's look (the review window greys out bad channels)."""
         return style
 
+    def rows_drawn(self, rows: list[tuple[str, float, ChannelStyle]]) -> None:
+        """Called with each row drawn: its label, height (µV) and look (the
+        review window puts a clickable name there)."""
+
     def closeEvent(self, event: QCloseEvent) -> None:
         super().closeEvent(event)
         self.closed.emit()
@@ -1115,3 +1136,8 @@ class StackedWindow(QWidget):
                 ]
             ]
         )
+        self.rows_drawn([
+            (top.labels[c], (len(chans) - 1 - row) * spacing,
+             self.restyle(top.labels[c], styles[c]))
+            for row, c in enumerate(chans)
+        ])  # fmt: skip
