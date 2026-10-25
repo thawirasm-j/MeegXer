@@ -154,6 +154,7 @@ PARAMS: dict[str, str] = {
     "reg": "Covariance shrinkage",
     "events": "Around events",
     "baseline": "Baseline",
+    "import_review": "Use the review made at import",
     # the Review strip: review points, and the display it opens with
     "points": "Review points (event labels)",
     "montage": "Display montage",
