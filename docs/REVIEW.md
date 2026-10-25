@@ -301,6 +301,12 @@ Built (after the first look at step 2):
   channel's menu: bad or good per electrode, hide the channel, show all
   channels, mark all channels good. *Bad channels (n)* stays as a list.
 
+Fixed: the marks reach the output files and the views. Every file writer
+(`.set`, EDF, BIDS) saves the events on the Events rail where it sits (the
+input's, a review's marks, a detector's), shifted onto the processed
+recording's time; the offline views mark the run's events (control API
+`offline_events`).
+
 Next: the order of work in *Design v2* above. Live marks (hotkeys that add
 marks to the Events rail while recording) come after it.
 

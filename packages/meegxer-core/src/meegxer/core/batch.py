@@ -200,9 +200,10 @@ class BatchScheduler:
         graph.check_positions(source.info)  # before reading or writing anything
         labelled = any(isinstance(n.impl, Stage) and n.manifest.reads_events
                        for n in graph.nodes)  # fmt: skip
-        self._events = recording_events(source) if labelled else ()
+        recorded = recording_events(source)  # on the rail for strips and writers
+        self._events = recorded if labelled else ()
         self._rail = EventsRail(source.info.sfreq)  # counted on the input's clock
-        self._rail.add(self._events)
+        self._rail.add(recorded)
         self._graph = graph
         self._written = {}
         self._buffers = {}
@@ -229,6 +230,11 @@ class BatchScheduler:
                 elif isinstance(node.impl, Sink):
                     for block in upstream:
                         node.impl.write(block)
+                    rate = next((b.info.sfreq for b in upstream
+                                 if isinstance(b, Block)), None)  # fmt: skip
+                    node.impl.write_events(
+                        self._rail.visible_to(graph, node.id, sfreq=rate)
+                    )
                     node.impl.close()
                     result.skipped.extend(f"{node.id}: {note}"
                                           for note in node.impl.skipped)  # fmt: skip
@@ -242,6 +248,13 @@ class BatchScheduler:
             assert isinstance(node.impl, Sink)
             node.impl.finish()
         return result
+
+    def rail_events(self, node_id: str | None = None) -> tuple[Event, ...]:
+        """The Events rail so far, on the input's clock: all of it (the input's
+        events and every strip's that has run), or what ``node_id`` sees."""
+        if node_id is None or self._graph is None:
+            return self._rail.events()
+        return self._rail.visible_to(self._graph, node_id)
 
     def _read_source(self, source: Source) -> Iterable[Block]:
         total = source.n_samples

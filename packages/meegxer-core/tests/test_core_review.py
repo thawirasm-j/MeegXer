@@ -247,8 +247,11 @@ def test_a_writer_saves_the_pieces_with_boundary_events(tmp_path: Path) -> None:
     BatchScheduler(review=rejecting).run(cut_graph(tmp_path, [writer]))
     raw = mne.io.read_raw_eeglab(out, verbose="error")
     assert raw.n_times == 450  # 600 samples less the 150 cut
-    assert list(raw.annotations.description) == ["boundary"]
+    # the boundary, and the review's blink (5.0 s) 1.5 s earlier; the BAD
+    # marks were in the cut
+    assert list(raw.annotations.description) == ["boundary", "blink"]
     assert raw.annotations.onset[0] == pytest.approx(2.0, abs=0.011)
+    assert raw.annotations.onset[1] == pytest.approx(3.5, abs=0.011)
 
 
 def test_a_fit_after_a_cut_sees_only_the_kept_samples(tmp_path: Path) -> None:
@@ -373,3 +376,55 @@ def test_an_offline_page_through_a_montage_over_rpc(
     assert wait_for(daemon, {"done", "error"})["state"] == "done"
     saved = load_review(file)
     assert saved is not None and saved.bads == ("Fp1",)
+
+
+# -- a review's marks reach the output files and the views --------------------------
+
+
+def test_writers_save_the_reviews_marks_and_the_inputs_events(tmp_path: Path) -> None:
+    events = tmp_path / "events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n0.5\t0\tstim\n2.6\t0\tlost\n")
+    out, edf = tmp_path / "clean.set", tmp_path / "clean.edf"
+    graph = Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": [
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"duration": 6.0, "n_channels": 2, "sfreq": 100.0},
+         "recording": {"events": {"file": str(events)}}},
+        {"id": "rev", "node": "meegxer.core.review",
+         "params": {"file": str(tmp_path / "marks.tsv")}},
+        {"id": "set", "node": "meegxer.core.set_writer", "params": {"path": str(out)}},
+        {"id": "rej", "node": "meegxer.core.reject_segments"},
+        {"id": "edf", "node": "meegxer.core.edf_writer", "params": {"path": str(edf)}},
+    ]}, Registry.from_entry_points())  # fmt: skip
+    BatchScheduler(review=rejecting).run(graph)
+    raw = mne.io.read_raw_eeglab(out, verbose="error")  # before the cut
+    got = sorted(zip(raw.annotations.onset.round(2), raw.annotations.description,
+                     strict=True))  # fmt: skip
+    assert got == [(0.5, "stim"), (2.0, "BAD_muscle"), (2.5, "BAD_eyes"),
+                   (2.6, "lost"), (5.0, "blink")]  # fmt: skip
+    cut = mne.io.read_raw_edf(edf, verbose="error")  # after it: [2.0, 3.5) gone
+    got = sorted(
+        (o, d)
+        for o, d in zip(
+            cut.annotations.onset.round(2), cut.annotations.description, strict=True
+        )
+        if d != "BAD_ACQ_SKIP"
+    )  # MNE's EDF export pads the last record
+    # events in the cut are left out; those after it move 1.5 s earlier
+    assert got == [(0.5, "stim"), (2.0, "boundary"), (3.5, "blink")]
+
+
+def test_the_views_get_the_runs_events(
+    daemon: Daemon, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MEEGXER_OFFLINE_DIR", str(tmp_path / "offline"))
+    pipeline = {"spec_version": SPEC_VERSION,
+                "nodes": nodes({"file": str(tmp_path / "marks.tsv")})}  # fmt: skip
+    daemon.run_offline(pipeline)
+    wait_for(daemon, {"review"})
+    assert daemon.offline_events()["events"] == []  # nothing marked yet
+    daemon.submit_review([{"onset": 1.0, "duration": 0.5, "label": "spike"}])
+    wait_for(daemon, {"done"})
+    assert daemon.offline_events()["events"] == [
+        {"onset": 1.0, "duration": 0.5, "label": "spike", "origin": "review"}
+    ]
+    assert daemon.offline_events("hp")["events"] == []  # before the strip

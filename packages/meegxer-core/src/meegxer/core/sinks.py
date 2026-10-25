@@ -19,19 +19,21 @@ import hashlib
 import json
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Any, ClassVar, Literal
 
 import numpy as np
 
-from meegxer.core.block import Block, FeatureBlock
+from meegxer.core.block import Block, Event, FeatureBlock
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Sink
 from meegxer.core.ports import PortTypeError
 from meegxer.core.references import credits
 from meegxer.core.settings import config_dir
+
+BOUNDARY = "boundary"  # the event at a cut (meegxer.core.review)
 
 
 def _sink_manifest(name: str, input_type: str, extension: str) -> Manifest:
@@ -96,23 +98,55 @@ def spool_paths(path: Path) -> tuple[Path, Path]:
     return data, data.with_name(data.name + ".json")
 
 
+def file_events(header: dict[str, Any], n_samples: int) -> list[tuple[int, int, str]]:
+    """The spool's events (``events``: ``[sample index, samples, label]`` on
+    the stream's clock) as ``(position in the file, samples, label)``: shifted
+    over the cuts before them, those inside a cut left out, each clipped to the
+    piece it starts in."""
+    first = int(header.get("sample_index", 0))
+    gaps: list[tuple[int, int, int]] = []  # stream index start, stop; cut before
+    offset = 0
+    for pos, cut in sorted(header.get("boundaries", [])):
+        start = first + int(pos) + offset
+        gaps.append((start, start + int(cut), offset))
+        offset += int(cut)
+    out = []
+    for index, length, label in header.get("events", []):
+        index, length = int(index), int(length)
+        if index < first or any(a <= index < b for a, b, _ in gaps):
+            continue
+        before = sum(b - a for a, b, _ in gaps if b <= index)
+        pos = index - first - before
+        if pos >= n_samples:
+            continue
+        nxt = min((a for a, _, _ in gaps if a > index), default=None)
+        if nxt is not None:
+            length = min(length, nxt - index)
+        out.append((pos, max(0, min(length, n_samples - pos)), str(label)))
+    return out
+
+
 def write_raw(path: Path, fmt: Literal["eeglab", "edf"], data: np.ndarray,
               header: dict[str, Any], overwrite: bool) -> None:  # fmt: skip
     """Write channels x samples ``data`` (volts) as ``fmt``, with the labels, rate
-    and bad channels from a spool ``header``, and a ``boundary`` event at each cut
-    a Reject segments strip made (``boundaries``: ``[position in data, samples
-    cut]``)."""
+    and bad channels from a spool ``header``, its events (the input's and the
+    strips', ``file_events``), and a ``boundary`` event at each cut a Reject
+    segments strip made (``boundaries``: ``[position in data, samples cut]``)."""
     import mne
 
     info = mne.create_info(list(header["ch_labels"]), header["sfreq"], ch_types="eeg")
     info["bads"] = list(header["bads"])
     raw = mne.io.RawArray(data, info, verbose="ERROR")
+    sfreq = float(header["sfreq"])
     cuts = [pos for pos, _ in header.get("boundaries", []) if 0 < pos < data.shape[1]]
-    if cuts:
-        sfreq = float(header["sfreq"])
-        raw.set_annotations(mne.Annotations([p / sfreq for p in cuts],
-                                            [0.0] * len(cuts),
-                                            ["boundary"] * len(cuts)))  # fmt: skip
+    marks = [(p, 0, "boundary") for p in cuts] + file_events(header, data.shape[1])
+    if marks:
+        marks.sort()
+        onsets = [p / sfreq for p, _, _ in marks]
+        durations = [n / sfreq for _, n, _ in marks]
+        raw.set_annotations(
+            mne.Annotations(onsets, durations, [label for _, _, label in marks])
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     mne.export.export_raw(path, raw, fmt=fmt, overwrite=overwrite, verbose="ERROR")
     if fmt == "eeglab":
@@ -285,6 +319,15 @@ class _RawFileSink(Sink):
         self._spool.flush()  # in the OS's hands: survives a crash of this process
         self._next_index = block.stop_index
         self._written += block.n_samples
+
+    def write_events(self, events: Sequence[Event]) -> None:
+        """Kept with the spool (a crash recovery writes them too); the cuts'
+        boundaries are written from the cuts themselves."""
+        if self._first is None or self._stopped:
+            return
+        self._header["events"] = [[e.sample_index, e.duration, e.label]
+                                  for e in events if e.label != BOUNDARY]  # fmt: skip
+        self._write_header()
 
     def _open(self, block: Block) -> None:
         data_path, header_path = spool_paths(self.path)

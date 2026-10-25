@@ -174,6 +174,7 @@ class Daemon:
             "run_offline": self.run_offline,
             "offline_window": self.offline_window,
             "offline_features": self.offline_features,
+            "offline_events": self.offline_events,
             "submit_review": self.submit_review,
             "cancel_review": self.cancel_review,
             "unfinished_recordings": self.unfinished_recordings,
@@ -535,6 +536,14 @@ class Daemon:
                 raise ValueError(f"unknown display option {key!r}")
         return self._offline.window(probe, int(start), int(n_samples), int(max_bins),
                                     **options)  # fmt: skip
+
+    def offline_events(self, node: str | None = None) -> dict[str, Any]:
+        """The events of the current offline run so far (seconds from the
+        recording's start): the input's and every strip's (a review's marks),
+        or those ``node`` sees."""
+        if self._offline is None:
+            raise RuntimeError("no offline run")
+        return {"events": self._offline.events(node)}
 
     def offline_features(
         self,

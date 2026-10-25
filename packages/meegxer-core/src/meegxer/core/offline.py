@@ -354,6 +354,7 @@ class OfflineJob:
         self.cache_dir = root / "cache"
         self.rebuild = rebuild
         self.reviewer = reviewer  # saved with each review made in the run
+        self.scheduler: BatchScheduler | None = None  # of the recording shown
         self.recordings: list[dict[str, str]] = []
         self.progress: dict[str, Any] = {}
         source = graph.source.impl
@@ -409,9 +410,10 @@ class OfflineJob:
         self.sfreq = float(source.info.sfreq)  # type: ignore[union-attr]
         self.store_folder.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        result = BatchScheduler(cache=DirectoryCache(self.cache_dir),
-                                review=self._await_review,
-                                reviewer=self.reviewer).run(graph)  # fmt: skip
+        self.scheduler = BatchScheduler(cache=DirectoryCache(self.cache_dir),
+                                        review=self._await_review,
+                                        reviewer=self.reviewer)  # fmt: skip
+        result = self.scheduler.run(graph)
         for store in self.probes.values():
             store.close()
         return result
@@ -561,6 +563,18 @@ class OfflineJob:
             return {"probe": probe,
                     **store.derived_window(start, n, max_bins, **display)}  # fmt: skip
         return {"probe": probe, **store.window(start, n, max_bins)}
+
+    def events(self, node: str | None = None) -> list[dict[str, Any]]:
+        """The run's events so far (seconds from the recording's start): the
+        input's and every strip's that has run, or those ``node`` sees."""
+        if self.scheduler is None or not self.sfreq:
+            return []
+        if node is not None and node not in self.graph:
+            raise KeyError(f"no node {node!r}")
+        return [{"onset": e.sample_index / self.sfreq,
+                 "duration": e.duration / self.sfreq, "label": e.label,
+                 "origin": str(e.payload.get("origin", ""))}
+                for e in self.scheduler.rail_events(node)]  # fmt: skip
 
     def feature_windows(
         self, probe: str, start: int, stop: int, max_windows: int, reduce: str

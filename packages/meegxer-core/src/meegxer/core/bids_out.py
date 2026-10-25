@@ -12,7 +12,7 @@ from __future__ import annotations
 import csv
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
@@ -22,6 +22,7 @@ import numpy as np
 
 from meegxer.core.block import (
     Block,
+    Event,
     FeatureBlock,
     SignalInfo,
     contiguous_runs,
@@ -368,12 +369,16 @@ class BidsWriter(_BidsSink):
     def __init__(self, params: Mapping[str, object] | None = None) -> None:
         super().__init__(params)
         self._blocks: list[Block] = []
+        self._events: tuple[Event, ...] | None = None  # the rail's, at the writer
         self.target: Target | None = None
 
     def write(self, block: AnyBlock) -> None:
         if not isinstance(block, Block):
             raise PortTypeError(f"{self.manifest.name} accepts Signal blocks only")
         self._blocks.append(block)
+
+    def write_events(self, events: Sequence[Event]) -> None:
+        self._events = tuple(events)
 
     def close(self) -> None:
         if not self._blocks:
@@ -389,6 +394,8 @@ class BidsWriter(_BidsSink):
         sink = SetSink({"path": str(signal_path), "overwrite": True})
         for piece in pieces:
             sink.write(piece)  # a boundary event at each cut
+        if self._events is not None:
+            sink.write_events(self._events)
         sink.close()
         first = pieces[0]
         data = np.concatenate([b.data for b in pieces], axis=1)
@@ -400,13 +407,22 @@ class BidsWriter(_BidsSink):
             target.path("channels.json"),
             "Channels of the processed recording: types, units and status "
             "after the recording's edits"))  # fmt: skip
-        source = self._graph.source.impl
-        rows = _events_rows(describe(source)["events"], pieces)
+        if self._events is not None:  # the input's and the strips' (a review's)
+            rate = first.info.sfreq
+            events = [{"onset": e.sample_index / rate, "duration": e.duration / rate,
+                       "label": e.label}
+                      for e in self._events if e.label != "boundary"]  # fmt: skip
+        else:
+            events = describe(self._graph.source.impl)["events"]
+        rows = _events_rows(events, pieces)
         if rows:
             path = target.path("events.tsv")
             _write_tsv(path, ["onset", "duration", "trial_type"], rows)
             self.written.append(path)
-            note = "Events of the raw recording, after renaming and dropping"
+            note = (
+                "Events of the raw recording, after renaming and dropping, "
+                "and those the pipeline's strips added (a review's marks)"
+            )
             if len(pieces) > 1:
                 note += ("; spans a review rejected are cut out: onsets count the "
                          "processed recording's time, events inside a cut are "

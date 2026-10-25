@@ -7,6 +7,15 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Fixed: events reach the output files and the views.** A review's marks
+  (and any strip's events) were put on the Events rail but never written:
+  `.set` and EDF files only got cut boundaries, and the BIDS writer only the
+  input file's own events. Now every file writer saves the events on the
+  rail where it sits (the input's and its upstream strips'), on the
+  processed recording's time (events inside a cut are left out). The offline
+  views mark the run's events once it pauses for a review or ends
+  (`offline_events`, control API 0.2.13).
+
 - **Review window display** (Design v2, step 2 in `docs/REVIEW.md`):
   - A montage: as recorded, monopolar against the **average** reference (the
     default), longitudinal ("double banana") or transverse bipolar, or a

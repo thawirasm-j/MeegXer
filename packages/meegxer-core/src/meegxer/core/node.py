@@ -250,5 +250,11 @@ class Sink(_ConfiguredNode):
         """Batch runs call this once every node has run (after ``close``): for
         writers that record the whole run (e.g. its session file)."""
 
+    def write_events(self, events: Sequence[Event]) -> None:
+        """Batch runs call this before ``close`` with the events on the Events
+        rail where the sink is: the input's own and those the strips before it
+        emitted (a review's marks, a detector's), on its input's clock. File
+        writers save them; other sinks ignore them."""
+
     def close(self) -> None:
         """Flush and release resources."""
