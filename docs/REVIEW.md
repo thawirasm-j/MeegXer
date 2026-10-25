@@ -301,6 +301,28 @@ Built (after the first look at step 2):
   channel's menu: bad or good per electrode, hide the channel, show all
   channels, mark all channels good. *Bad channels (n)* stays as a list.
 
+Built (review points, and the display as a starting point):
+
+- **The display is never locked.** The Review strip's display settings
+  (Advanced: montage, high-pass, low-pass, notch, sensitivity, page length)
+  are what the window opens with; each is *Reviewer's choice* by default
+  (the reviewer's Settings), and the reviewer can change all of them.
+- **Review points.** The strip's `points` names event labels to step through,
+  e.g. those of a beta detector upstream (120 candidates for a physician to
+  confirm or reject):
+  - ◀/▶ and ←/→ go to the previous or next point (PgUp/PgDn still turn
+    pages). The point is centred and selected; if it was answered, its
+    answer is selected instead.
+  - The reviewer labels it (keys 1 to 9, Annotate) and retimes it by
+    dragging its edges. The mark keeps the point it answers (`point` on the
+    wire, a `review_point` column in the sidecar), so a detector's points can
+    be compared with the reviewer's answers.
+  - *Next point after marking* (on by default) moves on after each answer.
+  - Points show as dashed outlines (green once answered), as ticks on the
+    coverage bar, and in the counter `Point 12/120 · 45 answered`. Saving
+    asks first if some points have no answer (with points, the coverage of
+    the whole recording is not asked about).
+
 Fixed: the marks reach the output files and the views. Every file writer
 (`.set`, EDF, BIDS) saves the events on the Events rail where it sits (the
 input's, a review's marks, a detector's), shifted onto the processed

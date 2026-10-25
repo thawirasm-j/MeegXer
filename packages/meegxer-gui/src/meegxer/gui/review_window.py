@@ -30,6 +30,11 @@ drawn grey and dashed, left out of the average and the Laplacian, and become
 the stream's bad channels after the strip. Keys 1 to 9 mark the band with the
 first nine labels; Ctrl+Z undoes the last change to the marks or channels.
 
+With **review points** (events the Review strip names, e.g. a detector's),
+◀/▶ and ←/→ step through them: each is centred and selected, to label (a key
+or Annotate) and retime by its edges; the mark keeps the point it answers, and
+*Next point after marking* moves on. PgUp/PgDn still turn pages.
+
 Each row's channel name is a pill: a click marks the channel bad or good
 again (a bipolar pair asks which electrode), a right-click opens its menu.
 
@@ -60,6 +65,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QGraphicsItem,
@@ -95,7 +101,7 @@ SENSITIVITIES = (1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 70, 100, 150, 200)  # µV/mm
 SPEEDS = (10, 15, 30, 60)  # mm/s
 BIPOLAR = ("longitudinal bipolar", "transverse bipolar")  # labels are pairs
 BAD_STYLE = ChannelStyle((128, 128, 128), dashed=True)
-PRESET_TIP = "Set by the pipeline's Review strip"
+PRESET_TIP = "Starts as the pipeline's Review strip sets it"
 EDGE_ZONE = 0.04  # of the page: dragging an edge this near the border scrolls
 SCROLL_STEP = 0.25  # of the page, each time it scrolls
 
@@ -240,6 +246,7 @@ class CoverageBar(QWidget):
         self.duration = 0.0
         self.viewed: list[Span] = []
         self.marks: list[tuple[float, float, bool]] = []  # onset, duration, reject
+        self.points: list[tuple[float, bool]] = []  # review points: onset, answered
         self.shown_span: Span | None = None
         self.setMinimumHeight(22)
         self.setMaximumHeight(22)
@@ -266,6 +273,9 @@ class CoverageBar(QWidget):
         note = QColor(note_color(self.theme))
         for onset, length, rejected in self.marks:
             box(onset, onset + length, reject if rejected else note, h * 0.55, h * 0.45)
+        todo, done = QColor(self.theme.accent), QColor(self.theme.status_color("ready"))
+        for onset, answered in self.points:  # a tick at the top for each point
+            box(onset, onset, done if answered else todo, 0, h * 0.4)
         if self.shown_span is not None:
             painter.setPen(QColor(self.theme.text))
             lo, hi = self.shown_span
@@ -300,6 +310,11 @@ class ReviewWindow(StackedWindow):
         self.source_labels: tuple[str, ...] = ()  # the channels (set by the GUI)
         self._history: list[tuple[list[dict[str, Any]], list[str]]] = []
         self.editing: dict[str, Any] | None = None  # the mark the span edits
+        # review points: events to step through, each answered by a mark
+        self.points: list[dict[str, Any]] = [dict(m) for m in request.get("points", [])]
+        self.point_index: int | None = None  # the point shown
+        self.current_point: float | None = None  # its onset, while at it
+        self._page: float | None = None  # the strip's page length, until changed
         self._drag_from: float | None = None
         self._scrolled = 0.0  # when an edge at the border last scrolled
         self.on_display: Callable[[], None] = lambda: None  # the GUI redraws
@@ -325,7 +340,7 @@ class ReviewWindow(StackedWindow):
 
         self.coverage = CoverageBar(theme)
         self.coverage.duration = self.duration
-        self.coverage.seek.connect(self.seek)
+        self.coverage.seek.connect(self._seek_away)
         lay.addWidget(self.coverage)
 
         tools = QHBoxLayout()
@@ -348,16 +363,28 @@ class ReviewWindow(StackedWindow):
         reject.clicked.connect(self.reject)
         tools.addWidget(reject)
         tools.addSpacing(16)
+        what = "review point" if self.points else "page"
         back = QPushButton("◀")
-        back.setToolTip("Previous page (← or PgUp)")
-        back.clicked.connect(lambda: self.page(-1))
+        back.setToolTip(
+            f"Previous {what} (←)"
+            + ("; PgUp: previous page" if self.points else " or PgUp")
+        )
+        back.clicked.connect(lambda: self.step(-1))
         ahead = QPushButton("▶")
-        ahead.setToolTip("Next page (→ or PgDn)")
-        ahead.clicked.connect(lambda: self.page(1))
+        ahead.setToolTip(
+            f"Next {what} (→)" + ("; PgDn: next page" if self.points else " or PgDn")
+        )
+        ahead.clicked.connect(lambda: self.step(1))
         unseen = QPushButton("Next unreviewed (N)")
         unseen.clicked.connect(self.next_unreviewed)
         for b in (back, ahead, unseen):
             tools.addWidget(b)
+        self.point_label = QLabel("")
+        self.auto_next = QCheckBox("Next point after marking")
+        self.auto_next.setChecked(True)
+        for widget in (self.point_label, self.auto_next):
+            widget.setVisible(bool(self.points))
+            tools.addWidget(widget)
         undo = QPushButton("Undo")
         undo.setToolTip("Undo the last change to the marks or bad channels (Ctrl+Z)")
         undo.clicked.connect(self.undo)
@@ -403,9 +430,9 @@ class ReviewWindow(StackedWindow):
         for keys, slot in (("A", self.annotate), ("R", self.reject),
                            ("N", self.next_unreviewed),
                            ("Delete", self.remove_selected),
-                           ("Right", lambda: self.page(1)),
+                           ("Right", lambda: self.step(1)),
                            ("PgDown", lambda: self.page(1)),
-                           ("Left", lambda: self.page(-1)),
+                           ("Left", lambda: self.step(-1)),
                            ("PgUp", lambda: self.page(-1)),
                            ("Ctrl+Z", self.undo),
                            ("Escape", self.clear_selection)):  # fmt: skip
@@ -432,6 +459,7 @@ class ReviewWindow(StackedWindow):
             tab.hide()
             self.plot.addItem(tab, ignoreBounds=True)
         self._channel_tags: list[ChannelTag] = []
+        self._point_spans: list[pg.LinearRegionItem] = []
         self.plot.getPlotItem().getAxis("left").setStyle(showValues=False)
         box = self.plot.getViewBox()
         box.drag_handler = self._drag
@@ -490,7 +518,10 @@ class ReviewWindow(StackedWindow):
             box.currentIndexChanged.connect(lambda _: self._display_changed())
             box.setVisible(self.clinical)
             bar.addWidget(box)
-        self.speed.setVisible(self.clinical and "page" not in self.presets)
+        self.speed.setVisible(self.clinical)
+        if self.clinical and "page" in self.presets:  # until the speed changes
+            self._page = float(self.presets["page"])
+        self.speed.currentIndexChanged.connect(lambda _: setattr(self, "_page", None))
         uv_controls = (self.span, self.spacing_label, self.spacing, self.normalize)
         for control in uv_controls:
             control.setVisible(not self.clinical)
@@ -515,8 +546,7 @@ class ReviewWindow(StackedWindow):
         )  # fmt: skip
         for key, widget in fixed:
             if key in self.presets:
-                widget.setEnabled(False)
-                widget.setToolTip(PRESET_TIP)
+                widget.setToolTip(f"{widget.toolTip()} ({PRESET_TIP})".lstrip(" ("))
         self._update_bad_button()
         return bar
 
@@ -537,8 +567,8 @@ class ReviewWindow(StackedWindow):
         return max(1.0, float(dpi) / 25.4 / max(float(ratio), 1e-6))
 
     def seconds(self) -> float:
-        if "page" in self.presets:
-            return float(self.presets["page"])
+        if self._page is not None:
+            return self._page
         if self.clinical:  # the page is the plot's width at the speed
             width_mm = max(10.0, float(self.plot.width()) / self._px_per_mm())
             return width_mm / float(self.speed.currentData())
@@ -834,8 +864,49 @@ class ReviewWindow(StackedWindow):
         self.panner.bar.setValue(round(start * self.seek_rate))
 
     def page(self, step: int) -> None:
+        self.current_point = None  # away from the point
         bar = self.panner.bar
         bar.setValue(bar.value() + step * bar.pageStep())
+
+    def _seek_away(self, t: float) -> None:
+        self.current_point = None
+        self.seek(t)
+
+    def step(self, step: int) -> None:
+        """◀/▶ and ←/→: the previous or next review point, else page."""
+        if not self.points:
+            self.page(step)
+            return
+        if self.point_index is None:
+            self.go_point(0 if step > 0 else len(self.points) - 1)
+        else:
+            self.go_point(self.point_index + step)
+
+    def answer_of(self, point: dict[str, Any]) -> dict[str, Any] | None:
+        """The mark that answers a review point (None: not answered yet)."""
+        onset = float(point["onset"])
+        return next((m for m in self.marks if m.get("point") is not None
+                     and abs(float(m["point"]) - onset) < 1e-6), None)  # fmt: skip
+
+    def go_point(self, index: int) -> None:
+        """Show review point ``index``, centred, and select it: its answer to
+        change, or the point's span to label and retime."""
+        if not self.points:
+            return
+        index = max(0, min(index, len(self.points) - 1))
+        point = self.points[index]
+        t0 = float(point["onset"])
+        t1 = t0 + float(point["duration"])
+        if self.seek_rate > 0:
+            start = max(0.0, (t0 + t1) / 2 - self.seconds() / 2)
+            self.panner.bar.setValue(round(start * self.seek_rate))
+        answer = self.answer_of(point)
+        if answer is not None:
+            self.edit_mark(answer)
+        else:
+            self.select(t0, t1)
+        self.point_index, self.current_point = index, t0
+        self._update_points()
 
     def next_unreviewed(self) -> None:
         after = self._view[1] if self._view is not None else 0.0
@@ -885,6 +956,7 @@ class ReviewWindow(StackedWindow):
                 self._snapshot()
                 mark["label"] = label
                 self._refresh()
+            self._answered(mark)
             return
         if not self.has_selection():
             self.progress.setText("Drag on the traces from the start to the end "
@@ -892,12 +964,28 @@ class ReviewWindow(StackedWindow):
             return
         s0, s1 = self.selection.getRegion()
         onset = max(0.0, float(s0))
-        self.editing = self.add_mark(onset, max(0.0, float(s1) - onset), label)
+        self.editing = self.add_mark(onset, max(0.0, float(s1) - onset), label,
+                                     self.current_point)  # fmt: skip
+        self._answered(self.editing)
 
-    def add_mark(self, onset: float, duration: float, label: str) -> dict[str, Any]:
+    def _answered(self, mark: dict[str, Any]) -> None:
+        """A review point got its answer: on to the next, if so chosen."""
+        if mark.get("point") is None or self.point_index is None:
+            return
+        self._update_points()
+        if self.auto_next.isChecked() and self.point_index < len(self.points) - 1:
+            self.go_point(self.point_index + 1)
+
+    def add_mark(self, onset: float, duration: float, label: str,
+                 point: float | None = None) -> dict[str, Any]:  # fmt: skip
         self._snapshot()
-        mark = {"onset": round(onset, 6), "duration": round(duration, 6),
-                "label": label}  # fmt: skip
+        mark: dict[str, Any] = {
+            "onset": round(onset, 6),
+            "duration": round(duration, 6),
+            "label": label,
+        }
+        if point is not None:  # the review point it answers
+            mark["point"] = round(point, 6)
         self.marks.append(mark)
         self.marks.sort(key=lambda m: (m["onset"], m["label"]))
         self._refresh()
@@ -940,6 +1028,7 @@ class ReviewWindow(StackedWindow):
                 self.table.setItem(row, col, item)
         self._draw_spans()
         self._update_coverage()
+        self._update_points()
 
     def _draw_spans(self) -> None:
         while len(self._spans) < len(self.marks):
@@ -970,6 +1059,37 @@ class ReviewWindow(StackedWindow):
         for item in [*self._spans[len(self.marks) :], *self._tags[len(self.marks) :]]:
             item.setVisible(False)
 
+    def _update_points(self) -> None:
+        """The review points on the traces (dashed: to answer; green:
+        answered), on the coverage bar, and the counter."""
+        if not self.points:
+            return
+        while len(self._point_spans) < len(self.points):
+            span = pg.LinearRegionItem(movable=False, brush=QColor(0, 0, 0, 0))
+            span.setZValue(-4)
+            self.plot.addItem(span)
+            self._point_spans.append(span)
+        done_color = self.theme.status_color("ready")
+        answered = 0
+        for i, (span, point) in enumerate(zip(self._point_spans, self.points,
+                                              strict=False)):  # fmt: skip
+            done = self.answer_of(point) is not None
+            answered += done
+            pen = pg.mkPen(done_color if done else self.theme.accent,
+                           width=2 if i == self.point_index else 1,
+                           style=Qt.PenStyle.SolidLine if done
+                           else Qt.PenStyle.DashLine)  # fmt: skip
+            for line in span.lines:
+                line.setPen(pen)
+            t0 = float(point["onset"])
+            span.setRegion((t0, t0 + max(float(point["duration"]), 0.01)))
+        at = "–" if self.point_index is None else str(self.point_index + 1)  # noqa: RUF001
+        self.point_label.setText(f"Point {at}/{len(self.points)} · "
+                                 f"{answered} answered")  # fmt: skip
+        self.coverage.points = [(float(p["onset"]), self.answer_of(p) is not None)
+                                for p in self.points]  # fmt: skip
+        self.coverage.update()
+
     def _update_coverage(self) -> None:
         bar = self.coverage
         bar.viewed = self.viewed
@@ -987,8 +1107,17 @@ class ReviewWindow(StackedWindow):
     # -- answer -----------------------------------------------------------------------
 
     def submit(self) -> None:
+        left = sum(self.answer_of(p) is None for p in self.points)
+        if left:
+            ask = QMessageBox.question(
+                self, "Review points left",
+                f"{left} of {len(self.points)} review points have no answer. "
+                "Save the marks and continue anyway?",
+            )  # fmt: skip
+            if ask != QMessageBox.StandardButton.Yes:
+                return
         part = covered(self.viewed, self.duration)
-        if part < FULL:
+        if not self.points and part < FULL:  # with points, those are the task
             ask = QMessageBox.question(
                 self, "Not all reviewed",
                 f"Only {part:.0%} of the recording has been shown. Save the "

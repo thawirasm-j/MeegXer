@@ -68,6 +68,7 @@ from meegxer.core.review import (
     reject_words,
     rejected_spans,
     review_path,
+    review_points,
     save_review,
 )
 from meegxer.core.serialization import canonical_json, fingerprint
@@ -399,6 +400,7 @@ class BatchScheduler:
                 saved.viewed if saved is not None else (),
                 saved.bads if saved is not None else (),
                 display_presets(stage.params),
+                review_points(seen, stage.params, rate) if rate else (),
             )  # fmt: skip
             if self.review is None:
                 raise ReviewNeeded(request)

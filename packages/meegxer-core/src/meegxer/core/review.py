@@ -41,7 +41,18 @@ from meegxer.core.references import credits
 from meegxer.core.serialization import State
 
 REVIEW_NODE = "meegxer.core.review"
-SETTINGS = "settings"  # a display preset left to the reviewer's Settings
+REVIEWER = "reviewer"  # a display setting left to the reviewer's choice
+# the display's starting values the strip may set (the reviewer can change them)
+PRESET_CHOICES: dict[str, tuple[str, ...]] = {
+    "highpass": ("off", "0.1", "0.3", "0.5", "1", "2", "5"),
+    "lowpass": ("off", "15", "30", "35", "40", "45", "70", "100"),
+    "notch": ("off", "50", "60"),
+    "sensitivity": ("1", "2", "3", "5", "7", "10", "15", "20", "30", "50", "70",
+                    "100"),
+    "page": ("5", "10", "15", "20", "30", "60"),
+}  # fmt: skip
+PRESET_UNITS = {"highpass": "Hz", "lowpass": "Hz", "notch": "Hz",
+                "sensitivity": "µV/mm", "page": "s"}  # fmt: skip
 DEFAULT_LABELS = "BAD"
 BOUNDARY = "boundary"  # the event at a cut (EEGLAB's name for it)
 
@@ -53,9 +64,14 @@ class Mark:
     onset: float
     duration: float
     label: str
+    point: float | None = None  # onset of the review point it answers (s)
 
     def to_wire(self) -> dict[str, Any]:
-        return {"onset": self.onset, "duration": self.duration, "label": self.label}
+        out: dict[str, Any] = {"onset": self.onset, "duration": self.duration,
+                               "label": self.label}  # fmt: skip
+        if self.point is not None:
+            out["point"] = self.point
+        return out
 
     @classmethod
     def from_wire(cls, data: dict[str, Any]) -> Mark:
@@ -65,7 +81,10 @@ class Mark:
             raise ValueError("a mark needs a label")
         if onset < 0 or duration < 0 or not math.isfinite(onset + duration):
             raise ValueError(f"mark {label!r}: onset and duration must be >= 0")
-        return cls(onset, duration, label)
+        point = data.get("point")
+        if point in ("", "n/a"):
+            point = None
+        return cls(onset, duration, label, None if point is None else float(point))
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +138,7 @@ class ReviewRequest:
     viewed: tuple[Span, ...] = ()  # looked at in the review before
     bads: tuple[str, ...] = ()  # channels marked bad in the review before
     display: dict[str, Any] = dataclasses.field(default_factory=dict)  # presets
+    points: tuple[Mark, ...] = ()  # events to step through (review points)
 
     def to_wire(self) -> dict[str, Any]:
         return {
@@ -127,6 +147,7 @@ class ReviewRequest:
             "labels": list(self.labels), "duration_s": self.duration_s,
             "reject": list(self.reject), "viewed": [list(v) for v in self.viewed],
             "bads": list(self.bads), "display": dict(self.display),
+            "points": [m.to_wire() for m in self.points],
         }  # fmt: skip
 
 
@@ -170,6 +191,10 @@ class ReviewStrip(Processor):
                  "primary": True,
                  "description": "Comma-separated labels offered for marks "
                                 "(the input's event types are offered too)"},
+                {"name": "points", "type": "string", "default": "",
+                 "description": "Comma-separated event labels to step through "
+                                "as review points (e.g. a detector's): each is "
+                                "selected in turn, to label and retime"},
                 {"name": "reject", "type": "string", "default": "BAD",
                  "description": "Comma-separated labels the Reject key gives "
                                 "a span (a Reject segments strip after this "
@@ -178,30 +203,15 @@ class ReviewStrip(Processor):
                  "extensions": [".tsv"], "advanced": True,
                  "description": "Where the marks are saved (empty: next to "
                                 "each recording, or in its BIDS derivatives)"},
-                # display presets: what the researcher fixes for the reviewer
-                {"name": "montage", "type": "enum", "default": SETTINGS,
-                 "choices": [SETTINGS, *MONTAGES], "advanced": True,
-                 "description": "Display montage (settings: the reviewer's)"},
-                {"name": "highpass", "type": "float", "default": -1.0,
-                 "min": -1.0, "max": 1000.0, "unit": "Hz", "advanced": True,
-                 "description": "Display high-pass (-1: the reviewer's "
-                                "Settings; 0: off)"},
-                {"name": "lowpass", "type": "float", "default": -1.0,
-                 "min": -1.0, "max": 10000.0, "unit": "Hz", "advanced": True,
-                 "description": "Display low-pass (-1: the reviewer's "
-                                "Settings; 0: off)"},
-                {"name": "notch", "type": "float", "default": -1.0,
-                 "min": -1.0, "max": 1000.0, "unit": "Hz", "advanced": True,
-                 "description": "Display notch (-1: the reviewer's Settings; "
-                                "0: off)"},
-                {"name": "sensitivity", "type": "float", "default": 0.0,
-                 "min": 0.0, "max": 10000.0, "unit": "µV/mm", "advanced": True,
-                 "description": "Display sensitivity (0: the reviewer's "
-                                "Settings)"},
-                {"name": "page", "type": "float", "default": 0.0, "min": 0.0,
-                 "max": 3600.0, "unit": "s", "advanced": True,
-                 "description": "Seconds per page (0: the reviewer's "
-                                "Settings)"},
+                # the display the window opens with; the reviewer can change it
+                {"name": "montage", "type": "enum", "default": REVIEWER,
+                 "choices": [REVIEWER, *MONTAGES], "advanced": True,
+                 "description": "Display montage to start with"},
+                *({"name": key, "type": "enum", "default": REVIEWER,
+                   "choices": [REVIEWER, *values], "advanced": True,
+                   "description": f"Display {key} to start with "
+                                  f"({PRESET_UNITS[key]})"}
+                  for key, values in PRESET_CHOICES.items()),
             ],
             **credits(REVIEW_NODE),
         }
@@ -234,18 +244,30 @@ def with_bads(block: Block, bads: Sequence[str]) -> Block:
 
 
 def display_presets(params: Params) -> dict[str, Any]:
-    """What the strip fixes of the review window's display (the rest is the
-    reviewer's Settings)."""
+    """The display the review window opens with, where the strip sets it (the
+    rest is the reviewer's Settings); the reviewer can change all of it."""
     out: dict[str, Any] = {}
-    if params["montage"] != SETTINGS:
+    if params["montage"] != REVIEWER:
         out["montage"] = str(params["montage"])
-    for key in ("highpass", "lowpass", "notch"):
-        if float(params[key]) >= 0:
-            out[key] = float(params[key])
-    for key in ("sensitivity", "page"):
-        if float(params[key]) > 0:
-            out[key] = float(params[key])
+    for key in PRESET_CHOICES:
+        value = str(params[key])
+        if value != REVIEWER:
+            out[key] = 0.0 if value == "off" else float(value)
     return out
+
+
+def point_words(params: Params) -> tuple[str, ...]:
+    return tuple(_words(params["points"]))
+
+
+def review_points(events: Sequence[Event], params: Params, sfreq: float
+                  ) -> tuple[Mark, ...]:  # fmt: skip
+    """The events to step through (labels named by ``points``), as spans in
+    seconds."""
+    words = point_words(params)
+    return tuple(Mark(e.sample_index / sfreq, e.duration / sfreq, e.label)
+                 for e in sorted(events, key=lambda e: e.sample_index)
+                 if words and e.label in words)  # fmt: skip
 
 
 def _words(text: object) -> list[str]:
@@ -343,7 +365,8 @@ def load_review(path: Path) -> Review | None:
     marks = tuple(
         Mark.from_wire({"onset": r["onset"],
                         "duration": r.get("duration") or 0.0,
-                        "label": r.get("trial_type") or r.get("value") or ""})
+                        "label": r.get("trial_type") or r.get("value") or "",
+                        "point": r.get("review_point")})
         for r in rows
     )  # fmt: skip
     meta: dict[str, Any] = {}
@@ -359,12 +382,17 @@ def save_review(path: Path, review: Review, node_id: str) -> None:
     """Write the events file and its JSON sidecar (the marks in onset order)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     marks = sorted(review.marks, key=lambda m: (m.onset, m.label))
+    points = any(m.point is not None for m in marks)
     with path.open("w", newline="", encoding="utf-8") as fh:
         out = csv.writer(fh, delimiter="\t", lineterminator="\n")
-        out.writerow(["onset", "duration", "trial_type"])
+        out.writerow(["onset", "duration", "trial_type",
+                      *(["review_point"] if points else [])])  # fmt: skip
         for m in marks:
-            out.writerow([f"{m.onset:.6f}", f"{m.duration:.6f}", m.label])
-    meta = {
+            row = [f"{m.onset:.6f}", f"{m.duration:.6f}", m.label]
+            if points:
+                row.append("n/a" if m.point is None else f"{m.point:.6f}")
+            out.writerow(row)
+    meta: dict[str, Any] = {
         "onset": {"Description": "Start of the span", "Units": "s"},
         "duration": {"Description": "Length of the span", "Units": "s"},
         "trial_type": {"Description": "Label given in a manual review"},
@@ -374,6 +402,10 @@ def save_review(path: Path, review: Review, node_id: str) -> None:
                     # the spans looked at, in seconds from the recording's start
                     "viewed": [[round(a, 6), round(b, 6)] for a, b in review.viewed]},
     }  # fmt: skip
+    if points:
+        meta["review_point"] = {"Description": "Onset of the review point (an "
+                                "event of the input) the mark answers",
+                                "Units": "s"}  # fmt: skip
     _sidecar(path).write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
 

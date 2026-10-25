@@ -154,7 +154,8 @@ PARAMS: dict[str, str] = {
     "reg": "Covariance shrinkage",
     "events": "Around events",
     "baseline": "Baseline",
-    # the Review strip's display presets
+    # the Review strip: review points, and the display it opens with
+    "points": "Review points (event labels)",
     "montage": "Display montage",
     "highpass": "Display high-pass",
     "lowpass": "Display low-pass",
@@ -167,7 +168,7 @@ PARAMS: dict[str, str] = {
 CHOICES: dict[tuple[str, str], str] = {
     ("baseline", "pre-stimulus"): "Before the event (tmin..0)",
     ("baseline", "none"): "None",
-    ("montage", "settings"): "The reviewer's Settings",
+    ("montage", "reviewer"): "Reviewer's choice",
     ("montage", "as recorded"): "As recorded",
     ("montage", "average"): "Average reference",
     ("montage", "longitudinal bipolar"): "Longitudinal bipolar",
@@ -227,3 +228,18 @@ def choice_label(name: str, value: Any) -> str:
 
 def unit_label(unit: str | None) -> str:
     return UNITS.get(unit or "", unit or "")
+
+
+def _preset_choices() -> None:
+    """The Review strip's display choices: the reviewer's, off, or a value."""
+    from meegxer.core.review import PRESET_CHOICES, PRESET_UNITS, REVIEWER
+
+    for key, values in PRESET_CHOICES.items():
+        CHOICES[(key, REVIEWER)] = "Reviewer's choice"
+        for value in values:
+            CHOICES[(key, value)] = (
+                "Off" if value == "off" else f"{value} {PRESET_UNITS[key]}"
+            )
+
+
+_preset_choices()
