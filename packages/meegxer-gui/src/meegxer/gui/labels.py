@@ -154,12 +154,25 @@ PARAMS: dict[str, str] = {
     "reg": "Covariance shrinkage",
     "events": "Around events",
     "baseline": "Baseline",
+    # the Review strip's display presets
+    "montage": "Display montage",
+    "highpass": "Display high-pass",
+    "lowpass": "Display low-pass",
+    "notch": "Display notch",
+    "sensitivity": "Display sensitivity",
+    "page": "Page length",
 }
 
 # (parameter name, value) -> label for enum choices
 CHOICES: dict[tuple[str, str], str] = {
     ("baseline", "pre-stimulus"): "Before the event (tmin..0)",
     ("baseline", "none"): "None",
+    ("montage", "settings"): "The reviewer's Settings",
+    ("montage", "as recorded"): "As recorded",
+    ("montage", "average"): "Average reference",
+    ("montage", "longitudinal bipolar"): "Longitudinal bipolar",
+    ("montage", "transverse bipolar"): "Transverse bipolar",
+    ("montage", "laplacian"): "Laplacian (Hjorth)",
     ("kind", "highpass"): "High-pass",
     ("kind", "lowpass"): "Low-pass",
     ("kind", "bandpass"): "Band-pass",

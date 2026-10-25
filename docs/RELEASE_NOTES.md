@@ -7,6 +7,23 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Review window display** (Design v2, step 2 in `docs/REVIEW.md`):
+  - A montage: as recorded, monopolar against the **average** reference (the
+    default), longitudinal ("double banana") or transverse bipolar, or a
+    Laplacian (Hjorth, by electrode position). Display filters: high-pass,
+    low-pass and notch. The core computes each page through them from the
+    raw samples (control API 0.2.12); nothing in the pipeline changes.
+  - Clinical scale by default: sensitivity in µV/mm and speed in mm/s on the
+    screen's real size (7 µV/mm, 30 mm/s), or channel spacing in µV and
+    seconds per page. Defaults are on the new **Review** page in Settings.
+  - **Display presets** in the Review strip (Advanced): montage, filters,
+    sensitivity and page length that the researcher fixes for the reviewer.
+  - **Bad channels:** marked in the window, drawn grey and dashed, left out
+    of the average and the Laplacian, saved with the review, and the stream's
+    bad channels after the strip (so interpolation and re-reference strips
+    act on them).
+  - Keys 1 to 9 mark the band with the first nine labels; **Undo** (Ctrl+Z).
+
 - **Reject segments** strip (Artifacts, offline): cuts out spans whose label
   starts with one of its `reject` words (default `BAD`), with a `boundary`
   event at each cut and a fresh start for every strip after it. It reads the

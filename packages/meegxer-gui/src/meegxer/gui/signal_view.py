@@ -986,7 +986,8 @@ class StackedWindow(QWidget):
             self.span.addItem(f"{seconds} s", float(seconds))
         self.span.setCurrentIndex(2)
         bar.addWidget(self.span)
-        bar.addWidget(QLabel("Spacing"))
+        self.spacing_label = QLabel("Spacing")
+        bar.addWidget(self.spacing_label)
         self.spacing = QComboBox()
         self.spacing.addItem("auto", 0.0)
         for uv in (20, 50, 100, 200, 500):
@@ -1016,6 +1017,15 @@ class StackedWindow(QWidget):
 
     def shown(self, t0: float, t1: float) -> None:
         """Called with the span drawn (seconds); the review window keeps it."""
+
+    def fixed_spacing(self, n_rows: int) -> float | None:
+        """A spacing in µV that fixes the vertical scale (None: the spacing
+        control's, fitted to the window); the review window's sensitivity."""
+        return None
+
+    def restyle(self, label: str, style: ChannelStyle) -> ChannelStyle:
+        """A channel's look (the review window greys out bad channels)."""
+        return style
 
     def closeEvent(self, event: QCloseEvent) -> None:
         super().closeEvent(event)
@@ -1050,7 +1060,10 @@ class StackedWindow(QWidget):
             ok = np.isfinite(sd) & (sd > 0)
             scale[ok] = 1.0 / sd[ok]
         spacing = 6.0 if normalize else float(self.spacing.currentData())
-        if spacing <= 0:
+        fixed = self.fixed_spacing(len(chans))
+        if fixed is not None:
+            spacing, scale = fixed, np.ones(len(top.labels))
+        elif spacing <= 0:
             mid = (top.mins + top.maxs) / 2 * UV
             spread = np.nanstd(mid[chans], axis=1) if chans else np.array([1.0])
             spacing = (
@@ -1063,7 +1076,7 @@ class StackedWindow(QWidget):
             same = win.labels == top.labels
             for row, c in enumerate(chans):
                 offset = (len(chans) - 1 - row) * spacing
-                st = styles[c]
+                st = self.restyle(top.labels[c], styles[c])
                 g = scale[c] if same else 1.0
                 x, y = _envelope_xy(
                     win.t, win.mins[c] * UV * g + offset, win.maxs[c] * UV * g + offset
@@ -1086,7 +1099,10 @@ class StackedWindow(QWidget):
         self.panner.show_span(t0, t1)
         self.shown(t0, t1)
         y_key = (tuple(chans), spacing)
-        if y_key != self._y_key:  # other rows: fit Y again, even after a zoom
+        if fixed is not None:  # the scale is the sensitivity: no fitting
+            self._y_key = None
+            self.plot.setYRange(-spacing / 2, (len(chans) - 0.5) * spacing, padding=0)
+        elif y_key != self._y_key:  # other rows: fit Y again, even after a zoom
             self._y_key = y_key
             self.plot.getViewBox().enableAutoRange(axis=pg.ViewBox.YAxis)
         self.plot.getPlotItem().setLabel("bottom", "time", units="s")

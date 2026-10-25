@@ -122,7 +122,7 @@ def test_changes_preview_at_once_and_cancel_goes_back(qapp: QApplication) -> Non
     d, _ = dialog(qapp)
     seen: list[dict[str, Any]] = []
     d.changed.connect(seen.append)
-    assert d.pages.count() == 5
+    assert d.pages.count() == 6
     from PySide6.QtWidgets import QComboBox
 
     seq = next(c for c in d.findChildren(QComboBox)
@@ -145,7 +145,11 @@ def test_reset_restores_the_defaults_and_settings_stay_valid(
 
     advanced = next(c for c in d.findChildren(QCheckBox) if "advanced" in c.text())
     assert advanced.isChecked()
-    spins = [s for s in d.findChildren(QDoubleSpinBox) if s.suffix() == " Hz"]
+    spins = [
+        s
+        for s in d.findChildren(QDoubleSpinBox)
+        if s.suffix() == " Hz" and not s.specialValueText()
+    ]  # the band's
     assert [s.value() for s in spins] == [4.0, 8.0]
     d.reset_defaults()
     assert d.settings() == core_settings.defaults()
