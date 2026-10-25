@@ -59,6 +59,7 @@ from meegxer.core.review import (
     ReviewRequest,
     ReviewStrip,
     cut_blocks,
+    display_presets,
     load_review,
     marks_to_events,
     merge_spans,
@@ -275,6 +276,8 @@ class BatchScheduler:
         if isinstance(stage.processor, ReviewStrip):  # its marks are its output
             marks = self._review_marks(node, stage, input_fp, signal_in, rate or 0.0)
             input_fp = labelled_input(input_fp, marks)
+            if stage.processor.bads:  # and the channels it marked bad
+                input_fp = fingerprint("bads", input_fp, ",".join(stage.processor.bads))
 
         if stage.status(input_fp) is not StageStatus.READY:
             # upstream strips' events follow from input_fp, so it names the
@@ -368,6 +371,7 @@ class BatchScheduler:
             raise GraphError(str(exc)) from exc
         saved = load_review(path)
         marks: tuple[Mark, ...]
+        labels = signal_in[0].info.ch_labels if signal_in else ()
         if saved is not None and saved.upstream == input_fp:
             marks, review = saved.marks, saved
         else:
@@ -380,6 +384,8 @@ class BatchScheduler:
                 sum(b.n_samples for b in signal_in) / rate if rate else 0.0,
                 reject_words(stage.params),
                 saved.viewed if saved is not None else (),
+                saved.bads if saved is not None else (),
+                display_presets(stage.params),
             )  # fmt: skip
             if self.review is None:
                 raise ReviewNeeded(request)
@@ -387,11 +393,15 @@ class BatchScheduler:
             if not isinstance(answer, ReviewAnswer):  # just the marks
                 answer = ReviewAnswer(tuple(answer))
             marks = tuple(answer.marks)
+            unknown = sorted(set(answer.bads) - set(labels))
+            if unknown:
+                raise GraphError(f"{node.id}: no channels {unknown} to mark bad")
             review = Review(marks, input_fp, now_iso(), merge_spans(answer.viewed),
-                            self.reviewer)  # fmt: skip
+                            self.reviewer, tuple(answer.bads))  # fmt: skip
             save_review(path, review, node.id)
         events = marks_to_events(marks, rate)
         stage.processor.marks = events
+        stage.processor.bads = tuple(b for b in review.bads if b in labels)
         stage.processor.record = {"reviewer": review.reviewer,
                                   "reviewed": review.reviewed,
                                   "upstream": review.upstream}  # fmt: skip

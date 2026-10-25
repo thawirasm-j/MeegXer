@@ -487,14 +487,17 @@ class Daemon:
         return job.status()
 
     def submit_review(
-        self, marks: list[dict[str, Any]], viewed: list[list[float]] | None = None
+        self,
+        marks: list[dict[str, Any]],
+        viewed: list[list[float]] | None = None,
+        bads: list[str] | None = None,
     ) -> dict[str, Any]:
         """The marks for the review strip the offline run waits at (state
-        ``review``), and the spans looked at: saved to its sidecar, and the run
-        goes on."""
+        ``review``), the spans looked at and the channels marked bad: saved to
+        its sidecar, and the run goes on."""
         if self._offline is None:
             raise RuntimeError("no offline run")
-        self._offline.submit_review(marks, viewed)
+        self._offline.submit_review(marks, viewed, bads)
         return self._offline.status()
 
     def cancel_review(self) -> dict[str, Any]:
@@ -506,13 +509,32 @@ class Daemon:
         return self._offline.status()
 
     def offline_window(
-        self, probe: str, start: int, n_samples: int, max_bins: int = 2000
+        self,
+        probe: str,
+        start: int,
+        n_samples: int,
+        max_bins: int = 2000,
+        display: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Min/max envelope of samples ``[start, start + n_samples)`` of one probe
-        of the current offline run, in at most ``max_bins`` bins."""
+        of the current offline run, in at most ``max_bins`` bins; with
+        ``display`` (``montage``, ``highpass``, ``lowpass``, ``notch`` in Hz,
+        ``bads``) through a display montage and filter, from the raw samples
+        (``meegxer.core.montage``)."""
         if self._offline is None:
             raise RuntimeError("no offline run")
-        return self._offline.window(probe, int(start), int(n_samples), int(max_bins))
+        options: dict[str, Any] = {}
+        for key, value in (display or {}).items():
+            if key == "montage":
+                options[key] = str(value)
+            elif key in ("highpass", "lowpass", "notch"):
+                options[key] = float(value)
+            elif key == "bads":
+                options[key] = tuple(str(b) for b in value)
+            else:
+                raise ValueError(f"unknown display option {key!r}")
+        return self._offline.window(probe, int(start), int(n_samples), int(max_bins),
+                                    **options)  # fmt: skip
 
     def offline_features(
         self,
