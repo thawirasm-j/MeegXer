@@ -9,6 +9,7 @@ from pathlib import Path
 
 import mne
 import numpy as np
+import pyqtgraph as pg
 import pytest
 from PySide6.QtWidgets import QApplication
 
@@ -68,10 +69,13 @@ def test_the_run_pauses_for_marks_and_goes_on(
         pump_until(qapp, lambda: bool(window.viewed))
         assert window.viewed[0][0] == 0.0 and window.coverage.shown_span is not None
 
+        assert not window.has_selection()  # nothing until a span is dragged
+        window.annotate()  # so nothing is marked
+        assert window.marks == [] and "Drag on the traces" in window.progress.text()
         window.label.setCurrentText("drowsy")  # a new label, typed in
-        window.selection.setRegion((2.0, 3.5))
+        window.select(2.0, 3.5)
         window.reject()  # not a reject word: the strip's first, BAD
-        window.selection.setRegion((4.0, 5.0))
+        window.select(4.0, 5.0)
         window.annotate()
         assert [m["label"] for m in window.marks] == ["BAD", "drowsy"]
         assert [window.is_reject(m) for m in window.marks] == [True, False]
@@ -97,9 +101,10 @@ def test_the_run_pauses_for_marks_and_goes_on(
         assert "'highpass': 1.0" in cached[0][3] and cached[1] is not None
         # palette keys, bad channels and undo
         assert window.palette_hint.text().startswith("Keys: 1 BAD_muscle · 2 BAD_eyes")
-        window.selection.setRegion((6.0, 7.0))
+        window.select(6.0, 7.0)
         window.mark_with(1)  # key 2
         assert window.marks[-1]["label"] == "BAD_eyes"
+        assert window.editing is window.marks[-1]  # the span stays on it
         window.set_bad("Cz", True)
         assert window.display()["bads"] == ["Cz"]
         assert window.restyle("Cz", window.restyle("Fz", BAD_STYLE)) == BAD_STYLE
@@ -143,3 +148,120 @@ def test_coverage_helpers() -> None:
     assert first_gap(spans, 10.0, after=6.0) == 8.0
     assert first_gap([(0.0, 3.0), (5.0, 10.0)], 10.0, after=6.0) == 3.0  # wraps
     assert first_gap([(0.0, 10.0)], 10.0) is None
+
+
+class FakeDrag:
+    """Enough of a pyqtgraph mouse drag or click event for the handlers."""
+
+    def __init__(self, start: object, now: object, *, first: bool = False,
+                 last: bool = False) -> None:  # fmt: skip
+        self._start, self._now, self._first, self._last = start, now, first, last
+        self.accepted = False
+
+    def isStart(self) -> bool:
+        return self._first
+
+    def isFinish(self) -> bool:
+        return self._last
+
+    def buttonDownScenePos(self) -> object:
+        return self._start
+
+    def scenePos(self) -> object:
+        return self._now
+
+    def button(self) -> object:
+        from PySide6.QtCore import Qt
+
+        return Qt.MouseButton.LeftButton
+
+    def accept(self) -> None:
+        self.accepted = True
+
+
+def test_spans_are_dragged_adjusted_and_channels_clicked(qapp: QApplication) -> None:
+    from meegxer.gui.review_window import ReviewWindow
+    from meegxer.gui.theme import load_theme
+
+    request = {
+        "node": "rev",
+        "reason": "not reviewed",
+        "labels": ["BAD", "spike"],
+        "duration_s": 60.0,
+        "reject": ["BAD"],
+        "marks": [],
+        "viewed": [],
+    }
+    sent: list[tuple[object, ...]] = []
+    window = ReviewWindow(
+        request,
+        load_theme("dark"),
+        submit=lambda *a: sent.append(a),
+        cancel=lambda: None,
+    )
+    window.resize(900, 600)
+    window.show()
+    qapp.processEvents()
+    window.plot.set_time(0.0, 10.0)
+    window.shown(0.0, 10.0)
+    box = window.plot.getViewBox()
+
+    def scene(t: float) -> object:
+        return box.mapViewToScene(pg.Point(t, 0.0))
+
+    # drag from the start of a span to its end (right to left works too)
+    for ev in (FakeDrag(scene(5.0), scene(4.0), first=True),
+               FakeDrag(scene(5.0), scene(3.0), last=True)):  # fmt: skip
+        assert box.drag_handler is not None and box.drag_handler(ev) and ev.accepted
+    s0, s1 = window.selection.getRegion()
+    assert s0 == pytest.approx(3.0, abs=0.05) and s1 == pytest.approx(5.0, abs=0.05)
+    window.mark_with(1)
+    mark = window.marks[0]
+    assert mark["label"] == "spike" and window.editing is mark
+    # its edges follow the span; a label key relabels it
+    window.selection.setRegion((3.0, 6.0))
+    window._region_moved()
+    assert mark["duration"] == pytest.approx(3.0)
+    window.mark_with(0)
+    assert [m["label"] for m in window.marks] == ["BAD"]
+    # a span longer than the page (the mark follows) shows where it ends
+    window.selection.setRegion((3.0, 25.0))
+    window._place_overlays()
+    left, right = window._edge_tabs
+    assert right.isVisible() and not left.isVisible()
+    assert "25.0 s" in right.textItem.toPlainText()
+    # Escape lets go; a click on the mark selects it again; Delete removes it
+    window.clear_selection()
+    assert window.editing is None and not window.has_selection()
+    click = FakeDrag(scene(4.0), scene(4.0))
+    assert box.click_handler is not None and box.click_handler(click)
+    assert window.editing is window.marks[0]
+    window.remove_selected()
+    assert window.marks == []
+    window.undo()
+    assert len(window.marks) == 1
+    # a click away from any mark picks an instant
+    box.click_handler(FakeDrag(scene(28.0), scene(28.0)))  # past the mark
+    s0, s1 = window.selection.getRegion()
+    assert window.editing is None and s0 == pytest.approx(s1)
+
+    # channel names: a pill per row; a click toggles bad, a pair asks which
+    from meegxer.gui.colors import ChannelStyle
+
+    window.source_labels = ("Fp1", "F7", "Cz")
+    window.rows_drawn([("Fp1", 200.0, ChannelStyle((200, 0, 0))),
+                       ("Cz", 100.0, ChannelStyle((0, 200, 0)))])  # fmt: skip
+    tags = [t for t in window._channel_tags if t.isVisible()]
+    assert [t.label for t in tags] == ["Fp1", "Cz"]
+    window.channel_clicked("Cz")
+    assert window.bads == ["Cz"]
+    window.channel_clicked("Cz")
+    assert window.bads == []
+    assert window.electrodes("Fp1-F7") == ["Fp1", "F7"]
+    menu = window.channel_menu("Fp1-F7")
+    texts = [a.text() for a in menu.actions() if a.text()]
+    assert texts[:2] == ["Fp1 is bad", "F7 is bad"] and "Hide Fp1-F7" in texts
+    menu.actions()[1].setChecked(True)  # F7 bad, from the menu
+    assert window.bads == ["F7"]
+    window.answered = True
+    window.close()

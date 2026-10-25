@@ -283,6 +283,24 @@ Built (step 2 of Design v2, display essentials):
   (listed under the tools); *Undo* (Ctrl+Z) takes back the last change to
   the marks or bad channels.
 
+Built (after the first look at step 2):
+
+- **Spans are drawn, not placed.** There is no band until you drag on the
+  traces from the start of a span to its end (either way); a click picks an
+  instant. Each edge has a tab at the top to drag it. Dragging an edge (or
+  the drag itself) to the border of the page scrolls on, so a span can be
+  longer than the page; then a tab at the border shows where it ends
+  (`14.0 s ▶`), and a click there goes to that end.
+- **Marks are edited in place.** Marking leaves the span on the new mark, to
+  adjust its edges. A click on a mark (or double-clicking its row) selects
+  it: drag its edges, press a label key or Annotate/Reject to relabel it,
+  Delete to remove it. Escape lets go of the span.
+- **Channel names are pills** in the margin, outlined in the channel's
+  colour: a click marks the channel bad (dashed grey, struck through) or good
+  again; a bipolar pair asks which electrode. A right-click opens the
+  channel's menu: bad or good per electrode, hide the channel, show all
+  channels, mark all channels good. *Bad channels (n)* stays as a list.
+
 Next: the order of work in *Design v2* above. Live marks (hotkeys that add
 marks to the Events rail while recording) come after it.
 

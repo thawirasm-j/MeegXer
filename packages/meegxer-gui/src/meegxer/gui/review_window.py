@@ -8,7 +8,11 @@ has computed so far: the taps before the strip. Below them:
 - the **coverage bar**: the whole recording, the parts already looked at in
   green, rejected spans in red, other marks in the accent colour, the shown
   span outlined; a click moves there;
-- the **tools**: a band on the traces picks a span; *Annotate* (A) labels it
+- the **tools**: drag on the traces from the start to the end of a span (a
+  click picks an instant); the span's edges have tabs to adjust it, and when
+  it runs past the page a tab at the border shows where it ends (click to go
+  there; dragging an edge to the border scrolls). Clicking a mark selects it to
+  move its edges or relabel it. *Annotate* (A) labels the span
   with the chosen label (the strip's, one of the input's event types, or a new
   one typed in), *Reject* (R) labels it as rejected (a label starting with one
   of the strip's reject words, `BAD` by default; a Reject segments strip
@@ -26,6 +30,9 @@ drawn grey and dashed, left out of the average and the Laplacian, and become
 the stream's bad channels after the strip. Keys 1 to 9 mark the band with the
 first nine labels; Ctrl+Z undoes the last change to the marks or channels.
 
+Each row's channel name is a pill: a click marks the channel bad or good
+again (a bipolar pair asks which electrode), a right-click opens its menu.
+
 *Save marks and continue* sends the marks and the spans looked at (saved next
 to the recording; the run goes on), asking first when part of the recording
 was never shown. *Cancel run*, or closing the window, stops the run.
@@ -33,30 +40,38 @@ was never shown. *Cancel run*, or closing the window, stops the run.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from typing import Any
 
 import pyqtgraph as pg
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QCloseEvent,
     QColor,
+    QFont,
+    QFontMetricsF,
     QKeySequence,
     QMouseEvent,
     QPainter,
     QPaintEvent,
+    QPen,
     QShortcut,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QDoubleSpinBox,
+    QGraphicsItem,
+    QGraphicsObject,
+    QGraphicsSceneMouseEvent,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMenu,
     QMessageBox,
     QPushButton,
+    QStyleOptionGraphicsItem,
     QTableWidget,
     QTableWidgetItem,
     QToolButton,
@@ -75,13 +90,100 @@ REASONS = {
     "input changed": "Something before this strip changed since the review: "
     "check the marks below and confirm them, or change them.",
 }
-DEFAULT_SPAN_S = 1.0
 FULL = 0.995  # viewed fraction counted as the whole recording
 SENSITIVITIES = (1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 70, 100, 150, 200)  # µV/mm
 SPEEDS = (10, 15, 30, 60)  # mm/s
 BIPOLAR = ("longitudinal bipolar", "transverse bipolar")  # labels are pairs
 BAD_STYLE = ChannelStyle((128, 128, 128), dashed=True)
 PRESET_TIP = "Set by the pipeline's Review strip"
+EDGE_ZONE = 0.04  # of the page: dragging an edge this near the border scrolls
+SCROLL_STEP = 0.25  # of the page, each time it scrolls
+
+
+class ChannelTag(QGraphicsObject):
+    """A channel's name in a rounded box in the margin left of its row: a
+    click toggles it good or bad, a right-click opens its menu."""
+
+    def __init__(self, click: Callable[[str], None],
+                 menu: Callable[[str, QPointF], None],
+                 parent: QGraphicsItem) -> None:  # fmt: skip
+        super().__init__(parent)
+        self._click, self._menu = click, menu
+        self.row_y = 0.0  # the row's height on the plot (µV)
+        self.setAcceptedMouseButtons(
+            Qt.MouseButton.LeftButton | Qt.MouseButton.RightButton
+        )
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setZValue(20)
+        self.label = ""
+        self.bad = False
+        self._color = QColor(128, 128, 128)
+        self._fill = QColor(0, 0, 0)
+        self._text = QColor(255, 255, 255)
+        self._font = QFont()
+        self._rect = QRectF()
+
+    def set(self, label: str, color: QColor, bad: bool, theme: Theme) -> None:
+        if (label, color.name(), bad) == (self.label, self._color.name(), self.bad):
+            return
+        self.prepareGeometryChange()
+        self.label, self._color, self.bad = label, color, bad
+        self._fill = QColor(theme.surface)
+        self._text = QColor(theme.text_muted if bad else theme.text)
+        self._font.setStrikeOut(bad)
+        metrics = QFontMetricsF(self._font)
+        h = metrics.height() + 4
+        self._rect = QRectF(0, -h / 2, metrics.horizontalAdvance(label) + 14, h)
+        now, then = ("bad", "good") if bad else ("good", "bad")
+        self.setToolTip(f"{label}: {now}. Click to mark it {then}; right-click "
+                        "for more")  # fmt: skip
+        self.update()
+
+    def boundingRect(self) -> QRectF:
+        return self._rect.adjusted(-1, -1, 1, 1)
+
+    def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem,
+              widget: QWidget | None = None) -> None:  # fmt: skip
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        edge = QColor(128, 128, 128) if self.bad else self._color
+        pen = QPen(edge, 1.4)
+        if self.bad:
+            pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        fill = QColor(self._fill)
+        fill.setAlpha(225)
+        painter.setBrush(fill)
+        r = self._rect.height() / 2
+        painter.drawRoundedRect(self._rect, r, r)
+        painter.setPen(self._text)
+        painter.setFont(self._font)
+        painter.drawText(self._rect, Qt.AlignmentFlag.AlignCenter, self.label)
+
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.RightButton:
+            self._menu(self.label, event.screenPos().toPointF())
+        elif event.button() == Qt.MouseButton.LeftButton:
+            self._click(self.label)
+        event.accept()
+
+
+class EdgeTab(pg.TextItem):  # type: ignore[misc]
+    """Where a span that runs past the page ends: a click goes there."""
+
+    def __init__(self, go: Callable[[], None], anchor: tuple[float, float]) -> None:
+        super().__init__(anchor=anchor)
+        self._go = go
+        self.setZValue(21)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mouseClickEvent(self, ev: Any) -> None:
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self._go()
+            ev.accept()
+
 
 Span = tuple[float, float]
 
@@ -197,6 +299,9 @@ class ReviewWindow(StackedWindow):
         self.bads: list[str] = [str(b) for b in request.get("bads", [])]
         self.source_labels: tuple[str, ...] = ()  # the channels (set by the GUI)
         self._history: list[tuple[list[dict[str, Any]], list[str]]] = []
+        self.editing: dict[str, Any] | None = None  # the mark the span edits
+        self._drag_from: float | None = None
+        self._scrolled = 0.0  # when an edge at the border last scrolled
         self.on_display: Callable[[], None] = lambda: None  # the GUI redraws
         self.answered = False
         self.duration = float(request.get("duration_s") or 0.0)
@@ -302,7 +407,8 @@ class ReviewWindow(StackedWindow):
                            ("PgDown", lambda: self.page(1)),
                            ("Left", lambda: self.page(-1)),
                            ("PgUp", lambda: self.page(-1)),
-                           ("Ctrl+Z", self.undo)):  # fmt: skip
+                           ("Ctrl+Z", self.undo),
+                           ("Escape", self.clear_selection)):  # fmt: skip
             QShortcut(QKeySequence(keys), self).activated.connect(slot)
         for k in range(9):  # the label palette
             QShortcut(QKeySequence(str(k + 1)), self).activated.connect(
@@ -313,8 +419,27 @@ class ReviewWindow(StackedWindow):
         accent.setAlpha(60)
         self.selection = pg.LinearRegionItem(brush=accent, movable=True)
         self.selection.setZValue(5)
+        for line in self.selection.lines:  # a tab at the top to grab each edge
+            line.addMarker("<|>", position=0.97, size=14)
+            line.setPen(pg.mkPen(theme.accent, width=2))
+        self.selection.hide()  # until a span is dragged on the traces
+        self.selection.sigRegionChanged.connect(self._region_moving)
+        self.selection.sigRegionChangeFinished.connect(self._region_moved)
         self.plot.addItem(self.selection)
-        self.plot.getViewBox().sigYRangeChanged.connect(lambda *_: self._draw_spans())
+        self._edge_tabs = (EdgeTab(lambda: self._go_edge(0), (0, 0)),
+                           EdgeTab(lambda: self._go_edge(1), (1, 0)))  # fmt: skip
+        for tab in self._edge_tabs:
+            tab.hide()
+            self.plot.addItem(tab, ignoreBounds=True)
+        self._channel_tags: list[ChannelTag] = []
+        self.plot.getPlotItem().getAxis("left").setStyle(showValues=False)
+        box = self.plot.getViewBox()
+        box.drag_handler = self._drag
+        box.click_handler = self._click
+        box.sigYRangeChanged.connect(lambda *_: self._draw_spans())
+        box.sigYRangeChanged.connect(lambda *_: self._place_overlays())
+        box.sigResized.connect(lambda *_: self._place_overlays())
+        box.sigXRangeChanged.connect(lambda *_: self._place_overlays())
         self._spans: list[pg.LinearRegionItem] = []
         self._tags: list[pg.TextItem] = []  # each mark's label, at the top
         self._view: Span | None = None
@@ -476,6 +601,7 @@ class ReviewWindow(StackedWindow):
         marks, bads = self._history.pop()
         display = bads != self.bads
         self.marks, self.bads = marks, bads
+        self.clear_selection()
         self._refresh()
         if display:
             self._display_changed()
@@ -483,16 +609,222 @@ class ReviewWindow(StackedWindow):
     # -- what is shown ----------------------------------------------------------------
 
     def shown(self, t0: float, t1: float) -> None:
-        """The span drawn: counted as looked at, and the band kept in it."""
+        """The span drawn: counted as looked at."""
         self._view = (t0, t1)
         hi = min(t1, self.duration) if self.duration else t1
         if hi > max(t0, 0.0):
             self.viewed = merge([*self.viewed, (max(t0, 0.0), hi)])
-        s0, s1 = self.selection.getRegion()
-        if s1 < t0 or s0 > t1 or s1 - s0 <= 0:
-            mid, half = (t0 + t1) / 2, min(DEFAULT_SPAN_S, (t1 - t0) / 2) / 2
-            self.selection.setRegion((max(0.0, mid - half), mid + half))
         self._update_coverage()
+        self._place_overlays()
+
+    # -- drawing and adjusting a span -------------------------------------------------
+
+    def _x(self, scene_pos: Any) -> float:
+        return float(self.plot.getViewBox().mapSceneToView(scene_pos).x())
+
+    def _drag(self, ev: Any) -> bool:
+        """Drag from the start of a span to its end (a new span, not a mark)."""
+        if ev.isStart():
+            self._drag_from = max(0.0, self._x(ev.buttonDownScenePos()))
+            self.editing = None
+        if self._drag_from is None:
+            return False
+        x = max(0.0, self._x(ev.scenePos()))
+        self.selection.setRegion(tuple(sorted((self._drag_from, x))))
+        self.selection.show()
+        self._follow(x)
+        if ev.isFinish():
+            self._drag_from = None
+        ev.accept()
+        return True
+
+    def _click(self, ev: Any) -> bool:
+        """A click on a mark selects it; elsewhere it picks an instant."""
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        x = max(0.0, self._x(ev.scenePos()))
+        hit = self._mark_at(x)
+        if hit is not None:
+            self.edit_mark(hit)
+        else:
+            self.select(x, x)
+        ev.accept()
+        return True
+
+    def select(self, t0: float, t1: float) -> None:
+        """A new span to mark (seconds)."""
+        self.editing = None
+        self.selection.setRegion((max(0.0, t0), max(0.0, t1)))
+        self.selection.show()
+        self._place_overlays()
+
+    def clear_selection(self) -> None:
+        self.editing = None
+        self.selection.hide()
+        self._place_overlays()
+
+    def has_selection(self) -> bool:
+        return bool(self.selection.isVisible())
+
+    def edit_mark(self, mark: dict[str, Any]) -> None:
+        """Select a mark: dragging the span's edges moves its onset and end,
+        a label key or Annotate/Reject relabels it, Delete removes it."""
+        self.editing = mark
+        onset = float(mark["onset"])
+        self.selection.setRegion((onset, onset + float(mark["duration"])))
+        self.selection.show()
+        i = self.label.findText(str(mark["label"]))
+        if i >= 0:
+            self.label.setCurrentIndex(i)
+        self._place_overlays()
+
+    def _mark_at(self, t: float) -> dict[str, Any] | None:
+        """The shortest mark under ``t`` (an instant: within a few pixels)."""
+        tol = self.seconds() / 300
+        under = [
+            m
+            for m in self.marks
+            if m["onset"] - tol <= t <= m["onset"] + m["duration"] + tol
+        ]
+        return min(under, key=lambda m: m["duration"]) if under else None
+
+    def _follow(self, x: float) -> None:
+        """An edge dragged to the border of the page scrolls it on."""
+        if self._view is None:
+            return
+        t0, t1 = self._view
+        zone = (t1 - t0) * EDGE_ZONE
+        now = time.monotonic()
+        if now - self._scrolled < 0.15:
+            return
+        bar = self.panner.bar
+        if x >= t1 - zone and bar.value() < bar.maximum():
+            step = 1
+        elif x <= t0 + zone and bar.value() > bar.minimum():
+            step = -1
+        else:
+            return
+        self._scrolled = now
+        bar.setValue(bar.value() + step * max(1, round(bar.pageStep() * SCROLL_STEP)))
+
+    def _region_moving(self) -> None:
+        for line in self.selection.lines:
+            if getattr(line, "moving", False):
+                self._follow(float(line.value()))
+        self._place_overlays()
+
+    def _region_moved(self) -> None:
+        """An edge or the span was dragged: a selected mark follows."""
+        mark = self.editing
+        if mark is None or mark not in self.marks:
+            return
+        s0, s1 = (max(0.0, float(v)) for v in self.selection.getRegion())
+        onset, duration = round(s0, 6), round(s1 - s0, 6)
+        if (onset, duration) == (mark["onset"], mark["duration"]):
+            return
+        self._snapshot()
+        mark["onset"], mark["duration"] = onset, duration
+        self.marks.sort(key=lambda m: (m["onset"], m["label"]))
+        self._refresh()
+
+    def _go_edge(self, side: int) -> None:
+        """Show the end of the span that runs past the page."""
+        s0, s1 = self.selection.getRegion()
+        if side == 0:
+            self.seek(float(s0))
+        else:
+            self.seek(max(0.0, float(s1) - 0.8 * self.seconds()))
+
+    def _place_overlays(self) -> None:
+        """Keep the channel names at the left edge, and the tabs that show
+        where a span runs past the page at the borders."""
+        (x0, x1), (_, y1) = self.plot.viewRange()
+        box = self.plot.getViewBox()
+        axis = self.plot.getPlotItem().getAxis("left")
+        for tag in self._channel_tags:  # right-aligned in the left margin
+            y = axis.mapFromScene(box.mapViewToScene(QPointF(x0, tag.row_y))).y()
+            tag.setPos(axis.width() - tag.boundingRect().width() - 3, y)
+        left, right = self._edge_tabs
+        s0, s1 = self.selection.getRegion()
+        on = self.has_selection()
+        left.setVisible(on and s0 < x0 - 1e-6 and s1 > x0)
+        right.setVisible(on and s1 > x1 + 1e-6 and s0 < x1)
+        color = self.theme.accent
+        fill = QColor(self.theme.surface)
+        if left.isVisible():
+            left.setText(f"◀ {s0:.1f} s", color=color)
+            left.fill = pg.mkBrush(fill)
+            left.setPos(x0, y1)
+        if right.isVisible():
+            right.setText(f"{s1:.1f} s ▶", color=color)
+            right.fill = pg.mkBrush(fill)
+            right.setPos(x1, y1)
+
+    # -- channel names ----------------------------------------------------------------
+
+    def rows_drawn(self, rows: list[tuple[str, float, ChannelStyle]]) -> None:
+        axis = self.plot.getPlotItem().getAxis("left")
+        while len(self._channel_tags) < len(rows):
+            tag = ChannelTag(self.channel_clicked, self._channel_menu, axis)
+            self._channel_tags.append(tag)
+        for tag, (label, y, style) in zip(self._channel_tags, rows, strict=False):
+            bad = style is BAD_STYLE
+            tag.set(label, QColor(*style.color), bad, self.theme)
+            tag.row_y = y
+            tag.setVisible(True)
+        for tag in self._channel_tags[len(rows) :]:
+            tag.setVisible(False)
+        widest = max((t.boundingRect().width() for t in self._channel_tags
+                      if t.isVisible()), default=0.0)  # fmt: skip
+        if widest and abs(axis.width() - (widest + 8)) > 1:
+            axis.setWidth(int(widest + 8))
+        self._place_overlays()
+
+    def electrodes(self, label: str) -> list[str]:
+        """The recorded channels a shown row is made of (two for a bipolar
+        pair)."""
+        if label in self.source_labels or not self.source_labels:
+            return [label]
+        parts = [p for p in label.split("-") if p in self.source_labels]
+        return parts or [label]
+
+    def channel_clicked(self, label: str) -> None:
+        """A click on a channel's name: bad, or good again. A bipolar pair
+        asks which electrode."""
+        parts = self.electrodes(label)
+        if len(parts) == 1:
+            self.set_bad(parts[0], parts[0] not in self.bads)
+            return
+        menu = QMenu(self)
+        self._bad_actions(menu, parts)
+        menu.exec(self.cursor().pos())
+
+    def channel_menu(self, label: str) -> QMenu:
+        """The right-click menu of a channel's name."""
+        menu = QMenu(self)
+        self._bad_actions(menu, self.electrodes(label))
+        menu.addSeparator()
+        menu.addAction(f"Hide {label}", lambda: self.channels.toggle_channel(label))
+        menu.addAction("Show all channels", self.channels.show_all)
+        clear = menu.addAction("Mark all channels good", self._all_good)
+        clear.setEnabled(bool(self.bads))
+        return menu
+
+    def _channel_menu(self, label: str, where: QPointF) -> None:
+        self.channel_menu(label).exec(where.toPoint())
+
+    def _bad_actions(self, menu: QMenu, parts: list[str]) -> None:
+        for part in parts:
+            action = menu.addAction(f"{part} is bad")
+            action.setCheckable(True)
+            action.setChecked(part in self.bads)
+            action.toggled.connect(lambda on, p=part: self.set_bad(p, on))
+
+    def _all_good(self) -> None:
+        if self.bads:
+            self._snapshot()
+            self.bads = []
+            self._display_changed()
 
     def seek(self, t: float) -> None:
         """Show the page starting near ``t`` seconds (the GUI redraws)."""
@@ -531,7 +863,7 @@ class ReviewWindow(StackedWindow):
         self._mark(label)
 
     def mark_with(self, k: int) -> None:
-        """Mark the band with the palette's label ``k`` (keys 1 to 9)."""
+        """Mark the span with the palette's label ``k`` (keys 1 to 9)."""
         if k < self.label.count():
             self.label.setCurrentIndex(k)
             self._mark(self.label.itemText(k))
@@ -542,19 +874,34 @@ class ReviewWindow(StackedWindow):
         self.palette_hint.setText("Keys: " + " · ".join(keys) if keys else "")
 
     def _mark(self, label: str) -> None:
-        s0, s1 = self.selection.getRegion()
-        onset = max(0.0, float(s0))
-        self.add_mark(onset, max(0.0, float(s1) - onset), label)
+        """Label the span: a new mark, or the selected mark relabelled. The
+        span stays on it, to adjust its edges."""
         if self.label.findText(label) < 0:
             self.label.addItem(label)
             self._update_palette()
+        mark = self.editing
+        if mark is not None and mark in self.marks:
+            if mark["label"] != label:
+                self._snapshot()
+                mark["label"] = label
+                self._refresh()
+            return
+        if not self.has_selection():
+            self.progress.setText("Drag on the traces from the start to the end "
+                                  "of a span first.")  # fmt: skip
+            return
+        s0, s1 = self.selection.getRegion()
+        onset = max(0.0, float(s0))
+        self.editing = self.add_mark(onset, max(0.0, float(s1) - onset), label)
 
-    def add_mark(self, onset: float, duration: float, label: str) -> None:
+    def add_mark(self, onset: float, duration: float, label: str) -> dict[str, Any]:
         self._snapshot()
-        self.marks.append({"onset": round(onset, 6), "duration": round(duration, 6),
-                           "label": label})  # fmt: skip
+        mark = {"onset": round(onset, 6), "duration": round(duration, 6),
+                "label": label}  # fmt: skip
+        self.marks.append(mark)
         self.marks.sort(key=lambda m: (m["onset"], m["label"]))
         self._refresh()
+        return mark
 
     def is_reject(self, mark: dict[str, Any]) -> bool:
         return bool(self.reject_words) and str(mark["label"]).startswith(
@@ -562,6 +909,13 @@ class ReviewWindow(StackedWindow):
         )
 
     def remove_selected(self) -> None:
+        """Delete: the mark the span is on, else the rows chosen in the table."""
+        if self.editing is not None and self.editing in self.marks:
+            self._snapshot()
+            self.marks.remove(self.editing)
+            self.clear_selection()
+            self._refresh()
+            return
         rows = sorted({i.row() for i in self.table.selectedIndexes()}, reverse=True)
         if rows:
             self._snapshot()
@@ -572,7 +926,7 @@ class ReviewWindow(StackedWindow):
     def _show_mark(self, row: int, _column: int) -> None:
         m = self.marks[row]
         self.seek(float(m["onset"]))
-        self.selection.setRegion((m["onset"], m["onset"] + m["duration"]))
+        self.edit_mark(m)
 
     def _refresh(self) -> None:
         self.table.setRowCount(len(self.marks))
