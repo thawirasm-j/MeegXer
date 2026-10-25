@@ -299,3 +299,77 @@ def test_bids_events_follow_the_processed_recordings_time() -> None:
         ["2.0", "0.0", "boundary"],
         ["2.5", "0.5", "c"],
     ]
+
+
+# -- display presets and bad channels (Design v2, step 2) ----------------------------
+
+
+def test_bad_channels_marked_in_review_become_the_streams_bads(
+    tmp_path: Path,
+) -> None:
+    from meegxer.core.review import ReviewAnswer
+
+    file = tmp_path / "marks.tsv"
+    graph = graph_of(file)
+    graph["rev"].impl.params.update(montage="longitudinal bipolar", lowpass=40.0)
+    asked: list[ReviewRequest] = []
+
+    def review(req: ReviewRequest) -> ReviewAnswer:
+        asked.append(req)
+        return ReviewAnswer((), ((0.0, 4.0),), ("Fp2",))
+
+    result = BatchScheduler(review=review).run(graph, keep=["hp", "rev"])
+    # the researcher's presets reach the window; the rest is the reviewer's
+    assert asked[0].display == {"montage": "longitudinal bipolar", "lowpass": 40.0}
+    assert asked[0].to_wire()["display"] == asked[0].display
+    after, before = result.outputs["rev"], result.outputs["hp"]
+    assert isinstance(after, Block) and isinstance(before, Block)
+    assert after.info.bads == ("Fp2",) and before.info.bads == ()
+    saved = load_review(file)
+    assert saved is not None and saved.bads == ("Fp2",)
+    # reused on the next run, and offered again when the input changes
+    again = BatchScheduler().run(graph_of(file), keep=["rev"])
+    reused = again.outputs["rev"]
+    assert isinstance(reused, Block) and reused.info.bads == ("Fp2",)
+    with pytest.raises(ReviewNeeded) as changed:
+        BatchScheduler().run(graph_of(file, low=2.0))
+    assert changed.value.request.bads == ("Fp2",)
+    # the bads are part of what later strips depend on
+    assert (
+        again.fingerprints["rev"]
+        != BatchScheduler(review=lambda req: ReviewAnswer((), ((0.0, 4.0),)))
+        .run(graph_of(tmp_path / "other.tsv"))
+        .fingerprints["rev"]
+    )
+
+
+def test_an_offline_page_through_a_montage_over_rpc(
+    daemon: Daemon, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MEEGXER_OFFLINE_DIR", str(tmp_path / "offline"))
+    file = tmp_path / "marks.tsv"
+    chain = nodes({"file": str(file)})
+    chain.insert(
+        2,
+        {
+            "id": "tap_hp",
+            "node": "meegxer.core.probe",
+            "input": "hp",
+            "params": {"keep_seconds": 0.0},
+        },
+    )  # before the strip
+    pipeline = {"spec_version": SPEC_VERSION, "nodes": chain}
+    daemon.run_offline(pipeline)
+    wait_for(daemon, {"review"})
+    page = daemon.offline_window(
+        "tap_hp", 0, 100, 2000, {"montage": "average", "highpass": 1.0}
+    )
+    assert page["derived"] and len(page["ch_labels"]) == 2
+    plain = daemon.offline_window("tap_hp", 0, 100, 2000)
+    assert "derived" not in plain
+    with pytest.raises(ValueError, match="unknown display option"):
+        daemon.offline_window("tap_hp", 0, 100, 2000, {"zoom": 2})
+    daemon.submit_review([], [[0.0, 4.0]], ["Fp1"])
+    assert wait_for(daemon, {"done", "error"})["state"] == "done"
+    saved = load_review(file)
+    assert saved is not None and saved.bads == ("Fp1",)

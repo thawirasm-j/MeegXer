@@ -13,6 +13,7 @@ fingerprints, so re-running an unchanged chain skips the processing.
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import math
 import os
@@ -37,6 +38,12 @@ from meegxer.core.block import Block, FeatureBlock, SignalInfo, units_wire
 from meegxer.core.cache import DirectoryCache
 from meegxer.core.display import Decimator
 from meegxer.core.graph import Graph, GraphError
+from meegxer.core.montage import (
+    check_filter,
+    display_filter,
+    filter_pad,
+    montage_matrix,
+)
 from meegxer.core.node import AnyBlock, Probe
 from meegxer.core.passband import filters_wire
 from meegxer.core.probes import FeatureProbe, MemoryProbe
@@ -52,6 +59,7 @@ from meegxer.core.stage import Stage
 
 MAX_WINDOW_BINS = 20000
 BINS_PER_SECOND = 250.0
+MAX_DERIVED_SECONDS = 120.0  # longest page drawn through a montage or filter
 LEVEL_FACTOR = 8
 _job_numbers = itertools.count(1)
 
@@ -155,6 +163,68 @@ class ProbeStore:
         return {"ch_labels": list(self.info.ch_labels), "sfreq": self.info.sfreq,
                 "bin_size": width, "start_bin": first,
                 "mins": _as_list(mins), "maxs": _as_list(maxs)}  # fmt: skip
+
+    def derived_window(
+        self,
+        start: int,
+        n: int,
+        max_bins: int,
+        montage: str = "as recorded",
+        highpass: float = 0.0,
+        lowpass: float = 0.0,
+        notch: float = 0.0,
+        bads: tuple[str, ...] | None = None,
+    ) -> dict[str, Any]:
+        """As :meth:`window`, through a display montage and filter
+        (``meegxer.core.montage``), computed from the raw samples: those of
+        the page, and a little either side for the filter to settle. A cut
+        (a gap) is filtered on each side separately. ``bads`` (labels) replace
+        the stream's bad channels, left out of the montage's references. A page
+        longer than ``MAX_DERIVED_SECONDS`` is the plain envelope, with
+        ``derived`` false."""
+        info = self.info
+        if bads is not None:
+            info = dataclasses.replace(
+                info, bads=tuple(b for b in bads if b in info.ch_labels)
+            )
+        if not 0 < max_bins <= MAX_WINDOW_BINS:
+            raise ValueError(f"max_bins must be 1..{MAX_WINDOW_BINS}")
+        sfreq = info.sfreq
+        check_filter(sfreq, highpass, lowpass, notch)
+        matrix, labels = montage_matrix(info, montage)
+        if n > MAX_DERIVED_SECONDS * sfreq:
+            return {**self.window(start, n, max_bins), "derived": False}
+        width = max(1, math.ceil(n / max_bins))
+        begin, end = self.first_index, self.first_index + self.filled
+        stop = min(start + n, end)
+        start = max(start, begin)
+        first = start // width
+        lo, hi = first * width, max(first * width, math.ceil(stop / width) * width)
+        filtering = highpass > 0 or lowpass > 0 or notch > 0
+        pad = filter_pad(sfreq, highpass) if filtering else 0
+        a, z = max(begin, lo - pad), min(end, hi + pad)
+        out = np.full((len(labels), hi - lo), np.nan)
+        if z > a:
+            raw = np.asarray(self.samples[:, a - begin : z - begin], dtype=float)
+            shown = matrix @ np.nan_to_num(raw)
+            finite = ~np.isnan(raw).any(axis=0)
+            shown[:, ~finite] = np.nan
+            if filtering:  # each stretch between gaps on its own
+                edges = np.flatnonzero(np.diff(np.r_[0, finite.astype(int), 0]))
+                for r0, r1 in zip(edges[::2], edges[1::2], strict=True):
+                    shown[:, r0:r1] = display_filter(
+                        shown[:, r0:r1], sfreq, highpass, lowpass, notch
+                    )
+            k0, k1 = max(lo, a), min(hi, z)
+            out[:, k0 - lo : k1 - lo] = shown[:, k0 - a : k1 - a]
+        n_out = (hi - lo) // width
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN bins stay NaN
+            mins = np.nanmin(out.reshape(len(labels), n_out, width), axis=2)
+            maxs = np.nanmax(out.reshape(len(labels), n_out, width), axis=2)
+        return {"ch_labels": list(labels), "sfreq": sfreq, "bin_size": width,
+                "start_bin": first, "mins": _as_list(mins), "maxs": _as_list(maxs),
+                "derived": True}  # fmt: skip
 
     def close(self) -> None:
         for _, env, _ in self.levels:
@@ -360,15 +430,19 @@ class OfflineJob:
         return self._review_reply
 
     def submit_review(
-        self, marks: list[dict[str, Any]], viewed: list[list[float]] | None = None
+        self,
+        marks: list[dict[str, Any]],
+        viewed: list[list[float]] | None = None,
+        bads: list[str] | None = None,
     ) -> None:
-        """The marks for the strip the run waits at, and the spans looked at
-        (seconds); the run goes on."""
+        """The marks for the strip the run waits at, the spans looked at
+        (seconds) and the channels marked bad; the run goes on."""
         if self.review_request is None:
             raise RuntimeError("no review is waiting")
         self._review_reply = ReviewAnswer(
-            tuple(Mark.from_wire(m) for m in marks), merge_spans(viewed or [])
-        )
+            tuple(Mark.from_wire(m) for m in marks), merge_spans(viewed or []),
+            tuple(dict.fromkeys(str(b) for b in bads or ())),
+        )  # fmt: skip
         self._review_answered.set()
 
     def cancel_review(self) -> None:
@@ -475,10 +549,17 @@ class OfflineJob:
             },
         }
 
-    def window(self, probe: str, start: int, n: int, max_bins: int) -> dict[str, Any]:
+    def window(
+        self, probe: str, start: int, n: int, max_bins: int, **display: Any
+    ) -> dict[str, Any]:
+        """One probe's page; with ``display`` (montage, highpass, lowpass,
+        notch, bads) through a display montage and filter."""
         store = self.probes.get(probe)
         if store is None:
             raise KeyError(f"no offline output for probe {probe!r} (yet)")
+        if display:
+            return {"probe": probe,
+                    **store.derived_window(start, n, max_bins, **display)}  # fmt: skip
         return {"probe": probe, **store.window(start, n, max_bins)}
 
     def feature_windows(

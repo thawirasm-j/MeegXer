@@ -103,6 +103,22 @@
         }
       }
     },
+    "review": {
+      "description": "How the review window shows a recording (docs/REVIEW.md), where the Review strip does not set it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "units": {"description": "Scale the traces clinically (sensitivity in µV/mm and speed in mm/s, on the screen's real size) or by channel spacing in µV and seconds per page.", "enum": ["uv_per_mm", "uv"]},
+        "sensitivity": {"description": "µV per mm of screen (units uv_per_mm).", "type": "number", "exclusiveMinimum": 0},
+        "speed": {"description": "Mm of screen per second (units uv_per_mm).", "type": "number", "exclusiveMinimum": 0},
+        "spacing": {"description": "Channel spacing in µV (units uv).", "type": "number", "exclusiveMinimum": 0},
+        "page": {"description": "Seconds per page (units uv).", "type": "number", "exclusiveMinimum": 0},
+        "montage": {"description": "Display montage.", "enum": ["as recorded", "average", "longitudinal bipolar", "transverse bipolar", "laplacian"]},
+        "highpass": {"description": "Display high-pass in Hz (0: off).", "type": "number", "minimum": 0},
+        "lowpass": {"description": "Display low-pass in Hz (0: off).", "type": "number", "minimum": 0},
+        "notch": {"description": "Display notch in Hz (0: off).", "type": "number", "minimum": 0}
+      }
+    },
     "storage": {
       "type": "object",
       "additionalProperties": false,

@@ -16,6 +16,16 @@ has computed so far: the taps before the strip. Below them:
   PgUp/PgDn), *Next unreviewed* (N) jumps to the first part not looked at yet;
 - the **marks** table: double-click shows a mark, Delete removes it.
 
+Above the traces, the **display**: the montage (monopolar against the average
+reference by default), display filters, and the scale: sensitivity in µV/mm and
+speed in mm/s on the screen's real size, or channel spacing in µV and seconds
+per page (Settings, *Review*). The core computes each page through the montage
+and filters from the raw samples. What the Review strip sets (its display
+presets) is fixed for the reviewer. *Bad channels* marks channels bad: they are
+drawn grey and dashed, left out of the average and the Laplacian, and become
+the stream's bad channels after the strip. Keys 1 to 9 mark the band with the
+first nine labels; Ctrl+Z undoes the last change to the marks or channels.
+
 *Save marks and continue* sends the marks and the spans looked at (saved next
 to the recording; the run goes on), asking first when part of the recording
 was never shown. *Cancel run*, or closing the window, stops the run.
@@ -40,17 +50,23 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from meegxer.core import settings as core_settings
+from meegxer.core.montage import MONTAGES
+from meegxer.gui.colors import ChannelStyle
 from meegxer.gui.signal_view import StackedWindow
 from meegxer.gui.theme import Theme
 
@@ -61,6 +77,11 @@ REASONS = {
 }
 DEFAULT_SPAN_S = 1.0
 FULL = 0.995  # viewed fraction counted as the whole recording
+SENSITIVITIES = (1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 70, 100, 150, 200)  # µV/mm
+SPEEDS = (10, 15, 30, 60)  # mm/s
+BIPOLAR = ("longitudinal bipolar", "transverse bipolar")  # labels are pairs
+BAD_STYLE = ChannelStyle((128, 128, 128), dashed=True)
+PRESET_TIP = "Set by the pipeline's Review strip"
 
 Span = tuple[float, float]
 
@@ -162,13 +183,21 @@ class ReviewWindow(StackedWindow):
         self,
         request: dict[str, Any],
         theme: Theme,
-        submit: Callable[[list[dict[str, Any]], list[list[float]]], None],
+        submit: Callable[[list[dict[str, Any]], list[list[float]], list[str]], None],
         cancel: Callable[[], None],
         recording: str = "",
+        settings: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(theme)
         self.request = request
         self._submit, self._cancel = submit, cancel
+        # the reviewer's Settings, under the Review strip's presets
+        self.prefs = {**core_settings.defaults()["review"], **(settings or {})}
+        self.presets: dict[str, Any] = dict(request.get("display") or {})
+        self.bads: list[str] = [str(b) for b in request.get("bads", [])]
+        self.source_labels: tuple[str, ...] = ()  # the channels (set by the GUI)
+        self._history: list[tuple[list[dict[str, Any]], list[str]]] = []
+        self.on_display: Callable[[], None] = lambda: None  # the GUI redraws
         self.answered = False
         self.duration = float(request.get("duration_s") or 0.0)
         self.reject_words = tuple(str(w) for w in request.get("reject", ())) or ()
@@ -187,6 +216,7 @@ class ReviewWindow(StackedWindow):
                       "strip (choose Main and aux in the main window).")  # fmt: skip
         head.setWordWrap(True)
         lay.insertWidget(0, head)
+        lay.insertLayout(1, self._display_bar())
 
         self.coverage = CoverageBar(theme)
         self.coverage.duration = self.duration
@@ -223,11 +253,19 @@ class ReviewWindow(StackedWindow):
         unseen.clicked.connect(self.next_unreviewed)
         for b in (back, ahead, unseen):
             tools.addWidget(b)
+        undo = QPushButton("Undo")
+        undo.setToolTip("Undo the last change to the marks or bad channels (Ctrl+Z)")
+        undo.clicked.connect(self.undo)
+        tools.addWidget(undo)
         tools.addStretch(1)
         self.progress = QLabel("")
         self.progress.setObjectName("muted")
         tools.addWidget(self.progress)
         lay.addLayout(tools)
+        self.palette_hint = QLabel("")
+        self.palette_hint.setObjectName("muted")
+        lay.addWidget(self.palette_hint)
+        self._update_palette()
 
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Onset (s)", "Duration (s)", "Label"])
@@ -263,8 +301,13 @@ class ReviewWindow(StackedWindow):
                            ("Right", lambda: self.page(1)),
                            ("PgDown", lambda: self.page(1)),
                            ("Left", lambda: self.page(-1)),
-                           ("PgUp", lambda: self.page(-1))):  # fmt: skip
+                           ("PgUp", lambda: self.page(-1)),
+                           ("Ctrl+Z", self.undo)):  # fmt: skip
             QShortcut(QKeySequence(keys), self).activated.connect(slot)
+        for k in range(9):  # the label palette
+            QShortcut(QKeySequence(str(k + 1)), self).activated.connect(
+                lambda k=k: self.mark_with(k)
+            )
 
         accent = QColor(theme.accent)
         accent.setAlpha(60)
@@ -276,6 +319,166 @@ class ReviewWindow(StackedWindow):
         self._tags: list[pg.TextItem] = []  # each mark's label, at the top
         self._view: Span | None = None
         self._refresh()
+
+    # -- display ----------------------------------------------------------------------
+
+    def _pref(self, key: str) -> Any:
+        return self.presets.get(key, self.prefs[key])
+
+    def _display_bar(self) -> QHBoxLayout:
+        bar = QHBoxLayout()
+        bar.addWidget(QLabel("Montage"))
+        self.montage = QComboBox()
+        for name in MONTAGES:
+            self.montage.addItem(name.capitalize(), name)
+        self.montage.setCurrentIndex(
+            max(0, self.montage.findData(self._pref("montage")))
+        )
+        self.montage.setToolTip("How the channels are shown (display only)")
+        self.montage.currentIndexChanged.connect(lambda _: self._display_changed())
+        bar.addWidget(self.montage)
+        self.filters: dict[str, QDoubleSpinBox] = {}
+        for key, text in (("highpass", "HP"), ("lowpass", "LP"), ("notch", "Notch")):
+            spin = QDoubleSpinBox()
+            spin.setRange(0.0, 1000.0)
+            spin.setDecimals(1)
+            spin.setSuffix(" Hz")
+            spin.setSpecialValueText("off")
+            spin.setValue(float(self._pref(key)))
+            spin.setToolTip(f"Display {text.lower()} filter (display only; 0: off)")
+            spin.valueChanged.connect(lambda _: self._display_changed())
+            bar.addWidget(QLabel(text))
+            bar.addWidget(spin)
+            self.filters[key] = spin
+        self.clinical = (
+            self.prefs["units"] == "uv_per_mm" or "sensitivity" in self.presets
+        )
+        self.sensitivity = QComboBox()
+        self.speed = QComboBox()
+        scales = ((self.sensitivity, SENSITIVITIES, "µV/mm", "sensitivity"),
+                  (self.speed, SPEEDS, "mm/s", "speed"))  # fmt: skip
+        for box, values, unit, key in scales:
+            want = float(self._pref(key))
+            for v in sorted({*map(float, values), want}):
+                box.addItem(f"{v:g} {unit}", v)
+            box.setCurrentIndex(box.findData(want))
+            box.currentIndexChanged.connect(lambda _: self._display_changed())
+            box.setVisible(self.clinical)
+            bar.addWidget(box)
+        self.speed.setVisible(self.clinical and "page" not in self.presets)
+        uv_controls = (self.span, self.spacing_label, self.spacing, self.normalize)
+        for control in uv_controls:
+            control.setVisible(not self.clinical)
+        if not self.clinical:
+            for box, key, unit in ((self.span, "page", "s"),
+                                   (self.spacing, "spacing", "µV")):  # fmt: skip
+                want = float(self._pref(key))
+                if box.findData(want) < 0:
+                    box.addItem(f"{want:g} {unit}", want)
+                box.setCurrentIndex(box.findData(want))
+        self.bad_button = QToolButton()
+        self.bad_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        bad_menu = QMenu(self.bad_button)
+        bad_menu.aboutToShow.connect(self._fill_bad_menu)
+        self.bad_button.setMenu(bad_menu)
+        bar.addWidget(self.bad_button)
+        bar.addStretch(1)
+        fixed: tuple[tuple[str, QWidget], ...] = (
+            ("montage", self.montage), ("highpass", self.filters["highpass"]),
+            ("lowpass", self.filters["lowpass"]), ("notch", self.filters["notch"]),
+            ("sensitivity", self.sensitivity), ("page", self.span),
+        )  # fmt: skip
+        for key, widget in fixed:
+            if key in self.presets:
+                widget.setEnabled(False)
+                widget.setToolTip(PRESET_TIP)
+        self._update_bad_button()
+        return bar
+
+    def display(self) -> dict[str, Any]:
+        """What the core computes each page through (``offline_window``)."""
+        return {"montage": str(self.montage.currentData()),
+                **{k: float(s.value()) for k, s in self.filters.items()},
+                "bads": list(self.bads)}  # fmt: skip
+
+    def _display_changed(self) -> None:
+        self._update_bad_button()
+        self.on_display()
+
+    def _px_per_mm(self) -> float:
+        screen = self.screen()
+        dpi = screen.physicalDotsPerInch() if screen is not None else 96.0
+        ratio = screen.devicePixelRatio() if screen is not None else 1.0
+        return max(1.0, float(dpi) / 25.4 / max(float(ratio), 1e-6))
+
+    def seconds(self) -> float:
+        if "page" in self.presets:
+            return float(self.presets["page"])
+        if self.clinical:  # the page is the plot's width at the speed
+            width_mm = max(10.0, float(self.plot.width()) / self._px_per_mm())
+            return width_mm / float(self.speed.currentData())
+        return super().seconds()
+
+    def fixed_spacing(self, n_rows: int) -> float | None:
+        """At a sensitivity S µV/mm a mm of screen is S µV: the rows share the
+        plot's height."""
+        if not self.clinical or n_rows <= 0:
+            return None
+        height_mm = max(10.0, float(self.plot.height()) / self._px_per_mm())
+        return height_mm * float(self.sensitivity.currentData()) / n_rows
+
+    def restyle(self, label: str, style: ChannelStyle) -> ChannelStyle:
+        """Bad channels, and bipolar pairs with a bad electrode, in grey."""
+        bad = label in self.bads or any(p in self.bads for p in label.split("-"))
+        return BAD_STYLE if bad else style
+
+    # -- bad channels -----------------------------------------------------------------
+
+    def _fill_bad_menu(self) -> None:
+        menu = self.bad_button.menu()
+        assert menu is not None
+        menu.clear()
+        for label in self.source_labels:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(label in self.bads)
+            action.toggled.connect(lambda on, lab=label: self.set_bad(lab, on))
+
+    def set_bad(self, label: str, bad: bool) -> None:
+        if (label in self.bads) == bad:
+            return
+        self._snapshot()
+        if bad:
+            self.bads.append(label)
+        else:
+            self.bads.remove(label)
+        self._display_changed()
+
+    def _update_bad_button(self) -> None:
+        n = len(self.bads)
+        self.bad_button.setText(f"Bad channels ({n})")
+        bipolar = self.montage.currentData() in BIPOLAR
+        self.bad_button.setToolTip(
+            "Mark channels bad: grey and dashed here, left out of the average "
+            "and the Laplacian, and the stream's bad channels after this strip"
+            + (" (marked bad by electrode, not by pair)" if bipolar else "")
+        )
+
+    # -- undo -------------------------------------------------------------------------
+
+    def _snapshot(self) -> None:
+        self._history.append(([dict(m) for m in self.marks], list(self.bads)))
+        del self._history[:-100]
+
+    def undo(self) -> None:
+        if not self._history:
+            return
+        marks, bads = self._history.pop()
+        display = bads != self.bads
+        self.marks, self.bads = marks, bads
+        self._refresh()
+        if display:
+            self._display_changed()
 
     # -- what is shown ----------------------------------------------------------------
 
@@ -327,14 +530,27 @@ class ReviewWindow(StackedWindow):
             label = self.reject_words[0]
         self._mark(label)
 
+    def mark_with(self, k: int) -> None:
+        """Mark the band with the palette's label ``k`` (keys 1 to 9)."""
+        if k < self.label.count():
+            self.label.setCurrentIndex(k)
+            self._mark(self.label.itemText(k))
+
+    def _update_palette(self) -> None:
+        keys = [f"{k + 1} {self.label.itemText(k)}"
+                for k in range(min(9, self.label.count()))]  # fmt: skip
+        self.palette_hint.setText("Keys: " + " · ".join(keys) if keys else "")
+
     def _mark(self, label: str) -> None:
         s0, s1 = self.selection.getRegion()
         onset = max(0.0, float(s0))
         self.add_mark(onset, max(0.0, float(s1) - onset), label)
         if self.label.findText(label) < 0:
             self.label.addItem(label)
+            self._update_palette()
 
     def add_mark(self, onset: float, duration: float, label: str) -> None:
+        self._snapshot()
         self.marks.append({"onset": round(onset, 6), "duration": round(duration, 6),
                            "label": label})  # fmt: skip
         self.marks.sort(key=lambda m: (m["onset"], m["label"]))
@@ -347,6 +563,8 @@ class ReviewWindow(StackedWindow):
 
     def remove_selected(self) -> None:
         rows = sorted({i.row() for i in self.table.selectedIndexes()}, reverse=True)
+        if rows:
+            self._snapshot()
         for row in rows:
             del self.marks[row]
         self._refresh()
@@ -426,7 +644,8 @@ class ReviewWindow(StackedWindow):
                 return
         self.answered = True
         self._submit([dict(m) for m in self.marks],
-                     [[round(a, 6), round(b, 6)] for a, b in self.viewed])  # fmt: skip
+                     [[round(a, 6), round(b, 6)] for a, b in self.viewed],
+                     list(self.bads))  # fmt: skip
         self.close()
 
     def cancel(self) -> None:

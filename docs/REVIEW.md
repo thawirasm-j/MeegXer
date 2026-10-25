@@ -5,7 +5,7 @@ a recording by hand: bad segments (`BAD_muscle`, `BAD_eyes`), states
 (`eyes_closed`, `drowsy`), anything with a label and a span. The marks go on
 the Events rail, where later strips see them like the recording's own events.
 
-## Design v2 (agreed 2026-10-24; step 1 built)
+## Design v2 (agreed 2026-10-24; steps 1 and 2 built)
 
 Who reviews, and what helps them:
 
@@ -116,6 +116,8 @@ Who reviews, and what helps them:
    - label palette (keys 1–9) and undo
    - bad-channel marking
    - display presets in the Review strip
+
+   *Built* (see *Built: step 2* below).
 3. **Review at import:** the Recording window's *Review* action and the
    per-recording sidecar.
 4. **Suggestions:**
@@ -247,6 +249,39 @@ Built (step 1 of Design v2):
   is saved with each review made in that run: in the sidecar JSON
   (`MeegXer.reviewer`) and in the session (`nodes.<id>.review`: `reviewer`,
   `reviewed`, `upstream`). A shared session leaves the name out.
+
+Built (step 2 of Design v2, display essentials):
+
+- **The display bar** above the traces: montage, display filters (high-pass,
+  low-pass, notch; 0 is off), the scale, and *Bad channels*.
+  - Montages (`meegxer.core.montage`): *as recorded*; *average*, each EEG
+    channel minus the mean of the good EEG channels (the default); the
+    *longitudinal* ("double banana") and *transverse bipolar* montages, from
+    the 10-20 pairs the recording has (`T3`/`T4`/`T5`/`T6` count as
+    `T7`/`T8`/`P7`/`P8`); *Laplacian*, each EEG channel minus the mean of its
+    four nearest good neighbours, by electrode position. Other channels (EOG,
+    ECG) are shown as recorded.
+  - The core computes the page through the montage and filters from the
+    probe's raw samples (`offline_window` with `display`, control API 0.2.12),
+    reading a little either side so the zero-phase filters settle, and each
+    stretch between cuts on its own. A page over 120 s is the plain envelope.
+  - The scale: clinical by default, a sensitivity in µV/mm and a speed in
+    mm/s on the screen's real size (from its physical DPI), so 7 µV/mm and
+    30 mm/s look as they do on paper; or (Settings) a channel spacing in µV
+    and seconds per page.
+- **Settings, Review page:** the units, sensitivity, speed, spacing, page,
+  montage and filters a reviewer starts with (`docs/SETTINGS.md`).
+- **Display presets** in the Review strip (Advanced): `montage`, `highpass`,
+  `lowpass`, `notch` (-1: the reviewer's Settings), `sensitivity`, `page` (0:
+  the reviewer's). What the strip sets is fixed in the window (greyed out).
+- **Bad channels:** *Bad channels (n)* lists the recording's channels to tick.
+  A bad channel is grey and dashed, left out of the average and the
+  Laplacian at once, saved with the review (sidecar JSON, `MeegXer.bads`),
+  and added to the stream's bad channels after the strip; the strip's output
+  fingerprint includes them, so later strips refit when they change.
+- **Palette and undo:** keys 1 to 9 mark the band with the first nine labels
+  (listed under the tools); *Undo* (Ctrl+Z) takes back the last change to
+  the marks or bad channels.
 
 Next: the order of work in *Design v2* above. Live marks (hotkeys that add
 marks to the Events rail while recording) come after it.

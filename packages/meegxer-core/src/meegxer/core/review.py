@@ -23,6 +23,7 @@ segments strip's job (``meegxer.core.reject_segments``), downstream.
 from __future__ import annotations
 
 import csv
+import dataclasses
 import json
 import math
 import re
@@ -34,11 +35,13 @@ from typing import Any, ClassVar
 
 from meegxer.core.block import CHANNEL_TYPES, Block, Event
 from meegxer.core.manifest import Manifest
+from meegxer.core.montage import MONTAGES
 from meegxer.core.node import Params, Processor, Source, TransformResult
 from meegxer.core.references import credits
 from meegxer.core.serialization import State
 
 REVIEW_NODE = "meegxer.core.review"
+SETTINGS = "settings"  # a display preset left to the reviewer's Settings
 DEFAULT_LABELS = "BAD"
 BOUNDARY = "boundary"  # the event at a cut (EEGLAB's name for it)
 
@@ -74,6 +77,7 @@ class Review:
     reviewed: str = ""  # when (ISO 8601, UTC)
     viewed: tuple[tuple[float, float], ...] = ()  # spans looked at (s)
     reviewer: str = ""  # who reviewed (asked once per run)
+    bads: tuple[str, ...] = ()  # channels the reviewer marked bad
 
 
 Span = tuple[float, float]
@@ -97,6 +101,7 @@ class ReviewAnswer:
 
     marks: tuple[Mark, ...]
     viewed: tuple[Span, ...] = ()
+    bads: tuple[str, ...] = ()  # channels marked bad (labels)
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +117,8 @@ class ReviewRequest:
     duration_s: float = 0.0
     reject: tuple[str, ...] = ()  # what the window's Reject key labels a span
     viewed: tuple[Span, ...] = ()  # looked at in the review before
+    bads: tuple[str, ...] = ()  # channels marked bad in the review before
+    display: dict[str, Any] = dataclasses.field(default_factory=dict)  # presets
 
     def to_wire(self) -> dict[str, Any]:
         return {
@@ -119,6 +126,7 @@ class ReviewRequest:
             "marks": [m.to_wire() for m in self.previous],
             "labels": list(self.labels), "duration_s": self.duration_s,
             "reject": list(self.reject), "viewed": [list(v) for v in self.viewed],
+            "bads": list(self.bads), "display": dict(self.display),
         }  # fmt: skip
 
 
@@ -170,6 +178,30 @@ class ReviewStrip(Processor):
                  "extensions": [".tsv"], "advanced": True,
                  "description": "Where the marks are saved (empty: next to "
                                 "each recording, or in its BIDS derivatives)"},
+                # display presets: what the researcher fixes for the reviewer
+                {"name": "montage", "type": "enum", "default": SETTINGS,
+                 "choices": [SETTINGS, *MONTAGES], "advanced": True,
+                 "description": "Display montage (settings: the reviewer's)"},
+                {"name": "highpass", "type": "float", "default": -1.0,
+                 "min": -1.0, "max": 1000.0, "unit": "Hz", "advanced": True,
+                 "description": "Display high-pass (-1: the reviewer's "
+                                "Settings; 0: off)"},
+                {"name": "lowpass", "type": "float", "default": -1.0,
+                 "min": -1.0, "max": 10000.0, "unit": "Hz", "advanced": True,
+                 "description": "Display low-pass (-1: the reviewer's "
+                                "Settings; 0: off)"},
+                {"name": "notch", "type": "float", "default": -1.0,
+                 "min": -1.0, "max": 1000.0, "unit": "Hz", "advanced": True,
+                 "description": "Display notch (-1: the reviewer's Settings; "
+                                "0: off)"},
+                {"name": "sensitivity", "type": "float", "default": 0.0,
+                 "min": 0.0, "max": 10000.0, "unit": "µV/mm", "advanced": True,
+                 "description": "Display sensitivity (0: the reviewer's "
+                                "Settings)"},
+                {"name": "page", "type": "float", "default": 0.0, "min": 0.0,
+                 "max": 3600.0, "unit": "s", "advanced": True,
+                 "description": "Seconds per page (0: the reviewer's "
+                                "Settings)"},
             ],
             **credits(REVIEW_NODE),
         }
@@ -177,6 +209,7 @@ class ReviewStrip(Processor):
 
     def __init__(self) -> None:
         self.marks: tuple[Event, ...] = ()  # set by the batch run from the review
+        self.bads: tuple[str, ...] = ()  # channels the review marked bad
         # who reviewed, when, on what input: kept in a session (spec/session.md)
         self.record: dict[str, str] = {}
 
@@ -185,7 +218,34 @@ class ReviewStrip(Processor):
     ) -> TransformResult:
         lo, hi = block.sample_index, block.stop_index
         inside = tuple(e for e in self.marks if lo <= e.sample_index < hi)
-        return TransformResult(block, {}, inside)
+        return TransformResult(with_bads(block, self.bads), {}, inside)
+
+
+def with_bads(block: Block, bads: Sequence[str]) -> Block:
+    """``block`` with ``bads`` added to its stream's bad channels (those it
+    has): later strips leave them out as they do the recording's own."""
+    info = block.info
+    added = [b for b in bads if b in info.ch_labels and b not in info.bads]
+    if not added:
+        return block
+    return dataclasses.replace(
+        block, info=dataclasses.replace(info, bads=(*info.bads, *added))
+    )
+
+
+def display_presets(params: Params) -> dict[str, Any]:
+    """What the strip fixes of the review window's display (the rest is the
+    reviewer's Settings)."""
+    out: dict[str, Any] = {}
+    if params["montage"] != SETTINGS:
+        out["montage"] = str(params["montage"])
+    for key in ("highpass", "lowpass", "notch"):
+        if float(params[key]) >= 0:
+            out[key] = float(params[key])
+    for key in ("sensitivity", "page"):
+        if float(params[key]) > 0:
+            out[key] = float(params[key])
+    return out
 
 
 def _words(text: object) -> list[str]:
@@ -291,7 +351,8 @@ def load_review(path: Path) -> Review | None:
         meta = json.loads(_sidecar(path).read_text(encoding="utf-8")).get("MeegXer", {})
     viewed = merge_spans(meta.get("viewed", []))
     return Review(marks, str(meta.get("upstream", "")), str(meta.get("reviewed", "")),
-                  viewed, str(meta.get("reviewer", "")))  # fmt: skip
+                  viewed, str(meta.get("reviewer", "")),
+                  tuple(str(b) for b in meta.get("bads", [])))  # fmt: skip
 
 
 def save_review(path: Path, review: Review, node_id: str) -> None:
@@ -309,6 +370,7 @@ def save_review(path: Path, review: Review, node_id: str) -> None:
         "trial_type": {"Description": "Label given in a manual review"},
         "MeegXer": {"strip": node_id, "upstream": review.upstream,
                     "reviewed": review.reviewed, "reviewer": review.reviewer,
+                    "bads": list(review.bads),  # channels marked bad
                     # the spans looked at, in seconds from the recording's start
                     "viewed": [[round(a, 6), round(b, 6)] for a, b in review.viewed]},
     }  # fmt: skip

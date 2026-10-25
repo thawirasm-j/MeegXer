@@ -13,6 +13,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from meegxer.core.review import Mark, load_review
+from meegxer.gui.review_window import BAD_STYLE
 
 
 def pump_until(
@@ -47,6 +48,7 @@ def test_the_run_pauses_for_marks_and_goes_on(
         review.params["labels"] = "BAD_muscle, BAD_eyes"
         win._structure_changed("added")
         win.click_tap(hp.id, False)  # see the signal before the strip
+        hp_tap = win._shown()[0]
         asked: list[bool] = []
 
         def ask_reviewer() -> str:
@@ -77,6 +79,36 @@ def test_the_run_pauses_for_marks_and_goes_on(
         assert "1.5 s rejected" in window.progress.text()
         assert sum(s.isVisible() for s in window._spans) == 2
 
+        # the display: average reference and clinical units by default; the
+        # core computes the page through the montage
+        assert window.display() == {
+            "montage": "average",
+            "highpass": 0.0,
+            "lowpass": 0.0,
+            "notch": 0.0,
+            "bads": [],
+        }
+        assert window.clinical and window.fixed_spacing(3) is not None
+        assert window.source_labels == ("Fz", "Cz", "Pz")
+        window.montage.setCurrentIndex(window.montage.findData("as recorded"))
+        window.filters["highpass"].setValue(1.0)
+        win.redraw()
+        cached = win._offline_cache[f"{hp_tap}#review"]
+        assert "'highpass': 1.0" in cached[0][3] and cached[1] is not None
+        # palette keys, bad channels and undo
+        assert window.palette_hint.text().startswith("Keys: 1 BAD_muscle · 2 BAD_eyes")
+        window.selection.setRegion((6.0, 7.0))
+        window.mark_with(1)  # key 2
+        assert window.marks[-1]["label"] == "BAD_eyes"
+        window.set_bad("Cz", True)
+        assert window.display()["bads"] == ["Cz"]
+        assert window.restyle("Cz", window.restyle("Fz", BAD_STYLE)) == BAD_STYLE
+        assert window.bad_button.text() == "Bad channels (1)"
+        window.undo()  # the bad channel
+        window.undo()  # the BAD_eyes mark
+        assert window.bads == [] and len(window.marks) == 2
+        window.set_bad("Pz", True)
+
         window.page(1)  # the next page is shown, then counted
         pump_until(qapp, lambda: window.viewed[-1][1] >= 15.0)
         window.seek(17.0)
@@ -89,7 +121,7 @@ def test_the_run_pauses_for_marks_and_goes_on(
         saved = load_review(tmp_path / f"sub-01_raw_desc-{review.id}_events.tsv")
         assert saved is not None
         assert saved.marks == (Mark(2.0, 1.5, "BAD"), Mark(4.0, 1.0, "drowsy"))
-        assert saved.viewed == ((0.0, 20.0),)
+        assert saved.viewed == ((0.0, 20.0),) and saved.bads == ("Pz",)
         assert saved.reviewer == "C. Rater" and len(asked) == 1  # once per run
         win.start()  # reviewed on this input: runs through without a review
         pump_until(qapp, lambda: win.offline_state == "done")

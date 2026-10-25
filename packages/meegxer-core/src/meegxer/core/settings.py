@@ -57,6 +57,17 @@ DEFAULTS: dict[str, Any] = {
             "smoothing": 2,
         },
     },
+    "review": {  # the review window (docs/REVIEW.md), where the strip does not
+        "units": "uv_per_mm",
+        "sensitivity": 7.0,  # µV/mm
+        "speed": 30.0,  # mm/s
+        "spacing": 100.0,  # µV (units uv)
+        "page": 10.0,  # s (units uv)
+        "montage": "average",
+        "highpass": 0.0,
+        "lowpass": 0.0,
+        "notch": 0.0,
+    },
     "storage": {"offline_dir": "", "cache_gb": 5.0, "output_dir": "", "data_dir": ""},
 }
 

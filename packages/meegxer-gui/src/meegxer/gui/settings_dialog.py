@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
 )
 
 from meegxer.core import settings as core_settings
+from meegxer.core.montage import MONTAGES
 from meegxer.core.notices import LOCAL_CODE_NOTICE
 from meegxer.gui.colormaps import DIVERGING, SEQUENTIAL, Maps
 from meegxer.gui.headplot import BANDS, RANGES, SCHEMES, SYMBOLS
@@ -50,6 +51,7 @@ PAGES = (
     "General",
     "Appearance",
     "Visualization",
+    "Review",
     "Data & storage",
     "Plugins & privacy",
 )
@@ -119,6 +121,7 @@ class SettingsDialog(QDialog):
                 self._general,
                 self._appearance,
                 self._visualization,
+                self._review,
                 self._storage,
                 self._privacy,
             ),
@@ -354,6 +357,52 @@ class SettingsDialog(QDialog):
         form.addRow(
             "Text size", self._combo("appearance.scale", {s: f"{s} %" for s in SCALES})
         )
+
+    def _number(self, key: str, unit: str, top: float, tip: str = "",
+                off: bool = False) -> QDoubleSpinBox:  # fmt: skip
+        spin = QDoubleSpinBox()
+        spin.setRange(0.0 if off else 0.1, top)
+        spin.setDecimals(1)
+        spin.setSuffix(f" {unit}")
+        if off:
+            spin.setSpecialValueText("off")
+        spin.setToolTip(tip)
+        spin.valueChanged.connect(lambda v: self._set(key, float(v)))
+        self._loaders.append(
+            lambda: spin.setValue(float(core_settings.get(self.working, key)))
+        )
+        return spin
+
+    def _review(self, page: QWidget) -> None:
+        form = self._form(
+            page,
+            "How the review window shows a recording. A pipeline's Review "
+            "strip can fix any of these for its reviewers (its display "
+            "presets); the rest come from here.",
+        )
+        form.addRow("Units", self._combo(
+            "review.units",
+            {"uv_per_mm": "Clinical: µV/mm and mm/s",
+             "uv": "Channel spacing in µV, seconds per page"},
+            "Clinical units use the screen's real size: 7 µV/mm and 30 mm/s "
+            "look as they do on paper",
+        ))  # fmt: skip
+        form.addRow("Sensitivity", self._number("review.sensitivity", "µV/mm", 1000))
+        form.addRow("Speed", self._number("review.speed", "mm/s", 1000))
+        form.addRow("Channel spacing", self._number("review.spacing", "µV", 10000))
+        form.addRow("Page", self._number("review.page", "s", 3600))
+        form.addRow("Montage", self._combo(
+            "review.montage", {m: m.capitalize() for m in MONTAGES},
+            "Average: each channel against the mean of the good EEG channels",
+        ))  # fmt: skip
+        for key, text in (("highpass", "High-pass"), ("lowpass", "Low-pass"),
+                          ("notch", "Notch")):  # fmt: skip
+            form.addRow(
+                text,
+                self._number(
+                    f"review.{key}", "Hz", 1000, "Display only (0: off)", off=True
+                ),
+            )
 
     def _visualization(self, page: QWidget) -> None:
         form = self._form(

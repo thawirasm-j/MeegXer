@@ -51,6 +51,11 @@ reported (in the log) and use their defaults. The format is checked against
 | | Time span (s) | `visualization.span` | `10` |
 | | Live time axis: seconds before now, or time since start | `visualization.time_axis` | `before_now` |
 | | Head plot band, power, remove 1/f, map, power range, live smoothing | `visualization.spectrum.*` | α (8–13 Hz), absolute, off, band power, 20 dB, 2 s |
+| Review | Units: clinical (µV/mm and mm/s, on the screen's real size) or µV spacing and seconds per page | `review.units` | `uv_per_mm` |
+| | Sensitivity (µV/mm), speed (mm/s) | `review.sensitivity`, `review.speed` | `7`, `30` |
+| | Channel spacing (µV), page (s), for µV units | `review.spacing`, `review.page` | `100`, `10` |
+| | Display montage: as recorded, average, longitudinal or transverse bipolar, Laplacian | `review.montage` | `average` |
+| | Display high-pass, low-pass, notch (Hz; 0 is off) | `review.highpass`, `review.lowpass`, `review.notch` | `0`, `0`, `0` |
 | Data & storage | Offline run files (empty: system temp folder) | `storage.offline_dir` | `""` |
 | | Offline cache cap (GB) | `storage.cache_gb` | `5` |
 | | Pipelines and sessions folder (file dialogs) | `storage.output_dir` | `""` |

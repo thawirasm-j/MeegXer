@@ -130,7 +130,7 @@ class MainWindow(QMainWindow):
         self._answered: dict[str, Any] | None = None  # until the run moves on
         self.offline_recordings: dict[str, Any] = {}  # an all-subjects BIDS run
         self._feature_cache: dict[str, tuple[tuple[Any, ...], FeatureSeries]] = {}
-        self._offline_cache: dict[str, tuple[tuple[int, int, int], Window]] = {}
+        self._offline_cache: dict[str, tuple[tuple[Any, ...], Window | None]] = {}
         # node -> (what it was read for, when, its sensors and mixing matrix)
         self._mixing: dict[str, tuple[tuple[Any, ...], float, Any]] = {}
         app = QApplication.instance()
@@ -1146,11 +1146,13 @@ class MainWindow(QMainWindow):
                  + f" ({request['reason']}); the run waits.")  # fmt: skip
         window = self.review_window = ReviewWindow(
             request, self.theme,
-            submit=lambda marks, viewed: self._answer_review(
-                "submit_review", marks=marks, viewed=viewed),
+            submit=lambda marks, viewed, bads: self._answer_review(
+                "submit_review", marks=marks, viewed=viewed, bads=bads),
             cancel=lambda: self._answer_review("cancel_review"),
             recording=current,
+            settings=self.settings.get("review"),
         )  # fmt: skip
+        window.on_display = self.redraw
         window.setStyleSheet(stylesheet(self.theme, self.scale))
         window.show()
         window.raise_()
@@ -1262,10 +1264,13 @@ class MainWindow(QMainWindow):
         seconds: float,
         offset: int | None = None,
         rate: float | None = None,
+        display: dict[str, Any] | None = None,
     ) -> Window | None:
         """The window starting ``offset`` samples, counted at ``rate``, into the
         recording (default: where the panner is, at the input's rate). A tap
-        after a resampler is at another rate: the same time (rule 8)."""
+        after a resampler is at another rate: the same time (rule 8). With
+        ``display`` (the review window's), through a display montage and
+        filter computed in the core."""
         info = self.offline_probes.get(probe)
         if info is None or not info.get("n_filled"):
             return None
@@ -1275,14 +1280,16 @@ class MainWindow(QMainWindow):
         if rate and rate != info["sfreq"]:
             offset = round(offset * info["sfreq"] / rate)
         start = info["first_sample"] + offset
-        key = (start, n, int(info["n_filled"]))
-        cached = self._offline_cache.get(probe)
+        key = (start, n, int(info["n_filled"]), repr(display))
+        slot = probe if display is None else f"{probe}#review"  # apart from the view
+        cached = self._offline_cache.get(slot)
         if cached is not None and cached[0] == key:
             return cached[1]
-        reply = self.call(
-            "offline_window", probe=probe, start=start, n_samples=n, max_bins=2000
-        )
+        options = {"display": display} if display else {}
+        reply = self.call("offline_window", probe=probe, start=start, n_samples=n,
+                          max_bins=2000, **options)  # fmt: skip
         if reply is None:
+            self._offline_cache[slot] = (key, None)  # not asked again each redraw
             return None
         mins = np.array(reply["mins"], dtype=float).reshape(len(reply["ch_labels"]), -1)
         maxs = np.array(reply["maxs"], dtype=float).reshape(mins.shape)
@@ -1301,7 +1308,7 @@ class MainWindow(QMainWindow):
             tuple(info.get("ch_scores", ())),
             filters_from_wire(info.get("filters")),
         )
-        self._offline_cache[probe] = (key, win)
+        self._offline_cache[slot] = (key, win)
         return win
 
     def redraw(self) -> None:
@@ -1318,7 +1325,9 @@ class MainWindow(QMainWindow):
             info = self.offline_probes.get(main) if main else None
             info = info or next(iter(self.offline_probes.values()), None)
             review.seek_rate = float(info["sfreq"]) if info else 0.0
-            provider = self._panned_provider(review.panner, review.seconds(), main)
+            review.source_labels = tuple(info.get("ch_labels", ())) if info else ()
+            provider = self._panned_provider(review.panner, review.seconds(), main,
+                                             review.display())  # fmt: skip
             review.refresh(self.view, provider, main, comps)
         if self.stacked.isVisible():  # the signal view rests meanwhile
             self.stacked.refresh(self.view, self._stacked_provider(main), main, comps)
@@ -1431,7 +1440,11 @@ class MainWindow(QMainWindow):
         return bool(self.settings["visualization"].get("time_axis") == "since_start")
 
     def _panned_provider(
-        self, panner: Panner, seconds: float, main: str | None
+        self,
+        panner: Panner,
+        seconds: float,
+        main: str | None,
+        display: dict[str, Any] | None = None,
     ) -> Callable[..., Window | None]:
         """Windows at a panner's position, after setting its range: the whole
         recording offline, the kept history live."""
@@ -1455,7 +1468,8 @@ class MainWindow(QMainWindow):
         total = int(info.get("n_samples") or 0)
         panner.set_extent(0, max(0, total - span), span, live=False)
         offset, rate = panner.position(), info["sfreq"]
-        return lambda p, s: self._offline_window(p, s, offset=offset, rate=rate)
+        return lambda p, s: self._offline_window(p, s, offset=offset, rate=rate,
+                                                 display=display)  # fmt: skip
 
     def show_stacked(self) -> None:
         self.stacked.show()
