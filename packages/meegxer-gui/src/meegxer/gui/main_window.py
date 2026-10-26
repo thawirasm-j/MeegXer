@@ -42,6 +42,7 @@ from meegxer.core import settings as core_settings
 from meegxer.core.block import units_from_wire
 from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame, FeatureFrame
+from meegxer.core.epoch_review import EPOCH_REVIEW_NODE
 from meegxer.core.graph import positions_message
 from meegxer.core.manifest import SPEC_VERSION
 from meegxer.core.notices import LOCAL_CODE_NOTICE
@@ -60,6 +61,7 @@ from meegxer.gui.chain import ChainView
 from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import wheel_positions
 from meegxer.gui.connection import DaemonLink
+from meegxer.gui.epoch_review_window import EpochReviewWindow
 from meegxer.gui.feature_view import FeatureSeries, FeatureView
 from meegxer.gui.inspector import Inspector
 from meegxer.gui.labels import param_label
@@ -77,6 +79,7 @@ DEFAULT_CHAIN: list[tuple[str, dict[str, Any]]] = [
     ("meegxer.nodes.notch", {}),
 ]
 
+EPOCH_POINTS = 400  # samples per epoch and channel the epoch review draws
 IMPORT_TAP = "import_review"  # the tap of a review at import's run
 
 
@@ -130,6 +133,7 @@ class MainWindow(QMainWindow):
         self.offline_total = 0
         self.offline_state = ""
         self.review_window: ReviewWindow | None = None  # a review strip waits
+        self.epoch_window: EpochReviewWindow | None = None  # an epoch review waits
         self.import_window: ReviewWindow | None = None  # a review at import
         self._answered: dict[str, Any] | None = None  # until the run moves on
         self.offline_recordings: dict[str, Any] = {}  # an all-subjects BIDS run
@@ -799,7 +803,7 @@ class MainWindow(QMainWindow):
             return
         if self.doc.mode == "offline":
             reviewer = ""
-            if any(s.node == REVIEW_NODE for s in self.doc.strips):
+            if any(s.node in (REVIEW_NODE, EPOCH_REVIEW_NODE) for s in self.doc.strips):
                 asked = self.ask_reviewer()
                 if asked is None:
                     return
@@ -1133,8 +1137,10 @@ class MainWindow(QMainWindow):
 
     def _review(self, request: dict[str, Any] | None) -> None:
         """Open the review window while the offline run waits at a review strip
-        (docs/REVIEW.md); close it when the run no longer waits."""
-        window = self.review_window
+        (docs/REVIEW.md), or the epoch review window at a Review epochs strip;
+        close it when the run no longer waits."""
+        window: ReviewWindow | EpochReviewWindow | None = (
+            self.review_window or self.epoch_window)  # fmt: skip
         if request is not None and request == self._answered:
             return  # answered; the run has not picked the answer up yet
         if request is None:
@@ -1142,17 +1148,33 @@ class MainWindow(QMainWindow):
             if window is not None:
                 window.answered = True  # answered elsewhere, or the run ended
                 window.close()
-                self.review_window = None
+                self.review_window = self.epoch_window = None
             return
         if window is not None and window.request == request:
             return
         if window is not None:  # the next strip, or the next recording
             window.answered = True
             window.close()
+            self.review_window = self.epoch_window = None
         current = self.offline_recordings.get("current", "")
         self.log(f"Review needed at {request['node']!r}"
                  + (f" for {current}" if current else "")
                  + f" ({request['reason']}); the run waits.")  # fmt: skip
+        if request.get("kind") == "epochs":
+            epochs = self.epoch_window = EpochReviewWindow(
+                request, self.theme,
+                submit=lambda verdicts: self._answer_review(
+                    "submit_review", marks=[], epochs=verdicts),
+                cancel=lambda: self._answer_review("cancel_review"),
+                fetch=lambda indices, reduce: self.call(
+                    "offline_review_epochs", indices=indices, reduce=reduce,
+                    max_samples=EPOCH_POINTS if reduce == "none" else 1000),
+                recording=current,
+            )  # fmt: skip
+            epochs.setStyleSheet(stylesheet(self.theme, self.scale))
+            epochs.show()
+            epochs.raise_()
+            return
         window = self.review_window = ReviewWindow(
             request, self.theme,
             submit=lambda marks, viewed, bads: self._answer_review(
@@ -1225,12 +1247,17 @@ class MainWindow(QMainWindow):
         self.use_recording_info(self._describe_input())
 
     def _answer_review(self, method: str, **params: Any) -> None:
-        if self.review_window is not None:
-            self._answered = self.review_window.request
-        self.review_window = None
+        window = self.review_window or self.epoch_window
+        if window is not None:
+            self._answered = window.request
+        self.review_window = self.epoch_window = None
         if self.call(method, **params) is not None:
             n = len(params.get("marks", []))
             saved = f"Review saved ({n} mark{'s' if n != 1 else ''}); the run goes on."
+            if "epochs" in params:
+                kept = sum(bool(v.get("keep", True)) for v in params["epochs"])
+                saved = (f"Epoch review saved ({kept} of {len(params['epochs'])} "
+                         "kept); the run goes on.")  # fmt: skip
             self.log(saved if method == "submit_review" else "Review cancelled.")
 
     def _meters(self, status: dict[str, Any]) -> None:

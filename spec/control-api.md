@@ -1,4 +1,4 @@
-# MeegXer control API (0.2.14, unstable)
+# MeegXer control API (0.2.15, unstable)
 
 JSON-RPC 2.0 over a ZeroMQ REQ/REP socket (CLAUDE.md rule 3). The daemon binds
 `tcp://127.0.0.1:5555` by default. Every request is one JSON object; every reply is
@@ -63,7 +63,8 @@ remote GUI).
 | `save_import_review` | `node`, `marks`, `bads`, `crop`, `viewed`, `reviewer` | `{file}` (0.2.14): saves the review at import; file and BIDS inputs apply it from then on (their `import_review` setting) |
 | `offline_events` | `node` (optional) | `{events}` (0.2.13): the events of the current offline run so far, `{onset, duration, label, origin}` with times in seconds from the recording's start: the input's and those of every strip that has run (a review's marks: `origin` `review`), or with `node` those that node sees (the input's and its upstream strips'). The views mark them; a run paused at a review has those before the strip |
 | `offline_features` | `probe`, `start` (default 0), `stop` (default: the end), `max_windows` (default 2000), `reduce` (`none` or `mean`) | `{probe, dims, coords, n_windows, windows, values}` (plus `unit`, or `unit_dim` and `units`, when the node states them; spec 0.2.19): the windows of one Features probe of the current offline run that end in `(start, stop]` (source samples). `n_windows` counts them; `windows` lists `[start, stop)` and `values` the windows' values (nested lists by `dims`, `null` for NaN): at most `max_windows` of them, evenly picked, or with `mean` one entry, their mean over the whole range ; epochs (0.2.10): `labels` gives each returned window's event label |
-| `submit_review` | `marks` (list of `{onset, duration, label}`, seconds from the recording's start); `viewed` (0.2.9, optional: the spans looked at, `[[start, stop], …]` in seconds); `bads` (0.2.12, optional: channels marked bad, labels) | offline status. **0.2.8:** answers the review strip the offline run waits at (`state` `review`): the marks are saved to its sidecar (`docs/REVIEW.md`) with the fingerprint of the strip's input, put on the Events rail, and the run goes on. `viewed` is saved too and comes back in the next request for that recording. `bads` are saved too and become the stream's bad channels after the strip. Refused when no review is waiting |
+| `submit_review` | `marks` (list of `{onset, duration, label}`, seconds from the recording's start); `viewed` (0.2.9, optional: the spans looked at, `[[start, stop], …]` in seconds); `bads` (0.2.12, optional: channels marked bad, labels); `epochs` (0.2.15, an epoch review: `{onset, duration, label, keep, event}` per epoch, as in the request; `marks` is then `[]`) | offline status. **0.2.8:** answers the review strip the offline run waits at (`state` `review`): the marks are saved to its sidecar (`docs/REVIEW.md`) with the fingerprint of the strip's input, put on the Events rail, and the run goes on. `viewed` is saved too and comes back in the next request for that recording. `bads` are saved too and become the stream's bad channels after the strip. Refused when no review is waiting |
+| `offline_review_epochs` | `indices` (optional: epochs by their index in the request's `epochs`; default all), `reduce` (`none` or `mean`), `max_samples` (default 1000) | (0.2.15) the data of the epochs a Review epochs strip waits on: `{times, ch_labels, unit, epochs: [{index, data}]}` (`data` channels x times, every k-th sample so at most `max_samples` per epoch), or with `reduce="mean"` `{times, ch_labels, unit, mean, n}` (the ERP of those epochs). Refused when no epoch review is waiting |
 | `cancel_review` | – | offline status. **0.2.8:** stops the offline run waiting at a review strip (`state` `error`, `error` says it was cancelled); nothing is saved |
 | `unfinished_recordings` (0.2.6) | – | the recordings a run ended before writing (it crashed): `[{path, format, channels, seconds, modified}]`, from the spools the file writers leave (`path`: the file it was writing; `format`: `eeglab` or `edf`; `modified`: ISO 8601, UTC). A spool a running process still writes is not listed. The GUI offers to recover them when it starts |
 | `recover_recording` (0.2.6) | `path`, `discard` (default false) | `{path}`: writes an unfinished recording to `path`, or to `<name>_recovered<suffix>` when `path` exists, and removes its spool; with `discard` deletes the spool instead (`path: null`). Refused for a path `unfinished_recordings` does not list |
@@ -108,7 +109,11 @@ remote GUI).
   (s), the display the window opens with (the reviewer can change it),
   `points` (0.2.13) the review points: the events the strip names, `{onset,
   duration, label}`; a mark answering one carries its onset as `point`
-  (also in `submit_review`'s marks);
+  (also in `submit_review`'s marks), `kind` (0.2.15) `marks`, or `epochs`
+  for a Review epochs strip, whose request also has `epochs`: one
+  `{onset, duration, label, keep, event}` per epoch (its span in seconds, the
+  label and verdict to start from, the label it was cut around), the data
+  from `offline_review_epochs`;
   otherwise `null`), `done` or `error`,
   `skipped` lists the saves a writer skipped because its file existed (without
   `overwrite`; the run still finished), `recordings` (0.2.7) is empty except for

@@ -7,6 +7,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Epoch review:** a new *Review epochs* strip after an Epochs strip pauses
+  the offline run so a person can accept, reject or relabel each epoch (a
+  page of epochs side by side, keys A/R/L and 1 to 9), with the ERP of the
+  kept epochs of each label below. Later strips read the reviewed epochs; the
+  verdicts are saved per recording (`epoch_status` in a BIDS events file) and
+  asked for again when anything upstream changes. Control API 0.2.15.
+
 - **Review at import:** *Review…* in the Recording window reviews the raw
   recording itself, before any pipeline: edit its events, mark spans and bad
   channels, and crop its start and end. The review is saved with the

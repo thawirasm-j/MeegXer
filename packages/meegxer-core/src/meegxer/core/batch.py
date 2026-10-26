@@ -27,6 +27,15 @@ from meegxer.core.block import (
     contiguous_runs,
 )
 from meegxer.core.cache import Cache, CachedOutput
+from meegxer.core.epoch_review import (
+    EpochReview,
+    EpochReviewRecord,
+    EpochVerdict,
+    epochs_to_review,
+    load_epoch_review,
+    save_epoch_review,
+    verdicts_by_sample,
+)
 from meegxer.core.events import EventsRail
 from meegxer.core.graph import Graph, GraphError, GraphNode
 from meegxer.core.node import (
@@ -292,6 +301,14 @@ class BatchScheduler:
             input_fp = labelled_input(input_fp, marks)
             if stage.processor.bads:  # and the channels it marked bad
                 input_fp = fingerprint("bads", input_fp, ",".join(stage.processor.bads))
+        if isinstance(stage.processor, EpochReview):  # its verdicts are its output
+            verdicts = self._epoch_verdicts(node, stage, input_fp, signal_in,
+                                            rate or 0.0)  # fmt: skip
+            input_fp = fingerprint(
+                "epoch verdicts",
+                input_fp,
+                canonical_json([v.to_wire() for v in verdicts]),
+            )
 
         if stage.status(input_fp) is not StageStatus.READY:
             # upstream strips' events follow from input_fp, so it names the
@@ -406,7 +423,7 @@ class BatchScheduler:
                 raise ReviewNeeded(request)
             answer = self.review(request)
             if not isinstance(answer, ReviewAnswer):  # just the marks
-                answer = ReviewAnswer(tuple(answer))
+                answer = ReviewAnswer(tuple(m for m in answer if isinstance(m, Mark)))
             marks = tuple(answer.marks)
             unknown = sorted(set(answer.bads) - set(labels))
             if unknown:
@@ -421,6 +438,64 @@ class BatchScheduler:
                                   "reviewed": review.reviewed,
                                   "upstream": review.upstream}  # fmt: skip
         return events
+
+    def _epoch_verdicts(
+        self,
+        node: GraphNode,
+        stage: Stage,
+        input_fp: str,
+        signal_in: Sequence[Block],
+        rate: float,
+    ) -> tuple[EpochVerdict, ...]:
+        """The verdicts of an epoch review strip: its sidecar's when made on
+        this input, else a review asked for (docs/REVIEW.md), saved."""
+        assert self._graph is not None and isinstance(stage.processor, EpochReview)
+        try:
+            path = review_path(self._graph, node.id, stage.params)
+        except ValueError as exc:
+            raise GraphError(str(exc)) from exc
+        windows: list[FeatureBlock] = []
+        for piece in contiguous_runs(list(signal_in)):  # one unless cut
+            rails = self._rails_for(node, piece.sample_index, piece.stop_index, rate)
+            got = (rails or {}).get("epochs", ())
+            if isinstance(got, tuple):
+                windows.extend(w for w in got if isinstance(w, FeatureBlock))
+        saved = load_epoch_review(path)
+        if saved is not None and saved.upstream == input_fp:
+            record = saved
+        else:
+            epochs = epochs_to_review(windows, rate, saved.epochs if saved else ())
+            request = ReviewRequest(
+                node.id, path, input_fp,
+                "input changed" if saved is not None else "not reviewed",
+                labels=offered_labels(stage.params, [v.event for v in epochs]),
+                duration_s=sum(b.n_samples for b in signal_in) / rate if rate else 0.0,
+                kind="epochs", epochs=epochs, windows=tuple(windows),
+            )  # fmt: skip
+            if self.review is None:
+                raise ReviewNeeded(request)
+            answer = self.review(request)
+            given = (answer.epochs if isinstance(answer, ReviewAnswer)
+                     else tuple(v for v in answer
+                                if isinstance(v, EpochVerdict)))  # fmt: skip
+            by_sample = verdicts_by_sample(given, rate)
+            unknown = set(by_sample) - set(verdicts_by_sample(epochs, rate))
+            if unknown:
+                raise GraphError(f"{node.id}: no epochs start at samples "
+                                 f"{sorted(unknown)}")  # fmt: skip
+            chosen = tuple(
+                dataclasses.replace(by_sample[k], onset=v.onset, duration=v.duration,
+                                    event=v.event)
+                if (k := round(v.onset * rate)) in by_sample else v
+                for v in epochs
+            )  # fmt: skip
+            record = EpochReviewRecord(chosen, input_fp, now_iso(), self.reviewer)
+            save_epoch_review(path, record, node.id)
+        stage.processor.verdicts = verdicts_by_sample(record.epochs, rate)
+        stage.processor.record = {"reviewer": record.reviewer,
+                                  "reviewed": record.reviewed,
+                                  "upstream": record.upstream}  # fmt: skip
+        return record.epochs
 
     def _rail_streams(
         self, node: GraphNode, streams: dict[str, Stream], result: BatchResult

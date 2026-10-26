@@ -5,7 +5,7 @@ a recording by hand: bad segments (`BAD_muscle`, `BAD_eyes`), states
 (`eyes_closed`, `drowsy`), anything with a label and a span. The marks go on
 the Events rail, where later strips see them like the recording's own events.
 
-## Design v2 (agreed 2026-10-24; steps 1 to 3 built)
+## Design v2 (agreed 2026-10-24; steps 1 to 3 and 5 built)
 
 Who reviews, and what helps them:
 
@@ -124,8 +124,8 @@ Who reviews, and what helps them:
    - detector strips (amplitude/flat, muscle, blinks from EOG)
    - priors and the yes/no queue in the Review strip
    - verdict provenance
-5. **Epoch review** in the same window (accept, reject or label each epoch),
-   and the ERP view.
+5. **Epoch review** (accept, reject or label each epoch), and the ERP view.
+   *Built* (see *Built: step 5* below), as its own strip and window.
 6. **Later:** a second reviewer with compare and resolve; a review report.
 
 ## Built so far (v1)
@@ -329,6 +329,43 @@ Built (step 3 of Design v2, review at import):
   content id: changing it marks fitted models and later reviews for a refit
   or a new look (rule 7). Control API 0.2.14: `import_review_open`,
   `save_import_review`.
+
+Built (step 5 of Design v2, epoch review):
+
+- **A Review epochs strip** (`meegxer.core.epoch_review`, *Event detection*,
+  offline) sits after an Epochs strip. It passes the signal on unchanged,
+  reads the `epochs` rail and writes its own `epochs` rail: the epochs kept,
+  with the labels the reviewer gave. Later strips read the nearest `epochs`
+  rail (`docs/RAILS.md` rule 7), so they get the reviewed epochs; the Epochs
+  strip's rail stays as it was cut (rule 8: one producer per rail). Without an
+  Epochs strip before it, the pipeline is refused ("reads the epochs rail,
+  which no earlier node writes"). Parameters: `labels` (offered for relabelling,
+  with the epochs' own labels) and `file` (Advanced, as the Review strip's).
+- **Why a strip of its own:** a strip's ports are fixed by its manifest, and a
+  rail input needs a producer before it. Making the Review strip join the
+  `epochs` rail only when there is one would need optional rail ports (a
+  plugin spec change). The two strips share the sidecar layout, the reviewer's
+  name and the pause in the offline run.
+- **The verdicts** are saved per recording, as the Review strip's marks are
+  (`<file>_desc-<strip id>_events.tsv`, or in its BIDS derivatives): one row
+  per epoch, `onset` and `duration` its span in seconds from the recording's
+  start, `trial_type` the label given, `event` the label it was cut around,
+  `epoch_status` `good` or `bad`; the JSON sidecar names the input (signal and
+  epochs) they were made on, who reviewed and when. The same input reuses them;
+  any change upstream asks again, with the verdicts made before filled in for
+  the epochs at the same place (rule 7). Every epoch is reviewed: one left
+  untouched is kept as it was cut.
+- **The epoch review window** opens while the run waits there: a page of
+  epochs side by side (5 by default), every channel stacked, the event at the
+  dashed line. Click an epoch to select it; ←/→ move the selection, PgUp/PgDn
+  turn pages. *Accept* (A), *Reject* (R; Space toggles) and *Label* (L, with
+  the label chosen or typed in); keys 1 to 9 give the first nine labels;
+  Ctrl+Z undoes. Rejected epochs are shaded red.
+- **The ERP view** below: the mean of the kept epochs of each label, on the
+  channel chosen (Cz when there is one), redrawn as the verdicts change.
+- **Control API 0.2.15:** a waiting review's request has `kind` (`marks` or
+  `epochs`) and, for an epoch review, `epochs`; `offline_review_epochs` sends
+  the epochs' data, or their mean; `submit_review` takes `epochs`.
 
 Built (review points, and the display as a starting point):
 

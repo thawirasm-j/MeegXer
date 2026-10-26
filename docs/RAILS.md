@@ -116,7 +116,13 @@ output strip chooses which line it draws from.
   its own), or one running off either end of the recording.
 - **Offline store:** the offline feature store keeps each epoch's label
   (`offline_features` returns `labels`, control API 0.2.10). A Features tap on
-  the rail shows the epochs; the ERP view comes next.
+  the rail shows the epochs.
+- **Reviewed epochs:** a **Review epochs** strip after it
+  (`meegxer.core.epoch_review`, `docs/REVIEW.md` step 5) reads the rail and
+  starts its own `epochs` rail with the epochs a person kept and relabelled.
+  Later readers take the nearest one (rule 7), so they get the reviewed
+  epochs; the Epochs strip's rail is not rewritten (rule 8). Its window has
+  the ERP view (the mean of the kept epochs of each label).
 
 ## 4. Display (built)
 

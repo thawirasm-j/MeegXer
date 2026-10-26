@@ -38,6 +38,7 @@ dependencies = [
 "meegxer.core.bids" = "meegxer.core.sources:BidsSource"
 "meegxer.core.probe" = "meegxer.core.probes:MemoryProbe"
 "meegxer.core.review" = "meegxer.core.review:ReviewStrip"
+"meegxer.core.epoch_review" = "meegxer.core.epoch_review:EpochReview"
 "meegxer.core.reject_segments" = "meegxer.core.reject_segments:RejectSegments"
 "meegxer.core.feature_probe" = "meegxer.core.probes:FeatureProbe"
 "meegxer.core.set_writer" = "meegxer.core.sinks:SetSink"

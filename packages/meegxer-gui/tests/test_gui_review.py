@@ -408,3 +408,69 @@ def _file_source(path: Path) -> object:
     graph = Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": [entry]},
                             Registry.from_entry_points())  # fmt: skip
     return graph.source.impl
+
+
+def test_epochs_are_reviewed_and_the_erp_follows(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]], tmp_path: Path
+) -> None:
+    from meegxer.core.epoch_review import load_epoch_review
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    info = mne.create_info(["Fz", "Cz", "Pz"], 250.0, "eeg")
+    data = np.random.default_rng(1).standard_normal((3, 250 * 10)) * 1e-6
+    raw = mne.io.RawArray(data, info, verbose="error")
+    onsets = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+    raw.set_annotations(mne.Annotations(onsets, [0.0] * 7,
+                                        ["go", "stop"] * 3 + ["go"]))  # fmt: skip
+    rec = tmp_path / "sub-01_raw.fif"
+    raw.save(rec, verbose="error")
+
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        assert win.doc.source is not None
+        win.doc.source.params["path"] = str(rec)
+        win.doc.insert(len(win.doc.strips), "meegxer.nodes.epochs")
+        review = win.doc.insert(len(win.doc.strips), "meegxer.core.epoch_review")
+        review.params["labels"] = "go_slow"
+        win._structure_changed("added")
+        rails = {r.label: r for r in win.doc.rails()[0]}  # the reviewed: a new rail
+        assert rails["Epochs"].readers == [review.id]
+        assert rails["Epochs·2"].producer == review.id
+        win.ask_reviewer = lambda: "D. Rater"  # type: ignore[method-assign]
+        win.start()
+        pump_until(qapp, lambda: win.epoch_window is not None)
+        window = win.epoch_window
+        assert window is not None and win.review_window is None
+        assert len(window.epochs) == 7 and window.ch_labels == ["Fz", "Cz", "Pz"]
+        assert window.channel.currentText() == "Cz"  # the ERP's default
+        assert window.page_indices() == [0, 1, 2, 3, 4]
+        assert "7 epochs · 7 kept" in window.progress.text()
+        assert sorted(window.erp_curves()) == ["go", "stop"]
+        assert window.erp_curves()["go"][0] == 4
+        # the second epoch is rejected, the third relabelled; the ERP follows
+        window.step(1)
+        window.set_keep(False)
+        window.step(1)
+        window.label_with(0)  # key 1: the strip's first label
+        assert window.epochs[2]["label"] == "go_slow"
+        curves = window.erp_curves()
+        assert (curves["go"][0], curves["stop"][0], curves["go_slow"][0]) == (3, 2, 1)
+        window.undo()
+        assert window.epochs[2]["label"] == "go"
+        window.set_label("go_slow")
+        window.page(1)  # the next page: the last two
+        assert window.page_indices() == [5, 6] and window.selected == 5
+        x = window.epoch_at(0.1)  # the first epoch on the page
+        assert x == 5 and window.epoch_at(-1.0) is None
+        window.submit()
+        pump_until(qapp, lambda: win.offline_state == "done")
+        assert win.epoch_window is None
+        saved = load_epoch_review(tmp_path / f"sub-01_raw_desc-{review.id}_events.tsv")
+        assert saved is not None and saved.reviewer == "D. Rater"
+        assert [v.keep for v in saved.epochs] == [True, False, *[True] * 5]
+        assert saved.epochs[2].label == "go_slow" and saved.epochs[2].event == "go"
+    finally:
+        win.close()
