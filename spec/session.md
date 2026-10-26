@@ -83,7 +83,7 @@ Recommended file name: `NAME.meegxer.json` (plain JSON; any `.json` file with a
 |---|---|
 | `meegxer_session` | Format version, `major.minor`. Readers accept their own major version. |
 | `pipeline` | The pipeline document, unchanged. |
-| `nodes` | Per node id: manifest `node` name, `version`, and `provenance` for external plugins: `image`, `image_id` (the local image ID the host recorded at `meegxer-plugin add`), `repo_digests` (registry digests, when the engine reports them), or, for a local plugin (unsandboxed: a custom script or a local command), `command`, `unsandboxed`, `sha256` (one hash over its code files, in name order) and `script` (the script's file name). A review strip (`docs/REVIEW.md`) also has `review`: `reviewer` (the name given when the run started), `reviewed` (when, ISO 8601 UTC) and `upstream` (the fingerprint of the input the review was made on); the marks stay in the review's sidecar. |
+| `nodes` | Per node id: manifest `node` name, `version`, and `provenance` for external plugins: `image`, `image_id` (the local image ID the host recorded at `meegxer-plugin add`), `repo_digests` (registry digests, when the engine reports them), or, for a local plugin (unsandboxed: a custom script or a local command), `command`, `unsandboxed`, `sha256` (one hash over its code files, in name order) and `script` (the script's file name). A review strip or a Review epochs strip (`docs/REVIEW.md`) also has `review`: `reviewer` (the name given when the run started), `reviewed` (when, ISO 8601 UTC) and `upstream` (the fingerprint of the input the review was made on); the marks stay in the review's sidecar. |
 | `models` | Per node id, for nodes that need calibration: `data` (the model exactly as the node returned it), `fitted_on` (the channels it was fitted on), `fingerprint`, `content_hash`. External plugins' models use the same form: the host owns them (plugin protocol), so they are stored like any other. |
 | `inputs` | Per source node id: the files read, with hashes. |
 | `outputs` | The files the run wrote, with hashes. |
@@ -132,7 +132,7 @@ copy that names no file or folder:
 | `inputs` / `outputs` paths | the same placeholders; `sha256` kept |
 | A model's `fitted_on.stream_id` (a file source's file name) | `<input>.ext` (reloading compares the `fingerprint`, a one-way hash) |
 | A local plugin's `command` | file names only (no folders) |
-| A review strip's `file` | `""` (its default: next to each recording) |
+| A review strip's or Review epochs strip's `file` | `""` (its default: next to each recording) |
 | A review's `reviewer` (`nodes`) | left out (it names a person) |
 
 A placeholder is `<word>` or `<word-N>` with the original extension; it is not a

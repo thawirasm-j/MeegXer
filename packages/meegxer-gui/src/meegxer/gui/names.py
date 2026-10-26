@@ -23,6 +23,7 @@ TITLES = {
     "meegxer.nodes.resample": "Resample",
     "meegxer.nodes.epochs": "Epochs",
     "meegxer.core.review": "Review",
+    "meegxer.core.epoch_review": "Review epochs",
     "meegxer.core.reject_segments": "Reject segments",
     "meegxer.nodes.iir_filter_zerophase": "IIR filter (zero-phase)",
     "meegxer.nodes.ica": "ICA + ICLabel",

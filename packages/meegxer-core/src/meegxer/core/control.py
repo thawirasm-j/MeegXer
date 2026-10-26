@@ -30,6 +30,7 @@ from meegxer.core.auth import (
 )
 from meegxer.core.bids_batch import is_all_subjects, recordings_of
 from meegxer.core.display import DisplayPublisher, ZmqContext
+from meegxer.core.epoch_review import EpochReview
 from meegxer.core.graph import Graph
 from meegxer.core.import_review import open_import_review, save_import_review
 from meegxer.core.manifest import SPEC_VERSION, Manifest
@@ -179,6 +180,7 @@ class Daemon:
             "offline_features": self.offline_features,
             "offline_events": self.offline_events,
             "submit_review": self.submit_review,
+            "offline_review_epochs": self.offline_review_epochs,
             "cancel_review": self.cancel_review,
             "unfinished_recordings": self.unfinished_recordings,
             "recover_recording": self.recover_recording,
@@ -325,8 +327,8 @@ class Daemon:
                 node.impl.model = previous.model
             if (
                 isinstance(previous, Stage)
-                and isinstance(previous.processor, ReviewStrip)
-                and isinstance(node.impl.processor, ReviewStrip)
+                and isinstance(previous.processor, ReviewStrip | EpochReview)
+                and type(node.impl.processor) is type(previous.processor)
             ):
                 node.impl.processor.record = previous.processor.record  # who reviewed
 
@@ -536,14 +538,33 @@ class Daemon:
         marks: list[dict[str, Any]],
         viewed: list[list[float]] | None = None,
         bads: list[str] | None = None,
+        epochs: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """The marks for the review strip the offline run waits at (state
-        ``review``), the spans looked at and the channels marked bad: saved to
-        its sidecar, and the run goes on."""
+        ``review``), the spans looked at and the channels marked bad, or the
+        verdicts of an epoch review strip (``epochs``): saved to its sidecar,
+        and the run goes on."""
         if self._offline is None:
             raise RuntimeError("no offline run")
-        self._offline.submit_review(marks, viewed, bads)
+        self._offline.submit_review(marks, viewed, bads, epochs)
         return self._offline.status()
+
+    def offline_review_epochs(
+        self,
+        indices: list[int] | None = None,
+        reduce: str = "none",
+        max_samples: int = 1000,
+    ) -> dict[str, Any]:
+        """The epochs an epoch review strip waits on (the request's
+        ``epochs``, by index; none given: all): each channel's samples (in the
+        unit given, usually volts) in at most ``max_samples`` points per
+        epoch, or their mean with ``reduce="mean"`` (the ERP)."""
+        if self._offline is None:
+            raise RuntimeError("no offline run")
+        if reduce not in ("none", "mean"):
+            raise ValueError("reduce must be 'none' or 'mean'")
+        chosen = None if indices is None else [int(i) for i in indices]
+        return self._offline.review_epochs(chosen, reduce, int(max_samples))
 
     def cancel_review(self) -> dict[str, Any]:
         """Stop the offline run waiting at a review strip (nothing saved)."""

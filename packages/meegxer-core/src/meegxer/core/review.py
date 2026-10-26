@@ -33,7 +33,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
-from meegxer.core.block import CHANNEL_TYPES, Block, Event
+from meegxer.core.block import CHANNEL_TYPES, Block, Event, FeatureBlock
+from meegxer.core.epoch_review import EpochVerdict
 from meegxer.core.manifest import Manifest
 from meegxer.core.montage import MONTAGES
 from meegxer.core.node import Params, Processor, Source, TransformResult
@@ -122,6 +123,7 @@ class ReviewAnswer:
     marks: tuple[Mark, ...]
     viewed: tuple[Span, ...] = ()
     bads: tuple[str, ...] = ()  # channels marked bad (labels)
+    epochs: tuple[EpochVerdict, ...] = ()  # an epoch review's verdicts
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,9 +142,17 @@ class ReviewRequest:
     bads: tuple[str, ...] = ()  # channels marked bad in the review before
     display: dict[str, Any] = dataclasses.field(default_factory=dict)  # presets
     points: tuple[Mark, ...] = ()  # events to step through (review points)
+    # an epoch review (meegxer.core.epoch_review): the epochs to review, and
+    # their data (not sent: the window fetches it, offline_review_epochs)
+    kind: str = "marks"  # or "epochs"
+    epochs: tuple[EpochVerdict, ...] = ()
+    windows: tuple[FeatureBlock, ...] = dataclasses.field(default=(), compare=False,
+                                                          repr=False)  # fmt: skip
 
     def to_wire(self) -> dict[str, Any]:
         return {
+            "kind": self.kind,
+            "epochs": [v.to_wire() for v in self.epochs],
             "node": self.node_id, "file": str(self.path), "reason": self.reason,
             "marks": [m.to_wire() for m in self.previous],
             "labels": list(self.labels), "duration_s": self.duration_s,
@@ -168,7 +178,9 @@ class ReviewCancelled(RuntimeError):
     """The person reviewing stopped the run."""
 
 
-ReviewCallback = Callable[[ReviewRequest], "ReviewAnswer | Sequence[Mark]"]
+ReviewCallback = Callable[
+    [ReviewRequest], "ReviewAnswer | Sequence[Mark | EpochVerdict]"
+]
 
 
 class ReviewStrip(Processor):

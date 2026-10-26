@@ -37,6 +37,7 @@ from meegxer.core.bids_batch import is_all_subjects, prepare_recording, recordin
 from meegxer.core.block import Block, FeatureBlock, SignalInfo, units_wire
 from meegxer.core.cache import DirectoryCache
 from meegxer.core.display import Decimator
+from meegxer.core.epoch_review import EpochVerdict
 from meegxer.core.graph import Graph, GraphError
 from meegxer.core.montage import (
     check_filter,
@@ -436,16 +437,55 @@ class OfflineJob:
         marks: list[dict[str, Any]],
         viewed: list[list[float]] | None = None,
         bads: list[str] | None = None,
+        epochs: list[dict[str, Any]] | None = None,
     ) -> None:
         """The marks for the strip the run waits at, the spans looked at
-        (seconds) and the channels marked bad; the run goes on."""
+        (seconds) and the channels marked bad, or an epoch review's verdicts;
+        the run goes on."""
         if self.review_request is None:
             raise RuntimeError("no review is waiting")
         self._review_reply = ReviewAnswer(
             tuple(Mark.from_wire(m) for m in marks), merge_spans(viewed or []),
             tuple(dict.fromkeys(str(b) for b in bads or ())),
+            tuple(EpochVerdict.from_wire(v) for v in epochs or ()),
         )  # fmt: skip
         self._review_answered.set()
+
+    def review_epochs(
+        self, indices: list[int] | None, reduce: str, max_samples: int
+    ) -> dict[str, Any]:
+        """The data of the epochs the run's epoch review waits on (by their
+        index in the request; None: all), each channel in at most
+        ``max_samples`` points, or their mean with ``reduce="mean"``."""
+        request = self.review_request
+        if request is None or request.kind != "epochs":
+            raise RuntimeError("no epoch review is waiting")
+        windows = sorted(request.windows, key=lambda w: w.window[0])
+        chosen = range(len(windows)) if indices is None else indices
+        for i in chosen:
+            if not 0 <= i < len(windows):
+                raise ValueError(f"no epoch {i} (of {len(windows)})")
+        if not windows:
+            return {"times": [], "ch_labels": [], "unit": "V", "epochs": []}
+        first = windows[0]
+        times = list(first.coords.get("time", ()))
+        step = max(1, -(-len(times) // max(1, max_samples)))  # ceil
+        out: dict[str, Any] = {
+            "times": times[::step],
+            "ch_labels": [str(c) for c in first.coords.get("channel", ())],
+            "unit": first.unit,
+        }
+        if reduce == "mean":
+            stack = [windows[i].data[0] for i in chosen]
+            mean = np.mean(stack, axis=0)[:, ::step] if stack else None
+            out["mean"] = [] if mean is None else mean.astype(np.float32).tolist()
+            out["n"] = len(stack)
+            return out
+        out["epochs"] = [{"index": i,
+                          "data": windows[i].data[0][:, ::step]
+                          .astype(np.float32).tolist()}
+                         for i in chosen]  # fmt: skip
+        return out
 
     def cancel_review(self) -> None:
         """Stop the run at the strip it waits at (nothing is saved)."""

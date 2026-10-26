@@ -34,6 +34,7 @@ import jsonschema
 import numpy as np
 
 from meegxer.core.block import SignalInfo
+from meegxer.core.epoch_review import EPOCH_REVIEW_NODE, EpochReview
 from meegxer.core.graph import Graph, GraphError
 from meegxer.core.manifest import SPEC_VERSION
 from meegxer.core.node import Sink, Source
@@ -215,8 +216,9 @@ def build_session(
         if node.manifest.references:  # what to cite, so the session stands alone
             entry["references"] = [r.as_dict() for r in node.manifest.references]
         processor = node.impl.processor if isinstance(node.impl, Stage) else None
-        if isinstance(processor, ReviewStrip) and processor.record:  # who reviewed
-            entry["review"] = dict(processor.record)
+        record = getattr(processor, "record", None)  # a review: who reviewed
+        if isinstance(processor, ReviewStrip | EpochReview) and record:
+            entry["review"] = dict(record)
         nodes[node.id] = entry
         if isinstance(node.impl, Stage) and node.impl.model is not None:
             model = node.impl.model
@@ -516,7 +518,8 @@ def share_safe(session: Mapping[str, Any]) -> dict[str, Any]:
                 params["path"] = output(path)
             if isinstance(root, str) and root:
                 params["root"] = ""  # BIDS writers: the default derivatives folder
-            if node.get("node") == REVIEW_NODE and params.get("file"):
+            reviews = (REVIEW_NODE, EPOCH_REVIEW_NODE)
+            if node.get("node") in reviews and params.get("file"):
                 params["file"] = ""  # the marks: next to each recording
         recording = node.get("recording", {})
         events = recording.get("events", {})

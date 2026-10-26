@@ -503,6 +503,7 @@ class PipelineDoc:
         input ports of later strips naming them; a reader whose rail no earlier
         strip writes needs it."""
         written: dict[str, Rail] = {}  # rail name -> its nearest writer so far
+        count: dict[str, int] = {}  # writers of each rail so far (Epochs·2)
         for strip in self.strips[1:]:
             manifest = self.manifest(strip)
             for port in manifest["inputs"][1:]:
@@ -517,7 +518,10 @@ class PipelineDoc:
                 name = port.get("rail", "")
                 if name:
                     rail_id = f"{strip.id}:{port['name']}"
-                    rail = Rail(rail_id, port["type"], rail_label(name), strip.id)
+                    count[name] = count.get(name, 0) + 1
+                    label = rail_label(name) + (f"·{count[name]}" if count[name] > 1
+                                                else "")  # fmt: skip
+                    rail = Rail(rail_id, port["type"], label, strip.id)
                     rails.append(rail)
                     written[name] = rail
         for rail in rails:  # strips taking the rail as their main input
