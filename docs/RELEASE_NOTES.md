@@ -7,6 +7,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Review at import:** *Review…* in the Recording window reviews the raw
+  recording itself, before any pipeline: edit its events, mark spans and bad
+  channels, and crop its start and end. The review is saved with the
+  recording (`<file>_desc-import_events.tsv`, or in its BIDS derivatives),
+  never in the raw file, and every pipeline reading the recording uses it
+  (the input's *Use the review made at import* setting turns it off).
+
 - **Review points:** the Review strip's new `points` setting names event
   labels to step through (e.g. a detector's candidates). The review window
   goes from point to point (◀/▶, ←/→), selects each to label and retime, keeps

@@ -97,6 +97,7 @@ class Review:
     viewed: tuple[tuple[float, float], ...] = ()  # spans looked at (s)
     reviewer: str = ""  # who reviewed (asked once per run)
     bads: tuple[str, ...] = ()  # channels the reviewer marked bad
+    crop: tuple[float, float | None] | None = None  # kept span (s; review at import)
 
 
 Span = tuple[float, float]
@@ -373,9 +374,13 @@ def load_review(path: Path) -> Review | None:
     if _sidecar(path).is_file():
         meta = json.loads(_sidecar(path).read_text(encoding="utf-8")).get("MeegXer", {})
     viewed = merge_spans(meta.get("viewed", []))
+    crop = meta.get("crop")
     return Review(marks, str(meta.get("upstream", "")), str(meta.get("reviewed", "")),
                   viewed, str(meta.get("reviewer", "")),
-                  tuple(str(b) for b in meta.get("bads", [])))  # fmt: skip
+                  tuple(str(b) for b in meta.get("bads", [])),
+                  None if crop is None else (float(crop[0]),
+                                             None if crop[1] is None
+                                             else float(crop[1])))  # fmt: skip
 
 
 def save_review(path: Path, review: Review, node_id: str) -> None:
@@ -402,6 +407,8 @@ def save_review(path: Path, review: Review, node_id: str) -> None:
                     # the spans looked at, in seconds from the recording's start
                     "viewed": [[round(a, 6), round(b, 6)] for a, b in review.viewed]},
     }  # fmt: skip
+    if review.crop is not None:  # the span kept, in s from the raw file's start
+        meta["MeegXer"]["crop"] = list(review.crop)
     if points:
         meta["review_point"] = {"Description": "Onset of the review point (an "
                                 "event of the input) the mark answers",

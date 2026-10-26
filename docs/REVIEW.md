@@ -5,7 +5,7 @@ a recording by hand: bad segments (`BAD_muscle`, `BAD_eyes`), states
 (`eyes_closed`, `drowsy`), anything with a label and a span. The marks go on
 the Events rail, where later strips see them like the recording's own events.
 
-## Design v2 (agreed 2026-10-24; steps 1 and 2 built)
+## Design v2 (agreed 2026-10-24; steps 1 to 3 built)
 
 Who reviews, and what helps them:
 
@@ -119,7 +119,7 @@ Who reviews, and what helps them:
 
    *Built* (see *Built: step 2* below).
 3. **Review at import:** the Recording window's *Review* action and the
-   per-recording sidecar.
+   per-recording sidecar. *Built* (see *Built: step 3* below).
 4. **Suggestions:**
    - detector strips (amplitude/flat, muscle, blinks from EOG)
    - priors and the yes/no queue in the Review strip
@@ -300,6 +300,35 @@ Built (after the first look at step 2):
   again; a bipolar pair asks which electrode. A right-click opens the
   channel's menu: bad or good per electrode, hide the channel, show all
   channels, mark all channels good. *Bad channels (n)* stays as a list.
+
+Built (step 3 of Design v2, review at import):
+
+- **Recording window → *Review…*** (file and BIDS inputs) opens the review
+  window on the raw recording, before any pipeline: an offline run of the
+  input alone (without the pipeline's recording settings) fills the traces.
+- **What it edits:** the recording's events (they open as marks: move their
+  edges, relabel them with a key or Annotate, delete them, add new ones),
+  labelled spans, bad channels (the channel pills), and a **crop**: *Keep
+  from … to … s*, from the selection or typed in; the parts left out are
+  shaded. Channel names and types stay in the Recording window's tabs.
+- **Where it goes:** one review per recording, independent of any pipeline
+  (`meegxer.core.import_review`): next to the file as
+  `<file>_desc-import_events.tsv`, or in its BIDS derivatives
+  (`…_desc-import_events.tsv`). The events file is BIDS (onset and duration
+  in seconds from the raw file's start); its JSON sidecar records under
+  `MeegXer` the bad channels, the crop, who reviewed and when, and the spans
+  looked at. The raw file is never touched. Opening *Review…* again starts
+  from the saved review.
+- **How pipelines use it:** file and BIDS inputs apply it when they load
+  (their *Use the review made at import* setting, Advanced, on by default):
+  the recording is cropped (its first sample is the crop's start, so every
+  index and time downstream counts from there), its events are the reviewed
+  ones (shifted onto the cropped time; those outside are left out), and its
+  bad channels include the reviewed ones. The Recording window's Events tab
+  says *Events of the review at import*. The review is part of the input's
+  content id: changing it marks fitted models and later reviews for a refit
+  or a new look (rule 7). Control API 0.2.14: `import_review_open`,
+  `save_import_review`.
 
 Built (review points, and the display as a starting point):
 

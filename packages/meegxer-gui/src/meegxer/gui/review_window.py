@@ -299,9 +299,13 @@ class ReviewWindow(StackedWindow):
         cancel: Callable[[], None],
         recording: str = "",
         settings: dict[str, Any] | None = None,
+        import_mode: bool = False,
     ) -> None:
         super().__init__(theme)
         self.request = request
+        # review at import: the raw recording, before any pipeline; a crop too
+        self.import_mode = import_mode
+        self.probe: str | None = None  # the tap shown instead of Main (import)
         self._submit, self._cancel = submit, cancel
         # the reviewer's Settings, under the Review strip's presets
         self.prefs = {**core_settings.defaults()["review"], **(settings or {})}
@@ -331,9 +335,20 @@ class ReviewWindow(StackedWindow):
         self.resize(1100, 820)
         lay = self.layout()
         assert isinstance(lay, QVBoxLayout)
-        head = QLabel(f"<b>{REASONS.get(str(request.get('reason')), '')}</b> "
-                      "The run waits here; the traces are the taps before this "
-                      "strip (choose Main and aux in the main window).")  # fmt: skip
+        if import_mode:
+            title = "<b>Review at import.</b> " + (
+                f"Last reviewed {request['reviewed']} by {request['reviewer']}. "
+                if request.get("reviewed")
+                else ""
+            )
+            head = QLabel(title + "The raw recording: its events, spans, bad "
+                          "channels and crop are saved with it, and every "
+                          "pipeline reading it uses them.")  # fmt: skip
+        else:
+            head = QLabel(f"<b>{REASONS.get(str(request.get('reason')), '')}</b> "
+                          "The run waits here; the traces are the taps before "
+                          "this strip (choose Main and aux in the main "
+                          "window).")  # fmt: skip
         head.setWordWrap(True)
         lay.insertWidget(0, head)
         lay.insertLayout(1, self._display_bar())
@@ -416,15 +431,21 @@ class ReviewWindow(StackedWindow):
         remove.clicked.connect(self.remove_selected)
         bar.addWidget(remove)
         bar.addStretch(1)
-        cancel_btn = QPushButton("Cancel run")
-        cancel_btn.setToolTip("Stop the offline run; nothing is saved")
+        cancel_btn = QPushButton("Close" if import_mode else "Cancel run")
+        cancel_btn.setToolTip(
+            "Close without saving" if import_mode
+            else "Stop the offline run; nothing is saved"
+        )  # fmt: skip
         cancel_btn.clicked.connect(self.cancel)
-        go = QPushButton("Save marks and continue")
+        go = QPushButton("Save review" if import_mode else "Save marks and continue")
         go.setObjectName("primary")
-        go.setToolTip(f"Save the marks to {request.get('file', '')} and run on")
+        go.setToolTip(f"Save the review to {request.get('file', '')}" + (
+            "" if import_mode else " and run on"))  # fmt: skip
         go.clicked.connect(self.submit)
         bar.addWidget(cancel_btn)
         bar.addWidget(go)
+        if import_mode:
+            lay.insertLayout(lay.count() - 2, self._crop_bar())
         lay.addLayout(bar)
 
         for keys, slot in (("A", self.annotate), ("R", self.reject),
@@ -472,6 +493,75 @@ class ReviewWindow(StackedWindow):
         self._tags: list[pg.TextItem] = []  # each mark's label, at the top
         self._view: Span | None = None
         self._refresh()
+
+    # -- crop (review at import) ------------------------------------------------------
+
+    def _crop_bar(self) -> QHBoxLayout:
+        """Keep the recording from ... to ... s (the rest is left out)."""
+        bar = QHBoxLayout()
+        bar.addWidget(QLabel("Keep from"))
+        crop = self.request.get("crop") or [0.0, None]
+        self.crop_start, self.crop_end = QDoubleSpinBox(), QDoubleSpinBox()
+        for spin in (self.crop_start, self.crop_end):
+            spin.setRange(0.0, max(self.duration, 0.0))
+            spin.setDecimals(2)
+            spin.setSuffix(" s")
+            spin.valueChanged.connect(lambda _: self._draw_crop())
+        self.crop_start.setValue(float(crop[0] or 0.0))
+        self.crop_end.setValue(self.duration if crop[1] is None else float(crop[1]))
+        bar.addWidget(self.crop_start)
+        bar.addWidget(QLabel("to"))
+        bar.addWidget(self.crop_end)
+        start = QPushButton("Start at selection")
+        start.setToolTip("Keep from the start of the selected span")
+        start.clicked.connect(lambda: self._crop_from_selection(0))
+        end = QPushButton("End at selection")
+        end.setToolTip("Keep up to the end of the selected span")
+        end.clicked.connect(lambda: self._crop_from_selection(1))
+        whole = QPushButton("Keep all")
+        whole.clicked.connect(lambda: self.set_crop(0.0, self.duration))
+        for b in (start, end, whole):
+            bar.addWidget(b)
+        bar.addStretch(1)
+        shade = QColor(0, 0, 0, 140)
+        self._crop_shades = [pg.LinearRegionItem(movable=False, brush=shade)
+                             for _ in range(2)]  # fmt: skip
+        for item in self._crop_shades:
+            item.setZValue(8)
+            for line in item.lines:
+                line.setPen(pg.mkPen(None))
+            self.plot.addItem(item, ignoreBounds=True)
+        self._draw_crop()
+        return bar
+
+    def set_crop(self, t0: float, t1: float) -> None:
+        self.crop_start.setValue(max(0.0, t0))
+        self.crop_end.setValue(min(self.duration, t1))
+
+    def _crop_from_selection(self, side: int) -> None:
+        if not self.has_selection():
+            self.progress.setText("Select a span first (drag on the traces).")
+            return
+        value = float(self.selection.getRegion()[side])
+        if side == 0:
+            self.crop_start.setValue(value)
+        else:
+            self.crop_end.setValue(value)
+
+    def crop_span(self) -> tuple[float, float | None] | None:
+        """The span kept (None: all of it); the end None: to the end."""
+        t0, t1 = float(self.crop_start.value()), float(self.crop_end.value())
+        end = None if t1 >= self.duration - 1e-6 else t1
+        return None if t0 <= 1e-6 and end is None else (t0, end)
+
+    def _draw_crop(self) -> None:
+        """The parts left out, shaded."""
+        t0, t1 = float(self.crop_start.value()), float(self.crop_end.value())
+        before, after = self._crop_shades
+        before.setRegion((0.0, t0))
+        before.setVisible(t0 > 0)
+        after.setRegion((t1, max(t1, self.duration)))
+        after.setVisible(t1 < self.duration)
 
     # -- display ----------------------------------------------------------------------
 
@@ -1117,7 +1207,7 @@ class ReviewWindow(StackedWindow):
             if ask != QMessageBox.StandardButton.Yes:
                 return
         part = covered(self.viewed, self.duration)
-        if not self.points and part < FULL:  # with points, those are the task
+        if not self.points and not self.import_mode and part < FULL:
             ask = QMessageBox.question(
                 self, "Not all reviewed",
                 f"Only {part:.0%} of the recording has been shown. Save the "
@@ -1137,7 +1227,18 @@ class ReviewWindow(StackedWindow):
         self.close()
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if not self.answered:
+        if not self.answered and self.import_mode:
+            if self._history:  # something changed
+                ask = QMessageBox.question(
+                    self, "Discard the review?",
+                    "Close without saving the changes to this review?",
+                )  # fmt: skip
+                if ask != QMessageBox.StandardButton.Yes:
+                    event.ignore()
+                    return
+            self.answered = True
+            self._cancel()
+        elif not self.answered:
             ask = QMessageBox.question(
                 self, "Stop the run?",
                 "The offline run waits for this review. Closing stops the run "

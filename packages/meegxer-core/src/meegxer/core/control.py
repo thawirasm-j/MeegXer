@@ -31,6 +31,7 @@ from meegxer.core.auth import (
 from meegxer.core.bids_batch import is_all_subjects, recordings_of
 from meegxer.core.display import DisplayPublisher, ZmqContext
 from meegxer.core.graph import Graph
+from meegxer.core.import_review import open_import_review, save_import_review
 from meegxer.core.manifest import SPEC_VERSION, Manifest
 from meegxer.core.node import Source
 from meegxer.core.offline import OfflineJob
@@ -38,7 +39,7 @@ from meegxer.core.ports import Port
 from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.recording import builtin_montages, describe, lookup_positions
 from meegxer.core.registry import Registry, node_origin
-from meegxer.core.review import ReviewStrip
+from meegxer.core.review import Mark, ReviewStrip
 from meegxer.core.session import (
     build_session,
     load_session,
@@ -169,6 +170,8 @@ class Daemon:
             "set_pass_uncalibrated": self.set_pass_uncalibrated,
             "set_strip_params": self.set_strip_params,
             "describe_source": self.describe_source,
+            "import_review_open": self.import_review_open,
+            "save_import_review": self.save_import_review,
             "list_montages": self.list_montages,
             "lookup_positions": self.lookup_positions,
             "run_offline": self.run_offline,
@@ -402,6 +405,47 @@ class Daemon:
             raise RuntimeError(f"unknown node {node!r}")
         self._graph.set_strip_params(node, params)
         return self._graph.to_dict()
+
+    def _raw_source(self, node: dict[str, Any]) -> Source:
+        """The input a source entry names, as the raw file has it: without the
+        pipeline's recording settings or the review at import."""
+        names = {p.name for p in self.registry.get(node["node"]).manifest.params}
+        if "import_review" not in names:
+            raise ValueError("this input has no file to review at import")
+        params = {**node.get("params", {}), "import_review": False}
+        entry = {"id": "input", "node": node["node"], "params": params}
+        source = Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": [entry]},
+                                 self.registry)["input"].impl  # fmt: skip
+        if not isinstance(source, Source) or is_all_subjects(source):
+            raise RuntimeError("review at import needs one recording file")
+        return source
+
+    def import_review_open(self, node: dict[str, Any]) -> dict[str, Any]:
+        """The review window's request to review a recording at import
+        (docs/REVIEW.md): the raw file's events and bad channels, or the
+        review saved before (its marks, bad channels, crop)."""
+        return open_import_review(self._raw_source(node))
+
+    def save_import_review(
+        self,
+        node: dict[str, Any],
+        marks: list[dict[str, Any]],
+        bads: list[str] | None = None,
+        crop: list[float | None] | None = None,
+        viewed: list[list[float]] | None = None,
+        reviewer: str = "",
+    ) -> dict[str, Any]:
+        """Save the review at import of a source entry's recording: every
+        pipeline reading it then uses its events, bad channels and crop."""
+        span = None
+        if crop is not None:
+            span = (float(crop[0] or 0.0), None if crop[1] is None else float(crop[1]))
+        path = save_import_review(
+            self._raw_source(node), [Mark.from_wire(m) for m in marks],
+            [str(b) for b in bads or ()], span,
+            [(float(a), float(b)) for a, b in viewed or ()], str(reviewer),
+        )  # fmt: skip
+        return {"file": str(path)}
 
     def describe_source(self, node: dict[str, Any]) -> dict[str, Any]:
         """Describe the recording a source entry (with its ``recording``

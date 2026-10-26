@@ -341,3 +341,70 @@ def test_review_points_are_stepped_through_and_answered(qapp: QApplication) -> N
         20.0,
         None,
     ]
+
+
+def test_a_recording_is_reviewed_at_import(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]], tmp_path: Path
+) -> None:
+    from meegxer.core.import_review import import_review_path
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    info = mne.create_info(["Fz", "Cz", "Pz"], 100.0, "eeg")
+    raw = mne.io.RawArray(np.random.default_rng(1).standard_normal((3, 2000)) * 1e-5,
+                          info, verbose="error")  # fmt: skip
+    raw.set_annotations(mne.Annotations([2.0], [0.0], ["stim"]))
+    rec = tmp_path / "sub-02_raw.fif"
+    raw.save(rec, verbose="error")
+
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        assert win.doc.source is not None
+        win.doc.source.params["path"] = str(rec)
+        win._structure_changed("input")
+        win.ask_reviewer = lambda: "I. Rater"  # type: ignore[method-assign]
+        entry = {"node": "meegxer.core.file", "params": {"path": str(rec)}}
+        win.recording_window.load(entry)
+        assert win.recording_window.review_btn.isEnabled()
+        win.recording_window.review_requested.emit(entry)  # Review… clicked
+        window = win.import_window
+        assert window is not None and window.import_mode
+        assert [m["label"] for m in window.marks] == ["stim"]  # the file's own
+        pump_until(qapp, lambda: bool(window.viewed))  # the raw traces fill
+        assert window.source_labels == ("Fz", "Cz", "Pz")
+
+        window.set_crop(1.0, 15.0)
+        assert window.crop_span() == (1.0, 15.0)
+        window.select(5.0, 6.0)
+        window.label.setCurrentText("BAD_move")
+        window.annotate()
+        window.set_bad("Cz", True)
+        window.submit()  # no question about coverage at import
+        pump_until(qapp, lambda: win.import_window is not None
+                   and not window.isVisible())  # fmt: skip
+
+        path = import_review_path(_file_source(rec))  # type: ignore[arg-type]
+        assert path is not None
+        saved = load_review(path)
+        assert saved is not None and saved.crop == (1.0, 15.0)
+        assert saved.bads == ("Cz",) and saved.reviewer == "I. Rater"
+        assert [m.label for m in saved.marks] == ["stim", "BAD_move"]
+        # the Recording window now shows the reviewed events
+        win.recording_window.load(entry)
+        assert win.recording_window.current["events_origin"] == "import review"
+        assert win.recording_window.current["duration_s"] == pytest.approx(14.0)
+    finally:
+        win.close()
+
+
+def _file_source(path: Path) -> object:
+    from meegxer.core.graph import Graph
+    from meegxer.core.manifest import SPEC_VERSION
+    from meegxer.core.registry import Registry
+
+    entry = {"id": "src", "node": "meegxer.core.file", "params": {"path": str(path)}}
+    graph = Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": [entry]},
+                            Registry.from_entry_points())  # fmt: skip
+    return graph.source.impl

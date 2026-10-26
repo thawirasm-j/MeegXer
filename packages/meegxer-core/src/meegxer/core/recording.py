@@ -345,7 +345,9 @@ def _raw_events(
     if overrides.events_file:
         return read_events_file(overrides.events_file), "file"
     if callable(getattr(source, "annotations", None)):
-        return source.annotations(), "recording"  # type: ignore[attr-defined]
+        events = source.annotations()  # type: ignore[attr-defined]
+        reviewed = getattr(source, "import_reviewed", False)  # docs/REVIEW.md
+        return events, "import review" if reviewed else "recording"
     return [], "none"
 
 
