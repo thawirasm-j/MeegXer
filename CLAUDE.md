@@ -149,3 +149,6 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - For architecture or method decisions: flag alternatives briefly and ask before
   committing to one.
 - Ask before changing anything listed under "Architecture rules".
+- `docs/HANDOFF.md`: the maintainer's standing decisions, the work routine,
+  open items and who works on what. Read it at the start of a session; keep
+  it current in the PR that changes any of it.
