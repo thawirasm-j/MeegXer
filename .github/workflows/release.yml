@@ -50,7 +50,7 @@ jobs:
           uvx twine check --strict dist/*/*
           test "$(ls dist/*/*.whl | wc -l)" -eq 6
           test "$(ls dist/*/*.tar.gz | wc -l)" -eq 6
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -59,7 +59,7 @@ jobs:
         run: >
           uv export --frozen --all-packages --no-dev --format cyclonedx1.5
           --output-file "meegxer-${GITHUB_REF_NAME#v}.cdx.json"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: meegxer-*.cdx.json
@@ -72,7 +72,7 @@ jobs:
     permissions:
       contents: write  # create the draft release, upload the SBOM
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: sbom
       - name: Attach it (a draft release is made if there is none)
@@ -104,7 +104,7 @@ jobs:
     permissions:
       id-token: write  # Trusted Publishing
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -131,7 +131,7 @@ jobs:
     permissions:
       id-token: write  # Trusted Publishing
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
