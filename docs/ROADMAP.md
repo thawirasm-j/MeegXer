@@ -43,6 +43,35 @@ methods paper. Milestones and their state also live in `docs/WORKPLAN.md`
 
 One PR per item, as before. Items keep their IDs (M9.1 …) in commits and PRs.
 
+## Status (2026-10-30, 0.3.1b4)
+
+M9 is done (0.3.0b1 to 0.3.1b3). M10 is under way; its exit criterion (an ERP
+and a resting-state study end to end, GUI and CLI) is next.
+
+| Item | State | Where |
+|---|---|---|
+| M9.1–M9.9 | Done | 0.3.0b1 – 0.3.1b3 |
+| M10.1 Resample, pick channels | Done | 0.3.1b3 |
+| M10.2 Epoching, events writer | Partly: the Epochs strip and the epochs rail are done, and every file writer records the Events rail (PR #90). Epoch files (`-epo.fif`, epoched `.set`, BIDS epochs) are not | PR #84, #90 |
+| M10.3 ERP view | Partly: offline, in the epoch review window. The live running-average ERP tap is not done | PR #93 |
+| M10.4 Bad segments | Done, as the review track below: detectors write `BAD_…` spans, a Reject segments strip cuts them, the Epochs strip leaves out epochs overlapping them | PR #87, #97 |
+| M10.5 XDF input | Open | |
+| M10.6 EEGLAB decompositions | Open (the ICs rail starts at ICA only) | |
+| M10.7 MNE Python API | Open | |
+| M10.8 Batch workers, QC report | Open | |
+| M10.9 Templates, sample data | Open | |
+| M10.10 Undo for chain edits | Open (the review window has undo) | |
+| M10.11 Manual review (added) | Steps 1–5 of `docs/REVIEW.md` Design v2 done: Review strip, Reject segments, review display, review at import, review points, detectors, suggestions with verdicts, epoch review, rejected epochs on the Events rail. Step 6 (a second reviewer, a review report) open | PR #81 – #100 |
+
+Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
+"M10.2b" and "M10.2c" are the review strip, cuts and the stacked review window
+(now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
+reference.
+
+**Next:** the M10 exit criterion. An ERP study and a resting-state study run
+end to end from the GUI and the CLI, building what blocks them first (epoch
+files, templates).
+
 ### M9: Fix and harden (0.3.0bN)
 
 1. **Beta triage:** everything the manual release checks (`docs/TESTING.md`) and
