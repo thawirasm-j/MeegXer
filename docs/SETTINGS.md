@@ -46,6 +46,7 @@ reported (in the log) and use their defaults. The format is checked against
 | | Workers for an all-subjects BIDS run (0: one per CPU; `MEEGXER_BATCH_JOBS` wins) | `general.batch_jobs` | `1` |
 | Appearance | Theme: `dark`, `light`, `system`, or a theme file | `appearance.theme` | `dark` |
 | | Text size (%) | `appearance.scale` | `100` |
+| | Strip width: fixed, in % of 158 px (50–300), or `"text"` to follow the text size and the font's width | `appearance.strip_width` | `100` |
 | Visualization | Sequential map (band-power map) | `visualization.sequential` | `viridis` |
 | | Diverging map (power-change map) | `visualization.diverging` | `blue-white-red` |
 | | Frequency map (peak frequency) | `visualization.peak` | `plasma` |

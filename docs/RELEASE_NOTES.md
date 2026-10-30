@@ -54,6 +54,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   names their licence (EEGBCI: ODC-By-1.0; ERP CORE: CC-BY-SA-4.0) and their
   source (`SourceDatasets`, with its DOI), and each recording's sidecar has a
   `TaskDescription`, as the BIDS validator recommends.
+- **Strip width setting:** Settings → Appearance → *Strip width*: fixed (the
+  default, 100 % of 158 px, or any width from 50 to 300 %) or *Follow text
+  size*, where a strip grows with the text size and with a wider font
+  (Windows draws the same size wider), so short names are not shortened.
 - **Fix:** a strip reading a rail (e.g. a writer after an Epochs strip) lost
   that choice when the GUI saved the pipeline.
 

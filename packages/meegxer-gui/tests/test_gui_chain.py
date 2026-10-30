@@ -232,3 +232,45 @@ def test_strip_text_fits_the_strip(qapp: QApplication) -> None:
     finally:
         qapp.setStyleSheet("")
     qapp.processEvents()
+
+
+def test_strip_width_is_fixed_or_follows_the_text(qapp: QApplication) -> None:
+    """appearance.strip_width: strips keep a fixed width (a percent of 158 px)
+    whatever the text size, or with "text" grow with it, so a short name such
+    as "Band power" is not shortened."""
+    from PySide6.QtWidgets import QLabel
+
+    from meegxer.core.control import manifest_to_dict
+    from meegxer.core.registry import Registry
+    from meegxer.gui.chain import STRIP_WIDTH, StripWidget
+    from meegxer.gui.pipeline_doc import PipelineDoc
+    from meegxer.gui.theme import load_theme, stylesheet
+
+    registry = Registry.from_entry_points()
+    doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
+                       for n in registry.names()])  # fmt: skip
+    doc.set_source("meegxer.core.synthetic")
+    strip = doc.insert(1, "meegxer.nodes.band_power")
+    theme = load_theme("dark")
+
+    def card(scale: float, size: int | str) -> tuple[int, str]:
+        qapp.setStyleSheet(stylesheet(theme, scale))
+        widget = StripWidget(doc, strip, theme, status="", advanced=False,
+                             selected=False, size=size)  # fmt: skip
+        widget.show()
+        qapp.processEvents()
+        title = next(w for w in widget.findChildren(QLabel)
+                     if w.objectName() == "title")  # fmt: skip
+        found = widget.width(), title.text()
+        widget.close()
+        widget.deleteLater()
+        return found
+
+    try:
+        assert card(1.0, 100)[0] == card(1.6, 100)[0] == STRIP_WIDTH  # fixed
+        assert card(1.0, 150)[0] == round(STRIP_WIDTH * 1.5)
+        small, large = card(1.0, "text"), card(1.6, "text")
+        assert large[0] > small[0] * 1.4 and large[1] == "Band power"
+    finally:
+        qapp.setStyleSheet("")
+    qapp.processEvents()

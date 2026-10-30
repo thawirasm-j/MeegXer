@@ -214,6 +214,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(signal_panel)
 
         self.chain = ChainView()
+        self.chain.strip_size = self.settings["appearance"]["strip_width"]
         self.chain.selected.connect(self.select)
         self.chain.remove_requested.connect(self.remove_strip)
         self.chain.insert_requested.connect(self.insert_strip)
@@ -424,6 +425,7 @@ class MainWindow(QMainWindow):
     def _preview_settings(self, settings: dict[str, Any]) -> None:
         """Show appearance and colour choices while the dialog is open."""
         self.scale = settings["appearance"]["scale"] / 100
+        self.chain.strip_size = settings["appearance"]["strip_width"]
         self.apply_theme(resolve_theme(settings["appearance"]["theme"]))
         self.view.maps = Maps.from_settings(settings["visualization"])
         self.feature_view.maps = self.view.maps
