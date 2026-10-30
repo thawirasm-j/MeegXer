@@ -224,6 +224,17 @@ def test_strip_text_fits_the_strip(qapp: QApplication) -> None:
             texts = [w.text() for w in card.findChildren(QLabel)]
             assert "Frequency bands" in texts or strip is csp
             card.deleteLater()
+        # a short row stays on one line (the input's "Sampling rate  500 Hz")
+        source = doc.strips[0]
+        card = StripWidget(doc, source, theme, status="", advanced=False,
+                           selected=True)  # fmt: skip
+        rate = next(w for w in card.findChildren(QLabel)
+                    if w.text() == "Sampling rate")  # fmt: skip
+        value = next(w for w in card.findChildren(QLabel) if w.text() == "500 Hz")
+        card.show()
+        qapp.processEvents()
+        assert rate.geometry().top() == value.geometry().top()
+        card.deleteLater()
     finally:
         qapp.setStyleSheet("")
     qapp.processEvents()

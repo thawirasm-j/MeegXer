@@ -164,19 +164,22 @@ class StripWidget(QFrame):
             chip.setStyleSheet(f"color: {colour}; font-size: 8pt; font-weight: 600;")
             lay.addWidget(chip)
         lay.addSpacing(4)
-        width = STRIP_WIDTH - 28  # inside the card's margins
+        width = STRIP_WIDTH - 24  # inside the margins (10 + 10) and the border
+        gap = 4  # between a name and its value
         for pname in doc.shown_params(strip, advanced):
             pretty = param_label(pname)
             text = doc.format_param(strip, pname)
             key, value = QLabel(), QLabel()
             key.setObjectName("muted")
-            key.ensurePolished()
+            key.ensurePolished()  # measure both in the fonts they are drawn in
+            value.ensurePolished()
             fm = value.fontMetrics()
-            needed = key.fontMetrics().horizontalAdvance(pretty) + 8
+            needed = key.fontMetrics().horizontalAdvance(pretty) + gap
             if needed + fm.horizontalAdvance(text) <= width:  # both on one line
                 key.setText(pretty)
                 value.setText(text)
                 row = QHBoxLayout()
+                row.setSpacing(gap)
                 row.addWidget(key, 1)
                 row.addWidget(value)
                 lay.addLayout(row)
