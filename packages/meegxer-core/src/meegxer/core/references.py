@@ -37,6 +37,8 @@ BY_NODE: dict[str, list[Reference]] = {
     "meegxer.core.edf_writer": [MNE],
     "meegxer.core.bids_writer": _BIDS,
     "meegxer.core.bids_features": _BIDS,
+    "meegxer.core.bids_epochs": _BIDS,
+    "meegxer.core.epochs_writer": [MNE],
 }
 
 AUTHORS = ["MeegXer contributors"]
@@ -72,6 +74,8 @@ CATEGORIES = {
     "meegxer.core.feature_tsv": "files",
     "meegxer.core.bids_writer": "files",
     "meegxer.core.bids_features": "files",
+    "meegxer.core.bids_epochs": "files",
+    "meegxer.core.epochs_writer": "files",
     "meegxer.core.lsl_out": "streams",
     "meegxer.core.lsl_features_out": "streams",
     "meegxer.core.review": "events",

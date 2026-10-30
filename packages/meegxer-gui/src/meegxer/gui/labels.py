@@ -31,6 +31,7 @@ PARAMS: dict[str, str] = {
     "datatype": "Data type",
     "desc": "Output label",
     "overwrite": "Replace existing files",
+    "erp": "Also write the ERPs (-ave.fif)",
     "stream_name": "Stream name",
     "stream_type": "Stream type",
     "timeout": "Search time",

@@ -1,4 +1,4 @@
-# BIDS-derivatives output (spec 0.2.10, unstable)
+# BIDS-derivatives output (spec 0.2.11, unstable)
 
 How MeegXer writes processed recordings into a BIDS **derivatives** dataset
 ([BIDS derivatives](https://bids-specification.readthedocs.io/en/stable/derivatives/introduction.html)),
@@ -13,8 +13,9 @@ the `desc-` entity, as BEP021 does.
 |---|---|---|
 | `meegxer.core.bids_writer` | Signal | the processed recording and its sidecars |
 | `meegxer.core.bids_features` | Features | one feature table and its sidecar |
+| `meegxer.core.bids_epochs` | Features (an epochs rail) | the epochs, their ERPs and a sidecar |
 
-Both are offline only (they need the whole recording) and take these parameters:
+All are offline only (they need the whole recording) and take these parameters:
 
 | Parameter | Default | Meaning |
 |---|---|---|
@@ -48,6 +49,9 @@ For `sub-01_task-rest_eeg.set` and `desc` `clean`:
     ├── sub-01_coordsystem.json                         (with electrodes.tsv)
     ├── sub-01_task-rest_desc-clean_<node>_features.tsv (bids_features, per node)
     ├── sub-01_task-rest_desc-clean_<node>_features.json
+    ├── sub-01_task-rest_desc-clean_epo.fif             (bids_epochs)
+    ├── sub-01_task-rest_desc-clean_epo.json
+    ├── sub-01_task-rest_desc-clean_ave.fif
     └── sub-01_task-rest_desc-clean_meegxer.json        (the run's session file)
 ```
 
@@ -80,10 +84,17 @@ BIDS derivatives recommend.
   coordinates (`Fz|alpha`). Its sidecar describes every column, the node and its
   parameters, and gives each value column's `Units` when the node states them
   (spec 0.2.19; `V^2/Hz`, `dB`, `1` for dimensionless).
+- **`_epo.fif`:** the epochs of the nearest epochs rail (`docs/RAILS.md`), the
+  kept ones after a Review epochs strip, as MNE epochs: each event at its
+  sample, labelled as on the rail, channel types from the recording.
+  **`_ave.fif`:** their average per label (the ERPs, one MNE evoked each,
+  named by the label). **`_epo.json`:** `Description` (with the chain),
+  `Conditions` (the number of epochs per label) and `tmin` (seconds).
 - **`_meegxer.json`:** the session of the run (`session.md`): pipeline, node
   versions and plugin images, fitted models, input and output hashes. Listed in
   `.bidsignore`, so the validator skips it, as are feature tables
-  (`*_features.tsv`, `*_features.json`), which BIDS does not cover yet.
+  (`*_features.tsv`, `*_features.json`) and epochs (`*_epo.fif`,
+  `*_epo.json`, `*_ave.fif`), which BIDS does not cover yet.
 - **`README.md`:** written once if the folder has no README: what made the
   dataset and where its credits come from.
 

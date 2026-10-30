@@ -129,6 +129,16 @@ output strip chooses which line it draws from.
   Later readers take the nearest one (rule 7), so they get the reviewed
   epochs; the Epochs strip's rail is not rewritten (rule 8). Its window has
   the ERP view (the mean of the kept epochs of each label).
+- **Into files:** an **Epochs and ERPs file** strip
+  (`meegxer.core.epochs_writer`) or a **BIDS epochs and ERPs** strip
+  (`meegxer.core.bids_epochs`, `spec/bids-derivatives.md`) reads the nearest
+  epochs rail (its input names it, e.g. `ep:epochs`) and writes the epochs as
+  an MNE `EpochsArray` (`-epo.fif`, or an epoched EEGLAB `.set`) and their
+  average per label, the ERPs, as `-ave.fif` evoked files (MNE
+  `Epochs.average`, `write_evokeds`). After a Review epochs strip that is the
+  kept epochs with their labels; the rejected ones stay in the review's file.
+  Each epoch's event is at its sample on the source's clock; channel types
+  come from the recording.
 
 ## 4. Display (built)
 

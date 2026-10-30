@@ -52,8 +52,8 @@ and a resting-state study end to end, GUI and CLI) is next.
 |---|---|---|
 | M9.1–M9.9 | Done | 0.3.0b1 – 0.3.1b3 |
 | M10.1 Resample, pick channels | Done | 0.3.1b3 |
-| M10.2 Epoching, events writer | Partly: the Epochs strip and the epochs rail are done, and every file writer records the Events rail (PR #90). Epoch files (`-epo.fif`, epoched `.set`, BIDS epochs) are not | PR #84, #90 |
-| M10.3 ERP view | Partly: offline, in the epoch review window. The live running-average ERP tap is not done | PR #93 |
+| M10.2 Epoching, events writer | Done: the Epochs strip and the epochs rail, every file writer records the Events rail (PR #90), and epoch files (`-epo.fif`, epoched `.set`, BIDS epochs) | PR #84, #90, this PR |
+| M10.3 ERP view | Partly: offline, in the epoch review window, and ERP export (`-ave.fif`, with the epoch files). The live running-average ERP tap is not done | PR #93, this PR |
 | M10.4 Bad segments | Done, as the review track below: detectors write `BAD_…` spans, a Reject segments strip cuts them, the Epochs strip leaves out epochs overlapping them | PR #87, #97 |
 | M10.5 XDF input | Open | |
 | M10.6 EEGLAB decompositions | Open (the ICs rail starts at ICA only) | |

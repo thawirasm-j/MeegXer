@@ -378,3 +378,17 @@ def test_a_chosen_input_is_saved_loaded_and_dropped_with_its_strip(
         doc.set_input(tsv.id, doc.strips[1].id)  # a signal strip
     doc.remove(bp.id)
     assert doc.get(tsv.id).input == "" and doc.input_of(tsv) == psd.id
+
+
+def test_an_epochs_writer_saves_the_rail_it_reads(doc: PipelineDoc) -> None:
+    """The GUI shows an output reading the epochs rail when no strip's main
+    output fits; the saved pipeline names that rail, since the core's default
+    input takes main outputs only (so the pipeline runs as shown)."""
+    epochs = doc.insert(len(doc.strips), "meegxer.nodes.epochs")
+    writer = doc.insert(len(doc.strips), "meegxer.core.epochs_writer")
+    writer.params["path"] = "out-epo.fif"
+    assert doc.input_of(writer) == f"{epochs.id}:epochs"
+    saved = {n["id"]: n for n in doc.to_pipeline()["nodes"]}
+    assert saved[writer.id]["input"] == f"{epochs.id}:epochs"
+    assert "input" not in saved[epochs.id]  # the chain's own default
+    Graph.from_dict(doc.to_pipeline(), Registry.from_entry_points())  # it builds

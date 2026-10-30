@@ -27,6 +27,7 @@ from meegxer.core.block import (
     SignalInfo,
     contiguous_runs,
 )
+from meegxer.core.epochs_out import channel_types, epochs_array, write_epochs
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Sink, Source
 from meegxer.core.ports import PortTypeError
@@ -45,16 +46,17 @@ COUNT_KEYS = {"EEG": "EEGChannelCount", "EOG": "EOGChannelCount",
               "ECG": "ECGChannelCount", "EMG": "EMGChannelCount",
               "MISC": "MiscChannelCount", "TRIG": "TriggerChannelCount"}  # fmt: skip
 _LABEL = re.compile(r"^[A-Za-z0-9]+$")
-# not (yet) covered by BIDS: the run's session file and feature tables
-IGNORED = ("*_meegxer.json", "*_features.tsv", "*_features.json")
+# not (yet) covered by BIDS: the run's session file, feature tables, epochs
+IGNORED = ("*_meegxer.json", "*_features.tsv", "*_features.json",
+           "*_epo.fif", "*_epo.json", "*_ave.fif")  # fmt: skip
 README = """# MeegXer derivatives
 
 EEG processed with MeegXer (https://github.com/thawirasm-j/MeegXer). Each
 recording's `*_eeg.json` names its raw source (`Sources`) and the processing
 chain (`Description`); `*_meegxer.json` is the run's session file (pipeline,
 node versions, fitted models, file hashes), which reruns it exactly. Feature
-tables (`*_features.tsv`) and session files are not yet covered by BIDS and are
-listed in `.bidsignore`.
+tables (`*_features.tsv`), epochs and ERPs (`*_epo.fif`, `*_ave.fif`) and
+session files are not yet covered by BIDS and are listed in `.bidsignore`.
 
 `Authors`, `License` and the other credits in `dataset_description.json` come
 from the raw dataset's; add the people who made this dataset if it lists none.
@@ -564,6 +566,50 @@ class BidsFeatures(_BidsSink):
         sidecar_path.write_text(json.dumps(sidecar, indent=2) + "\n", encoding="utf-8")
         self.written = [table, sidecar_path]
         self._blocks.clear()
+
+
+class BidsEpochs(_BidsSink):
+    """The kept epochs (``_epo.fif``) and their ERPs per label (``_ave.fif``)
+    next to the recording's derivative, with a sidecar naming the chain."""
+
+    manifest: ClassVar[Manifest] = _manifest(
+        "meegxer.core.bids_epochs", "features",
+        "Epochs and their ERPs into a BIDS derivatives dataset",
+    )  # fmt: skip
+
+    def __init__(self, params: Mapping[str, object] | None = None) -> None:
+        super().__init__(params)
+        self._windows: list[FeatureBlock] = []
+
+    def write(self, block: AnyBlock) -> None:
+        if not isinstance(block, FeatureBlock) or block.dims[:1] != ("epoch",):
+            raise PortTypeError(f"{self.manifest.name} reads an epochs rail")
+        self._windows.append(block)
+
+    def close(self) -> None:
+        if not self._windows:
+            return
+        windows, self._windows = self._windows, []
+        target = self._target()
+        epochs_path = target.path("epo.fif")
+        if self.keep_existing(epochs_path):
+            return
+        target.folder.mkdir(parents=True, exist_ok=True)
+        write_dataset_files(target, self._graph)
+        epochs = epochs_array(windows, channel_types(self._graph))
+        written = write_epochs(epochs, epochs_path, target.path("ave.fif"))
+        sidecar = {
+            "Description": "Epochs kept, and their average per label (ERPs) "
+                           "in the _ave.fif file; "
+                           + _describe_chain(self._graph, self._node_id),
+            "Conditions": {label: int((epochs.events[:, 2] == code).sum())
+                           for label, code in epochs.event_id.items()},
+            "tmin": {"Description": "Start of each epoch from its event",
+                     "Value": float(epochs.tmin), "Units": "s"},
+        }  # fmt: skip
+        sidecar_path = target.path("epo.json")
+        sidecar_path.write_text(json.dumps(sidecar, indent=2) + "\n", encoding="utf-8")
+        self.written = [*written, sidecar_path]
 
 
 # -- many recordings -----------------------------------------------------------------
