@@ -371,6 +371,42 @@ class SettingsDialog(QDialog):
         form.addRow(
             "Text size", self._combo("appearance.scale", {s: f"{s} %" for s in SCALES})
         )
+        form.addRow("Strip width", self._strip_width())
+
+    def _strip_width(self) -> QWidget:
+        """Fixed (a percent of the standard width) or following the text."""
+        box = QWidget()
+        row = QHBoxLayout(box)
+        row.setContentsMargins(0, 0, 0, 0)
+        mode = QComboBox()
+        mode.addItem("Fixed", "fixed")
+        mode.addItem("Follow text size", "text")
+        mode.setToolTip("Follow text size: strips grow with the text size and "
+                        "with a wider font (Windows)")  # fmt: skip
+        percent = QSpinBox()
+        percent.setRange(50, 300)
+        percent.setSingleStep(10)
+        percent.setSuffix(" %")
+        percent.setToolTip("Percent of the standard strip width (158 px)")
+        row.addWidget(mode)
+        row.addWidget(percent)
+
+        def changed() -> None:
+            text = mode.currentData() == "text"
+            percent.setEnabled(not text)
+            self._set("appearance.strip_width", "text" if text else percent.value())
+
+        def load() -> None:
+            value = core_settings.get(self.working, "appearance.strip_width")
+            mode.setCurrentIndex(mode.findData("text" if value == "text" else "fixed"))
+            percent.setValue(100 if value == "text" else int(value))
+            percent.setEnabled(value != "text")
+
+        mode.currentIndexChanged.connect(lambda _: changed())
+        percent.valueChanged.connect(lambda _: changed())
+        self._loaders.append(load)
+        self.strip_mode, self.strip_percent = mode, percent  # for tests
+        return box
 
     def _number(self, key: str, unit: str, top: float, tip: str = "",
                 off: bool = False) -> QDoubleSpinBox:  # fmt: skip

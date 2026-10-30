@@ -20,7 +20,7 @@ def test_missing_keys_take_their_defaults(tmp_path: Path) -> None:
     path.write_text(json.dumps({"appearance": {"theme": "light"}}))
     s, problems = settings.read_settings(path)
     assert problems == []
-    assert s["appearance"] == {"theme": "light", "scale": 100}
+    assert s["appearance"] == {"theme": "light", "scale": 100, "strip_width": 100}
     assert s["visualization"]["sequential"] == "viridis"
 
 

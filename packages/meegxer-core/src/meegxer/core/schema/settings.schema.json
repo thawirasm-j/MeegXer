@@ -51,6 +51,13 @@
         "scale": {
           "description": "Interface text size, in percent.",
           "enum": [90, 100, 110, 125, 150]
+        },
+        "strip_width": {
+          "description": "Width of the strips in the chain: percent of the standard width (158 px), or \"text\" to follow the text size and the platform's font width.",
+          "oneOf": [
+            {"type": "integer", "minimum": 50, "maximum": 300},
+            {"const": "text"}
+          ]
         }
       }
     },

@@ -41,7 +41,7 @@ DEFAULTS: dict[str, Any] = {
         "confirm_quit_running": True,
         "batch_jobs": 1,  # all-subjects runs: recordings at once (0: one per CPU)
     },
-    "appearance": {"theme": "dark", "scale": 100},
+    "appearance": {"theme": "dark", "scale": 100, "strip_width": 100},
     "visualization": {
         "sequential": "viridis",
         "diverging": "blue-white-red",

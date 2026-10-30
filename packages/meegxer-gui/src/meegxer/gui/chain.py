@@ -47,7 +47,9 @@ from meegxer.gui.pipeline_doc import PipelineDoc, Rail, StripNode
 from meegxer.gui.theme import Theme
 
 MIME = "application/x-meegxer-strip"
-STRIP_WIDTH = 158
+STRIP_WIDTH = 158  # at the reference text size (10 pt; see strip_width)
+_ALPHABET = "abcdefghijklmnopqrstuvwxyz"
+_REF_ALPHABET = 181  # px the alphabet takes at 10 pt on the reference font
 TAP_STATES = ("off", "comparison", "main")
 RAIL_Y = 26  # the signal line's height in the chain, px below the strips' top
 SIGNAL_WIDTH = 6  # the signal is the thick main line
@@ -70,6 +72,16 @@ def _led(color: str, size: int = 10) -> QLabel:
     led.setFixedSize(size, size)
     led.setStyleSheet(f"background: {color}; border-radius: {size // 2}px;")
     return led
+
+
+def strip_width(fm: QFontMetrics, size: int | str = 100) -> int:
+    """A strip's width (Settings -> Appearance, ``appearance.strip_width``):
+    ``size`` percent of 158 px, or with ``"text"`` in proportion to the font it
+    is drawn in, so it grows with the text size and with a wider font
+    (Windows draws the same point size wider)."""
+    if size == "text":
+        return round(STRIP_WIDTH * fm.horizontalAdvance(_ALPHABET) / _REF_ALPHABET)
+    return round(STRIP_WIDTH * int(size) / 100)
 
 
 class ElidedLabel(QLabel):
@@ -104,12 +116,15 @@ class StripWidget(QFrame):
         status: str,
         advanced: bool,
         selected: bool,
+        size: int | str = 100,
     ) -> None:
         super().__init__()
         self.strip_id = strip.id
         self._press: QPoint | None = None
         self.setObjectName("strip")
-        self.setFixedWidth(STRIP_WIDTH)
+        self.ensurePolished()  # the text size the stylesheet sets
+        self.strip_width = strip_width(self.fontMetrics(), size)
+        self.setFixedWidth(self.strip_width)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         problem = doc.incompatibility(strip)
         bg = theme.incompatible if problem else theme.surface
@@ -175,7 +190,7 @@ class StripWidget(QFrame):
             chip.setStyleSheet(f"color: {colour}; font-size: 8pt; font-weight: 600;")
             lay.addWidget(chip)
         lay.addSpacing(4)
-        width = STRIP_WIDTH - 24  # inside the margins (10 + 10) and the border
+        width = self.strip_width - 24  # inside the margins (10 + 10) and border
         gap = 4  # between a name and its value
         for pname in doc.shown_params(strip, advanced):
             pretty = param_label(pname)
@@ -260,10 +275,10 @@ class InputStrip(StripWidget):
         status: str,
         advanced: bool,
         selected: bool,
+        size: int | str = 100,
     ) -> None:
-        super().__init__(
-            doc, strip, theme, status=status, advanced=advanced, selected=selected
-        )
+        super().__init__(doc, strip, theme, status=status, advanced=advanced,
+                         selected=selected, size=size)  # fmt: skip
         self.setObjectName("input")
         self.setStyleSheet(self.styleSheet().replace("QFrame#strip", "QFrame#input"))
         lay = self.layout()
@@ -438,7 +453,7 @@ class Lowered(QWidget):
     def __init__(self, strip: StripWidget, theme: Theme) -> None:
         super().__init__()
         self.strip = strip
-        self.setFixedWidth(STRIP_WIDTH)
+        self.setFixedWidth(strip.strip_width)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, LOWER, 0, 0)
@@ -467,7 +482,7 @@ class RailBoard(QWidget):
         self.taps = taps or {}
         self.rails, self.needs = doc.rails()
         self.lanes = doc.rail_lanes()
-        self.strips: dict[str, QWidget] = {}
+        self.strips: dict[str, QWidget] = {}  # StripWidget (strip_width) by id
         self.lowered = {s.id for s in doc.strips if doc.lowered(s)}
         self.pull_signal = {s.id for s in doc.strips
                             if doc.lowered(s) and doc.reads_signal(s)}  # fmt: skip
@@ -663,7 +678,8 @@ class RailBoard(QWidget):
         return rail.kind in ("features", "signal")
 
     def label_box(self, rail: Rail, x0: float, fm: QFontMetrics) -> QRectF:
-        room = STRIP_WIDTH - 2 * PORT - 30
+        widths = [getattr(w, "strip_width", 0) for w in self.strips.values()]
+        room = max(widths, default=STRIP_WIDTH) - 2 * PORT - 30  # as wide as a strip
         return QRectF(x0 - 8 - room, self.lane_y(rail.lane) - fm.height() / 2, room,
                       fm.height())  # fmt: skip
 
@@ -736,6 +752,8 @@ class ChainView(QScrollArea):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setMinimumHeight(240)
         self._doc: PipelineDoc | None = None
+        # appearance.strip_width: percent of 158 px, or "text" (strip_width)
+        self.strip_size: int | str = 100
 
     def rebuild(
         self,
@@ -762,16 +780,16 @@ class ChainView(QScrollArea):
             chosen = strip.id == selected
             widget: StripWidget
             if i == 0:
-                widget = InputStrip(
-                    doc, strip, theme, status=status, advanced=advanced, selected=chosen
-                )
+                widget = InputStrip(doc, strip, theme, status=status,
+                                    advanced=advanced, selected=chosen,
+                                    size=self.strip_size)  # fmt: skip
                 widget.source_changed.connect(self.source_changed)
                 widget.mode_toggled.connect(self.mode_toggled)
                 widget.recording_requested.connect(self.recording_requested)
             else:
-                widget = StripWidget(
-                    doc, strip, theme, status=status, advanced=advanced, selected=chosen
-                )
+                widget = StripWidget(doc, strip, theme, status=status,
+                                     advanced=advanced, selected=chosen,
+                                     size=self.strip_size)  # fmt: skip
             widget.clicked.connect(self.selected)
             widget.remove_requested.connect(self.remove_requested)
             widget.calibrate_requested.connect(self.calibrate_requested)
