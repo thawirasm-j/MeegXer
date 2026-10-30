@@ -578,6 +578,12 @@ class SettingsDialog(QDialog):
             "Recordings",
             self._folder("storage.data_dir", "Last-used folder", "Recordings folder"),
         )
+        form.addRow(
+            "Sample data",
+            self._folder(
+                "storage.sample_dir", "MNE's data folder", "Sample data folder"
+            ),
+        )
 
     def _privacy(self, page: QWidget) -> None:
         lay = QVBoxLayout(page)

@@ -25,7 +25,7 @@ it goes into pipelines, sessions or provenance.
 ## Where a value comes from
 
 1. A command-line flag (e.g. `meegxer-gui --connect …`, `--theme …`).
-2. An environment variable: `MEEGXER_OFFLINE_DIR`, `MEEGXER_OFFLINE_CACHE_GB`.
+2. An environment variable: `MEEGXER_OFFLINE_DIR`, `MEEGXER_OFFLINE_CACHE_GB`, `MEEGXER_SAMPLE_DIR`.
 3. `settings.json`.
 4. The default.
 
@@ -60,6 +60,7 @@ reported (in the log) and use their defaults. The format is checked against
 | | Offline cache cap (GB) | `storage.cache_gb` | `5` |
 | | Pipelines and sessions folder (file dialogs) | `storage.output_dir` | `""` |
 | | Recordings folder (channel locations, montages, events) | `storage.data_dir` | `""` |
+| | Sample datasets and their downloads (empty: `meegxer-samples` in MNE's data folder; `MEEGXER_SAMPLE_DIR` wins) | `storage.sample_dir` | `""` |
 | Plugins & privacy | Installed plugins and scripts (remove, add a script, read the local-code notice) | (`plugins.json`) | |
 
 **Colour maps** are the same in every theme by default, so figures stay comparable.

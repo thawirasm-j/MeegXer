@@ -20,6 +20,7 @@ from meegxer.core.import_review import crop_events, find_import_review, review_f
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Source
 from meegxer.core.references import credits
+from meegxer.core.samples import ensure_recording
 
 if TYPE_CHECKING:
     import mne
@@ -706,12 +707,14 @@ class BidsSource(_RawSource):
         )
 
     def _files(self) -> list[Path]:
+        ensure_recording(self.params)  # a sample dataset fetches it on first use
         fpath = self._bids_path().fpath
         return [Path(fpath)]
 
     def _load(self) -> mne.io.BaseRaw:
         import mne_bids
 
+        ensure_recording(self.params)
         raw: mne.io.BaseRaw = mne_bids.read_raw_bids(self._bids_path(), verbose="ERROR")
         raw.load_data()
         return raw

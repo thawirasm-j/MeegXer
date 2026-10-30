@@ -1,0 +1,13 @@
+{
+  "spec_version": "0.2.20",
+  "nodes": [
+    {"id": "input", "node": "meegxer.core.bids"},
+    {"id": "filter", "node": "meegxer.nodes.fir_filter_zerophase",
+     "params": {"kind": "bandpass", "low": 0.1, "high": 30.0}},
+    {"id": "reref", "node": "meegxer.nodes.rereference"},
+    {"id": "jumps", "node": "meegxer.nodes.detect_amplitude"},
+    {"id": "ep", "node": "meegxer.nodes.epochs",
+     "params": {"tmin": -0.2, "tmax": 0.8}},
+    {"id": "erp", "node": "meegxer.core.bids_epochs", "input": "ep:epochs"}
+  ]
+}

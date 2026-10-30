@@ -108,6 +108,10 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   `meegxer session share IN OUT` (no file names; `docs/DEIDENTIFICATION.md`).
 - BIDS derivatives (`spec/bids-derivatives.md`): `meegxer run … --bids-out DIR`,
   `meegxer run PIPELINE --bids RAW_ROOT [--subjects 01,02] [--task T] [--overwrite]`.
+- Templates and sample data (`meegxer.core.templates`, `meegxer.core.samples`):
+  `meegxer templates`, `meegxer new TEMPLATE OUT.json [--sample]`; a sample
+  dataset lists every subject and fetches each (MNE fetcher, then mne-bids)
+  when a run first reads it. Tests use fake fetchers (no network).
 - Live: `uv run meegxer daemon --pipeline live.json --start`, then `meegxer status`,
   `meegxer set hp low=0.5`, `meegxer calibrate NODE --seconds 60`, `meegxer stop`,
   `meegxer clear-calibration [NODE]`, `meegxer passthrough NODE --on/--off`.

@@ -13,6 +13,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   A *BIDS epochs and ERPs* strip writes them into a BIDS derivatives dataset
   (`_epo.fif`, `_ave.fif`, `_epo.json`, listed in `.bidsignore`). After a
   Review epochs strip they hold the kept epochs only.
+- **Templates and sample data** (M10.9): *New…* in the GUI, or `meegxer new
+  TEMPLATE OUT.json`, starts an ERP study, resting-state spectra or ICA
+  cleaning over a BIDS dataset. With the sample data (*Use the sample data*,
+  `--sample`) it reads ERP CORE's flanker task or the EEGBCI eyes open and
+  eyes closed runs (109 subjects); each subject is downloaded the first time a
+  run reads it. `meegxer templates` lists both. New setting: the sample data
+  folder (`storage.sample_dir`, `MEEGXER_SAMPLE_DIR`).
 - **Fix:** a strip reading a rail (e.g. a writer after an Epochs strip) lost
   that choice when the GUI saved the pipeline.
 

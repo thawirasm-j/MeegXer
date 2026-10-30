@@ -68,7 +68,13 @@ DEFAULTS: dict[str, Any] = {
         "lowpass": 0.0,
         "notch": 0.0,
     },
-    "storage": {"offline_dir": "", "cache_gb": 5.0, "output_dir": "", "data_dir": ""},
+    "storage": {
+        "offline_dir": "",
+        "cache_gb": 5.0,
+        "output_dir": "",
+        "data_dir": "",
+        "sample_dir": "",
+    },
 }
 
 

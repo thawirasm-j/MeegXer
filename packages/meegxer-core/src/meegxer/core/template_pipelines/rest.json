@@ -1,0 +1,17 @@
+{
+  "spec_version": "0.2.20",
+  "nodes": [
+    {"id": "input", "node": "meegxer.core.bids"},
+    {"id": "filter", "node": "meegxer.nodes.fir_filter_zerophase",
+     "params": {"kind": "bandpass", "low": 1.0, "high": 40.0}},
+    {"id": "reref", "node": "meegxer.nodes.rereference"},
+    {"id": "jumps", "node": "meegxer.nodes.detect_amplitude"},
+    {"id": "cut", "node": "meegxer.core.reject_segments"},
+    {"id": "psd", "node": "meegxer.nodes.psd",
+     "params": {"window": 2.0, "step": 2.0}},
+    {"id": "psd_out", "node": "meegxer.core.bids_features", "input": "psd"},
+    {"id": "bands", "node": "meegxer.nodes.band_power", "input": "cut",
+     "params": {"window": 2.0, "step": 2.0}},
+    {"id": "bands_out", "node": "meegxer.core.bids_features", "input": "bands"}
+  ]
+}
