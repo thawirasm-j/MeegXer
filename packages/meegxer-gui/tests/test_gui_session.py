@@ -181,12 +181,21 @@ def test_window_offers_to_recover_unfinished_recordings(
     monkeypatch.setattr(MainWindow, "recovery_choice", choose)
     control, _ = daemon
     window = _window(control)
-    pump(qapp, 1.0)  # the offer comes once the window is up
-    assert sorted(Path(r["path"]).name for r in asked) == ["drop.set", "keep.set"]
+    spools = [*spool_paths(keep), *spool_paths(drop)]
+    # the offer comes once the window is up; the daemon writes in the background
+    end = time.monotonic() + 30.0
+    while time.monotonic() < end and (
+        any(p.exists() for p in spools) or window._recovering or len(asked) < 2
+    ):
+        pump(qapp, 0.1)
+    log = window.logbox.toPlainText()
+    assert sorted(Path(r["path"]).name for r in asked) == ["drop.set", "keep.set"], log
+    assert not any(p.exists() for p in spools), log
     assert keep.read_bytes() == b"a file already there"  # kept, not replaced
     recovered = tmp_path / "keep_recovered.set"
     assert mne.io.read_raw_eeglab(recovered, verbose="error").n_times == 200
-    assert not any(p.exists() for p in [*spool_paths(keep), *spool_paths(drop)])
+    done = [ln for ln in log.splitlines() if "Recovered the unfinished" in ln]
+    assert len(done) == 1 and done[0].endswith("keep_recovered.set."), log
 
     monkeypatch.undo()  # the real question: its text, and "Ask me later"
     shown: list[str] = []

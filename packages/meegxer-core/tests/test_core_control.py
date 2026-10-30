@@ -1,5 +1,8 @@
 import json
+import subprocess
+import sys
 import threading
+import time
 from collections.abc import Iterator
 from typing import Any
 
@@ -167,7 +170,6 @@ def test_reloading_the_pipeline_keeps_fitted_models() -> None:
     """The GUI's Start (and its restart after an edit) loads the pipeline again;
     calibrated models must survive that like a daemon restart (fingerprints
     still mark them needs-refit if the input changed, rule 7)."""
-    import time
 
     import numpy as np
 
@@ -239,3 +241,73 @@ def test_recover_recording_takes_only_listed_recordings(
         client.call("recover_recording", path=str(victim), discard=True)
     assert victim.read_bytes() == b"keep"
     assert client.call("unfinished_recordings") == []
+
+
+def test_recovery_runs_in_the_background_and_reports_when_done(
+    daemon: tuple[Daemon, ControlClient], tmp_path: Any, monkeypatch: Any
+) -> None:
+    """A long recording takes longer to write than a client waits for a reply:
+    recover_recording starts it and returns, and recoveries says when it is done."""
+    from pathlib import Path
+
+    import meegxer.core.control as control
+    from meegxer.core.sinks import recover, spool_paths
+
+    monkeypatch.setenv("MEEGXER_CONFIG_DIR", str(tmp_path / "config"))  # its own
+
+    def crash_while_recording(path: Path) -> None:  # a run that dies mid-way
+        script = (
+            "import os, numpy as np\n"
+            "from meegxer.core.block import Block, SignalInfo\n"
+            "from meegxer.core.sinks import SetSink\n"
+            f"sink = SetSink({{'path': {str(path)!r}}})\n"
+            "sink.write(Block(np.zeros((2, 150)), SignalInfo(('Fz', 'Cz'), 100.0),"
+            " 0, 0.0))\n"
+            "os._exit(1)\n"
+        )
+        subprocess.run([sys.executable, "-c", script], check=False)
+
+    first, second = tmp_path / "first.set", tmp_path / "second.set"
+    crash_while_recording(first)
+    crash_while_recording(second)
+    release = threading.Event()
+
+    def slow_recover(path: Path, output: Path | None = None) -> Path:
+        if path.name == "first.set":
+            assert release.wait(10)
+            return recover(path, output)
+        raise OSError("disk full")
+
+    monkeypatch.setattr(control, "recover", slow_recover)
+    _, client = daemon
+    started = client.call("recover_recording", path=str(first.resolve()))
+    assert started == {"path": str(first.resolve()), "state": "running"}
+    # while it is written: not offered again, not started twice
+    listed = [r["path"] for r in client.call("unfinished_recordings")]
+    assert listed == [str(second.resolve())]
+    with pytest.raises(RpcError, match="no unfinished recording"):
+        client.call("recover_recording", path=str(first.resolve()))
+    assert client.call("recover_recording", path=str(second.resolve()))["state"] == (
+        "running"
+    )
+
+    def states() -> dict[str, tuple[str, str | None]]:
+        return {Path(r["path"]).name: (r["state"], r["error"])
+                for r in client.call("recoveries")}  # fmt: skip
+
+    def wait_for(name: str) -> None:
+        for _ in range(200):
+            if states()[name][0] != "running":
+                return
+            time.sleep(0.05)
+
+    wait_for("second.set")
+    assert states() == {"first.set": ("running", None),
+                        "second.set": ("failed", "disk full")}  # fmt: skip
+    release.set()
+    wait_for("first.set")
+    assert states()["first.set"] == ("done", None)
+    assert first.exists() and not any(p.exists() for p in spool_paths(first))
+    # a failed recovery keeps its spool and is offered again
+    assert [r["path"] for r in client.call("unfinished_recordings")] == [
+        str(second.resolve())]  # fmt: skip
