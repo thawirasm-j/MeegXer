@@ -659,6 +659,10 @@ class PipelineDoc:
                 entry["recording"] = copy.deepcopy(strip.recording)
             if strip.input and strip.input in self.input_choices(strip):
                 entry["input"] = strip.input
+            elif ":" in (resolved := self.input_of(strip) or ""):
+                # a rail output (an epochs rail): the core's default takes only
+                # a strip's main output, so the choice shown must be written
+                entry["input"] = resolved
             nodes.append(entry)
             if not taps:
                 continue

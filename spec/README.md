@@ -32,10 +32,12 @@ define it.
     session file, the unit of reproducibility: a pipeline plus node versions and
     provenance (external plugins: image, image ID, registry digests), fitted
     models as readable JSON, input/output file hashes and the environment.
-  - `bids-derivatives.md` (0.2.10): the BIDS-derivatives layout MeegXer writes
-    (`meegxer.core.bids_writer`, `meegxer.core.bids_features`): `desc-` outputs
-    with sidecars, `dataset_description.json` with `GeneratedBy`, and the run's
-    session file next to each recording.
+  - `bids-derivatives.md` (0.2.11): the BIDS-derivatives layout MeegXer writes
+    (`meegxer.core.bids_writer`, `meegxer.core.bids_features`,
+    `meegxer.core.bids_epochs`): `desc-` outputs with sidecars,
+    `dataset_description.json` with `GeneratedBy`, and the run's session file
+    next to each recording. 0.2.11: epochs (`_epo.fif`) and their ERPs
+    (`_ave.fif`).
   - 0.2.20: a string parameter may say it is a path: `path` is `file` (a file
     to read), `folder` or `save` (a file to write), with optional `extensions`
     (`[".set"]`) for the dialog's filter. Hosts offer a Browse button with the

@@ -16,6 +16,8 @@ TITLES = {
     "meegxer.core.feature_probe": "Features tap",
     "meegxer.core.bids_writer": "BIDS dataset",
     "meegxer.core.bids_features": "BIDS features table",
+    "meegxer.core.epochs_writer": "Epochs and ERPs file",
+    "meegxer.core.bids_epochs": "BIDS epochs and ERPs",
     "meegxer.nodes.notch": "Notch",
     "meegxer.nodes.notch_zerophase": "Notch (zero-phase)",
     "meegxer.nodes.rereference": "Re-reference",

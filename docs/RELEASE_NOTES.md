@@ -7,7 +7,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
-Nothing yet.
+- **Epochs and ERPs into files** (M10.2, M10.3): an *Epochs and ERPs file*
+  strip writes the epochs of the nearest epochs rail as `-epo.fif` (MNE) or an
+  epoched EEGLAB `.set`, and their average per label (the ERPs) as `-ave.fif`.
+  A *BIDS epochs and ERPs* strip writes them into a BIDS derivatives dataset
+  (`_epo.fif`, `_ave.fif`, `_epo.json`, listed in `.bidsignore`). After a
+  Review epochs strip they hold the kept epochs only.
+- **Fix:** a strip reading a rail (e.g. a writer after an Epochs strip) lost
+  that choice when the GUI saved the pipeline.
 
 ## 0.3.1b4 (2026-10-30)
 
