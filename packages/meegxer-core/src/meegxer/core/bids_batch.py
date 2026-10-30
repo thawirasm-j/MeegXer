@@ -118,11 +118,19 @@ class Outcome:
 
 
 def run_recording(
-    document: dict[str, Any], params: dict[str, str], options: RunOptions
+    document: dict[str, Any],
+    params: dict[str, str],
+    options: RunOptions,
+    stop: Callable[[], bool] | None = None,
 ) -> Outcome:
     """One recording of a dataset run, headless (a review strip without saved
-    marks stops it: ``unreviewed``). Never raises: a failure is an outcome."""
-    from meegxer.core.batch import BatchScheduler, offline_input_fingerprints
+    marks stops it: ``unreviewed``). A failure is an outcome; only ``stop``
+    turning true raises (``RunStopped``)."""
+    from meegxer.core.batch import (
+        BatchScheduler,
+        RunStopped,
+        offline_input_fingerprints,
+    )
     from meegxer.core.cache import DirectoryCache
     from meegxer.core.registry import Registry
     from meegxer.core.review import ReviewNeeded
@@ -144,7 +152,11 @@ def run_recording(
             return Outcome(label, "skipped", root=root)
         adopt_models(loaded, offline_input_fingerprints(graph))
         cache = DirectoryCache(options.cache_dir) if options.cache_dir else None
-        result = BatchScheduler(block_size=options.block_size, cache=cache).run(graph)
+        scheduler = BatchScheduler(block_size=options.block_size, cache=cache,
+                                   stop=stop)  # fmt: skip
+        result = scheduler.run(graph)
+    except RunStopped:
+        raise
     except ReviewNeeded as exc:  # stopped at the strip; the others go on
         return Outcome(label, "unreviewed", str(exc), root=root)
     except Exception as exc:  # one bad recording does not stop the others
@@ -174,16 +186,26 @@ def run_dataset(
     jobs: int = 1,
     on_note: Callable[[int, str], None] = lambda i, text: None,
     on_outcome: Callable[[int, Outcome], None] = lambda i, outcome: None,
+    stop: Callable[[], bool] | None = None,
 ) -> list[Outcome]:
     """Every recording, in ``jobs`` worker processes (1: here, one after
     another; 0: one per CPU), each a fresh graph. A sample subject is
     downloaded here first, one at a time, while the workers run the others.
     ``on_note``/``on_outcome`` get the recording's number (from 1). With
-    ``options.report``, the dataset's QC summary is written at the end."""
+    ``options.report``, the dataset's QC summary is written at the end.
+    ``stop`` turning true ends the run early: no recording is started after
+    it, the workers are stopped (their recordings are redone next time: they
+    have no session file), and the outcomes so far are returned."""
     import multiprocessing
     import os
-    from concurrent.futures import Future, ProcessPoolExecutor, as_completed
+    from concurrent.futures import (
+        FIRST_COMPLETED,
+        Future,
+        ProcessPoolExecutor,
+        wait,
+    )
 
+    from meegxer.core.batch import RunStopped
     from meegxer.core.samples import ensure_recording, needs_fetch
 
     jobs = jobs or os.cpu_count() or 1
@@ -204,11 +226,19 @@ def run_dataset(
             return False
         return True
 
+    def stopping() -> bool:
+        return stop is not None and stop()
+
     numbered = list(enumerate(recordings, 1))
     if jobs <= 1 or len(recordings) <= 1:
         for i, params in numbered:
+            if stopping():
+                break
             if fetch(i, params):
-                done(i, run_recording(document, params, options))
+                try:
+                    done(i, run_recording(document, params, options, stop))
+                except RunStopped:
+                    break
     else:
         # spawn, not fork: the same on every platform, and safe with threads
         context = multiprocessing.get_context("spawn")
@@ -224,13 +254,24 @@ def run_dataset(
                     done(i, Outcome(label, "failed", f"worker stopped: {exc}"))
 
             for i, params in numbered:
+                if stopping():
+                    break
                 if fetch(i, params):
                     future = pool.submit(run_recording, document, params, options)
                     running[future] = (i, recording_label(params))
                 for future in [f for f in running if f.done()]:
                     collect(future)
-            for future in as_completed(list(running)):
-                collect(future)
+            while running and not stopping():
+                finished, _ = wait(list(running), timeout=0.2,
+                                   return_when=FIRST_COMPLETED)  # fmt: skip
+                for future in finished:
+                    collect(future)
+            if running:  # stopped: end the recordings still running now
+                for future in running:
+                    future.cancel()
+                # the executor has no public way to end a running task
+                for proc in list(getattr(pool, "_processes", {}).values()):
+                    proc.terminate()
     ordered = [outcomes[i] for i in sorted(outcomes)]
     if options.report:
         write_summaries(ordered)

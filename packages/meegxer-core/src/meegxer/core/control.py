@@ -188,6 +188,7 @@ class Daemon:
             "submit_review": self.submit_review,
             "offline_review_epochs": self.offline_review_epochs,
             "cancel_review": self.cancel_review,
+            "stop_offline": self.stop_offline,
             "unfinished_recordings": self.unfinished_recordings,
             "recover_recording": self.recover_recording,
             "recoveries": self.recoveries,
@@ -610,6 +611,15 @@ class Daemon:
             raise RuntimeError("no offline run")
         self._offline.cancel_review()
         self._offline.join(5)
+        return self._offline.status()
+
+    def stop_offline(self) -> dict[str, Any]:
+        """End the offline run: the recording being run stops before its next
+        strip, unwritten; no other recording starts. Returns at once
+        (``stopping``); the state turns ``stopped`` when the strip is done."""
+        if self._offline is None:
+            raise RuntimeError("no offline run")
+        self._offline.stop()
         return self._offline.status()
 
     def offline_window(
