@@ -16,6 +16,7 @@ same density units).
 
 from __future__ import annotations
 
+import functools
 from abc import abstractmethod
 from typing import Any, ClassVar
 
@@ -24,7 +25,7 @@ from scipy import signal as sps
 
 from meegxer.core.block import Block, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest
-from meegxer.core.node import Params, Processor, TransformResult
+from meegxer.core.node import Mode, Params, Processor, TransformResult
 from meegxer.core.serialization import State
 from meegxer.nodes.references import credits
 
@@ -404,89 +405,160 @@ def _measure(ant: Any, name: str, x: np.ndarray, sfreq: float) -> float:
     return float(ant.lziv_complexity(binary, normalize=True))
 
 
+@functools.lru_cache(maxsize=32)
+def hilbert_fir(delay: int, low: float, sfreq: float) -> np.ndarray:
+    """A type III FIR Hilbert transformer of ``2 * delay + 1`` taps passing
+    ``low`` to Nyquist minus ``low`` (Parks-McClellan, ``scipy.signal.remez``)."""
+    nyquist = sfreq / 2
+    if not 0 < low < nyquist / 2:
+        raise ValueError(f"low must lie between 0 and a quarter of the sampling "
+                         f"rate ({nyquist / 2:g} Hz)")  # fmt: skip
+    taps = sps.remez(2 * delay + 1, [low, nyquist - low], [1.0], type="hilbert",
+                     fs=sfreq, maxiter=200)  # fmt: skip
+    taps.setflags(write=False)  # shared by every caller
+    return np.asarray(taps)
+
+
 class HilbertEnvelope(Processor):
     """Amplitude envelope |x + i H(x)| at the full sample rate (Signal out).
 
-    The analytic signal is computed piecewise: every ``hop`` samples, over the hop
-    plus ``lookahead`` seconds on either side (the stream's ends mirrored), keeping
-    the hop. So the same code runs live and offline, its output lags the input by
-    the look-ahead (output carries its own sample index, rule 8), and it matches a
-    whole-recording Hilbert transform closely for band-limited input whose period
-    is short against the look-ahead (put a band-pass before this strip).
+    Live (and offline with ``method`` ``fir``): a Parks-McClellan FIR Hilbert
+    transformer (McClellan, Parks & Rabiner 1973) with carried state, exact
+    block by block. Its output lags the input by the transformer's delay
+    (``lookahead``, half its length); the output carries its own sample index
+    (rule 8), and the first ``lookahead`` of the stream sees zeros before it.
+    It passes ``low`` to Nyquist minus ``low``: put a band-pass before it.
+    Offline with ``method`` ``auto``: the analytic signal over the whole
+    recording (``HilbertEnvelopeAnalytic``).
     """
 
     manifest: ClassVar[Manifest] = Manifest.from_dict(
         {
             "spec_version": "0.2.0",
             "name": "meegxer.nodes.hilbert_envelope",
-            "version": "0.1.0",
+            "version": "0.2.0",
             "type": "stream",
-            "description": "Amplitude envelope (Hilbert), delayed by the look-ahead.",
+            "description": "Amplitude envelope (Hilbert): an FIR Hilbert "
+                           "transformer live, the analytic signal of the whole "
+                           "recording offline (method auto).",
             "inputs": [{"name": "in", "type": "signal"}],
             "outputs": [{"name": "out", "type": "signal"}],
             "params": [
                 {"name": "lookahead", "type": "float", "default": 0.5, "min": 0.01,
                  "unit": "s", "primary": True,
-                 "description": "Context on each side; also the output delay"},
+                 "description": "Delay of the FIR transformer (half its length); "
+                                "longer reaches lower frequencies"},
+                {"name": "low", "type": "float", "default": 2.0, "min": 0.01,
+                 "unit": "Hz",
+                 "description": "Lowest frequency the FIR transformer passes (and "
+                                "the same below Nyquist)"},
+                {"name": "method", "type": "enum", "default": "auto",
+                 "choices": ["auto", "fir", "analytic"],
+                 "description": "auto: FIR transformer live, analytic signal of "
+                                "the whole recording offline; analytic: offline "
+                                "only"},
             ],
             "availability": "both",
             **credits("meegxer.nodes.hilbert_envelope"),
         }
     )  # fmt: skip
 
+    def for_mode(self, params: Params, mode: Mode) -> Processor:
+        method = params["method"]
+        if mode == "online":
+            if method == "analytic":
+                raise ValueError("the analytic signal needs the whole recording; "
+                                 "use method auto or fir live")  # fmt: skip
+            return self
+        return self if method == "fir" else HilbertEnvelopeAnalytic()
+
     @staticmethod
-    def _sizes(params: Params, sfreq: float) -> int:
-        return max(1, round(float(params["lookahead"]) * sfreq))
+    def _taps(params: Params, sfreq: float) -> tuple[int, np.ndarray]:
+        delay = max(1, round(float(params["lookahead"]) * sfreq))
+        return delay, hilbert_fir(delay, float(params["low"]), float(sfreq))
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
-        look = self._sizes(params, block.info.sfreq)
-        if state is None:
-            state = {"buffer": np.zeros((block.info.n_channels, 0)), "padded": False,
-                     "next": block.sample_index, "start": block.sample_index,
+        delay, taps = self._taps(params, block.info.sfreq)
+        n_ch = block.info.n_channels
+        if state is None:  # zeros before the stream's first sample
+            state = {"zi": np.zeros((n_ch, taps.size - 1)),
+                     "tail": np.zeros((n_ch, delay)), "start": block.sample_index,
+                     "seen": 0,
                      "t_ref": block.timestamp, "i_ref": block.sample_index}  # fmt: skip
-        buffer = np.concatenate([np.asarray(state["buffer"]), block.data], axis=1)
-        padded = bool(state["padded"])
-        nxt = int(state["next"])  # type: ignore[arg-type]
-        if not padded and buffer.shape[1] > look:  # mirror the stream's start
-            buffer = np.concatenate([buffer[:, look:0:-1], buffer], axis=1)
-            padded = True
-        hops = []
-        # buffer column 0 is sample nxt - look once padded
-        while padded and buffer.shape[1] >= 3 * look:
-            segment = buffer[:, : 3 * look]
-            hops.append(np.abs(sps.hilbert(segment, axis=1))[:, look : 2 * look])
-            buffer = buffer[:, look:]
-        out = self._block(hops, nxt, look, state, block.info)
-        nxt += sum(h.shape[1] for h in hops)
-        new_state: State = {**state, "buffer": buffer, "padded": padded, "next": nxt}
+        out, new_state = self._run(block.data, block.sample_index, delay, taps,
+                                   state, block.info)  # fmt: skip
         return TransformResult(out, new_state)
 
     def flush(
         self, info: SignalInfo, model: State, state: State | None, params: Params
     ) -> TransformResult | None:
+        """The last ``lookahead`` of the stream: zeros fed in after its end."""
         if state is None:
             return None
-        look = self._sizes(params, info.sfreq)
-        buffer = np.asarray(state["buffer"])
-        nxt = int(state["next"])  # type: ignore[arg-type]
-        if bool(state["padded"]):  # mirror the end, keep what follows the context
-            tail = buffer[:, -2 : -look - 2 : -1]
-            env = np.abs(sps.hilbert(np.concatenate([buffer, tail], axis=1), axis=1))
-            hops = [env[:, look : env.shape[1] - tail.shape[1]]]
-        else:  # shorter than the look-ahead: one transform over all of it
-            hops = [np.abs(sps.hilbert(buffer, axis=1))] if buffer.shape[1] else []
-        if not hops or hops[0].shape[1] == 0:
-            return None
-        out = self._block(hops, nxt, look, state, info)
-        return TransformResult(out, {**state, "buffer": buffer[:, :0],
-                                     "next": nxt + out.n_samples})  # fmt: skip
+        delay, taps = self._taps(params, info.sfreq)
+        n_ch = info.n_channels
+        nxt = int(state["start"]) + int(state["seen"])  # type: ignore[arg-type]
+        out, new_state = self._run(np.zeros((n_ch, delay)), nxt, delay, taps, state,
+                                   info)  # fmt: skip
+        return TransformResult(out, new_state) if out.n_samples else None
 
     @staticmethod
-    def _block(
-        hops: list[np.ndarray], nxt: int, look: int, state: State, info: SignalInfo
-    ) -> Block:
-        data = np.concatenate(hops, axis=1) if hops else np.zeros((info.n_channels, 0))
+    def _run(
+        x: np.ndarray,
+        first: int,
+        delay: int,
+        taps: np.ndarray,
+        state: State,
+        info: SignalInfo,
+    ) -> tuple[Block, State]:
+        """The envelope of input samples ``first...``: the transformer's output
+        for each, paired with the input ``delay`` samples before it."""
+        start = int(state["start"])  # type: ignore[arg-type]
         t_ref, i_ref = float(state["t_ref"]), int(state["i_ref"])  # type: ignore[arg-type]
-        return Block(data, info, nxt, t_ref + (nxt - i_ref) / info.sfreq)
+        if not x.shape[1]:  # an empty block (from a delaying node upstream)
+            at = max(first - delay, start)
+            return Block(x, info, at, t_ref + (at - i_ref) / info.sfreq), state
+        imag, zi = sps.lfilter(taps, [1.0], x, axis=1, zi=np.asarray(state["zi"]))
+        real = np.concatenate([np.asarray(state["tail"]), x], axis=1)
+        env = np.hypot(real[:, : x.shape[1]], imag)
+        index = first - delay  # the input sample env[:, 0] belongs to
+        skip = min(max(start - index, 0), x.shape[1])  # before the stream's start
+        at = max(index + skip, start)  # all before the start: an empty block there
+        out = Block(env[:, skip:], info, at, t_ref + (at - i_ref) / info.sfreq)
+        seen = int(state["seen"]) + x.shape[1]  # type: ignore[arg-type]
+        new_state: State = {**state, "zi": zi, "tail": real[:, real.shape[1] - delay :],
+                            "seen": seen}  # fmt: skip
+        return out, new_state
+
+
+class HilbertEnvelopeAnalytic(Processor):
+    """Envelope from the analytic signal of the whole recording (offline only):
+    ``abs(scipy.signal.hilbert(x))``, the FFT method (Marple 1999), as MATLAB's
+    and Octave's ``hilbert``. No delay; the recording's ends have the
+    transform's own edge effects."""
+
+    manifest: ClassVar[Manifest] = Manifest.from_dict(
+        {
+            "spec_version": "0.2.0",
+            "name": "meegxer.nodes.hilbert_envelope_analytic",
+            "version": "0.1.0",
+            "type": "stream",
+            "description": "Amplitude envelope from the analytic signal of the "
+                           "whole recording; offline only.",
+            "inputs": [{"name": "in", "type": "signal"}],
+            "outputs": [{"name": "out", "type": "signal"}],
+            "params": [],
+            "availability": "offline",
+            **credits("meegxer.nodes.hilbert_envelope_analytic"),
+        }
+    )  # fmt: skip
+
+    def transform(
+        self, block: Block, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        env = np.abs(sps.hilbert(block.data, axis=1)) if block.n_samples else block.data
+        return TransformResult(
+            Block(env, block.info, block.sample_index, block.timestamp), {}
+        )

@@ -13,6 +13,12 @@ suggestions and a Reject segments strip can cut the ``BAD_…`` spans.
 All three run offline, on the whole recording (each piece on its own after a
 cut). A piece of one sample gives nothing, nor does one shorter than 10 s
 for blinks (MNE's EOG filter is that long).
+
+The methods are MNE's. What this module adds on top are MeegXer settings, not
+part of the published methods, and are documented as such: a shortest span of
+its own for flat signal (MNE takes one for both limits, so MNE is called once
+per limit), a span either side of each blink's peak (MNE gives the peak only),
+and skipping pieces shorter than MNE's 10 s EOG filter.
 """
 
 from __future__ import annotations
@@ -85,7 +91,8 @@ class AmplitudeDetector(Processor):
                             "(0: off)"},
             {"name": "flat_duration", "type": "float", "default": 0.1,
              "min": 0.0, "unit": "s",
-             "description": "Shortest flat span counted"},
+             "description": "Shortest flat span counted (a MeegXer setting: "
+                            "MNE takes one shortest span for both limits)"},
             {"name": "bad_percent", "type": "float", "default": 5.0, "min": 0.0,
              "max": 100.0, "unit": "%",
              "description": "A channel past a limit for more than this share "
@@ -228,7 +235,8 @@ class BlinkDetector(Processor):
             {"name": "half_width", "type": "float", "default": 0.25, "min": 0.0,
              "max": 5.0, "unit": "s",
              "description": "How far each span reaches either side of the "
-                            "blink's peak"},
+                            "blink's peak (a MeegXer setting: MNE gives the "
+                            "peak only)"},
             {"name": "blink_threshold", "type": "float", "default": 0.0, "min": 0.0,
              "unit": "µV", "advanced": True,
              "description": "Peak amplitude of a blink on the filtered EOG "

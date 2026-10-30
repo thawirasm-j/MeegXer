@@ -148,6 +148,14 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   state what the cause was and why the fix works. No unsolicited refactors.
 - For architecture or method decisions: flag alternatives briefly and ask before
   committing to one.
+- **Published methods only, computed by libraries.** Every strip implements a
+  published method (cited in its manifest `references`), and its math calls an
+  established library (MNE, SciPy, mne-connectivity, specparam, antropy, …)
+  wherever one exists. Hand-written math only when no library function fits
+  (e.g. carrying state between live blocks), as a direct port of a cited
+  algorithm, tested against the library or a reference. A setting MeegXer adds
+  on top of a published method is said to be MeegXer's in the strip's help.
+  Detectors wrap published methods only; anything else is a plugin.
 - Ask the maintainer's decisions with the multiple-choice question prompt (the
   options, the recommended one first, each with its trade-off), not in chat text.
 - Ask before changing anything listed under "Architecture rules".

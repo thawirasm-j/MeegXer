@@ -296,7 +296,9 @@ relative, optional dB), connectivity (mne-connectivity: coh, imcoh, PLV, wPLI in
 band, the window cut into 1 s pieces), complexity (antropy: permutation, sample and
 spectral entropy, Hjorth mobility and complexity, Lempel-Ziv), and the Hilbert
 envelope as a Signal strip computed piecewise with look-ahead (output delayed by it,
-same code live and offline). Acceptance test 6: PSD equals Octave's pwelch with
+same code live and offline; replaced on 2026-10-30 by published methods only: a
+Parks-McClellan FIR Hilbert transformer live, the whole-recording analytic signal
+offline). Acceptance test 6: PSD equals Octave's pwelch with
 MATLAB's no-detrend setting to 3e-16 (`tests/data/m6_ref_features.npz`,
 `tools/make_m6_feature_references.py`); the envelope stays within 1 % of a
 whole-recording `hilbert` away from the recording's ends (median 0.03 %);

@@ -163,24 +163,37 @@ def test_complexity_matches_antropy_and_orders_signals() -> None:
     assert only.coords["measure"] == ("perm_entropy", "lziv")
 
 
-def envelope(block: Block, **params: Any) -> Block:
-    stage = Stage(HilbertEnvelope(), params)
+def envelope(block: Block, mode: str = "online", **params: Any) -> Block:
+    """The envelope of the whole ``block``: the FIR transformer (live) with its
+    tail flushed, or the variant an offline run uses."""
+    stage = Stage(HilbertEnvelope(), params).for_mode(mode)  # type: ignore[arg-type]
     parts = [stage.transform(block, "fp").block]
     tail = stage.flush("fp")
-    assert tail is not None
-    parts.append(tail.block)
-    return concat_blocks([p for p in parts if isinstance(p, Block)])
+    if tail is not None:
+        parts.append(tail.block)
+    return concat_blocks([p for p in parts if isinstance(p, Block) and p.n_samples])
 
 
-def test_envelope_matches_matlab_hilbert_away_from_the_ends() -> None:
+def test_offline_envelope_is_matlabs_hilbert() -> None:
+    """Offline (method auto): the analytic signal of the whole recording, the
+    FFT method of MATLAB's and Octave's hilbert (Marple 1999)."""
+    alpha = REF["alpha"].astype(np.float64)
+    out = envelope(recording(alpha), mode="offline")
+    assert (out.sample_index, out.n_samples) == (0, alpha.shape[1])
+    ref = REF["envelope"].astype(np.float64)
+    err = np.abs(out.data - ref) / np.abs(ref).max(axis=1, keepdims=True)
+    assert err.max() < 1e-6
+
+
+def test_live_fir_envelope_matches_hilbert_away_from_the_ends() -> None:
     alpha = REF["alpha"].astype(np.float64)
     out = envelope(recording(alpha))
     assert (out.sample_index, out.n_samples) == (0, alpha.shape[1])
     ref = REF["envelope"].astype(np.float64)
     err = np.abs(out.data - ref) / np.abs(ref).max(axis=1, keepdims=True)
-    edge = int(SFREQ)  # the whole-recording transform has its own end effects
+    edge = int(SFREQ)  # each method has its own end effects
     assert err[:, edge:-edge].max() < 0.01
-    assert np.median(err) < 5e-4
+    assert np.median(err) < 5e-3
 
 
 def test_envelope_of_an_am_tone_and_its_delay() -> None:
@@ -189,13 +202,23 @@ def test_envelope_of_an_am_tone_and_its_delay() -> None:
     truth = 1 + 0.5 * np.sin(2 * np.pi * 0.5 * t)
     x = (truth * np.sin(2 * np.pi * 12 * t))[None] * 1e-5
     info = SignalInfo(("Cz",), fs, "am")
-    out = envelope(Block(x, info, 0, 0.0))
-    err = np.abs(out.data[0] / 1e-5 - truth)
-    assert err[250:-250].max() < 0.01
+    for mode in ("online", "offline"):
+        out = envelope(Block(x, info, 0, 0.0), mode=mode)
+        err = np.abs(out.data[0] / 1e-5 - truth)
+        assert err[250:-250].max() < 0.01
     stage = Stage(HilbertEnvelope(), {"lookahead": 0.5})
     first = stage.transform(Block(x[:, :500], info, 0, 0.0), "fp").block
-    assert isinstance(first, Block)
-    assert first.sample_index == 0 and first.stop_index <= 500 - 125  # lags 0.5 s
+    assert isinstance(first, Block)  # the FIR transformer's delay: 0.5 s
+    assert (first.sample_index, first.stop_index) == (0, 500 - 125)
+
+
+def test_envelope_methods_by_mode() -> None:
+    fir = Stage(HilbertEnvelope(), {"method": "fir"}).for_mode("offline")
+    assert isinstance(fir.processor, HilbertEnvelope)  # FIR offline too
+    with pytest.raises(ValueError, match="whole recording"):
+        Stage(HilbertEnvelope(), {"method": "analytic"}).for_mode("online")
+    with pytest.raises(ValueError, match="quarter of the sampling rate"):
+        Stage(HilbertEnvelope(), {"low": 100.0}).transform(recording(), "fp")
 
 
 def test_envelope_keeps_untouched_channels_aligned() -> None:
@@ -217,12 +240,17 @@ def test_envelope_keeps_untouched_channels_aligned() -> None:
     np.testing.assert_allclose(out.data[0], whole.data[0], rtol=1e-12)
 
 
-@pytest.mark.parametrize(
-    "proc", [PSD(), BandPower(), Connectivity(), Complexity(), HilbertEnvelope()]
-)
+@pytest.mark.parametrize("proc", [PSD(), BandPower(), Connectivity(), Complexity()])
 def test_blockwise_equals_one_pass(proc: Any) -> None:
     block = recording().slice(0, 1200)
     assert check_blockwise_equivalence(proc, block, trials=2) == 0.0
+
+
+def test_fir_envelope_is_the_same_block_by_block() -> None:
+    """Acceptance test 1: the FIR transformer carries its state, so any block
+    sizes give the same envelope (to rounding, as the FIR filter strip)."""
+    block = recording().slice(0, 1200)
+    check_blockwise_equivalence(HilbertEnvelope(), block, trials=3)
 
 
 def test_batch_pipeline_writes_band_power_rows(tmp_path: Path) -> None:

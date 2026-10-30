@@ -56,6 +56,7 @@ dependencies = [
 "meegxer.nodes.connectivity" = "meegxer.nodes.features:Connectivity"
 "meegxer.nodes.complexity" = "meegxer.nodes.features:Complexity"
 "meegxer.nodes.hilbert_envelope" = "meegxer.nodes.features:HilbertEnvelope"
+"meegxer.nodes.hilbert_envelope_analytic" = "meegxer.nodes.features:HilbertEnvelopeAnalytic"
 "meegxer.nodes.specparam" = "meegxer.nodes.specparam_node:SpecParam"
 "meegxer.nodes.morlet" = "meegxer.nodes.tfr:MorletPower"
 "meegxer.nodes.ssvep_cca" = "meegxer.nodes.ssvep:SSVEPCCA"

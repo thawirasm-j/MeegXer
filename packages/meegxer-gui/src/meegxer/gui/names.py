@@ -32,6 +32,7 @@ TITLES = {
     "meegxer.nodes.connectivity": "Connectivity",
     "meegxer.nodes.complexity": "Complexity",
     "meegxer.nodes.hilbert_envelope": "Amplitude envelope",
+    "meegxer.nodes.hilbert_envelope_analytic": "Amplitude envelope (analytic)",
     "meegxer.nodes.fir_filter": "FIR filter",
     "meegxer.nodes.fir_filter_zerophase": "FIR filter (zero-phase)",
     "meegxer.nodes.interpolate_bads": "Interpolate bad channels",

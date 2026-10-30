@@ -7,6 +7,23 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **The amplitude envelope uses published methods only.** It used a scheme of
+  its own (the Hilbert transform over overlapping pieces, an approximation).
+  Now:
+  - **live:** a Parks-McClellan FIR Hilbert transformer (McClellan, Parks &
+    Rabiner 1973; `scipy.signal.remez`), exact block by block, delayed by
+    `lookahead` (half its length) and passing `low` (default 2 Hz) to Nyquist
+    minus `low`;
+  - **offline** (`method` auto): the analytic signal of the whole recording
+    (`scipy.signal.hilbert`, Marple 1999), equal to MATLAB's and Octave's
+    `hilbert` (to 1e-6), with no delay. `method` fir uses the FIR transformer
+    offline too.
+  - Envelopes differ slightly from before (strip version 0.2.0, so cached
+    outputs are not reused).
+- **Detectors say which settings are MeegXer's:** the flat span length, the
+  blink span and the 10 s minimum for blinks are MeegXer settings on top of
+  MNE's methods, now said so in each strip's help.
+
 - **Fixed: the chain shows the strips that write events.** The Events rail
   above the chain was drawn only when the recording had events, and only from
   the input: a Review strip, a detector or Reject segments never showed on
