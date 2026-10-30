@@ -64,6 +64,24 @@ def pretty_unit(unit: str) -> str:
     return unit.replace("^2", "²").replace("^3", "³")
 
 
+# volt-based units are shown in microvolts, as in the signal and spectrum views
+# (pyqtgraph cannot SI-prefix a squared unit: it would show "V² (x1e-12)")
+MICRO = {"V": ("µV", 1e6), "V^2": ("µV^2", 1e12), "V^2/Hz": ("µV^2/Hz", 1e12)}
+
+
+def _slice_unit(series: FeatureSeries, chosen: dict[str, int]) -> str:
+    unit = unit_at(series.unit, series.unit_dim, series.units, chosen)
+    if series.unit_dim and series.unit_dim not in chosen and len(set(series.units)) > 1:
+        unit = ""  # the curves differ in unit
+    return unit
+
+
+def unit_scale(series: FeatureSeries, chosen: dict[str, int]) -> float:
+    """What the shown slice's values are multiplied by for display (1e6 for
+    volts shown as µV, 1e12 for V² as µV²; else 1)."""
+    return MICRO.get(_slice_unit(series, chosen), ("", 1.0))[1]
+
+
 def hover_unit(series: FeatureSeries, chosen: dict[str, int]) -> str:
     """The unit of a hovered value (as on the axis; "" when none or mixed)."""
     label = value_label(series, chosen)
@@ -75,9 +93,8 @@ def value_label(
 ) -> str:
     """The value axis label for the shown slice ("value" without a unit; dB with
     its reference when the view converted a power to dB)."""
-    unit = unit_at(series.unit, series.unit_dim, series.units, chosen)
-    if series.unit_dim and series.unit_dim not in chosen and len(set(series.units)) > 1:
-        unit = ""  # the curves differ in unit
+    unit = _slice_unit(series, chosen)
+    unit = MICRO.get(unit, (unit, 1.0))[0]
     if spectrum_db:
         return f"dB (re 1 {pretty_unit(unit)})" if unit not in ("", "1") else "dB"
     return f"value ({pretty_unit(unit)})" if unit not in ("", "1") else "value"
@@ -378,7 +395,7 @@ class FeatureView(QWidget):
         chans = self.channels.selected(labels)
         styles = self._styles(labels, sdim == "channel")
         chosen = self._set_slices(series)
-        data = pick(series.values, series.dims, chosen)
+        data = pick(series.values, series.dims, chosen) * unit_scale(series, chosen)
         links = self.connectivity(series) and "target" in chosen
         self.head.setVisible(links)
         plot = self.plot.getPlotItem()

@@ -72,6 +72,22 @@ def _led(color: str, size: int = 10) -> QLabel:
     return led
 
 
+class ElidedLabel(QLabel):
+    """One line of text that ends in "…" when the label is narrower than it,
+    at whatever width the layout gives it (fonts differ between platforms, so
+    a width worked out beforehand would clip on some)."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.full_text = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        self.setText(self.fontMetrics().elidedText(
+            self.full_text, Qt.TextElideMode.ElideRight, self.width()))  # fmt: skip
+
+
 class StripWidget(QFrame):
     """One node: title, status LED, the parameters chosen for the strip."""
 
@@ -117,7 +133,7 @@ class StripWidget(QFrame):
         text = GROUP_LABELS[group]
         if doc.is_custom(strip):  # "● CUSTOM PREPROCESSING"
             text = f"{text[:2]}CUSTOM {text[2:]}"
-        label = QLabel(text)
+        label = ElidedLabel(text)  # "● CUSTOM PREPROCESSING" is wide on Windows
         label.setObjectName("group")
         label.setStyleSheet(
             f"color: {band}; font-size: 7pt; font-weight: 700; letter-spacing: 1px;"
@@ -129,13 +145,8 @@ class StripWidget(QFrame):
         full = (
             "Input" if manifest["role"] == "source" else title(strip.node, strip.params)
         )
-        name = QLabel()
+        name = ElidedLabel(full)  # in its own (bold) font, at the width it gets
         name.setObjectName("title")
-        name.setText(
-            name.fontMetrics().elidedText(
-                full, Qt.TextElideMode.ElideRight, STRIP_WIDTH - 60
-            )
-        )
         name.setToolTip(full)
         head.addWidget(name, 1)
         if manifest["role"] != "source":
@@ -150,7 +161,7 @@ class StripWidget(QFrame):
         lay.addLayout(head)
 
         if advanced:  # the id is for pipeline files and the command line
-            sub = QLabel(strip.id)
+            sub = ElidedLabel(strip.id)
             sub.setObjectName("muted")
             lay.addWidget(sub)
         note = problem or badge(strip.node, strip.params, doc.mode)
@@ -159,30 +170,39 @@ class StripWidget(QFrame):
             note = f"{note} · {types}" if note else types
         if note:
             chip = QLabel(note)
+            chip.setWordWrap(True)  # a problem is read in full, on two lines if need be
             colour = theme.incompatible_border if problem else theme.text_muted
             chip.setStyleSheet(f"color: {colour}; font-size: 8pt; font-weight: 600;")
             lay.addWidget(chip)
         lay.addSpacing(4)
+        width = STRIP_WIDTH - 24  # inside the margins (10 + 10) and the border
+        gap = 4  # between a name and its value
         for pname in doc.shown_params(strip, advanced):
-            row = QHBoxLayout()
             pretty = param_label(pname)
             text = doc.format_param(strip, pname)
-            value = QLabel()
-            value.setText(
-                value.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, 88)
-            )
-            room = STRIP_WIDTH - 28 - value.sizeHint().width()
-            key = QLabel(
-                value.fontMetrics().elidedText(
-                    pretty, Qt.TextElideMode.ElideRight, max(room, 30)
-                )
-            )
+            key, value = QLabel(), QLabel()
             key.setObjectName("muted")
+            key.ensurePolished()  # measure both in the fonts they are drawn in
+            value.ensurePolished()
+            fm = value.fontMetrics()
+            needed = key.fontMetrics().horizontalAdvance(pretty) + gap
+            if needed + fm.horizontalAdvance(text) <= width:  # both on one line
+                key = ElidedLabel(pretty)  # a pixel short still shows "…"
+                key.setObjectName("muted")
+                value.setText(text)
+                row = QHBoxLayout()
+                row.setSpacing(gap)
+                row.addWidget(key, 1)
+                row.addWidget(value)
+                lay.addLayout(row)
+            else:  # the value on a line of its own, under its name
+                key, value = ElidedLabel(pretty), ElidedLabel(text)
+                key.setObjectName("muted")
+                value.setAlignment(Qt.AlignmentFlag.AlignRight)
+                lay.addWidget(key)
+                lay.addWidget(value)
             key.setToolTip(f"{pretty}: {text}")
             value.setToolTip(f"{pretty}: {text}")
-            row.addWidget(key, 1)
-            row.addWidget(value)
-            lay.addLayout(row)
         lay.addStretch(1)
         if manifest.get("requires_fit") and doc.mode == "live":
             calib = QPushButton("Calibrate")
@@ -191,6 +211,7 @@ class StripWidget(QFrame):
         elif manifest.get("requires_fit"):
             fit_note = QLabel("fits on the whole recording")
             fit_note.setObjectName("muted")
+            fit_note.setWordWrap(True)  # a strip is narrower than the note
             lay.addWidget(fit_note)
         if problem:
             self.setToolTip(

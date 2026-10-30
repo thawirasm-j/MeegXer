@@ -13,6 +13,7 @@ import contextlib
 import copy
 import math
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pyqtgraph as pg
@@ -37,6 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from meegxer.gui.colors import channel_style, wheel_positions
+from meegxer.gui.names import title
 from meegxer.gui.theme import Theme
 
 CHANNEL_TYPES = ("eeg", "eog", "emg", "ecg", "resp", "stim", "misc")
@@ -54,6 +56,20 @@ def _item(text: str, editable: bool = True) -> QTableWidgetItem:
 
 # inputs with a file to review at import (meegxer.core.import_review)
 REVIEWABLE = ("meegxer.core.file", "meegxer.core.bids")
+
+
+def source_name(entry: dict[str, Any]) -> str:
+    """What the window describes: the file's name, the BIDS recording, or the
+    input's name (a stream, the synthetic input)."""
+    params = entry.get("params", {})
+    if params.get("path"):
+        return Path(str(params["path"])).name
+    if entry.get("node") == "meegxer.core.bids":
+        parts = [f"{k}-{params[key]}" for k, key in
+                 (("sub", "subject"), ("ses", "session"), ("task", "task"),
+                  ("run", "run")) if params.get(key)]  # fmt: skip
+        return " ".join(parts) or "every subject (the first shown)"
+    return title(str(entry.get("node", "")), params)
 
 
 class RecordingWindow(QWidget):
@@ -250,7 +266,7 @@ class RecordingWindow(QWidget):
         n = len(current["channels"])
         dur = current.get("duration_s")
         self.summary.setText(
-            f"{entry['node']} · {n} channels · {current['sfreq']:g} Hz"
+            f"{source_name(entry)} · {n} channels · {current['sfreq']:g} Hz"
             + (f" · {dur:.1f} s" if dur is not None else " · live stream")
         )
         self._fill_channels()

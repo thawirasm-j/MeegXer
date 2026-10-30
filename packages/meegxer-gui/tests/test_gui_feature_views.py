@@ -281,7 +281,7 @@ def test_feature_view_labels_the_value_axis_with_the_unit(qapp: QApplication) ->
                         np.array([2.0]), np.full((1, 1, 2), 1e-12),
                         unit="V^2/Hz")  # fmt: skip
     view.refresh(psd, "PSD", 0.0, 60.0)
-    assert left.labelText == "dB (re 1 V²/Hz)"
+    assert left.labelText == "dB (re 1 µV²/Hz)"  # volts shown as microvolts
     in_db = FeatureSeries("tap_psd1", psd.dims, psd.coords, psd.t,
                           np.full((1, 1, 2), 3.0), unit="dB")  # fmt: skip
     view.refresh(in_db, "PSD", 0.0, 60.0)
@@ -322,7 +322,7 @@ def test_hovering_a_line_names_its_point_and_value(qapp: QApplication) -> None:
     view = FeatureView(load_theme("dark"))
     view.resize(800, 400)
     view.show()
-    values = np.array([[[1.0], [4.0]], [[2.0], [5.0]], [[3.0], [6.0]]])
+    values = np.array([[[1.0], [4.0]], [[2.0], [5.0]], [[3.0], [6.0]]]) * 1e-12
     series = FeatureSeries("tap_bp1", ("channel", "band"),
                            {"channel": ("Fz", "Cz"), "band": ("alpha",)},
                            np.array([1.0, 2.0, 3.0]), values, unit="V^2")  # fmt: skip
@@ -334,7 +334,7 @@ def test_hovering_a_line_names_its_point_and_value(qapp: QApplication) -> None:
     width = view.plot._curves[1].opts["pen"].widthF()
     view._mouse_moved(vb.mapViewToScene(QPointF(2.05, 5.05)))
     assert view.hovered == ("Cz", 2.0, 5.0)
-    assert view.hover_text() == "Cz · t = 2.00 s: 5 V²"
+    assert view.hover_text() == "Cz · t = 2.00 s: 5 µV²"  # V² shown as µV²
     assert view._marker.isVisible() and view._tag.isVisible()
     assert view.plot._curves[1].opts["pen"].widthF() > width  # the line in bold
 
@@ -346,13 +346,13 @@ def test_hovering_a_line_names_its_point_and_value(qapp: QApplication) -> None:
 
     psd = FeatureSeries("tap_psd1", ("channel", "frequency"),
                         {"channel": ("Fz",), "frequency": (1.0, 2.0, 3.0)},
-                        np.array([1.0]), np.full((1, 1, 3), 1e-12),
+                        np.array([1.0]), np.full((1, 1, 3), 1e-11),
                         unit="V^2/Hz")  # fmt: skip
     view.refresh(psd, "PSD", 0.0, 60.0)
-    vb.setRange(xRange=(0.0, 4.0), yRange=(-130.0, -110.0), padding=0)
+    vb.setRange(xRange=(0.0, 4.0), yRange=(0.0, 20.0), padding=0)
     qapp.processEvents()
-    view._mouse_moved(vb.mapViewToScene(QPointF(2.0, -120.0)))
-    assert view.hover_text() == "Fz · 2 Hz: -120 dB"
+    view._mouse_moved(vb.mapViewToScene(QPointF(2.0, 10.0)))
+    assert view.hover_text() == "Fz · 2 Hz: 10 dB"  # re 1 µV²/Hz
     dispose(qapp, view)
 
 

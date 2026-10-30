@@ -2,6 +2,7 @@
 delivering the click to the old strip widget: the old widgets must be deleted
 later, not on the spot."""
 
+import itertools
 import subprocess
 import time
 
@@ -189,3 +190,45 @@ def test_the_signal_is_grey_and_rail_ends_are_faint() -> None:
         assert signal_colour(theme) == theme.text_muted
         assert signal_colour(theme) != rail_colour(theme, "signal")
         assert _toward_text(rail_colour(theme, "features"), theme).alphaF() < 0.6
+
+
+def test_strip_text_fits_the_strip(qapp: QApplication) -> None:
+    """No text on a strip is clipped, whatever the platform's font: a long
+    title ends in "…" (measured in its own bold font), and a row whose name
+    and value do not both fit puts the value on a line of its own."""
+    from PySide6.QtWidgets import QLabel
+
+    from meegxer.core.control import manifest_to_dict
+    from meegxer.core.registry import Registry
+    from meegxer.gui.chain import StripWidget
+    from meegxer.gui.pipeline_doc import PipelineDoc
+    from meegxer.gui.theme import load_theme, stylesheet
+
+    registry = Registry.from_entry_points()
+    doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
+                       for n in registry.names()])  # fmt: skip
+    doc.set_source("meegxer.core.synthetic")
+    doc.insert(1, "meegxer.nodes.band_power")
+    doc.insert(2, "meegxer.nodes.csp")
+    doc.insert(3, "meegxer.nodes.ica")
+    doc.input_mode = "offline"  # the ICA strip's "fits on the whole recording"
+    theme = load_theme("dark")
+    try:
+        # larger text, as on Windows (wider fonts) or with Text size raised
+        for scale, strip, advanced in itertools.product((1.0, 1.6), doc.strips,
+                                                        (False, True)):  # fmt: skip
+            qapp.setStyleSheet(stylesheet(theme, scale))
+            card = StripWidget(doc, strip, theme, status="", advanced=advanced,
+                               selected=True)  # fmt: skip
+            card.show()
+            qapp.processEvents()
+            for label in card.findChildren(QLabel):
+                if not label.text() or label.wordWrap():
+                    continue
+                drawn = label.fontMetrics().horizontalAdvance(label.text())
+                assert drawn <= label.width(), (scale, strip.id, label.text())
+            card.close()
+            card.deleteLater()
+    finally:
+        qapp.setStyleSheet("")
+    qapp.processEvents()

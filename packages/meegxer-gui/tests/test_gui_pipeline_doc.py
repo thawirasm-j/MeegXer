@@ -392,3 +392,10 @@ def test_an_epochs_writer_saves_the_rail_it_reads(doc: PipelineDoc) -> None:
     assert saved[writer.id]["input"] == f"{epochs.id}:epochs"
     assert "input" not in saved[epochs.id]  # the chain's own default
     Graph.from_dict(doc.to_pipeline(), Registry.from_entry_points())  # it builds
+
+
+def test_a_file_parameter_shows_its_name(doc: PipelineDoc) -> None:
+    source = doc.set_source("meegxer.core.file", {"path": "C:\\data\\sub-01\\rec.set"})
+    assert doc.format_param(source, "path") == "rec.set"
+    source.params["path"] = ""
+    assert doc.format_param(source, "path") == "-"
