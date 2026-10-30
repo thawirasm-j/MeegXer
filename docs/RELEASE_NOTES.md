@@ -7,6 +7,29 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+Nothing yet.
+
+## 0.3.1b4 (not tagged yet: after the maintainer's test)
+
+The review track (`docs/REVIEW.md`, Design v2 steps 1 to 5): a person can
+review a recording at import or at any point of a pipeline, with a clinical
+display, take or refuse a detector's suggestions one by one, and review
+epochs with their ERP. Every review is saved per recording, with who reviewed
+and on what input, and its result travels as events to the strips after it
+and into the output files. Milestone status: `docs/ROADMAP.md` → *Status*.
+
+### Upgrading from 0.3.1b3
+
+- **A Review strip no longer cuts.** Add a *Reject segments* strip after it to
+  keep cutting the `BAD…` spans.
+- **A Review strip's `points` take their labels over:** strips after it see the
+  reviewer's verdicts instead of the events named. With *Decision* *Free* (the
+  default) every point opens as a mark, so one left alone is kept as before.
+- Control API 0.2.8 → 0.2.17 (`spec/control-api.md`): upgrade the GUI and
+  the daemon together (the `meegxer` bundle does).
+
+### What changed
+
 - **Rejected epochs reach the output files:** each epoch rejected in a
   *Review epochs* strip is now also a `rejected_epoch` event over its window,
   so `.set`, EDF and BIDS outputs record it. It is not cut out unless a Reject
@@ -130,6 +153,19 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   - Saving asks first if part of the recording was never shown. The spans
     looked at are kept with the marks and shown again next time (control API
     0.2.9).
+
+### Known limitations
+
+- **One reviewer per review:** a second reviewer, comparing and resolving
+  two reviews, and a review report come next (`docs/REVIEW.md` step 6).
+- **Epochs stay in the run:** epoch files (`-epo.fif`, an epoched `.set`) are
+  not written yet, and the ERP view is the epoch review window's only (no
+  live running average).
+- A strip that reads rails cannot fit on a stream cut by a Reject segments
+  strip (it says so), and strips after a cut are not cached.
+- A Features tap after a Resample strip counts its windows in the resampled
+  samples; the views do not map it yet.
+- The limitations of 0.3.1b2 below still hold.
 
 ## 0.3.1b3 (2026-10-20)
 

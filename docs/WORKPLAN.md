@@ -377,6 +377,7 @@ identical output.
 ## Beta to 1.0: M9–M12
 
 Full plan, decisions and item lists: `docs/ROADMAP.md`. One PR per item, by ID.
+Where each item stands: `docs/ROADMAP.md` → *Status* (M9 done; M10 under way).
 
 | Version | Milestone | Exit |
 |---|---|---|
