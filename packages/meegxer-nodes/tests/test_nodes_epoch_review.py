@@ -77,7 +77,7 @@ def test_reviewed_epochs_go_on_the_rail_and_the_verdicts_are_reused(
         ]
 
     graph = graph_of(tmp_path)
-    BatchScheduler(review=review, reviewer="E. Rater").run(graph)
+    result = BatchScheduler(review=review, reviewer="E. Rater").run(graph)
     got = tapped(graph)  # the second rejected, the first relabelled
     assert [(w.window, w.coords["epoch"]) for w in got] == [
         ((80, 151), ("go_slow",)), ((280, 351), ("go",))]  # fmt: skip
@@ -88,6 +88,11 @@ def test_reviewed_epochs_go_on_the_rail_and_the_verdicts_are_reused(
         ("stop", False, "stop"),
         ("go", True, "go"),
     ]
+    # the rejected epoch is on the Events rail too, for the file writers
+    (rejected,) = result.events["rev"]
+    assert (rejected.sample_index, rejected.label, rejected.duration) == (
+        180, "rejected_epoch", 71)  # fmt: skip
+    assert dict(rejected.payload) == {"label": "stop", "event": "stop"}
     header = (tmp_path / "epochs.tsv").read_text().splitlines()[0]
     assert header == "onset\tduration\ttrial_type\tevent\tepoch_status"
     session = build_session(graph)
@@ -161,3 +166,24 @@ def test_an_offline_run_pauses_for_an_epoch_review(tmp_path: Path) -> None:
         assert [v.keep for v in saved.epochs] == [True, False, True]
     finally:
         daemon.close()
+
+
+def test_rejected_epochs_reach_the_written_file(tmp_path: Path) -> None:
+    import mne
+
+    out = tmp_path / "out.set"
+    data = pipeline(tmp_path)
+    data["nodes"][-1] = {"id": "w", "node": "meegxer.core.set_writer",
+                         "params": {"path": str(out)}}  # fmt: skip
+    graph = Graph.from_dict(data, Registry.from_entry_points())
+
+    def review(req: ReviewRequest) -> list[EpochVerdict]:
+        second = req.epochs[1]
+        return [EpochVerdict(second.onset, second.duration, second.label, keep=False)]
+
+    BatchScheduler(review=review).run(graph)
+    raw = mne.io.read_raw_eeglab(out, verbose="error")
+    rejected = [(round(a["onset"], 2), round(a["duration"], 2))
+                for a in raw.annotations
+                if a["description"] == "rejected_epoch"]  # fmt: skip
+    assert rejected == [(1.8, 0.71)]

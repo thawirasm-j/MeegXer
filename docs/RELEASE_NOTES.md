@@ -7,6 +7,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Rejected epochs reach the output files:** each epoch rejected in a
+  *Review epochs* strip is now also a `rejected_epoch` event over its window,
+  so `.set`, EDF and BIDS outputs record it. It is not cut out unless a Reject
+  segments strip names `rejected_epoch`.
+
 - **Suggestions in the Review strip:** name a detector's labels in its
   *Suggestions to review* (`points`) and each one gets a verdict, yes, no or
   edited, kept with the strip that proposed it in the marks file (rejected

@@ -15,6 +15,11 @@ input they were made on. A batch run reuses them when the input (the signal and
 the epochs) is the same; otherwise the run asks for a review, offering the
 verdicts made before for the epochs at the same place (rule 7). Every epoch is
 reviewed: one the reviewer did not touch is kept as it was cut.
+
+Each rejected epoch also goes on the Events rail as a ``rejected_epoch`` span
+(its window; payload: the label given and the event it was cut around), so file
+writers record it. A Reject segments strip cuts it only if told to (its default
+word is ``BAD``).
 """
 
 from __future__ import annotations
@@ -27,7 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
-from meegxer.core.block import CHANNEL_TYPES, Block, FeatureBlock
+from meegxer.core.block import CHANNEL_TYPES, Block, Event, FeatureBlock
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, Processor, RailInput, TransformResult
 from meegxer.core.references import credits
@@ -36,6 +41,7 @@ from meegxer.core.serialization import State
 EPOCH_REVIEW_NODE = "meegxer.core.epoch_review"
 EPOCHS_RAIL = "epochs"
 GOOD, BAD = "good", "bad"
+REJECTED_EPOCH = "rejected_epoch"  # the event a rejected epoch puts on the rail
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,10 +87,11 @@ class EpochReview(Processor):
         {
             "spec_version": "0.2.20",
             "name": EPOCH_REVIEW_NODE,
-            "version": "0.1.0",
+            "version": "0.2.0",
             "type": "stream",
             "description": "Review epochs by hand: accept, reject or relabel "
-                           "each epoch of the Epochs strip before it.",
+                           "each epoch of the Epochs strip before it (rejected "
+                           "ones also go on the Events rail as rejected_epoch).",
             "availability": "offline",
             "inputs": [{"name": "in", "type": "signal"},
                        {"name": "epochs", "type": "features", "rail": EPOCHS_RAIL}],
@@ -129,7 +136,19 @@ class EpochReview(Processor):
         assert isinstance(epochs, tuple)
         windows = [w for w in epochs if isinstance(w, FeatureBlock)]
         kept = reviewed(windows, self.verdicts)
-        return TransformResult(block, {}, (), {"epochs": kept})
+        return TransformResult(block, {}, self.rejected_events(block),
+                               {"epochs": kept})  # fmt: skip
+
+    def rejected_events(self, block: Block) -> tuple[Event, ...]:
+        """A ``rejected_epoch`` span for each rejected epoch starting in
+        ``block`` (by the epoch's first sample)."""
+        lo, hi, sfreq = block.sample_index, block.stop_index, block.info.sfreq
+        return tuple(
+            Event(start, REJECTED_EPOCH, round(v.duration * sfreq),
+                  {"label": v.label, "event": v.event})
+            for start, v in sorted(self.verdicts.items())
+            if not v.keep and lo <= start < hi
+        )  # fmt: skip
 
 
 def epoch_label(window: FeatureBlock) -> str:
