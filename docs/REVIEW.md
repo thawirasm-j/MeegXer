@@ -5,7 +5,7 @@ a recording by hand: bad segments (`BAD_muscle`, `BAD_eyes`), states
 (`eyes_closed`, `drowsy`), anything with a label and a span. The marks go on
 the Events rail, where later strips see them like the recording's own events.
 
-## Design v2 (agreed 2026-10-24; steps 1 to 3 and 5 built, step 4 under way)
+## Design v2 (agreed 2026-10-24; steps 1 to 5 built)
 
 Who reviews, and what helps them:
 
@@ -124,12 +124,12 @@ Who reviews, and what helps them:
    - 4a. detector strips (amplitude/flat, muscle, blinks from EOG). *Built*
      (see *Built: step 4a* below).
    - 4b. priors and the yes/no queue in the Review strip, and verdict
-     provenance (see *Step 4b: decisions* below).
+     provenance. *Built* (see *Built: step 4b* below).
 5. **Epoch review** (accept, reject or label each epoch), and the ERP view.
    *Built* (see *Built: step 5* below), as its own strip and window.
 6. **Later:** a second reviewer with compare and resolve; a review report.
 
-### Step 4b: decisions (2026-10-30)
+### Step 4b: decisions (2026-10-30; built)
 
 - **Priors are the Review strip's `points`** (the labels to propose), with a
   new `decision` setting: *free* (suggestions are a starting point) or
@@ -440,6 +440,47 @@ them. The input's bad channels are left out (but an EOG channel named in
   Hz) and `blink_threshold` (MNE's, a peak's prominence on the filtered EOG; 0: a
   quarter of its range). A piece shorter than 10 s (MNE's EOG filter) is
   skipped.
+
+Built (step 4b of Design v2, suggestions):
+
+- **Suggestions** are the events the Review strip's `points` names: a
+  detector's upstream, or the recording's own (`origin` `input`); add
+  `bad_channel` for a detector's proposed bad channels. Its `decision`
+  (*free* by default, or *verify*) says how they are answered.
+- **The strip takes those labels over** (`docs/RAILS.md` rule 6): strips
+  after it, file writers and the views see its verdicts, never the
+  suggestions. A Reject segments strip after it cuts only the accepted and
+  edited `BAD_…` spans.
+- **Verdicts are worked out in the core** (`meegxer.core.review.settle`) from
+  the answer: a mark answering a suggestion (its `suggestion`) is
+  `accepted` when its span and label are the suggestion's, else `edited`; a
+  `bad_channel` suggestion is accepted when its channel is marked bad; one
+  answered no is `rejected`. With *verify* a suggestion without an answer is
+  refused; with *free* it is rejected.
+- **The marks file** gets the columns `channel`, `suggestion_origin`,
+  `suggestion_label`, `suggestion_onset`, `suggestion_duration` and `verdict`
+  (described in its JSON sidecar). Rejected rows stay in the file, so a
+  detector's misses can be measured, but are not emitted; `bad_channel` rows
+  record the channel's verdict (the channel itself is in `bads`). An older
+  file's `review_point` column still loads.
+- **After an upstream change** the window opens again with the earlier
+  answers to the suggestions still made filled in (rejections too), so only
+  new or changed suggestions are left to answer.
+- **The window** (the review points' navigation, ◀/▶ and ←/→): a
+  *Suggestions* list under the marks (onset, label, the strip it came from,
+  the verdict; double-click to go there), and the counter `Suggestion 3/40 ·
+  12 answered`. On the traces a suggestion is dashed while as proposed (the
+  accent colour until answered, green once accepted), solid once edited, red
+  when answered no.
+  - *Free:* each suggestion opens as a mark (and a proposed bad channel as
+    bad), to keep, change or delete; deleting it answers no.
+  - *Verify:* nothing is decided at the start. **Y** yes (as proposed),
+    **N** no, **E** edit (kept, its span selected to retime and relabel);
+    Y and N move on (*Next suggestion after answering*). Free marking is
+    off, and *Save* waits until every suggestion has an answer.
+- **Control API 0.2.17:** the request's `points` carry `origin` (and
+  `channel`) and `decision`; marks carry `suggestion` (no longer `point`),
+  and a rejection is a mark with `verdict` `rejected`.
 
 Fixed: the marks reach the output files and the views. Every file writer
 (`.set`, EDF, BIDS) saves the events on the Events rail where it sits (the

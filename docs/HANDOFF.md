@@ -6,9 +6,9 @@ the last designs came out as they did. Read this after `CLAUDE.md`. Keep it
 current: whoever finishes a PR that changes any of this updates it in the same
 PR.
 
-State as of main `34ad514` (2026-10-30), after PR #97 (review step 4a,
-detectors). Plugin spec 0.2.20, control API 0.2.16 (from the recovery fix in
-flight). In flight: the recovery timeout fix, then review step 4b.
+State as of main `0f14c1e` (2026-10-30), after PR #98 (recovery in the
+background, control API 0.2.16). Plugin spec 0.2.20, control API 0.2.17 with
+review step 4b, in flight.
 
 ## 1. Who works on what
 
@@ -17,7 +17,7 @@ Two Claude accounts may work on this repo. To keep them from colliding:
 | Area | Owner | Branch |
 |---|---|---|
 | Main development (review track and the rest of `docs/ROADMAP.md`) | Lab account | its own `claude/…` branch |
-| Recovery timeout fix, then review step 4b (suggestions queue) | Lab account | `claude/dreamy-hopper-wwm0sc` |
+| Review step 4b (suggestions queue) | Lab account | `claude/dreamy-hopper-wwm0sc` |
 | PR review (`/code-review` on the other account's PRs), quick questions | Personal account | none (reviews only) |
 
 Rules while both are active:
@@ -107,18 +107,11 @@ Method choices:
 ## 4. Open work (in order)
 
 1. **Review step 4: suggestions** (`docs/REVIEW.md` → *Design v2*, *Order of
-   work* 4), two PRs:
-   - 4a, detector strips (amplitude/flat, muscle, blinks): built (PR #97).
-   - 4b, the Review strip's priors (`points`) and `decision` mode (*free* or
-     *verify*: a Y/N/E queue), verdicts kept with their origin, the Events
-     rail rule that the Review strip takes its prior labels over, and the
-     detector's proposed bad channels in the queue. Decided (section 3); not
-     built. Review points (built) are its navigation half. Window (agreed
-     2026-10-30): a *Suggestions* list under the marks list (label, time,
-     origin, verdict); *verify*: Y accept, N reject, E edit (edited once its
-     edges change), each moving on, free marking off; *free*: suggestions open
-     as dashed marks (left alone: accepted; deleted: rejected; changed:
-     edited).
+   work* 4): 4a, detector strips, built (PR #97); 4b, the suggestions queue
+   and verdicts, in review (`docs/REVIEW.md` → *Built: step 4b*). Window
+   (agreed 2026-10-30): a *Suggestions* list under the marks list; *verify*:
+   Y, N, E; *free*: suggestions open as marks (left alone: accepted; deleted:
+   rejected; changed: edited).
 2. **Small follow-up to epoch review:** rejected epochs are only in the
    sidecar and the reviewed epochs rail. Optionally put them on the Events rail
    (e.g. `BAD_epoch` spans) so file writers record them. Ask first.
@@ -150,6 +143,15 @@ Method choices:
   window do not evict each other's pages.
 - **File writers get the Events rail** through `Sink.write_events`, mapped
   through cuts, so marks reach `.set`, EDF and BIDS outputs (PR #90).
+- **Suggestion verdicts are worked out in the core** (`review.settle`), not
+  sent by the window: the window only says which mark answers which
+  suggestion (`suggestion`) and which were answered no (a mark with `verdict`
+  `rejected`, so `submit_review` kept its parameters). The marks file has two
+  columns beyond the four agreed: `suggestion_label` (an edited answer may
+  relabel) and `channel` (for `bad_channel` suggestions).
+- **The take-over rule lives in the rail** (`EventsRail.visible_to`, through a
+  processor's `takes_over(params)`), so every reader (fits, writers, views,
+  live) gets it without knowing about reviews.
 
 ## 6. Things that bit before
 

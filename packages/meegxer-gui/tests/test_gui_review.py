@@ -6,6 +6,7 @@ import subprocess
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import mne
 import numpy as np
@@ -267,14 +268,13 @@ def test_spans_are_dragged_adjusted_and_channels_clicked(qapp: QApplication) -> 
     window.close()
 
 
-def test_review_points_are_stepped_through_and_answered(qapp: QApplication) -> None:
-    from meegxer.gui.review_window import ReviewWindow
-    from meegxer.gui.theme import load_theme
-
-    points = [{"onset": 5.0, "duration": 1.0, "label": "beta"},
-              {"onset": 20.0, "duration": 0.5, "label": "beta"},
-              {"onset": 40.0, "duration": 0.8, "label": "beta"}]  # fmt: skip
-    request = {
+def suggestion_request(decision: str) -> dict[str, Any]:
+    points = [{"onset": 5.0, "duration": 1.0, "label": "beta", "origin": "det"},
+              {"onset": 20.0, "duration": 0.5, "label": "beta", "origin": "det"},
+              {"onset": 40.0, "duration": 0.8, "label": "beta", "origin": "det"},
+              {"onset": 0.0, "duration": 0.0, "label": "bad_channel",
+               "origin": "amp", "channel": "Fz"}]  # fmt: skip
+    return {
         "node": "rev",
         "reason": "not reviewed",
         "duration_s": 60.0,
@@ -283,11 +283,25 @@ def test_review_points_are_stepped_through_and_answered(qapp: QApplication) -> N
         "marks": [],
         "viewed": [],
         "points": points,
+        "decision": decision,
         "display": {"montage": "longitudinal bipolar", "lowpass": 30.0},
     }
+
+
+def verdict_texts(window: Any) -> list[str]:
+    items = [
+        window.suggestions.item(r, 3) for r in range(window.suggestions.rowCount())
+    ]
+    return [i.text() if i is not None else "" for i in items]
+
+
+def test_free_review_opens_suggestions_as_marks(qapp: QApplication) -> None:
+    from meegxer.gui.review_window import ReviewWindow
+    from meegxer.gui.theme import load_theme
+
     sent: list[tuple[object, ...]] = []
     window = ReviewWindow(
-        request,
+        suggestion_request("free"),
         load_theme("dark"),
         submit=lambda *a: sent.append(a),
         cancel=lambda: None,
@@ -297,50 +311,97 @@ def test_review_points_are_stepped_through_and_answered(qapp: QApplication) -> N
     assert window.montage.currentData() == "longitudinal bipolar"
     assert window.montage.isEnabled() and window.filters["lowpass"].isEnabled()
     assert window.filters["lowpass"].value() == 30.0
+    # each suggestion is a mark to keep, change or delete; Fz is proposed bad
+    assert [m["onset"] for m in window.marks] == [5.0, 20.0, 40.0]
+    assert window.bads == ["Fz"]
     assert window.point_label.isVisibleTo(window)
-    assert window.point_label.text() == "Point –/3 · 0 answered"  # noqa: RUF001
+    assert window.point_label.text() == "Suggestion –/4 · 4 answered"  # noqa: RUF001
+    assert window.suggestions.isVisibleTo(window)
+    assert window.suggestions.rowCount() == 4
 
-    window.step(1)  # → : the first point, selected
-    assert window.point_index == 0 and window.selection.getRegion() == (5.0, 6.0)
-    window.selection.setRegion((4.8, 6.3))  # the physician retimes it
-    window.mark_with(0)  # spindle; then on to the next point
+    window.step(1)  # → : the first suggestion, its mark selected
     first = window.marks[0]
-    assert (first["label"], first["onset"], first["point"]) == ("spindle", 4.8, 5.0)
-    assert window.point_index == 1 and window.point_label.text().endswith("1 answered")
+    assert window.point_index == 0 and window.editing is first
+    window.selection.setRegion((4.8, 6.3))  # the physician retimes it
+    window._region_moved()
     window.auto_next.setChecked(False)
-    window.mark_with(1)  # not a spindle; stays at this point
-    assert window.marks[1]["point"] == 20.0 and window.point_index == 1
-    window.step(-1)  # back to the first: its answer is selected to change
-    assert window.editing is first
-    window.mark_with(1)  # relabelled
-    assert first["label"] == "not_spindle" and len(window.marks) == 2
-    assert window.coverage.points == [(5.0, True), (20.0, True), (40.0, False)]
-    window.page(1)  # away from the points: a new span answers none
+    window.mark_with(0)  # and calls it a spindle
+    assert (first["label"], first["onset"]) == ("spindle", 4.8)
+    assert window.verdict_of(window.points[0]) == "edited"
+    assert verdict_texts(window)[0] == "edited"
+    window.go_point(1)
+    window.remove_selected()  # deleting a suggestion's mark answers it no
+    assert window.verdict_of(window.points[1]) == "rejected"
+    assert window.verdict_of(window.points[2]) == "accepted"  # left alone
+    window.undo()  # the deletion taken back
+    assert window.verdict_of(window.points[1]) == "accepted"
+    window.go_point(1)
+    window.remove_selected()
+    window.page(1)  # away from the suggestions: a new span answers none
+    window._seek_away(50.0)
     window.select(50.0, 51.0)
     window.mark_with(0)
-    assert "point" not in window.marks[-1]
+    assert "suggestion" not in window.marks[-1]
 
+    window.submit()  # every suggestion has a verdict: nothing asked
+    marks = sent[0][0]
+    assert isinstance(marks, list)
+    sent_verdicts = sorted((m["label"], m.get("verdict", ""),
+                            (m.get("suggestion") or {}).get("onset", -1.0))
+                           for m in marks)  # fmt: skip
+    assert sent_verdicts == [("beta", "", 40.0), ("beta", "rejected", 20.0),
+                             ("spindle", "", -1.0), ("spindle", "", 5.0)]  # fmt: skip
+    assert sent[0][2] == ["Fz"]
+
+
+def test_verify_review_answers_each_suggestion_yes_or_no(qapp: QApplication) -> None:
     from PySide6.QtWidgets import QMessageBox
 
-    asked: list[str] = []
+    from meegxer.gui.review_window import ReviewWindow
+    from meegxer.gui.theme import load_theme
 
-    def answer(*args: object) -> QMessageBox.StandardButton:
-        asked.append(str(args[2]))
-        return QMessageBox.StandardButton.Yes
+    sent: list[tuple[object, ...]] = []
+    window = ReviewWindow(
+        suggestion_request("verify"),
+        load_theme("dark"),
+        submit=lambda *a: sent.append(a),
+        cancel=lambda: None,
+    )
+    window.seek_rate = 100.0
+    assert window.marks == [] and window.bads == []  # nothing decided for them
+    assert window.point_label.text() == "Suggestion –/4 · 0 answered"  # noqa: RUF001
+    assert "Y yes · N no · E edit" in window.palette_hint.text()
+    window.select(10.0, 11.0)
+    window.mark_with(0)  # free marking is off
+    assert window.marks == [] and "Verify" in window.progress.text()
 
-    original = QMessageBox.question
-    QMessageBox.question = answer  # type: ignore[assignment]
+    window.step(1)
+    window.accept_current()  # Y, then on to the next
+    assert window.point_index == 1
+    window._key_n()  # N
+    assert window.point_index == 2
+    window.edit_current()  # E: kept, its span selected to retime
+    window.selection.setRegion((39.5, 41.0))
+    window._region_moved()
+    assert window.verdict_of(window.points[2]) == "edited"
+    warned: list[str] = []
+    original = QMessageBox.warning
+    QMessageBox.warning = lambda *a: warned.append(str(a[2]))  # type: ignore[assignment]
     try:
-        window.submit()
+        window.submit()  # Fz is not answered yet
     finally:
-        QMessageBox.question = original  # type: ignore[method-assign]
-    assert asked and "1 of 3 review points" in asked[0]
+        QMessageBox.warning = original  # type: ignore[method-assign]
+    assert warned and "1 of 4 suggestions" in warned[0] and not sent
+    window.go_point(3)
+    window.accept_current()  # the proposed bad channel: yes
+    assert window.bads == ["Fz"]
+    assert verdict_texts(window) == ["yes", "no", "edited", "yes"]
+    window.submit()
     marks = sent[0][0]
-    assert isinstance(marks, list) and [m.get("point") for m in marks] == [
-        5.0,
-        20.0,
-        None,
-    ]
+    assert isinstance(marks, list)
+    assert sorted((m["onset"], m.get("verdict", "")) for m in marks) == [
+        (5.0, ""), (20.0, "rejected"), (39.5, "")]  # fmt: skip
+    assert sent[0][2] == ["Fz"]
 
 
 def test_a_recording_is_reviewed_at_import(

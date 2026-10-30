@@ -16,9 +16,9 @@ from meegxer.core.block import Block, Event, SignalInfo
 from meegxer.core.graph import Graph
 from meegxer.core.manifest import SPEC_VERSION
 from meegxer.core.registry import Registry
+from meegxer.core.review import BAD_CHANNEL
 from meegxer.core.stage import Stage, signal_fingerprint
 from meegxer.nodes.detectors import (
-    BAD_CHANNEL,
     AmplitudeDetector,
     BlinkDetector,
     MuscleDetector,

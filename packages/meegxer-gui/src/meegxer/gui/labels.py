@@ -167,7 +167,8 @@ PARAMS: dict[str, str] = {
     "baseline": "Baseline",
     "import_review": "Use the review made at import",
     # the Review strip: review points, and the display it opens with
-    "points": "Review points (event labels)",
+    "points": "Suggestions to review (event labels)",
+    "decision": "Decision",
     "montage": "Display montage",
     "highpass": "Display high-pass",
     "lowpass": "Display low-pass",
@@ -180,6 +181,8 @@ PARAMS: dict[str, str] = {
 CHOICES: dict[tuple[str, str], str] = {
     ("baseline", "pre-stimulus"): "Before the event (tmin..0)",
     ("baseline", "none"): "None",
+    ("decision", "free"): "Free (suggestions as marks)",
+    ("decision", "verify"): "Verify (yes or no for each)",
     ("montage", "reviewer"): "Reviewer's choice",
     ("montage", "as recorded"): "As recorded",
     ("montage", "average"): "Average reference",

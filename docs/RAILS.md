@@ -44,7 +44,10 @@ output strip chooses which line it draws from.
    refit of its producer, marks the rail and its readers as needs-refit (rule 7).
 6. **Events: one rail per chain, many contributors**, merged in sample-index order
    and tagged with their origin. ICs and Sources: one rail per producer, so
-   nothing is silently replaced.
+   nothing is silently replaced. A strip may **take labels over** (a Review
+   strip with suggestions, `docs/REVIEW.md` step 4b): strips after it no longer
+   see the events with those labels from before it (the input's or an earlier
+   strip's), only what it emits for them, its verdicts.
 7. **Feature rails are named** after their strip, numbered when repeated, so a
    reader knows what it draws from. A reader takes the nearest rail of its input
    type unless it names one (the inspector's *Reads*; the node's `input` in the
@@ -62,7 +65,9 @@ output strip chooses which line it draws from.
     dejitter, and the signal's recent chunks anchor timestamps to indices.
 - **Who adds to it:** any strip, through the events its transform emits.
 - **Who sees what:** a strip sees the input's events and those of the strips
-  upstream of it, in sample-index order (`meegxer.core.events.EventsRail`).
+  upstream of it, in sample-index order (`meegxer.core.events.EventsRail`),
+  except the labels a strip between takes over (rule 6; a processor's
+  `takes_over(params)`). File writers and the offline views see the same.
 - **Across a rate change** (a Resample strip): the rail counts the input's
   samples; a strip at another rate sees, and adds, events at its own rate,
   mapped by the exact ratio of the rates to the nearest sample (rule 8). A
