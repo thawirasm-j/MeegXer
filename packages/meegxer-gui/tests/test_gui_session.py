@@ -237,3 +237,58 @@ def test_stop_and_progress_in_an_offline_run(
         assert not win.stop_btn.isEnabled() and bar.isHidden()
     finally:
         win.close()
+
+
+def test_unsaved_changes_are_asked_about_and_files_remembered(
+    qapp: QApplication,
+    daemon: tuple[str, subprocess.Popen[bytes]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """New…/Open… ask before replacing a changed chain (Save, Discard or
+    Cancel); the files opened or saved are on the Open button's menu."""
+    control, _ = daemon
+    win = _window(control)
+    answers: list[QMessageBox.StandardButton] = []
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: answers.pop(0))
+    try:
+        assert not win.modified()
+        win.doc.insert(len(win.doc.strips), "meegxer.nodes.rereference")
+        assert win.modified()
+
+        def no_dialog(*a: Any, **k: Any) -> tuple[str, str]:
+            raise AssertionError("the file dialog should not open")
+
+        monkeypatch.setattr(QFileDialog, "getOpenFileName", no_dialog)
+        answers.append(QMessageBox.StandardButton.Cancel)
+        win.open_pipeline()  # cancelled: nothing replaced
+        assert win.modified()
+
+        saved = tmp_path / "mine.json"
+        monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                            lambda *a, **k: (str(saved), ""))  # fmt: skip
+        monkeypatch.setattr(QFileDialog, "getOpenFileName",
+                            lambda *a, **k: ("", ""))  # fmt: skip
+        answers.append(QMessageBox.StandardButton.Save)
+        win.open_pipeline()  # saved first, then the (cancelled) open dialog
+        assert saved.is_file() and not win.modified()
+
+        win.doc.insert(len(win.doc.strips), "meegxer.nodes.rereference")
+        answers.append(QMessageBox.StandardButton.Discard)
+        win.open_recent(str(saved))  # discarded: the saved file is back
+        assert not win.modified() and not answers
+        recent = [a.text() for a in win.recent_menu.actions()]
+        assert recent == ["mine.json"]
+        assert win.state["recent_pipelines"] == [str(saved.resolve())]
+
+        calls: list[str] = []
+        monkeypatch.setattr(win, "start", lambda: calls.append("start"))
+        monkeypatch.setattr(win, "stop", lambda: calls.append("stop"))
+        win.setFocus()
+        win.start_or_stop()  # Space when idle
+        win.running = True
+        win.start_or_stop()  # Space when running
+        assert calls == ["start", "stop"]
+    finally:
+        win.running = False
+        win.close()

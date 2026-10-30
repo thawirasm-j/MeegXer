@@ -75,7 +75,8 @@ The **☀** button is a quick theme switch: it changes the theme setting.
 
 ## What is remembered
 
-`state.json` holds the window's size and place, Friendly/Advanced, the time span,
+`state.json` holds the window's size and place, the recent pipelines and
+sessions (the *Open…* button's menu), Friendly/Advanced, the time span,
 the spectrum view (band, power, 1/f removal, colour, range, smoothing, head plot on or off), the
 last folder and the last pipeline. A view's last state wins over its default
 setting; changing that default in Settings replaces it, and **Forget remembered

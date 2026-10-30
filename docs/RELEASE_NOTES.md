@@ -41,6 +41,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   what finished is kept, and the recording being run is done again next time.
   An all-subjects run shows a progress bar, recording *i* of *n*. Control API
   0.2.19: `stop_offline`.
+- **Unsaved changes and shortcuts:** *New…* and *Open…* ask before they
+  replace a pipeline with unsaved changes (Save, Discard or Cancel). Ctrl+N,
+  Ctrl+O and Ctrl+S for New, Open and Save; Space starts or stops (a focused
+  button or list keeps Space for itself). The arrow on *Open…* lists the
+  recent pipelines and sessions.
 - **Fix:** a strip reading a rail (e.g. a writer after an Epochs strip) lost
   that choice when the GUI saved the pipeline.
 
