@@ -50,6 +50,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   `qc.html`. *Log* shows or hides the log (the inspector then takes its
   width); hidden, it counts the lines written meanwhile, and the choice is
   remembered.
+- **Sample data metadata:** the sample datasets' `dataset_description.json`
+  names their licence (EEGBCI: ODC-By-1.0; ERP CORE: CC-BY-SA-4.0) and their
+  source (`SourceDatasets`, with its DOI), and each recording's sidecar has a
+  `TaskDescription`, as the BIDS validator recommends.
 - **Fix:** a strip reading a rail (e.g. a writer after an Epochs strip) lost
   that choice when the GUI saved the pipeline.
 

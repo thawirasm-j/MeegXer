@@ -89,6 +89,8 @@ def test_a_sample_lists_every_subject_before_any_is_fetched(
     assert fake_samples == []  # nothing downloaded
     description = json.loads((root / "dataset_description.json").read_text())
     assert description["Name"] == "EEGBCI resting state"
+    assert description["License"] == "ODC-By-1.0"  # from the dataset's page
+    assert description["SourceDatasets"][0]["DOI"] == "doi:10.13026/C28G6P"
     with pytest.raises(ValueError, match="no subject '200'"):
         samples.ensure_recording({"root": str(root), "subject": "200"})
 
@@ -110,6 +112,10 @@ def test_rest_template_over_the_sample_fetches_only_what_it_runs(
     folder = root / "derivatives" / "meegxer" / "sub-002" / "eeg"
     stem = "sub-002_task-resteyesclosed_desc-clean"
     assert (folder / f"{stem}_psd_features.tsv").is_file()
+    raw_sidecar = root / "sub-002" / "eeg" / "sub-002_task-resteyesclosed_eeg.json"
+    assert json.loads(raw_sidecar.read_text())["TaskDescription"].startswith(
+        "One minute at rest with the eyes closed"
+    )
     assert (folder / f"{stem}_bands_features.tsv").is_file()
 
     again = runner.invoke(app, ["run", str(pipe), "--bids", str(root),
