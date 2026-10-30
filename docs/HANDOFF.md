@@ -6,8 +6,8 @@ the last designs came out as they did. Read this after `CLAUDE.md`. Keep it
 current: whoever finishes a PR that changes any of this updates it in the same
 PR.
 
-State as of main `5fbe857` (2026-10-29), after PR #93. Plugin spec 0.2.20,
-control API 0.2.15.
+State as of main `b97dbb3` (2026-10-30), after PR #96. Plugin spec 0.2.20,
+control API 0.2.15. In flight: review step 4a (detectors).
 
 ## 1. Who works on what
 
@@ -16,6 +16,7 @@ Two Claude accounts may work on this repo. To keep them from colliding:
 | Area | Owner | Branch |
 |---|---|---|
 | Main development (review track and the rest of `docs/ROADMAP.md`) | Lab account | its own `claude/…` branch |
+| Review step 4 (suggestions): 4a detectors, then 4b queue | Lab account | `claude/dreamy-hopper-wwm0sc` |
 | PR review (`/code-review` on the other account's PRs), quick questions | Personal account | none (reviews only) |
 
 Rules while both are active:
@@ -87,20 +88,31 @@ Method choices:
   `annotate_amplitude`, `annotate_muscle_zscore`, `find_eog_events`); anything
   else (spike, seizure, sleep stage) is a plugin. No detector of MeegXer's own
   invention.
+- **Suggestions (review step 4b, decided 2026-10-30;** `docs/REVIEW.md` →
+  *Step 4b: decisions*): a Review strip with priors takes those labels over
+  (later strips see only its verdicts, never rejected suggestions: a new
+  Events rail rule); verdicts are columns of the marks file
+  (`suggestion_origin`, `suggestion_onset`, `suggestion_duration`,
+  `verdict`), rejected rows kept but not emitted; priors are the existing
+  `points` plus a `decision` setting (*free*/*verify*); a detector's proposed
+  bad channels are asked about, not applied; headless runs stop while a
+  suggestion has no verdict.
+- **Detectors' outputs:** blinks are short spans (±0.25 s) labelled `blink`
+  (not cut unless relabelled `BAD_blink`); the amplitude detector proposes
+  bad channels as `bad_channel` events.
 - Dependabot PRs: the maintainer merges them; check open Dependabot alerts now
   and then.
 
 ## 4. Open work (in order)
 
 1. **Review step 4: suggestions** (`docs/REVIEW.md` → *Design v2*, *Order of
-   work* 4). Detector strips for amplitude/flat, muscle and EOG blinks
-   (wrapping the MNE functions above, emitting `BAD_…`/`blink` events on the
-   Events rail); the Review strip's priors (event labels to propose) and
-   decision mode (*free* or *verify*: a Y/N/E queue); each suggestion's verdict
-   kept with its origin, rejected ones recorded. Review points (built) are the
-   navigation half of this; the queue and verdict provenance are not built.
-   Likely split into two PRs: detectors, then the queue. Ask the maintainer
-   about the verdict format before building it.
+   work* 4), two PRs:
+   - 4a, detector strips (amplitude/flat, muscle, blinks): in review.
+   - 4b, the Review strip's priors (`points`) and `decision` mode (*free* or
+     *verify*: a Y/N/E queue), verdicts kept with their origin, the Events
+     rail rule that the Review strip takes its prior labels over, and the
+     detector's proposed bad channels in the queue. Decided (section 3); not
+     built. Review points (built) are its navigation half.
 2. **Small follow-up to epoch review:** rejected epochs are only in the
    sidecar and the reviewed epochs rail. Optionally put them on the Events rail
    (e.g. `BAD_epoch` spans) so file writers record them. Ask first.
@@ -143,6 +155,11 @@ Method choices:
 - `QWidget` already has `move()`; do not name a method `move` on a window.
 - EDF export adds a `BAD_ACQ_SKIP` annotation; `.set` export does not keep
   bad channels. Tests account for both.
+- MNE `annotate_amplitude`'s "peak-to-peak" is the change between two
+  consecutive samples, and it takes one `min_duration` for peak and flat
+  (so the amplitude detector calls it once per limit). `find_eog_events`'
+  `thresh` is a peak's prominence: around a lone synthetic bump, the filter's
+  ringing counts as blinks at the default, so tests set it.
 - ruff can reformat a hand-aligned block; fix the line or keep `# fmt: skip`
   rather than accepting a reflow of untouched code.
 

@@ -5,7 +5,7 @@ a recording by hand: bad segments (`BAD_muscle`, `BAD_eyes`), states
 (`eyes_closed`, `drowsy`), anything with a label and a span. The marks go on
 the Events rail, where later strips see them like the recording's own events.
 
-## Design v2 (agreed 2026-10-24; steps 1 to 3 and 5 built)
+## Design v2 (agreed 2026-10-24; steps 1 to 3 and 5 built, step 4 under way)
 
 Who reviews, and what helps them:
 
@@ -120,13 +120,33 @@ Who reviews, and what helps them:
    *Built* (see *Built: step 2* below).
 3. **Review at import:** the Recording window's *Review* action and the
    per-recording sidecar. *Built* (see *Built: step 3* below).
-4. **Suggestions:**
-   - detector strips (amplitude/flat, muscle, blinks from EOG)
-   - priors and the yes/no queue in the Review strip
-   - verdict provenance
+4. **Suggestions**, in two PRs:
+   - 4a. detector strips (amplitude/flat, muscle, blinks from EOG). *Built*
+     (see *Built: step 4a* below).
+   - 4b. priors and the yes/no queue in the Review strip, and verdict
+     provenance (see *Step 4b: decisions* below).
 5. **Epoch review** (accept, reject or label each epoch), and the ERP view.
    *Built* (see *Built: step 5* below), as its own strip and window.
 6. **Later:** a second reviewer with compare and resolve; a review report.
+
+### Step 4b: decisions (2026-10-30)
+
+- **Priors are the Review strip's `points`** (the labels to propose), with a
+  new `decision` setting: *free* (suggestions are a starting point) or
+  *verify* (the Y/N/E queue).
+- **A Review strip with priors takes those labels over.** Later strips do not
+  see the prior-labelled events of the strips upstream of it; they see the
+  Review strip's verdicts instead: accepted and edited suggestions (as
+  edited), never rejected ones. This is a new Events rail rule
+  (`docs/RAILS.md`, written with 4b).
+- **Verdicts are columns of the marks file** (the strip's
+  `_desc-<strip>_events.tsv`): `suggestion_origin` (the detector's strip
+  id), `suggestion_onset` and `suggestion_duration` (as proposed), and
+  `verdict` (`accepted`, `rejected` or `edited`). Rejected rows stay in the
+  file, so a detector's misses can be measured, but are not emitted.
+- **Proposed bad channels** (a detector's `bad_channel` events) are asked
+  about in the queue like the spans; only confirmed ones become bad.
+- **Headless runs stop** while a suggestion has no verdict (principle 5).
 
 ## Built so far (v1)
 
@@ -388,6 +408,38 @@ Built (review points, and the display as a starting point):
     coverage bar, and in the counter `Point 12/120 · 45 answered`. Saving
     asks first if some points have no answer (with points, the coverage of
     the whole recording is not asked about).
+
+Built (step 4a of Design v2, detectors): three strips under *Event
+detection* (`meegxer.nodes.detectors`, offline, on the whole recording; each
+piece on its own after a cut). Each passes the signal on unchanged, wraps one
+MNE function (principle 6) and puts what it finds on the Events rail, where a
+Reject segments strip cuts the `BAD_…` spans and (4b) a Review strip proposes
+them. The input's bad channels are left out (but an EOG channel named in
+*Detect blinks* is used).
+
+- **Detect amplitude & flat** (`detect_amplitude`, MNE `annotate_amplitude`).
+  MNE's peak-to-peak is the change between two consecutive samples:
+  - `peak` (default 100 µV): a larger jump is a `BAD_peak` span (from
+    `min_duration`, Advanced, 0.005 s).
+  - `flat` (default 0.1 µV): smaller changes lasting `flat_duration` (0.1 s)
+    are a `BAD_flat` span. MNE is called once per limit, so each has its own
+    shortest span.
+  - A channel past a limit for more than `bad_percent` (5 %) of the
+    recording gets no spans: it is proposed as bad, as a `bad_channel` event
+    at the recording's first sample (payload `channel`, and `reason` `peak`
+    or `flat`). The strip does not mark it bad; 4b asks the reviewer.
+- **Detect muscle** (`detect_muscle`, MNE `annotate_muscle_zscore`):
+  `BAD_muscle` spans where the z-scored envelope of the `low`–`high` band
+  (default 110–140 Hz) passes `zscore` (4). The band must lie below half
+  the sampling rate: at 250 Hz, lower it (e.g. 70–110 Hz); the strip says so.
+- **Detect blinks** (`detect_blinks`, MNE `find_eog_events`, on the strongest
+  of the `eog` channels: `auto` takes those typed or named EOG, or name them,
+  e.g. `Fp1`): a span of `half_width` (0.25 s) either side of each blink's
+  peak, labelled `mark_label` (default `blink`; `BAD_blink` to have them cut), with
+  the peak's sample in the payload (`peak`). Advanced: the filter band (1–10
+  Hz) and `blink_threshold` (MNE's, a peak's prominence on the filtered EOG; 0: a
+  quarter of its range). A piece shorter than 10 s (MNE's EOG filter) is
+  skipped.
 
 Fixed: the marks reach the output files and the views. Every file writer
 (`.set`, EDF, BIDS) saves the events on the Events rail where it sits (the

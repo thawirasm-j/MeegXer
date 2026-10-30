@@ -7,6 +7,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Detectors:** three new strips under *Event detection* mark artifacts on
+  the Events rail, each wrapping a published MNE method: *Detect amplitude &
+  flat* (`BAD_peak`, `BAD_flat`, and channels proposed as bad), *Detect
+  muscle* (`BAD_muscle`) and *Detect blinks* (`blink` spans around each
+  blink's peak, from the EOG). A Reject segments strip after them cuts the
+  `BAD_…` spans. Offline only.
+
 - **Epoch review:** a new *Review epochs* strip after an Epochs strip pauses
   the offline run so a person can accept, reject or relabel each epoch (a
   page of epochs side by side, keys A/R/L and 1 to 9), with the ERP of the
