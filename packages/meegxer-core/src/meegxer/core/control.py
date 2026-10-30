@@ -42,6 +42,7 @@ from meegxer.core.recording import builtin_montages, describe, lookup_positions
 from meegxer.core.registry import Registry, node_origin
 from meegxer.core.review import Mark, ReviewStrip
 from meegxer.core.session import (
+    SESSION_FORMAT,
     build_session,
     load_session,
     sink_outputs,
@@ -555,6 +556,8 @@ class Daemon:
         if is_all_subjects(graph.source.impl):  # models fitted per recording
             registry = self.registry
             job = OfflineJob(graph, rebuild=lambda: Graph.from_dict(pipeline, registry),
+                             document={"meegxer_session": SESSION_FORMAT,
+                                       "pipeline": pipeline},
                              reviewer=str(reviewer))  # fmt: skip
             self._offline_models = None
         else:

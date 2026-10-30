@@ -124,6 +124,7 @@ The same pipeline runs without the GUI:
 ```bash
 meegxer run pipeline.json -i sub-01.set -o sub-01_clean.set   # one recording
 meegxer run pipeline.json --bids ds --task rest              # a BIDS dataset
+meegxer run pipeline.json --bids ds --jobs 4                # 4 at once, QC in ds/derivatives/meegxer/qc.html
 ```
 
 More in [Development](#development) below and in `spec/` (pipeline, session,

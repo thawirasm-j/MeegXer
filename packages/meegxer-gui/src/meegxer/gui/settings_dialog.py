@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -287,6 +288,19 @@ class SettingsDialog(QDialog):
                 "Ask before closing while a pipeline runs",
             ),
         )
+        jobs = QSpinBox()
+        jobs.setRange(0, 256)
+        jobs.setSpecialValueText("One per CPU")
+        jobs.setToolTip(
+            "Recordings an all-subjects BIDS run processes at once, each in "
+            "its own process (1: one after another)"
+        )
+        jobs.valueChanged.connect(lambda v: self._set("general.batch_jobs", int(v)))
+        self._loaders.append(
+            lambda: jobs.setValue(int(core_settings.get(self.working,
+                                                        "general.batch_jobs")))
+        )  # fmt: skip
+        form.addRow("Workers (all subjects)", jobs)
         daemon = QLineEdit()
         daemon.setToolTip(
             "The processing engine's control address; MeegXer "

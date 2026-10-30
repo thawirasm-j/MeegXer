@@ -1215,6 +1215,8 @@ class MainWindow(QMainWindow):
                          f"Showing {recordings['current']}.")  # fmt: skip
                 for failure in recordings["failed"]:
                     self.log(f"Failed: {failure}")
+                if recordings.get("summary"):
+                    self.log(f"QC summary: {recordings['summary']}")
             for note in offline.get("skipped", []):
                 self.log(f"Not saved: {note}")
         elif state == "error":

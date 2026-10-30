@@ -132,14 +132,18 @@ def iclabel(x: np.ndarray, info: SignalInfo, weights: np.ndarray) -> np.ndarray:
     return np.asarray(proba, dtype=np.float64)
 
 
+def component_names(n: int) -> tuple[str, ...]:
+    width = max(2, len(str(n)))
+    return tuple(f"IC{i + 1:0{width}d}" for i in range(n))
+
+
 def component_info(model: State, info: SignalInfo) -> SignalInfo:
     """The ICs rail's channels: one per component, with ICLabel's most likely
     class and its probability as attributes."""
     proba = np.asarray(model["probabilities"])
     best = proba.argmax(axis=1)
-    width = max(2, len(str(proba.shape[0])))
     return SignalInfo(
-        tuple(f"IC{i + 1:0{width}d}" for i in range(proba.shape[0])),
+        component_names(proba.shape[0]),
         info.sfreq,
         info.stream_id,
         ch_classes=tuple(CLASSES[int(b)] for b in best),
@@ -226,6 +230,17 @@ class ICAClean(Processor):
             "probabilities": proba,
             "classes": list(CLASSES),
         }
+
+    def describe_model(self, model: State, params: Params) -> dict[str, str]:
+        """The components and those removed, each with its ICLabel class."""
+        proba = np.asarray(model["probabilities"])
+        names = component_names(proba.shape[0])
+        best = proba.argmax(axis=1)
+        drop = rejected(model, params)
+        removed = ", ".join(f"{names[i]} {CLASSES[int(best[i])]} "
+                            f"{proba[i, best[i]]:.2f}" for i in drop)  # fmt: skip
+        count = f"{len(drop)}" + (f" ({removed})" if drop else "")
+        return {"components": str(proba.shape[0]), "removed": count}
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params

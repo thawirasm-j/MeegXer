@@ -312,3 +312,21 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 | C3 EEGBCI per-subject fetch, rerun | | |
 | C4 GUI New from template with the sample | | |
 | C5 validator on the sample dataset | | |
+
+## D. Batch workers and QC reports
+
+1. On a BIDS dataset of at least four subjects (e.g. the EEGBCI sample after
+   §C): `uv run meegxer run rest.json --bids DS --jobs 4 --overwrite`. Expect
+   the recordings to finish out of order, faster than with `--jobs 1`, and
+   `QC summary: …\qc.html` at the end.
+2. Open `qc.html`: one row per recording, each linking to its report. A
+   report shows the MeegXer table, the input and processed power spectra, and
+   (ERP template) the epochs and ERPs with topographies.
+3. GUI: *Settings → General → Workers* 4, then an all-subjects offline run:
+   the log ends with `QC summary: …`; the views show the last recording.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| D1 time with --jobs 1 / --jobs 4 (recordings, CPU) | | |
+| D2 summary and reports | | |
+| D3 GUI all-subjects run with workers | | |

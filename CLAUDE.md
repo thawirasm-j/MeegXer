@@ -107,7 +107,10 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   `meegxer session save FILE` (from the daemon, with calibrated models),
   `meegxer session share IN OUT` (no file names; `docs/DEIDENTIFICATION.md`).
 - BIDS derivatives (`spec/bids-derivatives.md`): `meegxer run … --bids-out DIR`,
-  `meegxer run PIPELINE --bids RAW_ROOT [--subjects 01,02] [--task T] [--overwrite]`.
+  `meegxer run PIPELINE --bids RAW_ROOT [--subjects 01,02] [--task T] [--overwrite]
+  [--jobs N] [--no-report]` (`--jobs`: worker processes, 0 one per CPU; the GUI's
+  all-subjects run uses `general.batch_jobs`). Each recording gets a QC report
+  (`meegxer.core.qc`, mne.Report); the derivatives get `qc.tsv` and `qc.html`.
 - Templates and sample data (`meegxer.core.templates`, `meegxer.core.samples`):
   `meegxer templates`, `meegxer new TEMPLATE OUT.json [--sample]`; a sample
   dataset lists every subject and fetches each (MNE fetcher, then mne-bids)

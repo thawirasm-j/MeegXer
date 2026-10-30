@@ -132,6 +132,7 @@ def test_erp_template_over_the_sample_writes_epochs_and_erps(
     epochs = mne.read_epochs(folder / "sub-001_task-flanker_desc-clean_epo.fif",
                              verbose="error")  # fmt: skip
     assert set(epochs.event_id) == set(FLANKER_STIMULI.split(", "))  # no responses
+    assert epochs.get_montage() is not None  # the channels' positions are kept
     assert len(mne.read_evokeds(folder / "sub-001_task-flanker_desc-clean_ave.fif",
                                 verbose="error")) == 4  # fmt: skip
 

@@ -1,4 +1,4 @@
-# BIDS-derivatives output (spec 0.2.11, unstable)
+# BIDS-derivatives output (spec 0.2.12, unstable)
 
 How MeegXer writes processed recordings into a BIDS **derivatives** dataset
 ([BIDS derivatives](https://bids-specification.readthedocs.io/en/stable/derivatives/introduction.html)),
@@ -37,6 +37,8 @@ For `sub-01_task-rest_eeg.set` and `desc` `clean`:
 ├── dataset_description.json
 ├── README.md                                           (when there is none)
 ├── .bidsignore
+├── qc.tsv                                              (QC summary, one row per recording)
+├── qc.html
 └── sub-01/eeg/
     ├── sub-01_task-rest_desc-clean_eeg.set
     ├── sub-01_task-rest_desc-clean_eeg.json
@@ -52,6 +54,8 @@ For `sub-01_task-rest_eeg.set` and `desc` `clean`:
     ├── sub-01_task-rest_desc-clean_epo.fif             (bids_epochs)
     ├── sub-01_task-rest_desc-clean_epo.json
     ├── sub-01_task-rest_desc-clean_ave.fif
+    ├── sub-01_task-rest_desc-clean_report.html         (QC report, --bids runs)
+    ├── sub-01_task-rest_desc-clean_qc.json
     └── sub-01_task-rest_desc-clean_meegxer.json        (the run's session file)
 ```
 
@@ -86,15 +90,28 @@ BIDS derivatives recommend.
   (spec 0.2.19; `V^2/Hz`, `dB`, `1` for dimensionless).
 - **`_epo.fif`:** the epochs of the nearest epochs rail (`docs/RAILS.md`), the
   kept ones after a Review epochs strip, as MNE epochs: each event at its
-  sample, labelled as on the rail, channel types from the recording.
+  sample, labelled as on the rail, channel types and positions from the
+  recording.
   **`_ave.fif`:** their average per label (the ERPs, one MNE evoked each,
   named by the label). **`_epo.json`:** `Description` (with the chain),
   `Conditions` (the number of epochs per label) and `tmin` (seconds).
 - **`_meegxer.json`:** the session of the run (`session.md`): pipeline, node
   versions and plugin images, fitted models, input and output hashes. Listed in
   `.bidsignore`, so the validator skips it, as are feature tables
-  (`*_features.tsv`, `*_features.json`) and epochs (`*_epo.fif`,
-  `*_epo.json`, `*_ave.fif`), which BIDS does not cover yet.
+  (`*_features.tsv`, `*_features.json`), epochs (`*_epo.fif`,
+  `*_epo.json`, `*_ave.fif`) and QC reports (`*_report.html`, `*_qc.json`,
+  `qc.tsv`, `qc.html`), which BIDS does not cover yet.
+- **QC report** (`--bids` runs and the GUI's all-subjects run; `--no-report`
+  leaves it out): **`_report.html`**, an MNE report (`mne.Report`) with a
+  MeegXer table (the chain, `duration_s`, `kept_percent` of the input after
+  cuts, `bad_channels`, what each fitted model does, e.g. `ica_removed` with
+  each component's ICLabel class and probability, and `epochs` kept per
+  label), the power spectra of the input and of the processed recording, and
+  the epochs and ERPs when written. **`_qc.json`** holds the same table.
+  **`qc.tsv`** and **`qc.html`** at the root list every recording, with a
+  `status` (`done`, `failed` or `unreviewed`, with its `message`) and the
+  report's path; a recording a later run did not touch keeps its row. All
+  are listed in `.bidsignore`.
 - **`README.md`:** written once if the folder has no README: what made the
   dataset and where its credits come from.
 

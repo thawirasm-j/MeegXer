@@ -20,6 +20,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   eyes closed runs (109 subjects); each subject is downloaded the first time a
   run reads it. `meegxer templates` lists both. New setting: the sample data
   folder (`storage.sample_dir`, `MEEGXER_SAMPLE_DIR`).
+- **Batch at scale** (M10.8): `meegxer run … --bids DS --jobs 4` runs four
+  recordings at once, each in its own process (`--jobs 0`: one per CPU); the
+  GUI's all-subjects run does the same with *Settings → General → Workers*.
+  Every recording gets a QC report (MNE's HTML report: the chain, how much was
+  kept, bad channels, the ICA components removed, the power spectra before and
+  after, the epochs and ERPs), and the derivatives get `qc.tsv` and `qc.html`,
+  one row per recording (`--no-report` leaves them out). Epoch files now keep
+  the channels' positions.
 - **Fix:** a strip reading a rail (e.g. a writer after an Epochs strip) lost
   that choice when the GUI saved the pipeline.
 

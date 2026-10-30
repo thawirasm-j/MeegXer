@@ -138,6 +138,20 @@ def run(
     run_label: Annotated[
         list[str] | None, typer.Option("--run-label", help="With --bids: runs.")
     ] = None,
+    jobs: Annotated[
+        int,
+        typer.Option(
+            help="With --bids: recordings run at once, each in its own "
+            "process (0: one per CPU)."
+        ),
+    ] = 1,
+    report: Annotated[
+        bool,
+        typer.Option(
+            help="With --bids: a QC report per recording and the "
+            "dataset's qc.tsv and qc.html."
+        ),
+    ] = True,
 ) -> None:
     """Run a pipeline or session offline over one recording, or with --bids over
     many (BIDS derivatives, one after another; done ones are skipped)."""
@@ -147,7 +161,8 @@ def run(
                        "derivatives (no -i, -o or --session)", err=True)  # fmt: skip
             raise typer.Exit(code=1)
         _run_bids(pipeline, bids, bids_out, overwrite, allow_version_mismatch,
-                  block_size, cache_dir, subjects, task, ses, run_label)  # fmt: skip
+                  block_size, cache_dir, subjects, task, ses, run_label,
+                  jobs, report)  # fmt: skip
         return
     from meegxer.core.batch import BatchScheduler, offline_input_fingerprints
     from meegxer.core.cache import DirectoryCache
@@ -270,23 +285,29 @@ def _run_bids(
     tasks: list[str] | None,
     sessions: list[str] | None,
     runs: list[str] | None,
+    jobs: int = 1,
+    report: bool = True,
 ) -> None:
-    """One pipeline over many recordings of a BIDS dataset, one after another,
-    each with a fresh graph (models fitted per recording)."""
-    from meegxer.core.batch import BatchScheduler, offline_input_fingerprints
-    from meegxer.core.bids_batch import prepare_recording, recording_label
+    """One pipeline over many recordings of a BIDS dataset, each with a fresh
+    graph (models fitted per recording), ``jobs`` at a time."""
+    from meegxer.core.bids_batch import (
+        Outcome,
+        RunOptions,
+        recording_label,
+        run_dataset,
+    )
     from meegxer.core.bids_out import find_recordings
-    from meegxer.core.cache import DirectoryCache
-    from meegxer.core.registry import Registry
-    from meegxer.core.review import ReviewNeeded
-    from meegxer.core.samples import ensure_recording, needs_fetch
-    from meegxer.core.session import adopt_models, load_session, read_session
+    from meegxer.core.qc import SUMMARY_HTML
+    from meegxer.core.session import read_session
 
     try:
         document = read_session(pipeline)  # read once: a bad file stops here
     except (OSError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    if jobs < 0:
+        typer.echo("error: --jobs must be 0 (one per CPU) or more", err=True)
+        raise typer.Exit(code=1)
     root = root.resolve()
     recordings = find_recordings(
         root, subjects=_split(subjects), tasks=_split(tasks),
@@ -295,47 +316,42 @@ def _run_bids(
     if not recordings:
         typer.echo(f"error: no matching EEG recordings in {root}", err=True)
         raise typer.Exit(code=1)
-    registry = Registry.from_entry_points()
-    cache = DirectoryCache(cache_dir) if cache_dir else None
-    done, skipped, failed, unreviewed = [], [], [], []
-    for i, params in enumerate(recordings, 1):
-        label = recording_label(params)
-        prefix = f"[{i}/{len(recordings)}] {label}"
-        try:
-            if needs_fetch(params):  # a sample dataset: its subject on first use
-                typer.echo(f"{prefix}: downloading this sample subject")
-                ensure_recording(params)
-            loaded = load_session(
-                document,
-                registry,
-                allow_version_mismatch=allow_version_mismatch,
-            )
-            graph = loaded.graph
-            # the input's Recording settings (renames, types, montage, bad
-            # channels) apply to every recording
-            prepared = prepare_recording(graph, params, bids_out, overwrite)
-            target = prepared.target
-            if prepared.done:
-                skipped.append(label)
-                typer.echo(f"{prefix}: already done, skipped")
-                continue
-            for note in prepared.notes:
-                typer.echo(f"{prefix}: note: {note}")
-            adopt_models(loaded, offline_input_fingerprints(graph))
-            result = BatchScheduler(block_size=block_size, cache=cache).run(graph)
-        except ReviewNeeded as exc:  # stopped at the strip; the others go on
-            unreviewed.append(label)
-            typer.echo(f"{prefix}: NOT REVIEWED, stopped: {exc}", err=True)
-            continue
-        except Exception as exc:  # one bad recording does not stop the others
-            failed.append(label)
-            typer.echo(f"{prefix}: FAILED: {exc}", err=True)
-            continue
-        done.append(label)
-        fitted = f" (fitted: {', '.join(result.fitted)})" if result.fitted else ""
-        typer.echo(f"{prefix}: wrote {target.path('eeg.set')}{fitted}")
-    typer.echo(f"done {len(done)}, skipped {len(skipped)}, failed {len(failed)}"
+    n = len(recordings)
+    labels = [recording_label(p) for p in recordings]
+
+    def note(i: int, text: str) -> None:
+        typer.echo(f"[{i}/{n}] {labels[i - 1]}: {text}")
+
+    def outcome(i: int, o: Outcome) -> None:
+        prefix = f"[{i}/{n}] {o.label}"
+        for text in o.notes:
+            typer.echo(f"{prefix}: note: {text}")
+        if o.status == "skipped":
+            typer.echo(f"{prefix}: already done, skipped")
+        elif o.status == "unreviewed":
+            typer.echo(f"{prefix}: NOT REVIEWED, stopped: {o.message}", err=True)
+        elif o.status == "failed":
+            typer.echo(f"{prefix}: FAILED: {o.message}", err=True)
+        else:
+            fitted = f" (fitted: {', '.join(o.fitted)})" if o.fitted else ""
+            typer.echo(f"{prefix}: wrote {o.output}{fitted}")
+
+    options = RunOptions(
+        bids_out=str(bids_out) if bids_out else None, overwrite=overwrite,
+        allow_version_mismatch=allow_version_mismatch, block_size=block_size,
+        cache_dir=str(cache_dir) if cache_dir else None, report=report,
+    )  # fmt: skip
+    outcomes = run_dataset(document, recordings, options, jobs=jobs,
+                           on_note=note, on_outcome=outcome)  # fmt: skip
+    by = {s: [o.label for o in outcomes if o.status == s]
+          for s in ("done", "skipped", "failed", "unreviewed")}  # fmt: skip
+    failed, unreviewed = by["failed"], by["unreviewed"]
+    typer.echo(f"done {len(by['done'])}, skipped {len(by['skipped'])}, "
+               f"failed {len(failed)}"
                + (f": {', '.join(failed)}" if failed else ""))  # fmt: skip
+    if report:
+        for summary in sorted({o.root for o in outcomes if o.root}):
+            typer.echo(f"QC summary: {Path(summary) / SUMMARY_HTML}")
     if unreviewed:  # said last, so it is not missed
         typer.echo(f"warning: {len(unreviewed)} not reviewed, so not processed "
                    f"past the review strip: {', '.join(unreviewed)}; review them "
