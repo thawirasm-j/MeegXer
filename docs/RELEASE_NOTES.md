@@ -7,6 +7,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Fixed: recovering a long recording.** Recovering an unfinished recording
+  wrote the whole file inside one control call, and the GUI gives up on a
+  reply after 3 s: a recording of an hour or more (40 s to write at 64
+  channels) was reported as failed while it was still being written, and the
+  daemon did not answer anything else meanwhile. The daemon now writes it in
+  the background, and the GUI says when it is done (control API 0.2.16:
+  `recover_recording` returns at once, `recoveries` reports).
+
 - **Detectors:** three new strips under *Event detection* mark artifacts on
   the Events rail, each wrapping a published MNE method: *Detect amplitude &
   flat* (`BAD_peak`, `BAD_flat`, and channels proposed as bad), *Detect

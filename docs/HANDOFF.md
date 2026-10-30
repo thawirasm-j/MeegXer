@@ -6,8 +6,9 @@ the last designs came out as they did. Read this after `CLAUDE.md`. Keep it
 current: whoever finishes a PR that changes any of this updates it in the same
 PR.
 
-State as of main `b97dbb3` (2026-10-30), after PR #96. Plugin spec 0.2.20,
-control API 0.2.15. In flight: review step 4a (detectors).
+State as of main `34ad514` (2026-10-30), after PR #97 (review step 4a,
+detectors). Plugin spec 0.2.20, control API 0.2.16 (from the recovery fix in
+flight). In flight: the recovery timeout fix, then review step 4b.
 
 ## 1. Who works on what
 
@@ -16,7 +17,7 @@ Two Claude accounts may work on this repo. To keep them from colliding:
 | Area | Owner | Branch |
 |---|---|---|
 | Main development (review track and the rest of `docs/ROADMAP.md`) | Lab account | its own `claude/…` branch |
-| Review step 4 (suggestions): 4a detectors, then 4b queue | Lab account | `claude/dreamy-hopper-wwm0sc` |
+| Recovery timeout fix, then review step 4b (suggestions queue) | Lab account | `claude/dreamy-hopper-wwm0sc` |
 | PR review (`/code-review` on the other account's PRs), quick questions | Personal account | none (reviews only) |
 
 Rules while both are active:
@@ -107,12 +108,17 @@ Method choices:
 
 1. **Review step 4: suggestions** (`docs/REVIEW.md` → *Design v2*, *Order of
    work* 4), two PRs:
-   - 4a, detector strips (amplitude/flat, muscle, blinks): in review.
+   - 4a, detector strips (amplitude/flat, muscle, blinks): built (PR #97).
    - 4b, the Review strip's priors (`points`) and `decision` mode (*free* or
      *verify*: a Y/N/E queue), verdicts kept with their origin, the Events
      rail rule that the Review strip takes its prior labels over, and the
      detector's proposed bad channels in the queue. Decided (section 3); not
-     built. Review points (built) are its navigation half.
+     built. Review points (built) are its navigation half. Window (agreed
+     2026-10-30): a *Suggestions* list under the marks list (label, time,
+     origin, verdict); *verify*: Y accept, N reject, E edit (edited once its
+     edges change), each moving on, free marking off; *free*: suggestions open
+     as dashed marks (left alone: accepted; deleted: rejected; changed:
+     edited).
 2. **Small follow-up to epoch review:** rejected epochs are only in the
    sidecar and the reviewed epochs rail. Optionally put them on the Events rail
    (e.g. `BAD_epoch` spans) so file writers record them. Ask first.
@@ -160,6 +166,10 @@ Method choices:
   (so the amplitude detector calls it once per limit). `find_eog_events`'
   `thresh` is a peak's prominence: around a lone synthetic bump, the filter's
   ringing counts as blinks at the default, so tests set it.
+- A control call must answer within the client's timeout (the GUI waits
+  3 s). Work that can take longer (writing a recovered recording) runs on a
+  daemon thread and is reported by another call (`recoveries`), as offline
+  runs are by `status`.
 - ruff can reformat a hand-aligned block; fix the line or keep `# fmt: skip`
   rather than accepting a reflow of untouched code.
 

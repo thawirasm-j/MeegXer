@@ -149,6 +149,10 @@ class MainWindow(QMainWindow):
         self._build()
         self._apply_view_settings()
         self._load_initial()
+        # recordings being recovered in the daemon, watched until written
+        self._recovering: set[str] = set()
+        self._recovery_timer = QTimer(self)
+        self._recovery_timer.timeout.connect(self._check_recoveries)
         QTimer.singleShot(0, self.offer_recovery)  # once the window is up
         link.status.connect(self.on_status)
         link.frame.connect(self.on_frame)
@@ -907,8 +911,24 @@ class MainWindow(QMainWindow):
                 continue
             if reply["path"] is None:
                 self.log(f"Deleted the unfinished recording {rec['path']}.")
+            else:  # written in the background: a long recording takes a while
+                self.log(f"Recovering the unfinished recording to {reply['path']}…")
+                self._recovering.add(rec["path"])
+                self._recovery_timer.start(500)
+
+    def _check_recoveries(self) -> None:
+        """Log each recovery the daemon has finished writing."""
+        for rec in self.call("recoveries") or []:
+            if rec["path"] not in self._recovering or rec["state"] == "running":
+                continue
+            self._recovering.discard(rec["path"])
+            if rec["state"] == "done":
+                self.log(f"Recovered the unfinished recording to {rec['output']}.")
             else:
-                self.log(f"Recovered the unfinished recording to {reply['path']}.")
+                self.log(f"Could not recover {rec['path']}: {rec['error']} (it is "
+                         "offered again next time, or: meegxer recover).")  # fmt: skip
+        if not self._recovering:
+            self._recovery_timer.stop()
 
     def recovery_choice(self, rec: dict[str, Any]) -> str:
         """Asks what to do with an unfinished recording: ``recover``,

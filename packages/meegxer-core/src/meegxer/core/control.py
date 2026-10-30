@@ -153,6 +153,11 @@ class Daemon:
         # those of the session loaded last (fingerprints decide if they are used)
         self._offline_models: Graph | None = None
         self._stop = threading.Event()
+        # unfinished recordings being written, by path: {path, output, state, error}
+        # (a long recording takes longer than a client waits for a reply)
+        self._recoveries: dict[str, dict[str, Any]] = {}
+        self._recoveries_lock = threading.Lock()
+        self._recovery_threads: list[threading.Thread] = []  # close() waits for them
         self._methods: dict[str, Callable[..., Any]] = {
             "ping": self.ping,
             "list_nodes": self.list_nodes,
@@ -184,6 +189,7 @@ class Daemon:
             "cancel_review": self.cancel_review,
             "unfinished_recordings": self.unfinished_recordings,
             "recover_recording": self.recover_recording,
+            "recoveries": self.recoveries,
             "shutdown": self.shutdown,
         }
 
@@ -488,21 +494,50 @@ class Daemon:
                 "unmatched": unmatched}  # fmt: skip
 
     def unfinished_recordings(self) -> list[dict[str, Any]]:
-        """Recordings a crashed run left in their spools (``sinks.py``)."""
-        return unfinished_recordings()
+        """Recordings a crashed run left in their spools (``sinks.py``), but not
+        those being recovered."""
+        with self._recoveries_lock:
+            busy = {p for p, r in self._recoveries.items() if r["state"] == "running"}
+        return [r for r in unfinished_recordings() if r["path"] not in busy]
 
     def recover_recording(self, path: str, discard: bool = False) -> dict[str, Any]:
-        """Write an unfinished recording (to its own name, or ``<name>_recovered``
-        when that exists), or with ``discard`` delete it: ``{path}``, the file
-        written, or ``null``. Only recordings ``unfinished_recordings`` lists."""
-        if path not in {r["path"] for r in unfinished_recordings()}:
+        """Start writing an unfinished recording (to its own name, or
+        ``<name>_recovered`` when that exists) in the background, or with
+        ``discard`` delete it: ``{path, state}``, the file being written and
+        ``running`` (``recoveries`` says when it is done), or ``path`` null and
+        ``deleted``. Only recordings ``unfinished_recordings`` lists."""
+        if path not in {r["path"] for r in self.unfinished_recordings()}:
             raise ValueError(f"no unfinished recording at {path}")
         target = Path(path)
         if discard:
             discard_spool(target)
-            return {"path": None}
+            return {"path": None, "state": "deleted"}
         output = free_name(target, "recovered") if target.exists() else target
-        return {"path": str(recover(target, output))}
+        entry: dict[str, Any] = {"path": path, "output": str(output),
+                                 "state": "running", "error": None}  # fmt: skip
+        with self._recoveries_lock:
+            self._recoveries[path] = entry
+
+        def run() -> None:
+            try:
+                recover(target, output)
+                done: dict[str, Any] = {"state": "done"}
+            except Exception as exc:  # reported through recoveries
+                done = {"state": "failed", "error": str(exc)}
+            with self._recoveries_lock:
+                entry.update(done)
+
+        thread = threading.Thread(target=run, name="recover", daemon=True)
+        self._recovery_threads.append(thread)
+        thread.start()
+        return {"path": str(output), "state": "running"}
+
+    def recoveries(self) -> list[dict[str, Any]]:
+        """The recordings ``recover_recording`` started writing since the daemon
+        started: ``{path, output, state, error}``, ``state`` ``running``,
+        ``done`` or ``failed`` (then ``error`` says why)."""
+        with self._recoveries_lock:
+            return [dict(r) for r in self._recoveries.values()]
 
     def run_offline(
         self, pipeline: dict[str, Any], reviewer: str = ""
@@ -704,6 +739,8 @@ class Daemon:
             self._close_processors(self._graph)
         if self._offline is not None:
             self._offline.discard()
+        for thread in self._recovery_threads:  # never leave a file half written
+            thread.join()
         self._socket.close(linger=0)
         self.display.close()
         self._guard.stop()
