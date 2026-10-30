@@ -114,7 +114,8 @@ def test_components_are_coloured_and_named_by_class(qapp: QApplication) -> None:
                  np.zeros(500, dtype=bool), 50.0, ("eye", "brain"),
                  (0.97, 0.81))  # fmt: skip
     view.refresh(lambda p, s: win, "tap_ica1__ics", [])
-    texts = [a.text() for a in view.channels.menu().actions() if a.isCheckable()]
+    # no place on the scalp: listed beside the head, named by class
+    texts = [b.text() for b in view.channels.picker.boxes.values()]
     assert texts == ["IC01 · eye 0.97", "IC02 · brain 0.81"]
     pens = [c.opts["pen"].color().name() for c in view.plot._curves if c.isVisible()]
     assert pens == [IC_CLASS_COLORS["eye"].lower(), IC_CLASS_COLORS["brain"].lower()]
@@ -232,9 +233,8 @@ def test_offline_feature_and_ics_taps(
         assert win._shown() == ("tap_ica1__ics", [])
         win.redraw()
         assert win.views.currentWidget() is win.view
-        actions = [a.text() for a in win.view.channels.menu().actions()
-                   if a.isCheckable()]  # fmt: skip
-        assert actions and actions[0].startswith("IC01 · ")
+        boxes = [b.text() for b in win.view.channels.picker.boxes.values()]
+        assert boxes and boxes[0].startswith("IC01 · ")
         # spectrum: the head plot maps the components back on the electrodes,
         # from ICA's mixing matrix read from the core (get_model)
         from meegxer.gui.headplot import HeadMap

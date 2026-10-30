@@ -41,8 +41,10 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
+from meegxer.gui.channel_picker import ChannelPicker, default_hidden
 from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import (
     ChannelStyle,
@@ -227,6 +229,54 @@ class ChannelMenu(QToolButton):
 
     def selected(self, labels: tuple[str, ...]) -> list[int]:
         return [i for i, lb in enumerate(labels) if lb not in self.hidden]
+
+
+class HeadChannelMenu(ChannelMenu):
+    """The signal view's *Channels*: a head to click electrodes on, with the
+    channels that have no place listed beside (``channel_picker``)."""
+
+    def __init__(self, theme: Theme) -> None:
+        super().__init__()
+        self.picker = ChannelPicker(theme)
+        self.picker.changed.connect(self._picked)
+        menu = QMenu(self)
+        holder = QWidgetAction(menu)
+        holder.setDefaultWidget(self.picker)
+        menu.addAction(holder)
+        self.setMenu(menu)  # kept: the picker is updated, not rebuilt
+
+    def set_labels(
+        self,
+        labels: tuple[str, ...],
+        hide_by_default: frozenset[str] = frozenset(),
+        notes: dict[str, str] | None = None,
+        *,
+        wheel: dict[str, tuple[float, float]] | None = None,
+        colors: dict[str, QColor] | None = None,
+    ) -> None:
+        notes = notes or {}
+        if (labels, hide_by_default, notes) == (self.labels, self.defaults, self.notes):
+            return
+        self.labels, self.defaults, self.notes = labels, hide_by_default, notes
+        self.hidden = set(hide_by_default) & set(labels)
+        self.picker.set_channels(labels, self.hidden, hide_by_default, wheel=wheel,
+                                 colors=colors, notes=notes)  # fmt: skip
+        self._caption()
+
+    def _picked(self, hidden: set[str]) -> None:
+        self.hidden = set(hidden)
+        self._caption()
+        self.changed.emit()
+
+    def _set(self, hidden: set[str]) -> None:
+        self.hidden = hidden
+        self.picker._apply(set(hidden), emit=False)
+        self._caption()
+        self.changed.emit()
+
+    def apply_theme(self, theme: Theme) -> None:
+        self.picker.head.theme = theme
+        self.picker.head.update()
 
 
 class TraceViewBox(pg.ViewBox):
@@ -451,7 +501,7 @@ class SignalView(QWidget):
             mode = name.lower()
             button.clicked.connect(lambda _=False, m=mode: self._set_mode(m))
             bar.addWidget(button)
-        self.channels = ChannelMenu()
+        self.channels = HeadChannelMenu(theme)
         bar.addWidget(self.channels)
         self.span = QComboBox()
         for seconds in (2, 5, 10, 20, 30):
@@ -496,6 +546,8 @@ class SignalView(QWidget):
         self.styles: dict[tuple[tuple[str, ...], ...], list[ChannelStyle]] = {}
         self.wheel: dict[str, tuple[float, float]] = {}
         self.types: dict[str, str] = {}  # label -> channel type, when known
+        # visualization.channels: which channels show first (channel_picker)
+        self.channel_rule = "standard_19"
         # components shown (e.g. the ICs rail): their sensors and mixing matrix
         # (sensors x components, ICA's ``winv``), so the head plot maps the
         # selected components' power back on the electrodes
@@ -704,6 +756,7 @@ class SignalView(QWidget):
         self.styles.clear()
         self.plot.apply_theme(theme)
         self.head.apply_theme(theme)
+        self.channels.apply_theme(theme)
         self._style_band()
 
     def set_active(self, active: bool) -> None:
@@ -874,17 +927,16 @@ class SignalView(QWidget):
             self.legend.setText("Nothing shown: click a ◇ tap in the chain")
             self._head_message("Nothing shown: click a ◇ tap in the chain")
             return
+        styles = self._styles(main_win.labels, main_win.classes)
         self.channels.set_labels(
             main_win.labels,
-            frozenset(
-                lb
-                for lb in main_win.labels
-                if self.types.get(lb, "eeg") not in ("eeg", "")
-            ),
+            default_hidden(main_win.labels, self.types, self.channel_rule),
             class_notes(main_win),
-        )
+            wheel=self.wheel,
+            colors={lb: QColor(*st.color)
+                    for lb, st in zip(main_win.labels, styles, strict=True)},
+        )  # fmt: skip
         chans = self.channels.selected(main_win.labels)
-        styles = self._styles(main_win.labels, main_win.classes)
         self.legend.setToolTip(self.delay_note)
         layers: list[tuple[FloatArray, FloatArray, QPen]] = []
         plot = self.plot.getPlotItem()

@@ -53,6 +53,7 @@ reported (in the log) and use their defaults. The format is checked against
 | | Reverse sequential maps on a light theme | `visualization.flip_on_light` | `false` |
 | | Time span (s) | `visualization.span` | `10` |
 | | Live time axis: seconds before now, or time since start | `visualization.time_axis` | `before_now` |
+| | Channels shown first in the signal view (picked on a head plot under *Channels*): the standard 19 of the 10-20 system when a recording has more than 19 EEG channels, else every EEG channel; or every EEG channel. Other types (EOG, ECG, …) start hidden | `visualization.channels` | `standard_19` |
 | | Head plot band, power, remove 1/f, map, power range, live smoothing | `visualization.spectrum.*` | α (8–13 Hz), absolute, off, band power, 20 dB, 2 s |
 | Review | Units: clinical (µV/mm and mm/s, on the screen's real size) or µV spacing and seconds per page | `review.units` | `uv_per_mm` |
 | | Sensitivity (µV/mm), speed (mm/s) | `review.sensitivity`, `review.speed` | `7`, `30` |
