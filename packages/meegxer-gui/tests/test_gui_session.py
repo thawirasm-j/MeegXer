@@ -292,3 +292,42 @@ def test_unsaved_changes_are_asked_about_and_files_remembered(
     finally:
         win.running = False
         win.close()
+
+
+def test_the_log_hides_and_the_qc_summary_opens(
+    qapp: QApplication,
+    daemon: tuple[str, subprocess.Popen[bytes]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from PySide6.QtGui import QDesktopServices
+
+    control, _ = daemon
+    win = _window(control)
+    try:
+        assert win.log_btn.isChecked() and not win.logbox.isHidden()
+        win.log_btn.setChecked(False)
+        assert win.logbox.isHidden() and win.state["log_visible"] is False
+        win.log("one")
+        win.log("two")
+        assert win.log_btn.text() == "Log (2)"  # what was written meanwhile
+        win.log_btn.setChecked(True)
+        assert win.log_btn.text() == "Log" and not win.logbox.isHidden()
+
+        summary = tmp_path / "qc.html"
+        summary.write_text("<html></html>")
+        win.doc.input_mode = "offline"
+        win.doc.set_source("meegxer.core.bids", {"root": "ds", "subject": ""})
+        win.offline_state = "done"
+        win.offline_recordings = {"index": 2, "total": 2, "current": "sub-02",
+                                  "done": [], "skipped": [], "failed": [],
+                                  "summary": str(summary)}  # fmt: skip
+        win._transport()
+        assert not win.qc_btn.isHidden()
+        opened: list[str] = []
+        monkeypatch.setattr(QDesktopServices, "openUrl",
+                            lambda url: opened.append(url.toLocalFile()))  # fmt: skip
+        win.qc_btn.click()
+        assert [Path(p) for p in opened] == [summary]
+    finally:
+        win.close()
