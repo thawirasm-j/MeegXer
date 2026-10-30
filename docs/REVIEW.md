@@ -375,6 +375,12 @@ Built (step 5 of Design v2, epoch review):
   any change upstream asks again, with the verdicts made before filled in for
   the epochs at the same place (rule 7). Every epoch is reviewed: one left
   untouched is kept as it was cut.
+- **Rejected epochs on the Events rail** (decided 2026-10-30): each rejected
+  epoch is also a `rejected_epoch` span over its window (payload: the label
+  given and the event it was cut around), so the file writers record it (an
+  annotation in `.set` and EDF, a row in the BIDS `events.tsv`). It is not a
+  `BAD` label: a Reject segments strip cuts it only when its `reject` words
+  name it. Strip version 0.2.0.
 - **The epoch review window** opens while the run waits there: a page of
   epochs side by side (5 by default), every channel stacked, the event at the
   dashed line. Click an epoch to select it; ←/→ move the selection, PgUp/PgDn

@@ -148,7 +148,10 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   state what the cause was and why the fix works. No unsolicited refactors.
 - For architecture or method decisions: flag alternatives briefly and ask before
   committing to one.
+- Ask the maintainer's decisions with the multiple-choice question prompt (the
+  options, the recommended one first, each with its trade-off), not in chat text.
 - Ask before changing anything listed under "Architecture rules".
-- `docs/HANDOFF.md`: the maintainer's standing decisions, the work routine,
-  open items and who works on what. Read it at the start of a session; keep
-  it current in the PR that changes any of it.
+- `docs/HANDOFF.md`: a one-time handoff note (the work routine, past decisions,
+  open items). Read it, but do not edit it; it will be removed. Decisions and
+  working rules go in this file and the design docs (`docs/REVIEW.md`,
+  `docs/RAILS.md`, …).
