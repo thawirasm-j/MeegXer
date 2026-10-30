@@ -52,14 +52,14 @@ and a resting-state study end to end, GUI and CLI) is next.
 |---|---|---|
 | M9.1–M9.9 | Done | 0.3.0b1 – 0.3.1b3 |
 | M10.1 Resample, pick channels | Done | 0.3.1b3 |
-| M10.2 Epoching, events writer | Done: the Epochs strip and the epochs rail, every file writer records the Events rail (PR #90), and epoch files (`-epo.fif`, epoched `.set`, BIDS epochs) | PR #84, #90, this PR |
-| M10.3 ERP view | Partly: offline, in the epoch review window, and ERP export (`-ave.fif`, with the epoch files). The live running-average ERP tap is not done | PR #93, this PR |
+| M10.2 Epoching, events writer | Done: the Epochs strip and the epochs rail, every file writer records the Events rail (PR #90), and epoch files (`-epo.fif`, epoched `.set`, BIDS epochs) | PR #84, #90, #105 |
+| M10.3 ERP view | Partly: offline, in the epoch review window, and ERP export (`-ave.fif`, with the epoch files). The live running-average ERP tap is not done | PR #93, #105 |
 | M10.4 Bad segments | Done, as the review track below: detectors write `BAD_…` spans, a Reject segments strip cuts them, the Epochs strip leaves out epochs overlapping them | PR #87, #97 |
 | M10.5 XDF input | Open | |
 | M10.6 EEGLAB decompositions | Open (the ICs rail starts at ICA only) | |
 | M10.7 MNE Python API | Open | |
-| M10.8 Batch workers, QC report | Done: `--jobs N` worker processes (and `general.batch_jobs` for the GUI's all-subjects run), a QC report per recording (mne.Report) and the dataset's `qc.tsv` and `qc.html` | this PR |
-| M10.9 Templates, sample data | Partly: ERP, resting-state and ICA cleaning templates (GUI *New…*, `meegxer new`), and the ERP CORE and EEGBCI samples, fetched per subject on first use. The SSVEP BCI template waits for M11 | this PR |
+| M10.8 Batch workers, QC report | Done: `--jobs N` worker processes (and `general.batch_jobs` for the GUI's all-subjects run), a QC report per recording (mne.Report) and the dataset's `qc.tsv` and `qc.html` | PR #107 |
+| M10.9 Templates, sample data | Partly: ERP, resting-state and ICA cleaning templates (GUI *New…*, `meegxer new`), and the ERP CORE and EEGBCI samples, fetched per subject on first use. The SSVEP BCI template waits for M11 | PR #106, #112 |
 | M10.10 Undo for chain edits | Open (the review window has undo) | |
 | M10.11 Manual review (added) | Steps 1–5 of `docs/REVIEW.md` Design v2 done: Review strip, Reject segments, review display, review at import, review points, detectors, suggestions with verdicts, epoch review, rejected epochs on the Events rail. Step 6 (a second reviewer, a review report) open | PR #81 – #100 |
 
