@@ -89,6 +89,10 @@
           "description": "Live time axis: seconds before the newest data (fixed ticks, 0 at the right edge) or time since the stream started (sample index on the source's clock).",
           "enum": ["before_now", "since_start"]
         },
+        "channels": {
+          "description": "Channels the signal view shows first: standard_19 (the 19 of the 10-20 system when a recording has more than 19 EEG channels, else every EEG channel) or all_eeg. Other types (EOG, ECG, ...) start hidden either way.",
+          "enum": ["standard_19", "all_eeg"]
+        },
         "spectrum": {
           "type": "object",
           "additionalProperties": false,

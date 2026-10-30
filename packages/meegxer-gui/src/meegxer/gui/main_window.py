@@ -400,6 +400,7 @@ class MainWindow(QMainWindow):
     def _apply_view_settings(self) -> None:
         """Defaults from the settings, then what was remembered on top."""
         vis = self.settings["visualization"]
+        self.view.channel_rule = vis["channels"]
         self.view.maps = Maps.from_settings(vis)
         self.feature_view.maps = self.view.maps
         self.view.set_view_state({"span": vis["span"], "spectrum": vis["spectrum"]})
@@ -444,6 +445,8 @@ class MainWindow(QMainWindow):
             self.state.pop("advanced", None)
             self.set_advanced(settings["general"]["advanced"])
         vis, before = settings["visualization"], old["visualization"]
+        # a new rule shows its channels at the next frame (new defaults)
+        self.view.channel_rule = vis["channels"]
         view = self.state.setdefault("view", {})
         if vis["span"] != before["span"]:
             view.pop("span", None)

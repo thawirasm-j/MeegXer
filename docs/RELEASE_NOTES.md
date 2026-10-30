@@ -58,6 +58,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   default, 100 % of 158 px, or any width from 50 to 300 %) or *Follow text
   size*, where a strip grows with the text size and with a wider font
   (Windows draws the same size wider), so short names are not shortened.
+- **Pick channels on a head plot:** the signal view's *Channels* shows each
+  electrode at its place on the scalp (filled: shown, hollow: hidden); a click
+  toggles one, channels without a place are check boxes beside it, and *All*,
+  *None*, *Standard 19* and *Default* set them at once. A recording with more
+  than 19 EEG channels opens on the standard 19 of the 10-20 system, a smaller
+  one on every EEG channel (Settings → Visualization → *Channels shown first*,
+  `visualization.channels`). The stacked window keeps its list.
 - **Fix:** a strip reading a rail (e.g. a writer after an Epochs strip) lost
   that choice when the GUI saved the pipeline.
 

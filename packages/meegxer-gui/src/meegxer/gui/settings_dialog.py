@@ -510,6 +510,16 @@ class SettingsDialog(QDialog):
                 "time since start counts from the stream's first sample, as offline",
             ),
         )
+        form.addRow(
+            "Channels shown first",
+            self._combo(
+                "visualization.channels",
+                {"standard_19": "Standard 19 (10-20) above 19 EEG channels",
+                 "all_eeg": "All EEG channels"},
+                "Which channels the signal view shows when a recording opens; "
+                "Channels (or the head) shows and hides the others",
+            ),
+        )  # fmt: skip
 
         band = QWidget()
         row = QHBoxLayout(band)

@@ -49,6 +49,7 @@ DEFAULTS: dict[str, Any] = {
         "flip_on_light": False,
         "span": 10,
         "time_axis": "before_now",
+        "channels": "standard_19",  # shown first in the signal view
         "spectrum": {
             "band": [8.0, 13.0],
             "relative": False,
