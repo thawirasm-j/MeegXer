@@ -78,6 +78,7 @@ from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import wheel_positions
 from meegxer.gui.connection import DaemonLink
 from meegxer.gui.epoch_review_window import EpochReviewWindow
+from meegxer.gui.erp_view import Erp, ErpView
 from meegxer.gui.feature_view import FeatureSeries, FeatureView
 from meegxer.gui.inspector import Inspector
 from meegxer.gui.labels import param_label
@@ -136,6 +137,7 @@ class MainWindow(QMainWindow):
         self.doc = PipelineDoc(link.call("list_nodes"))
         self.buffers: dict[str, ProbeBuffer] = {}
         self.feature_buffers: dict[str, FeatureBuffer] = {}
+        self.erp_frames: dict[str, FeatureFrame] = {}  # an ERP tap's newest
         self.taps: dict[str, str] = {}
         # a tapped feature strip or rail output (e.g. "ica1:ics"): shown alone,
         # in place of the signal taps, until tapped again or a signal tap is
@@ -158,6 +160,7 @@ class MainWindow(QMainWindow):
         self._answered: dict[str, Any] | None = None  # until the run moves on
         self.offline_recordings: dict[str, Any] = {}  # an all-subjects BIDS run
         self._feature_cache: dict[str, tuple[tuple[Any, ...], FeatureSeries]] = {}
+        self._erp_cache: dict[str, tuple[Any, float, Erp | None]] = {}
         self._offline_cache: dict[str, tuple[tuple[Any, ...], Window | None]] = {}
         # node -> (what it was read for, when, its sensors and mixing matrix)
         self._mixing: dict[str, tuple[tuple[Any, ...], float, Any]] = {}
@@ -206,9 +209,12 @@ class MainWindow(QMainWindow):
         self.view = SignalView(self.theme)
         self.view.stacked_requested.connect(self.show_stacked)
         self.feature_view = FeatureView(self.theme)
-        self.views = QStackedWidget()  # the signal view, or a feature tap's view
+        self.erp_view = ErpView(self.theme)
+        self.erp_view.reset_requested.connect(self._reset_erp)
+        self.views = QStackedWidget()  # the signal view, or a feature/ERP tap's
         self.views.addWidget(self.view)
         self.views.addWidget(self.feature_view)
+        self.views.addWidget(self.erp_view)
         sp.addWidget(self.views, 1)
         self.timeline = self.view.panner
         splitter.addWidget(signal_panel)
@@ -377,6 +383,7 @@ class MainWindow(QMainWindow):
             app.setStyleSheet(stylesheet(theme, self.scale))
         self.view.apply_theme(theme)
         self.feature_view.apply_theme(theme)
+        self.erp_view.apply_theme(theme)
         self.inspector.apply_theme(theme)
         self.stacked.apply_theme(theme)
         self.stacked.setStyleSheet(stylesheet(theme, self.scale))
@@ -928,6 +935,7 @@ class MainWindow(QMainWindow):
                 self.offline_features.clear()
                 self._offline_cache.clear()
                 self._feature_cache.clear()
+                self._erp_cache.clear()
                 self.offline_recordings = {}
                 self.log("Offline run started.")
             self._transport()
@@ -936,6 +944,7 @@ class MainWindow(QMainWindow):
             return
         self.buffers.clear()
         self.feature_buffers.clear()
+        self.erp_frames.clear()
         if self.call("start") is not None:
             self.running = True
             self.log("Started.")
@@ -1362,6 +1371,7 @@ class MainWindow(QMainWindow):
         if recordings.get("index") != self.offline_recordings.get("index"):
             self._offline_cache.clear()  # the views now show another recording
             self._feature_cache.clear()
+            self._erp_cache.clear()
             if recordings.get("current"):
                 self.log(f"Recording {recordings['index']}/{recordings['total']}: "
                          f"{recordings['current']}")  # fmt: skip
@@ -1567,6 +1577,9 @@ class MainWindow(QMainWindow):
         m["display"].setText(f"display frames skipped {shown}" if self.buffers else "")
 
     def on_frame(self, frame: DisplayFrame | FeatureFrame) -> None:
+        if isinstance(frame, FeatureFrame) and frame.dims[:1] == ("condition",):
+            self.erp_frames[frame.probe] = frame  # an ERP tap: the newest whole
+            return
         if isinstance(frame, FeatureFrame):
             features = self.feature_buffers.get(frame.probe)
             if features is None:
@@ -1676,12 +1689,13 @@ class MainWindow(QMainWindow):
         return win
 
     def redraw(self) -> None:
-        features = self.view_tap is not None and (
-            self.doc.tap_kind(self.view_tap) == "features"
-        )
-        self.views.setCurrentIndex(1 if features else 0)
-        if features:
+        kind = self.doc.tap_kind(self.view_tap) if self.view_tap else "signal"
+        self.views.setCurrentIndex({"features": 1, "erp": 2}.get(kind, 0))
+        if kind == "features":
             self._draw_features()
+            return
+        if kind == "erp":
+            self._draw_erp()
             return
         main, comps = self._shown()
         review = self.review_window
@@ -1745,6 +1759,57 @@ class MainWindow(QMainWindow):
         else:
             series, t0, t1 = self._offline_features(probe, seconds)
         view.refresh(series, name, t0, t1)
+
+    def _draw_erp(self) -> None:
+        """The tapped epochs rail's running ERP: live from the display stream
+        (the newest frame holds it whole), offline from the run's ERP tap."""
+        assert self.view_tap is not None
+        probe = tap_id(self.view_tap)
+        name = self.view.names.get(probe, self.view_tap)
+        live = self.doc.mode == "live"
+        erp = self._live_erp(probe) if live else self._offline_erp(probe)
+        self.erp_view.refresh(erp, name, live)
+
+    def _live_erp(self, probe: str) -> Erp | None:
+        frame = self.erp_frames.get(probe)
+        if frame is None:
+            return None
+        return Erp(tuple(str(c) for c in frame.coords.get("condition", ())),
+                   frame.counts,
+                   tuple(str(c) for c in frame.coords.get("channel", ())),
+                   np.asarray(frame.coords.get("time", ()), dtype=float),
+                   frame.values, frame.unit)  # fmt: skip
+
+    def _offline_erp(self, probe: str) -> Erp | None:
+        """Read again when the run moves on (at most once a second while it
+        runs: the ERP grows with each recording's epochs)."""
+        key = (self.offline_state, self.offline_recordings.get("index"))
+        cached = self._erp_cache.get(probe)
+        now = time.monotonic()
+        if (
+            cached is not None
+            and cached[0] == key
+            and (self.offline_state != "running" or now - cached[1] < 1.0)
+        ):
+            return cached[2]
+        erp = None
+        if self.offline_state:
+            reply = self.call("offline_erp", probe=probe)
+            if reply is not None and reply["dims"]:
+                coords = reply["coords"]
+                erp = Erp(tuple(coords["condition"]), tuple(reply["counts"]),
+                          tuple(coords["channel"]),
+                          np.asarray(coords["time"], dtype=float),
+                          np.asarray(reply["values"], dtype=float).reshape(
+                              len(coords["condition"]), len(coords["channel"]),
+                              len(coords["time"])),
+                          str(reply.get("unit", "")))  # fmt: skip
+        self._erp_cache[probe] = (key, now, erp)
+        return erp
+
+    def _reset_erp(self) -> None:
+        if self.view_tap is not None and self.running:
+            self.call("reset_probe", probe=tap_id(self.view_tap))
 
     def _live_features(
         self, probe: str, seconds: float

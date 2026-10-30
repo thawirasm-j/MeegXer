@@ -344,7 +344,8 @@ it never interrupts processing.
     `input`.
   - **Feature and component views:** clicking a rail's name (◇, ◆ when shown)
     shows it in place of the signal view, alone, until it is clicked again or a
-    signal tap is. A feature rail opens the feature view: a spectrum per channel
+    signal tap is. An epochs rail opens the ERP view (`docs/RAILS.md`: each
+    condition's running mean, live or offline). A feature rail opens the feature view: a spectrum per channel
     when its windows have a frequency dimension (live the newest window, offline
     the mean over the shown span; dB for positive values), else one line per
     channel over time, with *Show* choosing among further dimensions (the band

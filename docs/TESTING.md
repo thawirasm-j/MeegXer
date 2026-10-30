@@ -330,3 +330,27 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 | D1 time with --jobs 1 / --jobs 4 (recordings, CPU) | 17.54s, 8.85s | |
 | D2 summary and reports | pass | |
 | D3 GUI all-subjects run with workers | pass | |
+
+## E. Live ERP view (M10.3)
+
+1. `uv run python tools/live_erp_demo.py C:\meegxer-erp` writes `live_erp.json`
+   (a synthetic input played live with `go` and `stop` markers every 1.2 s, and
+   an Epochs strip) and its `events.tsv`.
+2. `uv run meegxer-gui`, open `live_erp.json`, *Start*. Click the Epochs
+   strip's `epochs` rail name: the ERP view replaces the signal view. Within a
+   few seconds it shows `go (n=…)` and `stop (n=…)` on Cz, the counts
+   growing by one each 2.4 s, the curves flattening toward 0 µV (the
+   synthetic input has no evoked response).
+3. *Show* `go`: the channels overlaid (butterfly); *Channels* hides some.
+   *Show* `All conditions` and another channel in the channel list.
+4. *Reset*: the legend reads `0 epochs`, then the counts start again at 1.
+   Change the Epochs strip's `tmax` while it runs: it starts over too.
+5. Offline: the ERP template on the ERP CORE sample (§C), *Start*, then the
+   epochs rail: four conditions with the counts of C2.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| E2 live ERP view, counts growing | | |
+| E3 butterfly and channel choice | | |
+| E4 reset, and a change upstream | | |
+| E5 offline ERP view (counts as C2) | | |

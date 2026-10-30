@@ -56,7 +56,7 @@ from meegxer.core.montage import (
 )
 from meegxer.core.node import AnyBlock, Probe
 from meegxer.core.passband import filters_wire
-from meegxer.core.probes import FeatureProbe, MemoryProbe
+from meegxer.core.probes import ErpProbe, FeatureProbe, MemoryProbe
 from meegxer.core.review import (
     Mark,
     ReviewAnswer,
@@ -407,7 +407,9 @@ class OfflineJob:
 
     def _attach_stores(self, graph: Graph) -> None:
         for node in graph.nodes:  # probes write to disk as the run goes
-            if isinstance(node.impl, FeatureProbe):
+            if isinstance(node.impl, ErpProbe):  # small: its sums stay in memory
+                node.impl.reset()
+            elif isinstance(node.impl, FeatureProbe):
                 graph.replace(node.id, FeatureStoreProbe(self, node.id))
             elif isinstance(node.impl, Probe):
                 graph.replace(node.id, StoreProbe(self, node.id))
@@ -699,6 +701,24 @@ class OfflineJob:
         if store is None:
             raise KeyError(f"no offline features for probe {probe!r} (yet)")
         return {"probe": probe, **store.windows(start, stop, max_windows, reduce)}
+
+    def erp(self, probe: str) -> dict[str, Any]:
+        """The ERP of each label an ERP tap has seen so far in this run."""
+        tap = self.graph[probe].impl if probe in self.graph else None
+        if not isinstance(tap, ErpProbe):
+            raise KeyError(f"no ERP tap {probe!r}")
+        erp = tap.average()
+        if erp is None:
+            return {"probe": probe, "dims": [], "coords": {}, "values": [],
+                    "counts": [], "unit": ""}  # fmt: skip
+        return {
+            "probe": probe,
+            "dims": list(erp.dims),
+            "coords": {k: list(v) for k, v in erp.coords.items()},
+            "values": erp.data.tolist(),
+            "counts": [tap.counts[str(c)] for c in erp.coords["condition"]],
+            "unit": erp.unit,
+        }
 
     @property
     def busy(self) -> bool:

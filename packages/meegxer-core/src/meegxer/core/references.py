@@ -39,6 +39,7 @@ BY_NODE: dict[str, list[Reference]] = {
     "meegxer.core.bids_features": _BIDS,
     "meegxer.core.bids_epochs": _BIDS,
     "meegxer.core.epochs_writer": [MNE],
+    "meegxer.core.erp_probe": [MNE],  # the mean of epochs, as Epochs.average
 }
 
 AUTHORS = ["MeegXer contributors"]
