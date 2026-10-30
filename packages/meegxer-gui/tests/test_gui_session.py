@@ -211,3 +211,29 @@ def test_window_offers_to_recover_unfinished_recordings(
     assert window.recovery_choice(rec) == "later"
     assert "2 channels, 2 min 5 s" in shown[0]
     window.close()
+
+
+def test_stop_and_progress_in_an_offline_run(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]]
+) -> None:
+    """Offline, Stop is there while a run is busy (stop_offline), and an
+    all-subjects run shows its progress over the recordings."""
+    control, _ = daemon
+    win = _window(control)
+    try:
+        win.doc.input_mode = "offline"
+        win.doc.set_source("meegxer.core.bids", {"root": "ds", "subject": ""})
+        win.offline_state = "running"
+        win.offline_recordings = {"index": 3, "total": 5, "current": "sub-03_task-rest",
+                                  "done": [], "skipped": [], "failed": []}  # fmt: skip
+        win._transport()
+        assert win.doc.mode == "offline"
+        assert win.stop_btn.isEnabled() and not win.start_btn.isEnabled()
+        bar = win.progress_bar
+        assert not bar.isHidden() and (bar.value(), bar.maximum()) == (2, 5)
+        assert "sub-03_task-rest" in bar.text()
+        win.offline_state = "done"
+        win._transport()
+        assert not win.stop_btn.isEnabled() and bar.isHidden()
+    finally:
+        win.close()

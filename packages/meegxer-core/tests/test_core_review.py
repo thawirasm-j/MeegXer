@@ -482,3 +482,19 @@ def test_review_points_are_offered_and_answers_keep_their_point(
         "duration": 0.0,
         "label": "x",
     }
+
+
+def test_stop_offline_ends_a_run_waiting_at_a_review(
+    daemon: Daemon, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stop (stop_offline, control API 0.2.19) ends the run, also while it
+    waits for a review: state "stopped", not an error, nothing saved."""
+    monkeypatch.setenv("MEEGXER_OFFLINE_DIR", str(tmp_path / "offline"))
+    file = tmp_path / "marks.tsv"
+    daemon.run_offline({"spec_version": SPEC_VERSION,
+                        "nodes": nodes({"file": str(file)})})  # fmt: skip
+    wait_for(daemon, {"review"})
+    daemon.stop_offline()
+    status = wait_for(daemon, {"stopped", "error", "done"})
+    assert status["state"] == "stopped" and status["error"] == ""
+    assert not status["stopping"] and not file.exists()

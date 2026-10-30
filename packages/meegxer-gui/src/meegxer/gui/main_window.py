@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QProgressDialog,
     QPushButton,
     QSplitter,
@@ -138,6 +139,7 @@ class MainWindow(QMainWindow):
         self.offline_sfreq = 0.0
         self.offline_total = 0
         self.offline_state = ""
+        self.offline_stopping = False  # stop_offline asked; the strip finishes
         self.review_window: ReviewWindow | None = None  # a review strip waits
         self.epoch_window: EpochReviewWindow | None = None  # an epoch review waits
         self.import_window: ReviewWindow | None = None  # a review at import
@@ -250,6 +252,10 @@ class MainWindow(QMainWindow):
         self.stop_btn.clicked.connect(self.stop)
         lay.addWidget(self.start_btn)
         lay.addWidget(self.stop_btn)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximumWidth(260)
+        self.progress_bar.setVisible(False)
+        lay.addWidget(self.progress_bar)
         lay.addSpacing(8)
         for text, slot in (
             ("New…", self.new_from_template),
@@ -475,8 +481,14 @@ class MainWindow(QMainWindow):
         self.start_btn.setText("▶  Start" if live else "▶  Run offline")
         busy = self.offline_state in ("running", "review")
         self.start_btn.setEnabled(not self.running and not busy)
-        self.stop_btn.setVisible(live)
-        self.stop_btn.setEnabled(self.running)
+        self.stop_btn.setEnabled(self.running if live else busy)
+        rec = self.offline_recordings
+        many = not live and busy and int(rec.get("total") or 0) > 1
+        self.progress_bar.setVisible(many)
+        if many:  # an all-subjects run: recordings finished of how many
+            self.progress_bar.setRange(0, int(rec["total"]))
+            self.progress_bar.setValue(max(int(rec.get("index") or 1) - 1, 0))
+            self.progress_bar.setFormat(f"recording %v of %m: {rec.get('current', '')}")
 
     def _default_taps(self) -> None:
         self.view_tap = None
@@ -841,6 +853,10 @@ class MainWindow(QMainWindow):
         self.refresh_chain()
 
     def stop(self) -> None:
+        if self.doc.mode == "offline":
+            if self.call("stop_offline") is not None:
+                self.log("Stopping the offline run after the strip it is on…")
+            return
         self.call("stop")
         self.running = False
         self.log("Stopped.")
@@ -1196,10 +1212,14 @@ class MainWindow(QMainWindow):
             if recordings.get("current"):
                 self.log(f"Recording {recordings['index']}/{recordings['total']}: "
                          f"{recordings['current']}")  # fmt: skip
+        moved = recordings.get("index") != self.offline_recordings.get("index")
         self.offline_recordings = recordings
+        self.offline_stopping = bool(offline.get("stopping"))
         state = offline.get("state", "")
         self._review(offline.get("review") if state == "review" else None)
         if state == self.offline_state:
+            if moved:
+                self._transport()  # the progress bar follows the recordings
             return
         self.offline_state = state
         if state in ("done", "review"):  # the strips' events too (a review's)
@@ -1221,6 +1241,14 @@ class MainWindow(QMainWindow):
                 self.log(f"Not saved: {note}")
         elif state == "error":
             self.log(f"Offline run failed: {offline.get('error')}")
+        elif state == "stopped":
+            if recordings:
+                self.log(f"Offline run stopped: done {len(recordings['done'])}, "
+                         f"skipped {len(recordings['skipped'])}, failed "
+                         f"{len(recordings['failed'])}; the one being run is "
+                         "done again next time.")  # fmt: skip
+            else:
+                self.log("Offline run stopped (nothing was saved).")
         self._transport()
 
     def _review(self, request: dict[str, Any] | None) -> None:
@@ -1355,7 +1383,8 @@ class MainWindow(QMainWindow):
             where = (f" {rec['index']}/{rec['total']} {rec['current']}"
                      if rec.get("current") and self.offline_state == "running"
                      else "")  # fmt: skip
-            m["state"].setText(f"offline: {self.offline_state or 'ready'}{where}")
+            state = "stopping…" if self.offline_stopping else self.offline_state
+            m["state"].setText(f"offline: {state or 'ready'}{where}")
             for key in ("load", "latency", "overruns", "display"):
                 m[key].setText("")
             return

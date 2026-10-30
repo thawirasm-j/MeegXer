@@ -35,6 +35,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   (a power spectrum in dB re 1 µV²/Hz), as in the signal and spectrum views,
   instead of "V² (x1e-12)"; the Recording window names the recording, not the
   input's node.
+- **Stop an offline run:** *■ Stop* now works offline too. The run ends
+  after the strip it is on (a long ICA finishes first; the status shows
+  "stopping…"), worker processes are stopped, and no other recording starts;
+  what finished is kept, and the recording being run is done again next time.
+  An all-subjects run shows a progress bar, recording *i* of *n*. Control API
+  0.2.19: `stop_offline`.
 - **Fix:** a strip reading a rail (e.g. a writer after an Epochs strip) lost
   that choice when the GUI saved the pipeline.
 

@@ -118,3 +118,23 @@ def test_workers_run_the_others_and_every_recording_gets_a_qc_row(
         "sub-01/eeg/sub-01_task-rest_desc-clean_report.html"
     )
     assert (deriv / "qc.html").is_file()
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+def test_a_dataset_run_stops_when_asked(tmp_path: Path, jobs: int) -> None:
+    """``stop`` turning true: no recording starts after it, the workers are
+    stopped, and the outcomes so far come back."""
+    from meegxer.core.bids_batch import RunOptions, run_dataset
+    from meegxer.core.bids_out import find_recordings
+
+    root = make_dataset(tmp_path / "ds", ("01", "02", "03", "04", "05"))
+    document = {"meegxer_session": SESSION_FORMAT, "pipeline": every_subject(root)}
+    finished: list[str] = []
+    outcomes = run_dataset(
+        document, find_recordings(root), RunOptions(report=False), jobs=jobs,
+        on_outcome=lambda i, o: finished.append(o.label),
+        stop=lambda: len(finished) >= 1,
+    )  # fmt: skip
+    assert 1 <= len(outcomes) < 5 and [o.label for o in outcomes] == sorted(finished)
+    if jobs == 1:
+        assert len(outcomes) == 1

@@ -14,7 +14,7 @@ nodes are refused.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -172,6 +172,10 @@ class BatchResult:
     notes: list[str] = field(default_factory=list)  # what sinks changed mid-run
 
 
+class RunStopped(RuntimeError):
+    """The run was asked to stop (``BatchScheduler(stop=…)``)."""
+
+
 class BatchScheduler:
     def __init__(
         self,
@@ -181,6 +185,7 @@ class BatchScheduler:
         calibration_seconds: float | None = None,
         review: ReviewCallback | None = None,
         reviewer: str = "",
+        stop: Callable[[], bool] | None = None,
     ) -> None:
         if block_size is not None and block_size < 1:
             raise ValueError("block_size must be >= 1")
@@ -191,6 +196,9 @@ class BatchScheduler:
         # (docs/REVIEW.md); without it such a recording stops (ReviewNeeded)
         self.review = review
         self.reviewer = reviewer  # saved with each review made in this run
+        # asked before each node: true stops the run there (RunStopped). A node
+        # runs over the whole recording at once, so a sink never stops halfway
+        self.stop = stop
         self._events: tuple[Event, ...] = ()  # the recording's, for labelled fits
         self._rail = EventsRail()  # those plus what strips emit (docs/RAILS.md)
         self._graph: Graph | None = None
@@ -225,6 +233,8 @@ class BatchScheduler:
             node.impl.bind(graph, node.id)
 
         for node in graph.nodes:
+            if self.stop is not None and self.stop():
+                raise RunStopped(f"stopped before {node.id}")
             if node.role is NodeRole.SOURCE:
                 assert isinstance(node.impl, Source)
                 streams[node.id] = list(self._read_source(node.impl))

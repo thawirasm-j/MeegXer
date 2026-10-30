@@ -32,7 +32,7 @@ import numpy as np
 import numpy.typing as npt
 
 from meegxer.core import settings
-from meegxer.core.batch import BatchResult, BatchScheduler
+from meegxer.core.batch import BatchResult, BatchScheduler, RunStopped
 from meegxer.core.bids_batch import (
     Outcome,
     RunOptions,
@@ -401,6 +401,7 @@ class OfflineJob:
         self.review_request: ReviewRequest | None = None
         self._review_reply: ReviewAnswer | None = None
         self._review_answered = threading.Event()
+        self._stop = threading.Event()  # stop(): the run ends at the next strip
         if not self.recordings:
             self._attach_stores(graph)
 
@@ -432,7 +433,8 @@ class OfflineJob:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.scheduler = BatchScheduler(cache=DirectoryCache(self.cache_dir),
                                         review=self._await_review,
-                                        reviewer=self.reviewer)  # fmt: skip
+                                        reviewer=self.reviewer,
+                                        stop=self._stop.is_set)  # fmt: skip
         result = self.scheduler.run(graph)
         for store in self.probes.values():
             store.close()
@@ -512,6 +514,15 @@ class OfflineJob:
         self._review_reply = None
         self._review_answered.set()
 
+    def stop(self) -> None:
+        """End the run: the recording being run stops before its next strip
+        (its files are not written, so a later run does it again), workers
+        are stopped, and no other recording starts. A waiting review is
+        cancelled."""
+        self._stop.set()
+        if self.review_request is not None:
+            self.cancel_review()
+
     def _run_recordings(self) -> None:
         """Every recording. A finished one (its session file exists) is skipped,
         except the last: it runs here for the views, its files are kept. With
@@ -546,8 +557,10 @@ class OfflineJob:
 
             options = RunOptions(cache_dir=str(self.cache_dir))
             run_dataset(self.document, [p for _, p in pooled], options, jobs=jobs,
-                        on_outcome=finished)  # fmt: skip
+                        on_outcome=finished, stop=self._stop.is_set)  # fmt: skip
         for i, params in here:
+            if self._stop.is_set():
+                break
             graph = self.rebuild()
             prepared = prepare_recording(graph, params, None, overwrite=False)
             self.progress.update(index=i, current=prepared.label)
@@ -563,8 +576,8 @@ class OfflineJob:
             root = str(prepared.target.root)
             try:
                 result = self._run_graph(graph)
-            except ReviewCancelled:
-                raise  # the person reviewing stopped the whole run
+            except (ReviewCancelled, RunStopped):
+                raise  # the person reviewing, or stop(), ended the whole run
             except Exception as exc:  # one bad recording does not stop the others
                 traceback.print_exc()
                 why = f"{type(exc).__name__}: {exc}"
@@ -577,9 +590,11 @@ class OfflineJob:
             if not prepared.done:  # a rerun for the views keeps its report
                 notes += qc_or_note(graph, prepared.target, prepared.label)
             self.skipped.extend(f"{prepared.label}: {s}" for s in notes)
-        self.progress.update(index=n)
         summary = [str(p) for p in write_summaries(outcomes) if p.suffix == ".html"]
         self.progress["summary"] = summary[0] if summary else ""
+        if self._stop.is_set():
+            raise RunStopped("stopped")
+        self.progress.update(index=n)
         if len(failed) == n:
             raise RuntimeError(f"every recording failed; the first: {failed[0]}")
 
@@ -590,8 +605,11 @@ class OfflineJob:
             else:
                 self.skipped = self._run_graph(self.graph).skipped
             self.state = "done"
-        except ReviewCancelled as exc:
-            self.state, self.error = "error", str(exc)
+        except (ReviewCancelled, RunStopped) as exc:
+            if self._stop.is_set():  # stop(): what was finished is kept
+                self.state = "stopped"
+            else:
+                self.state, self.error = "error", str(exc)
         except Exception as exc:
             traceback.print_exc()
             self.state, self.error = "error", f"{type(exc).__name__}: {exc}"
@@ -600,10 +618,12 @@ class OfflineJob:
             _prune_cache(self.cache_dir, _cache_cap_bytes())
 
     def status(self) -> dict[str, Any]:
-        end = self.finished if self.state in ("done", "error") else time.monotonic()
+        ended = self.state in ("done", "error", "stopped")
+        end = self.finished if ended else time.monotonic()
         request = self.review_request
         return {
             "state": self.state,
+            "stopping": self._stop.is_set() and self.busy,  # 0.2.19: stop_offline
             "error": self.error,
             # state "review": the strip waiting for marks (docs/REVIEW.md)
             "review": request.to_wire() if request is not None else None,

@@ -1,4 +1,4 @@
-# MeegXer control API (0.2.18, unstable)
+# MeegXer control API (0.2.19, unstable)
 
 JSON-RPC 2.0 over a ZeroMQ REQ/REP socket (CLAUDE.md rule 3). The daemon binds
 `tcp://127.0.0.1:5555` by default. Every request is one JSON object; every reply is
@@ -66,6 +66,7 @@ remote GUI).
 | `submit_review` | `marks` (list of `{onset, duration, label}`, seconds from the recording's start; 0.2.17: `suggestion` on a mark answering one, and a suggestion answered no as a mark with it and `verdict` `rejected`); `viewed` (0.2.9, optional: the spans looked at, `[[start, stop], …]` in seconds); `bads` (0.2.12, optional: channels marked bad, labels); `epochs` (0.2.15, an epoch review: `{onset, duration, label, keep, event}` per epoch, as in the request; `marks` is then `[]`) | offline status. **0.2.8:** answers the review strip the offline run waits at (`state` `review`): the marks are saved to its sidecar (`docs/REVIEW.md`) with the fingerprint of the strip's input, put on the Events rail, and the run goes on. `viewed` is saved too and comes back in the next request for that recording. `bads` are saved too and become the stream's bad channels after the strip. **0.2.17:** each suggestion's verdict is worked out and saved (`docs/REVIEW.md` step 4b: `accepted`, `edited`, `rejected`; a `bad_channel` one is accepted when its channel is in `bads`); with `decision` `verify` a suggestion without an answer is refused, with `free` it is rejected. Refused when no review is waiting |
 | `offline_review_epochs` | `indices` (optional: epochs by their index in the request's `epochs`; default all), `reduce` (`none` or `mean`), `max_samples` (default 1000) | (0.2.15) the data of the epochs a Review epochs strip waits on: `{times, ch_labels, unit, epochs: [{index, data}]}` (`data` channels x times, every k-th sample so at most `max_samples` per epoch), or with `reduce="mean"` `{times, ch_labels, unit, mean, n}` (the ERP of those epochs). Refused when no epoch review is waiting |
 | `cancel_review` | – | offline status. **0.2.8:** stops the offline run waiting at a review strip (`state` `error`, `error` says it was cancelled); nothing is saved |
+| `stop_offline` (0.2.19) | – | offline status, at once, with `stopping` true. Ends the offline run: the recording being run stops before its next strip (a strip runs over the whole recording, so a file is never half written; that recording has no session file and is done again by a later run), worker processes are stopped, and no other recording starts; a run waiting at a review stops too. The state turns `stopped` (not `error`) when the strip it was on is done; what finished before is kept, with the QC summary. Refused when there has been no offline run |
 | `unfinished_recordings` (0.2.6) | – | the recordings a run ended before writing (it crashed): `[{path, format, channels, seconds, modified}]`, from the spools the file writers leave (`path`: the file it was writing; `format`: `eeglab` or `edf`; `modified`: ISO 8601, UTC). A spool a running process still writes is not listed, nor (0.2.16) one being recovered. The GUI offers to recover them when it starts |
 | `recover_recording` (0.2.6) | `path`, `discard` (default false) | `{path, state}`: starts writing an unfinished recording to `path`, or to `<name>_recovered<suffix>` when `path` exists, and removing its spool; `path` is the file being written. **0.2.16:** it is written in the background (a long recording takes longer than a client waits for a reply): `state` is `running`, and `recoveries` says when it is done. With `discard` deletes the spool at once (`path: null`, `state` `deleted`). Refused for a path `unfinished_recordings` does not list (so also while it is being recovered) |
 | `recoveries` (0.2.16) | – | the recordings `recover_recording` started writing since the daemon started: `[{path, output, state, error}]`, `state` `running`, `done` or `failed` (`error` says why; the spool is kept, so `unfinished_recordings` lists it again) |
@@ -97,7 +98,8 @@ remote GUI).
 - `latency`: clock at the sinks minus the LSL timestamp of the block's last sample.
 - `source_*`: present when the source stream carries a `SAMPLE_INDEX` channel.
 - `offline`: present after `run_offline`: `{state, error, skipped, elapsed_s, n_samples,
-  sfreq, models, probes, features, recordings, review}`, where `state` is `running`,
+  sfreq, models, probes, features, recordings, review, stopping}` (0.2.19:
+  `stopping` while a stopped run finishes its strip), where `state` is `running`,
   `review` (0.2.8: the run waits at a review strip for `submit_review` or
   `cancel_review`; `review` is then `{node, file, reason, marks, labels,
   duration_s, reject, viewed, bads, display}`: `reason` `not reviewed` or `input changed`, `marks` those made on
@@ -119,7 +121,7 @@ remote GUI).
   `{onset, duration, label, keep, event}` per epoch (its span in seconds, the
   label and verdict to start from, the label it was cut around), the data
   from `offline_review_epochs`;
-  otherwise `null`), `done` or `error`,
+  otherwise `null`), `done`, `error` or (0.2.19) `stopped` (`stop_offline`),
   `skipped` lists the saves a writer skipped because its file existed (without
   `overwrite`; the run still finished), `recordings` (0.2.7) is empty except for
   an all-subjects run (below), `n_samples` is the length of the input and
