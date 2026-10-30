@@ -31,6 +31,11 @@
         "confirm_quit_running": {
           "description": "Ask what to do with a running pipeline when the window closes.",
           "type": "boolean"
+        },
+        "batch_jobs": {
+          "description": "Recordings an all-subjects BIDS run processes at once, each in its own process (0: one per CPU; 1: one after another). MEEGXER_BATCH_JOBS overrides it.",
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

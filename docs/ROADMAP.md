@@ -58,7 +58,7 @@ and a resting-state study end to end, GUI and CLI) is next.
 | M10.5 XDF input | Open | |
 | M10.6 EEGLAB decompositions | Open (the ICs rail starts at ICA only) | |
 | M10.7 MNE Python API | Open | |
-| M10.8 Batch workers, QC report | Open | |
+| M10.8 Batch workers, QC report | Done: `--jobs N` worker processes (and `general.batch_jobs` for the GUI's all-subjects run), a QC report per recording (mne.Report) and the dataset's `qc.tsv` and `qc.html` | this PR |
 | M10.9 Templates, sample data | Partly: ERP, resting-state and ICA cleaning templates (GUI *New…*, `meegxer new`), and the ERP CORE and EEGBCI samples, fetched per subject on first use. The SSVEP BCI template waits for M11 | this PR |
 | M10.10 Undo for chain edits | Open (the review window has undo) | |
 | M10.11 Manual review (added) | Steps 1–5 of `docs/REVIEW.md` Design v2 done: Review strip, Reject segments, review display, review at import, review points, detectors, suggestions with verdicts, epoch review, rejected epochs on the Events rail. Step 6 (a second reviewer, a review report) open | PR #81 – #100 |

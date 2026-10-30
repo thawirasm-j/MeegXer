@@ -218,3 +218,16 @@ def test_a_spectrum_reads_the_components(tmp_path: Path) -> None:
     assert isinstance(ica, Stage)
     ica.set_params(seed=1)  # another decomposition: other components
     assert offline_input_fingerprints(graph)["psd1"] != before
+
+
+def test_describe_model_names_the_components_removed() -> None:
+    from meegxer.nodes.ica import CLASSES, ICAClean
+
+    proba = np.zeros((3, len(CLASSES)))
+    proba[0, CLASSES.index("brain")] = 1.0
+    proba[1, CLASSES.index("eye")] = 0.97
+    proba[2, CLASSES.index("muscle")] = 0.95
+    node = ICAClean()
+    params = node.manifest.resolve_params({"reject_muscle": False})
+    described = node.describe_model({"probabilities": proba}, params)
+    assert described == {"components": "3", "removed": "1 (IC02 eye 0.97)"}

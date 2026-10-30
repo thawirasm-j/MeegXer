@@ -25,7 +25,8 @@ it goes into pipelines, sessions or provenance.
 ## Where a value comes from
 
 1. A command-line flag (e.g. `meegxer-gui --connect …`, `--theme …`).
-2. An environment variable: `MEEGXER_OFFLINE_DIR`, `MEEGXER_OFFLINE_CACHE_GB`, `MEEGXER_SAMPLE_DIR`.
+2. An environment variable: `MEEGXER_OFFLINE_DIR`, `MEEGXER_OFFLINE_CACHE_GB`, `MEEGXER_SAMPLE_DIR`,
+   `MEEGXER_BATCH_JOBS`.
 3. `settings.json`.
 4. The default.
 
@@ -42,6 +43,7 @@ reported (in the log) and use their defaults. The format is checked against
 | | Reopen the last pipeline (when the engine has none) | `general.reopen_last` | `true` |
 | | Ask before closing while a pipeline runs | `general.confirm_quit_running` | `true` |
 | | Engine address (used at the next start) | `general.daemon` | `tcp://127.0.0.1:5555` |
+| | Workers for an all-subjects BIDS run (0: one per CPU; `MEEGXER_BATCH_JOBS` wins) | `general.batch_jobs` | `1` |
 | Appearance | Theme: `dark`, `light`, `system`, or a theme file | `appearance.theme` | `dark` |
 | | Text size (%) | `appearance.scale` | `100` |
 | Visualization | Sequential map (band-power map) | `visualization.sequential` | `viridis` |

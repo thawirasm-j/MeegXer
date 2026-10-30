@@ -27,7 +27,12 @@ from meegxer.core.block import (
     SignalInfo,
     contiguous_runs,
 )
-from meegxer.core.epochs_out import channel_types, epochs_array, write_epochs
+from meegxer.core.epochs_out import (
+    channel_positions,
+    channel_types,
+    epochs_array,
+    write_epochs,
+)
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import AnyBlock, Sink, Source
 from meegxer.core.ports import PortTypeError
@@ -46,17 +51,20 @@ COUNT_KEYS = {"EEG": "EEGChannelCount", "EOG": "EOGChannelCount",
               "ECG": "ECGChannelCount", "EMG": "EMGChannelCount",
               "MISC": "MiscChannelCount", "TRIG": "TriggerChannelCount"}  # fmt: skip
 _LABEL = re.compile(r"^[A-Za-z0-9]+$")
-# not (yet) covered by BIDS: the run's session file, feature tables, epochs
+# not (yet) covered by BIDS: the run's session file, feature tables, epochs,
+# the QC reports and their summary
 IGNORED = ("*_meegxer.json", "*_features.tsv", "*_features.json",
-           "*_epo.fif", "*_epo.json", "*_ave.fif")  # fmt: skip
+           "*_epo.fif", "*_epo.json", "*_ave.fif", "*_report.html", "*_qc.json",
+           "qc.tsv", "qc.html")  # fmt: skip
 README = """# MeegXer derivatives
 
 EEG processed with MeegXer (https://github.com/thawirasm-j/MeegXer). Each
 recording's `*_eeg.json` names its raw source (`Sources`) and the processing
 chain (`Description`); `*_meegxer.json` is the run's session file (pipeline,
 node versions, fitted models, file hashes), which reruns it exactly. Feature
-tables (`*_features.tsv`), epochs and ERPs (`*_epo.fif`, `*_ave.fif`) and
-session files are not yet covered by BIDS and are listed in `.bidsignore`.
+tables (`*_features.tsv`), epochs and ERPs (`*_epo.fif`, `*_ave.fif`), QC
+reports (`*_report.html`, `qc.tsv`, `qc.html`) and session files are not yet
+covered by BIDS and are listed in `.bidsignore`.
 
 `Authors`, `License` and the other credits in `dataset_description.json` come
 from the raw dataset's; add the people who made this dataset if it lists none.
@@ -596,7 +604,8 @@ class BidsEpochs(_BidsSink):
             return
         target.folder.mkdir(parents=True, exist_ok=True)
         write_dataset_files(target, self._graph)
-        epochs = epochs_array(windows, channel_types(self._graph))
+        epochs = epochs_array(windows, channel_types(self._graph),
+                              channel_positions(self._graph))  # fmt: skip
         written = write_epochs(epochs, epochs_path, target.path("ave.fif"))
         sidecar = {
             "Description": "Epochs kept, and their average per label (ERPs) "

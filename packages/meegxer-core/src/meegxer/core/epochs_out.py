@@ -29,10 +29,15 @@ MNE_TYPES = {"eeg", "eog", "ecg", "emg", "misc", "stim", "resp", "bio", "gsr",
              "temperature", "seeg", "ecog", "dbs"}  # fmt: skip
 
 
-def epochs_array(windows: Sequence[FeatureBlock], ch_types: Mapping[str, str]) -> Any:
+def epochs_array(
+    windows: Sequence[FeatureBlock],
+    ch_types: Mapping[str, str],
+    positions: Mapping[str, Sequence[float]] | None = None,
+) -> Any:
     """The windows of an epochs rail (``epoch x channel x time``, times in
     seconds from the event) as an ``mne.EpochsArray``, each epoch's event at
-    its sample on the stream's clock and labelled as on the rail."""
+    its sample on the stream's clock and labelled as on the rail; with the
+    channels' ``positions`` (metres, head coordinates) where known."""
     import mne
 
     first = windows[0]
@@ -55,6 +60,10 @@ def epochs_array(windows: Sequence[FeatureBlock], ch_types: Mapping[str, str]) -
     types = [t if (t := (ch_types.get(c) or "eeg").lower()) in MNE_TYPES
              else "misc" for c in channels]  # fmt: skip
     info = mne.create_info(channels, sfreq, types)
+    known = {c: positions[c] for c in channels if positions and c in positions}
+    if known:
+        montage = mne.channels.make_dig_montage(known, coord_frame="head")
+        info.set_montage(montage, on_missing="ignore", verbose="error")
     data = np.concatenate([w.data for w in windows], axis=0)
     return mne.EpochsArray(data, info, events, tmin=float(times[0]),
                            event_id=event_id, baseline=None,
@@ -96,6 +105,15 @@ def erp_path_for(path: Path) -> Path:
         if name.endswith(ending):
             return path.with_name(name[: -len(ending)] + ending[0] + "ave.fif")
     return path.with_name(f"{path.stem}-ave.fif")
+
+
+def channel_positions(graph: Any) -> dict[str, tuple[float, float, float]]:
+    """The input's known channel positions, by label (empty without a graph)."""
+    if graph is None:
+        return {}
+    info = graph.source.impl.info
+    return {lb: tuple(p) for lb, p in zip(info.ch_labels, info.positions or (),
+                                          strict=False) if p is not None}  # fmt: skip
 
 
 def channel_types(graph: Any) -> dict[str, str]:
@@ -168,6 +186,7 @@ class EpochsWriter(Sink):
         windows, self._windows = self._windows, []
         if self.keep_existing(self.path):
             return
-        epochs = epochs_array(windows, channel_types(self._graph))
+        epochs = epochs_array(windows, channel_types(self._graph),
+                              channel_positions(self._graph))  # fmt: skip
         erp = erp_path_for(self.path) if bool(self.params["erp"]) else None
         self.written = write_epochs(epochs, self.path, erp)

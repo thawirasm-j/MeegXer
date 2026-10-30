@@ -33,7 +33,16 @@ import numpy.typing as npt
 
 from meegxer.core import settings
 from meegxer.core.batch import BatchResult, BatchScheduler
-from meegxer.core.bids_batch import is_all_subjects, prepare_recording, recordings_of
+from meegxer.core.bids_batch import (
+    Outcome,
+    RunOptions,
+    is_all_subjects,
+    prepare_recording,
+    qc_or_note,
+    recordings_of,
+    run_dataset,
+    write_summaries,
+)
 from meegxer.core.block import Block, FeatureBlock, SignalInfo, units_wire
 from meegxer.core.cache import DirectoryCache
 from meegxer.core.display import Decimator
@@ -70,6 +79,13 @@ def offline_dir() -> Path:
     ``storage.offline_dir`` setting, else the system temp folder."""
     root = settings.resolve("storage.offline_dir", "MEEGXER_OFFLINE_DIR")
     return Path(root) if root else Path(tempfile.gettempdir()) / "meegxer-offline"
+
+
+def batch_jobs() -> int:
+    """Recordings an all-subjects run processes at once: ``MEEGXER_BATCH_JOBS``,
+    else the ``general.batch_jobs`` setting (0: one per CPU)."""
+    jobs = int(settings.resolve("general.batch_jobs", "MEEGXER_BATCH_JOBS"))
+    return jobs or os.cpu_count() or 1
 
 
 def _cache_cap_bytes() -> int:
@@ -343,6 +359,7 @@ class OfflineJob:
         *,
         folder: Path | None = None,
         rebuild: Callable[[], Graph] | None = None,
+        document: dict[str, Any] | None = None,
         reviewer: str = "",
     ) -> None:
         online_only = [n.id for n in graph.nodes if not n.manifest.runs_offline]
@@ -354,6 +371,8 @@ class OfflineJob:
         self.store_folder = self.folder
         self.cache_dir = root / "cache"
         self.rebuild = rebuild
+        # the pipeline as a session document, for worker processes
+        self.document = document
         self.reviewer = reviewer  # saved with each review made in the run
         self.scheduler: BatchScheduler | None = None  # of the recording shown
         self.recordings: list[dict[str, str]] = []
@@ -494,37 +513,73 @@ class OfflineJob:
         self._review_answered.set()
 
     def _run_recordings(self) -> None:
-        """Every recording in turn. A finished one (its session file exists) is
-        skipped, except the last: it runs for the views, its files are kept."""
+        """Every recording. A finished one (its session file exists) is skipped,
+        except the last: it runs here for the views, its files are kept. With
+        more than one worker (``general.batch_jobs``) the others run in worker
+        processes first; one that stops at a review without saved marks runs
+        again here, where the review window can answer it."""
         assert self.rebuild is not None
         n = len(self.recordings)
         done: list[str] = []
         skipped: list[str] = []
         failed: list[str] = []
+        outcomes: list[Outcome] = []
         self.progress = {"index": 0, "total": n, "current": "", "done": done,
                          "skipped": skipped, "failed": failed}  # fmt: skip
-        for i, params in enumerate(self.recordings, 1):
+        here = list(enumerate(self.recordings, 1))
+        jobs = batch_jobs()
+        if jobs != 1 and n > 1 and self.document is not None:
+            pooled, here = here[:-1], here[-1:]
+
+            def finished(k: int, outcome: Outcome) -> None:
+                i, params = pooled[k - 1]
+                self.progress.update(index=len(outcomes) + 1, current=outcome.label)
+                if outcome.status == "unreviewed":  # reviewed here, before the last
+                    here.insert(len(here) - 1, (i, params))
+                    return
+                outcomes.append(outcome)
+                if outcome.status == "failed":
+                    failed.append(f"{outcome.label}: {outcome.message}")
+                else:
+                    (done if outcome.status == "done" else skipped).append(
+                        outcome.label)  # fmt: skip
+
+            options = RunOptions(cache_dir=str(self.cache_dir))
+            run_dataset(self.document, [p for _, p in pooled], options, jobs=jobs,
+                        on_outcome=finished)  # fmt: skip
+        for i, params in here:
             graph = self.rebuild()
             prepared = prepare_recording(graph, params, None, overwrite=False)
             self.progress.update(index=i, current=prepared.label)
             if prepared.done and i < n:
                 skipped.append(prepared.label)
+                outcomes.append(Outcome(prepared.label, "skipped",
+                                        root=str(prepared.target.root)))  # fmt: skip
                 continue
             self.probes, self.features = {}, {}  # the views follow this recording
             self.store_folder = self.folder / f"rec-{i}"
             self._attach_stores(graph)
             self.graph = graph
+            root = str(prepared.target.root)
             try:
                 result = self._run_graph(graph)
             except ReviewCancelled:
                 raise  # the person reviewing stopped the whole run
             except Exception as exc:  # one bad recording does not stop the others
                 traceback.print_exc()
-                failed.append(f"{prepared.label}: {type(exc).__name__}: {exc}")
+                why = f"{type(exc).__name__}: {exc}"
+                failed.append(f"{prepared.label}: {why}")
+                outcomes.append(Outcome(prepared.label, "failed", why, root=root))
                 continue
             (skipped if prepared.done else done).append(prepared.label)
+            outcomes.append(Outcome(prepared.label, "done", root=root))
             notes = [*prepared.notes, *result.skipped]
+            if not prepared.done:  # a rerun for the views keeps its report
+                notes += qc_or_note(graph, prepared.target, prepared.label)
             self.skipped.extend(f"{prepared.label}: {s}" for s in notes)
+        self.progress.update(index=n)
+        summary = [str(p) for p in write_summaries(outcomes) if p.suffix == ".html"]
+        self.progress["summary"] = summary[0] if summary else ""
         if len(failed) == n:
             raise RuntimeError(f"every recording failed; the first: {failed[0]}")
 

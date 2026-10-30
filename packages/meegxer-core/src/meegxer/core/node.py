@@ -153,6 +153,12 @@ class Processor(ABC):
         local command. Built-in nodes: empty (the package version says it all)."""
         return {}
 
+    def describe_model(self, model: State, params: Params) -> dict[str, str]:
+        """What a fitted ``model`` does with ``params``, as a few named values
+        for the QC report (``meegxer.core.qc``), e.g. the ICA components it
+        removes. Default: nothing to say."""
+        return {}
+
     def close(self) -> None:  # noqa: B027 - optional hook
         """Release external resources (e.g. a plugin worker). May be called more
         than once; a processor must work again after ``close`` if used again."""
