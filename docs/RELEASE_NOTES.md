@@ -7,6 +7,9 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Epochs live** (M10.3): the Epochs strip now runs in a live pipeline too.
+  An epoch is written as soon as its last sample arrives, the same epochs a
+  run over the recording writes; a tap on its rail shows them.
 - **Epochs and ERPs into files** (M10.2, M10.3): an *Epochs and ERPs file*
   strip writes the epochs of the nearest epochs rail as `-epo.fif` (MNE) or an
   epoched EEGLAB `.set`, and their average per label (the ERPs) as `-ave.fif`.

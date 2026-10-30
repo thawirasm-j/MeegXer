@@ -1,5 +1,5 @@
 """Epochs on a side rail: cut around events, baseline before the event, left out
-over a BAD mark or a cut."""
+over a BAD mark or a cut; the same epochs live, block by block."""
 
 from pathlib import Path
 from typing import Any
@@ -9,12 +9,14 @@ import pytest
 
 from meegxer.core.batch import BatchScheduler
 from meegxer.core.block import Block, Event, FeatureBlock, SignalInfo
+from meegxer.core.conformance import check_blockwise_equivalence
 from meegxer.core.graph import Graph
 from meegxer.core.manifest import SPEC_VERSION
 from meegxer.core.probes import FeatureProbe
+from meegxer.core.realtime import RealtimeScheduler
 from meegxer.core.registry import Registry
 from meegxer.core.review import Mark, ReviewRequest
-from meegxer.nodes.epochs import cut_epochs
+from meegxer.nodes.epochs import Epochs, cut_epochs
 
 SFREQ = 100.0
 
@@ -67,6 +69,64 @@ def test_wrong_spans_are_refused() -> None:
         cut_epochs(block(), [Event(100, "go")], params(tmin=0.5, tmax=0.1))
     with pytest.raises(ValueError, match="tmin < 0"):
         cut_epochs(block(), [Event(100, "go")], params(tmin=0.0))
+
+
+def test_the_same_epochs_whatever_the_block_sizes() -> None:
+    """Acceptance test 1: an epoch across blocks is written once its last
+    sample comes, and a BAD mark from an earlier block still leaves it out."""
+    events = (Event(10, "go"), Event(100, "go"), Event(160, "stop"),
+              Event(230, "BAD_eyes", 40), Event(300, "go"),  # under the mark
+              Event(420, "go"), Event(590, "go"))  # fmt: skip
+    for kw in (
+        {},
+        {"tmin": -0.5, "tmax": -0.1},  # an epoch before its event
+        {"tmin": 0.1, "tmax": 1.2, "baseline": "none"},
+        {"reject": ""},
+    ):
+        check_blockwise_equivalence(Epochs(), block(), params(**kw),
+                                    rails={"events": events})  # fmt: skip
+
+
+def graph_from(nodes: list[dict[str, Any]]) -> Graph:
+    return Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": nodes},
+                           Registry.from_entry_points())  # fmt: skip
+
+
+def test_live_epochs_match_the_batch_run(tmp_path: Path) -> None:
+    events = tmp_path / "events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n1.0\t0\tgo\n"
+                      "2.5\t0\tstop\n4.0\t0\tgo\n")  # fmt: skip
+
+    def nodes() -> list[dict[str, Any]]:
+        return [
+            {"id": "src", "node": "meegxer.core.synthetic",
+             "params": {"duration": 5.0, "n_channels": 2, "sfreq": SFREQ},
+             "recording": {"events": {"file": str(events)}}},
+            {"id": "ep", "node": "meegxer.nodes.epochs",
+             "params": {"tmin": -0.2, "tmax": 0.5}},
+            {"id": "tap", "node": "meegxer.core.feature_probe",
+             "input": "ep:epochs", "params": {"keep_windows": 0}},
+        ]  # fmt: skip
+
+    def windows(graph: Graph) -> list[FeatureBlock]:
+        tap = graph["tap"].impl
+        assert isinstance(tap, FeatureProbe)
+        return [w for w in tap.windows if isinstance(w, FeatureBlock)]
+
+    live = graph_from(nodes())
+    scheduler = RealtimeScheduler(live, max_block=13)
+    scheduler.start()
+    assert scheduler.wait(20)
+    assert scheduler.status()["errors"] == []
+    batch = graph_from(nodes())
+    BatchScheduler(block_size=64).run(batch)
+    got, want = windows(live), windows(batch)
+    assert [(w.window, w.coords["epoch"]) for w in got] == [
+        ((80, 151), ("go",)), ((230, 301), ("stop",)),
+        ((380, 451), ("go",))]  # fmt: skip
+    assert [w.window for w in want] == [w.window for w in got]
+    for a, b in zip(got, want, strict=True):
+        np.testing.assert_allclose(a.data, b.data)
 
 
 def test_a_batch_run_writes_the_epochs_rail_and_skips_epochs_over_a_cut(
