@@ -178,6 +178,18 @@ KOLES: Reference = {
     "doi": "10.1016/0013-4694(91)90163-X",
 }
 
+MCCLELLAN: Reference = {
+    "citation": "McClellan JH, Parks TW, Rabiner LR (1973). A computer program for "
+    "designing optimum FIR linear phase digital filters. IEEE Trans Audio "
+    "Electroacoust 21(6):506-526.",
+    "doi": "10.1109/TAU.1973.1162525",
+}
+MARPLE: Reference = {
+    "citation": 'Marple SL (1999). Computing the discrete-time "analytic" signal '
+    "via FFT. IEEE Trans Signal Process 47(9):2600-2603.",
+    "url": "https://ieeexplore.ieee.org/document/782222",
+}
+
 _FILTERS = [SCIPY]
 _SPECTRA = [WELCH, THOMSON, BABADI, SCIPY, MNE]
 BY_NODE: dict[str, list[Reference]] = {
@@ -208,7 +220,8 @@ BY_NODE: dict[str, list[Reference]] = {
     "meegxer.nodes.connectivity": [MNE_CONNECTIVITY, MNE, IMCOH, PLV, WPLI],
     "meegxer.nodes.complexity": [ANTROPY, PERMUTATION_ENTROPY, SAMPLE_ENTROPY,
                                  HJORTH, LEMPEL_ZIV],
-    "meegxer.nodes.hilbert_envelope": [SCIPY],
+    "meegxer.nodes.hilbert_envelope": [MCCLELLAN, MARPLE, SCIPY],
+    "meegxer.nodes.hilbert_envelope_analytic": [MARPLE, SCIPY],
 }  # fmt: skip
 
 
@@ -236,6 +249,7 @@ CATEGORIES = {
     "meegxer.nodes.connectivity": "connectivity",
     "meegxer.nodes.complexity": "complexity",
     "meegxer.nodes.hilbert_envelope": "time-frequency",
+    "meegxer.nodes.hilbert_envelope_analytic": "time-frequency",
     "meegxer.nodes.specparam": "spectral",
     "meegxer.nodes.morlet": "time-frequency",
     "meegxer.nodes.ssvep_cca": "decoding",

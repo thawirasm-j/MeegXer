@@ -423,6 +423,13 @@ Reject segments strip cuts the `BAD_…` spans and (4b) a Review strip proposes
 them. The input's bad channels are left out (but an EOG channel named in
 *Detect blinks* is used).
 
+The methods are MNE's; three settings on top are MeegXer's own choices, not
+part of the published methods (decided 2026-10-30: kept, and said so in each
+strip's help): `flat_duration` (MNE takes one shortest span for peak and flat,
+so the strip calls MNE once per limit), `half_width` (MNE gives a blink's peak
+only; the strip makes a span around it), and skipping pieces shorter than
+MNE's 10 s EOG filter.
+
 - **Detect amplitude & flat** (`detect_amplitude`, MNE `annotate_amplitude`).
   MNE's peak-to-peak is the change between two consecutive samples:
   - `peak` (default 100 µV): a larger jump is a `BAD_peak` span (from
