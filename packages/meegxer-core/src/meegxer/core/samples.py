@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +41,10 @@ class Sample:
     size: str  # per subject, roughly (empty: not known)
     references: tuple[str, ...]
     fetch: Fetch  # (subject, downloads folder) -> [(task, mne Raw)]
+    # BIDS metadata from the dataset's own pages (SPDX licence, SourceDatasets)
+    license: str = ""
+    source: dict[str, str] = field(default_factory=dict)
+    task_descriptions: dict[str, str] = field(default_factory=dict)
 
 
 def _erp_core(subject: str, downloads: Path | None) -> list[tuple[str, Any]]:
@@ -84,8 +88,18 @@ SAMPLES: dict[str, Sample] = {
         ("001",), ("flanker",), "",
         ("Kappenman ES, Farrens JL, Zhang W, Stewart AX, Luck SJ (2021). ERP "
          "CORE: An open resource for human event-related potential research. "
-         "NeuroImage 225:117465. https://doi.org/10.1016/j.neuroimage.2020.117465",),
+         "NeuroImage 225:117465. https://doi.org/10.1016/j.neuroimage.2020.117465",
+         "ERP CORE data and scripts. https://doi.org/10.18115/D5JW4R"),
         _erp_core,
+        license="CC-BY-SA-4.0",  # ERP CORE's site and OSF wiki
+        source={"URL": "https://erpinfo.org/erp-core",
+                "DOI": "doi:10.18115/D5JW4R"},
+        task_descriptions={
+            "flanker": "Eriksen flanker task: a central arrowhead flanked by "
+                       "arrowheads pointing the same way (compatible) or the "
+                       "other way (incompatible); a button press for the "
+                       "central arrowhead's direction (ERP CORE, LRP and ERN).",
+        },
     ),
     "eegbci": Sample(
         "eegbci", "EEGBCI resting state",
@@ -99,8 +113,20 @@ SAMPLES: dict[str, Sample] = {
          "https://doi.org/10.1109/TBME.2004.827072",
          "Goldberger AL, Amaral LAN, Glass L, et al. (2000). PhysioBank, "
          "PhysioToolkit, and PhysioNet. Circulation 101(23):e215-e220. "
-         "https://doi.org/10.1161/01.CIR.101.23.e215"),
+         "https://doi.org/10.1161/01.CIR.101.23.e215",
+         "Schalk G (2009). EEG Motor Movement/Imagery Dataset (version 1.0.0). "
+         "PhysioNet. https://doi.org/10.13026/C28G6P"),
         _eegbci,
+        license="ODC-By-1.0",  # PhysioNet: Open Data Commons Attribution 1.0
+        source={"URL": "https://physionet.org/content/eegmmidb/1.0.0/",
+                "DOI": "doi:10.13026/C28G6P", "Version": "1.0.0"},
+        task_descriptions={
+            "resteyesopen": "One minute at rest with the eyes open (baseline "
+                            "run 1 of the EEG Motor Movement/Imagery dataset).",
+            "resteyesclosed": "One minute at rest with the eyes closed "
+                              "(baseline run 2 of the EEG Motor "
+                              "Movement/Imagery dataset).",
+        },
     ),
 }  # fmt: skip
 
@@ -132,16 +158,19 @@ def create(name: str) -> Path:
     sample = SAMPLES[name]
     root = sample_dir() / name
     marker = root / MARKER
-    if marker.is_file():
-        return root
     import mne_bids
 
     root.mkdir(parents=True, exist_ok=True)
+    # written each time, so a sample made by an earlier MeegXer gets it too
     mne_bids.make_dataset_description(
         path=root, name=sample.title, dataset_type="raw",
+        data_license=sample.license or None,
+        source_datasets=[sample.source] if sample.source else None,
         references_and_links=list(sample.references), overwrite=True,
         verbose=False,
     )  # fmt: skip
+    if marker.is_file():
+        return root
     (root / ".bidsignore").write_text(f"{MARKER}\n", encoding="utf-8")
     listing = {"sample": name, "subjects": list(sample.subjects),
                "tasks": list(sample.tasks)}  # fmt: skip
@@ -222,4 +251,9 @@ def ensure_recording(params: dict[str, Any]) -> bool:
                                      datatype="eeg")  # fmt: skip
             mne_bids.write_raw_bids(raw, path, overwrite=True, allow_preload=True,
                                     format="EEGLAB", verbose=False)  # fmt: skip
+            if task in sample.task_descriptions:
+                sidecar = path.copy().update(suffix="eeg", extension=".json")
+                mne_bids.update_sidecar_json(
+                    sidecar, {"TaskDescription": sample.task_descriptions[task]},
+                    verbose=False)  # fmt: skip
     return True
