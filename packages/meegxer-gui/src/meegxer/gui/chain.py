@@ -133,7 +133,7 @@ class StripWidget(QFrame):
         text = GROUP_LABELS[group]
         if doc.is_custom(strip):  # "● CUSTOM PREPROCESSING"
             text = f"{text[:2]}CUSTOM {text[2:]}"
-        label = QLabel(text)
+        label = ElidedLabel(text)  # "● CUSTOM PREPROCESSING" is wide on Windows
         label.setObjectName("group")
         label.setStyleSheet(
             f"color: {band}; font-size: 7pt; font-weight: 700; letter-spacing: 1px;"
@@ -161,7 +161,7 @@ class StripWidget(QFrame):
         lay.addLayout(head)
 
         if advanced:  # the id is for pipeline files and the command line
-            sub = QLabel(strip.id)
+            sub = ElidedLabel(strip.id)
             sub.setObjectName("muted")
             lay.addWidget(sub)
         note = problem or badge(strip.node, strip.params, doc.mode)
@@ -170,6 +170,7 @@ class StripWidget(QFrame):
             note = f"{note} · {types}" if note else types
         if note:
             chip = QLabel(note)
+            chip.setWordWrap(True)  # a problem is read in full, on two lines if need be
             colour = theme.incompatible_border if problem else theme.text_muted
             chip.setStyleSheet(f"color: {colour}; font-size: 8pt; font-weight: 600;")
             lay.addWidget(chip)

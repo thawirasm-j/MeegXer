@@ -211,10 +211,11 @@ def test_strip_text_fits_the_strip(qapp: QApplication) -> None:
     doc.insert(1, "meegxer.nodes.band_power")
     doc.insert(2, "meegxer.nodes.csp")
     doc.insert(3, "meegxer.nodes.ica")
+    doc.input_mode = "offline"  # the ICA strip's "fits on the whole recording"
     theme = load_theme("dark")
     try:
-        # larger text, as on Windows or with Settings -> Text size raised
-        for scale, strip, advanced in itertools.product((1.0, 1.3), doc.strips,
+        # larger text, as on Windows (wider fonts) or with Text size raised
+        for scale, strip, advanced in itertools.product((1.0, 1.6), doc.strips,
                                                         (False, True)):  # fmt: skip
             qapp.setStyleSheet(stylesheet(theme, scale))
             card = StripWidget(doc, strip, theme, status="", advanced=advanced,
