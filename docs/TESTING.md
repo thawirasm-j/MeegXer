@@ -307,11 +307,11 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 
 | Item | Value / result | Notes |
 |---|---|---|
-| C1 listing | | |
-| C2 ERP CORE ERPs (labels, count) | | |
-| C3 EEGBCI per-subject fetch, rerun | | |
-| C4 GUI New from template with the sample | | |
-| C5 validator on the sample dataset | | |
+| C1 listing | pass | |
+| C2 ERP CORE ERPs (labels, count) | pass | 98/100/99/100 |
+| C3 EEGBCI per-subject fetch, rerun | pass | |
+| C4 GUI New from template with the sample | pass | no button to terminate the run, no downloading progress bar |
+| C5 validator on the sample dataset | pass | with warnings |
 
 ## D. Batch workers and QC reports
 
@@ -327,6 +327,6 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 
 | Item | Value / result | Notes |
 |---|---|---|
-| D1 time with --jobs 1 / --jobs 4 (recordings, CPU) | | |
-| D2 summary and reports | | |
-| D3 GUI all-subjects run with workers | | |
+| D1 time with --jobs 1 / --jobs 4 (recordings, CPU) | 17.54s, 8.85s | |
+| D2 summary and reports | pass | |
+| D3 GUI all-subjects run with workers | pass | |
