@@ -166,6 +166,13 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - Ask the maintainer's decisions with the multiple-choice question prompt (the
   options, the recommended one first, each with its trade-off), not in chat text.
 - Ask before changing anything listed under "Architecture rules".
+- **Auto-merge, then the next item.** Claude turns on auto-merge (merge
+  commit) on each PR it opens; GitHub merges it once the required checks pass.
+  Claude then takes the next item (`docs/ROADMAP.md` → *Status*), one PR per
+  item, and stops to report when it needs the maintainer's decision (asked
+  with the question prompt), a manual check only the maintainer can run
+  (Windows, real downloads, devices, how the GUI looks), or when a milestone
+  is reached (its exit criterion met).
 - `docs/HANDOFF.md`: a one-time handoff note (the work routine, past decisions,
   open items). Read it, but do not edit it; it will be removed. Decisions and
   working rules go in this file and the design docs (`docs/REVIEW.md`,
