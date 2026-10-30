@@ -6,6 +6,10 @@ emits. Events are kept in sample-index order and tagged with their origin; a
 strip sees the input's events and those of the strips upstream of it (a rail
 exists only to the right of where it is written), never its own or later ones.
 
+A strip may take some labels over (a Review strip with priors, docs/REVIEW.md
+step 4b: its ``takes_over``): strips after it no longer see the events with
+those labels from before it, only what it emits for them (the verdicts).
+
 The rail counts samples on the input's clock. A strip after a rate change (a
 resampler) works on another clock, so it passes its rate and the rail maps
 indices by the exact ratio of the rates (rule 8: index / rate is the same time
@@ -19,6 +23,7 @@ import dataclasses
 import math
 from collections.abc import Iterable
 from fractions import Fraction
+from typing import Any
 
 from meegxer.core.block import Event
 from meegxer.core.graph import Graph
@@ -34,6 +39,27 @@ def upstream_ids(graph: Graph, node_id: str) -> set[str]:
         found.add(current)
         current = graph[current].input_node
     return found
+
+
+def taken_over(graph: Graph, node_id: str) -> frozenset[str]:
+    """The labels the strip ``node_id`` takes over from the strips before it
+    (its processor's ``takes_over(params)``; none for most strips)."""
+    stage: Any = graph[node_id].impl
+    takes_over = getattr(getattr(stage, "processor", None), "takes_over", None)
+    if not callable(takes_over):
+        return frozenset()
+    return frozenset(takes_over(getattr(stage, "params", {})))
+
+
+def _hidden(graph: Graph, upstream: set[str]) -> list[tuple[set[str], frozenset[str]]]:
+    """For a strip with ``upstream`` before it: (origins, labels) it does not
+    see, one pair per strip before it that takes labels over."""
+    out = []
+    for node_id in upstream:
+        labels = taken_over(graph, node_id)
+        if labels:
+            out.append(({INPUT, *upstream_ids(graph, node_id)}, labels))
+    return out
 
 
 def _nearest(value: Fraction) -> int:
@@ -110,13 +136,36 @@ class EventsRail:
     ) -> tuple[Event, ...]:
         """What ``node_id`` sees: the input's events and its upstream strips',
         over ``[start, stop)`` counted at ``sfreq`` (its input's rate; None: the
-        input's), and counted at that rate."""
+        input's), and counted at that rate. Labels a strip before it takes over
+        are left out where they come from before that strip."""
+        pairs = self.visible_with_origins(graph, node_id, start, stop, sfreq)
+        return tuple(e for e, _ in pairs)
+
+    def visible_with_origins(
+        self,
+        graph: Graph,
+        node_id: str,
+        start: int = 0,
+        stop: int | None = None,
+        sfreq: float | None = None,
+    ) -> tuple[tuple[Event, str], ...]:
+        """``visible_to``, each event with its origin (``input`` or a strip id)."""
         scale = self._scale(sfreq)
         if scale != 1:  # the samples that land in [start, stop) once mapped
             start = math.ceil((start - Fraction(1, 2)) / scale)
             stop = None if stop is None else math.ceil((stop - Fraction(1, 2)) / scale)
-        seen = self.events(start, stop, {INPUT, *upstream_ids(graph, node_id)})
-        return rescale(seen, scale)
+        upstream = upstream_ids(graph, node_id)
+        origins, hidden = {INPUT, *upstream}, _hidden(graph, upstream)
+        lo = bisect.bisect_left(self._keys, (start, -1))
+        hi = (len(self._keys) if stop is None
+              else bisect.bisect_left(self._keys, (stop, -1)))  # fmt: skip
+        seen = [
+            (e, origin) for e, origin in self._items[lo:hi]
+            if origin in origins
+            and not any(origin in o and e.label in labels for o, labels in hidden)
+        ]  # fmt: skip
+        events = rescale((e for e, _ in seen), scale)
+        return tuple(zip(events, (o for _, o in seen), strict=True))
 
     def index(self, sample_index: int, sfreq: float | None = None) -> int:
         """``sample_index`` counted at ``sfreq`` (None: the input's rate) on the

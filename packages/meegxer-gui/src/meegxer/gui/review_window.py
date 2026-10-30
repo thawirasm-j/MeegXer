@@ -87,6 +87,7 @@ from PySide6.QtWidgets import (
 
 from meegxer.core import settings as core_settings
 from meegxer.core.montage import MONTAGES
+from meegxer.core.review import BAD_CHANNEL
 from meegxer.gui.colors import ChannelStyle
 from meegxer.gui.signal_view import StackedWindow
 from meegxer.gui.theme import Theme
@@ -104,6 +105,17 @@ BAD_STYLE = ChannelStyle((128, 128, 128), dashed=True)
 PRESET_TIP = "Starts as the pipeline's Review strip sets it"
 EDGE_ZONE = 0.04  # of the page: dragging an edge this near the border scrolls
 SCROLL_STEP = 0.25  # of the page, each time it scrolls
+VERDICT_TEXT = {"": "to answer", "accepted": "yes", "edited": "edited",
+                "rejected": "no"}  # fmt: skip
+
+
+def same_suggestion(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """The same suggestion (label, origin, channel, and span to the µs)."""
+    keys = ("label", "origin", "channel")
+    return all(str(a.get(k) or "") == str(b.get(k) or "") for k in keys) and all(
+        abs(float(a.get(k) or 0.0) - float(b.get(k) or 0.0)) < 1e-6
+        for k in ("onset", "duration")
+    )
 
 
 class ChannelTag(QGraphicsObject):
@@ -312,12 +324,17 @@ class ReviewWindow(StackedWindow):
         self.presets: dict[str, Any] = dict(request.get("display") or {})
         self.bads: list[str] = [str(b) for b in request.get("bads", [])]
         self.source_labels: tuple[str, ...] = ()  # the channels (set by the GUI)
-        self._history: list[tuple[list[dict[str, Any]], list[str]]] = []
+        self._history: list[
+            tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]
+        ] = []
         self.editing: dict[str, Any] | None = None  # the mark the span edits
-        # review points: events to step through, each answered by a mark
+        # suggestions (review points): events to step through, each answered
+        # by a mark (or, for a bad_channel, by the channel being bad), or no
         self.points: list[dict[str, Any]] = [dict(m) for m in request.get("points", [])]
-        self.point_index: int | None = None  # the point shown
-        self.current_point: float | None = None  # its onset, while at it
+        self.decision = str(request.get("decision") or "free")  # or "verify"
+        self.rejected: list[dict[str, Any]] = []  # suggestions answered no
+        self.point_index: int | None = None  # the suggestion shown
+        self.current_point: dict[str, Any] | None = None  # it, while at it
         self._page: float | None = None  # the strip's page length, until changed
         self._drag_from: float | None = None
         self._scrolled = 0.0  # when an edge at the border last scrolled
@@ -325,7 +342,7 @@ class ReviewWindow(StackedWindow):
         self.answered = False
         self.duration = float(request.get("duration_s") or 0.0)
         self.reject_words = tuple(str(w) for w in request.get("reject", ())) or ()
-        self.marks: list[dict[str, Any]] = [dict(m) for m in request.get("marks", [])]
+        self.marks: list[dict[str, Any]] = self._previous(request.get("marks", []))
         self.viewed: list[Span] = merge(
             [(float(a), float(b)) for a, b in request.get("viewed", [])]
         )
@@ -395,7 +412,7 @@ class ReviewWindow(StackedWindow):
         for b in (back, ahead, unseen):
             tools.addWidget(b)
         self.point_label = QLabel("")
-        self.auto_next = QCheckBox("Next point after marking")
+        self.auto_next = QCheckBox("Next suggestion after answering")
         self.auto_next.setChecked(True)
         for widget in (self.point_label, self.auto_next):
             widget.setVisible(bool(self.points))
@@ -425,6 +442,24 @@ class ReviewWindow(StackedWindow):
         self.table.setMaximumHeight(170)
         self.table.cellDoubleClicked.connect(self._show_mark)
         lay.addWidget(self.table)
+        # the suggestions under the marks: each with where it came from and
+        # its verdict (verify: Y, N or E for each)
+        self.suggestions = QTableWidget(0, 4)
+        self.suggestions.setHorizontalHeaderLabels(
+            ["Onset (s)", "Suggestion", "From", "Verdict"]
+        )
+        self.suggestions.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self.suggestions.verticalHeader().setVisible(False)
+        self.suggestions.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.suggestions.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.suggestions.setMaximumHeight(150)
+        self.suggestions.cellDoubleClicked.connect(lambda row, _c: self.go_point(row))
+        self.suggestions.setVisible(bool(self.points))
+        lay.addWidget(self.suggestions)
 
         bar = QHBoxLayout()
         remove = QPushButton("Remove selected (Del)")
@@ -449,13 +484,15 @@ class ReviewWindow(StackedWindow):
         lay.addLayout(bar)
 
         for keys, slot in (("A", self.annotate), ("R", self.reject),
-                           ("N", self.next_unreviewed),
+                           ("N", self._key_n),
                            ("Delete", self.remove_selected),
                            ("Right", lambda: self.step(1)),
                            ("PgDown", lambda: self.page(1)),
                            ("Left", lambda: self.step(-1)),
                            ("PgUp", lambda: self.page(-1)),
                            ("Ctrl+Z", self.undo),
+                           ("Y", self.accept_current),
+                           ("E", self.edit_current),
                            ("Escape", self.clear_selection)):  # fmt: skip
             QShortcut(QKeySequence(keys), self).activated.connect(slot)
         for k in range(9):  # the label palette
@@ -712,15 +749,16 @@ class ReviewWindow(StackedWindow):
     # -- undo -------------------------------------------------------------------------
 
     def _snapshot(self) -> None:
-        self._history.append(([dict(m) for m in self.marks], list(self.bads)))
+        self._history.append(([dict(m) for m in self.marks], list(self.bads),
+                              [dict(r) for r in self.rejected]))  # fmt: skip
         del self._history[:-100]
 
     def undo(self) -> None:
         if not self._history:
             return
-        marks, bads = self._history.pop()
+        marks, bads, rejected = self._history.pop()
         display = bads != self.bads
-        self.marks, self.bads = marks, bads
+        self.marks, self.bads, self.rejected = marks, bads, rejected
         self.clear_selection()
         self._refresh()
         if display:
@@ -973,10 +1011,132 @@ class ReviewWindow(StackedWindow):
             self.go_point(self.point_index + step)
 
     def answer_of(self, point: dict[str, Any]) -> dict[str, Any] | None:
-        """The mark that answers a review point (None: not answered yet)."""
-        onset = float(point["onset"])
-        return next((m for m in self.marks if m.get("point") is not None
-                     and abs(float(m["point"]) - onset) < 1e-6), None)  # fmt: skip
+        """The mark that answers a suggestion (None: none yet)."""
+        return next((m for m in self.marks if m.get("suggestion") is not None
+                     and same_suggestion(m["suggestion"], point)), None)  # fmt: skip
+
+    def verdict_of(self, point: dict[str, Any]) -> str:
+        """``accepted``, ``edited``, ``rejected``, or "" (no answer yet)."""
+        if any(same_suggestion(point, r) for r in self.rejected):
+            return "rejected"
+        if point.get("label") == BAD_CHANNEL:
+            return "accepted" if point.get("channel") in self.bads else ""
+        mark = self.answer_of(point)
+        if mark is None:
+            return ""
+        same = {k: mark[k] for k in ("onset", "duration", "label")}
+        return "accepted" if same_suggestion({**point, **same}, point) else "edited"
+
+    def _previous(self, given: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The marks to start from: the request's (a review made before, its
+        answers to suggestions still offered kept with them, its rejections in
+        ``rejected``); with ``free``, each suggestion not answered yet as a mark
+        (and a proposed bad channel bad), to keep, change or delete."""
+        marks = []
+        for raw in given:
+            m = dict(raw)
+            verdict, s = m.pop("verdict", ""), m.get("suggestion")
+            offered = s is not None and any(same_suggestion(s, p) for p in self.points)
+            if s is not None and not offered:
+                m.pop("suggestion")  # answers a suggestion no longer made
+            if m["label"] == BAD_CHANNEL:
+                continue  # its answer is the channel's status
+            if verdict == "rejected":
+                if offered:
+                    self.rejected.append(dict(s))  # type: ignore[arg-type]
+                continue
+            marks.append(m)
+        if self.decision == "free":
+            for p in self.points:
+                if any(same_suggestion(p, r) for r in self.rejected) or any(
+                    m.get("suggestion") and same_suggestion(m["suggestion"], p)
+                    for m in marks
+                ):
+                    continue
+                if p.get("label") == BAD_CHANNEL:
+                    if p.get("channel") and p["channel"] not in self.bads:
+                        self.bads.append(str(p["channel"]))
+                    continue
+                marks.append({"onset": round(float(p["onset"]), 6),
+                              "duration": round(float(p["duration"]), 6),
+                              "label": p["label"], "suggestion": dict(p)})  # fmt: skip
+        marks.sort(key=lambda m: (m["onset"], m["label"]))
+        return marks
+
+    def _current(self) -> dict[str, Any] | None:
+        if self.point_index is None or not self.points:
+            return None
+        return self.points[self.point_index]
+
+    def accept_current(self) -> None:
+        """Y: yes to the suggestion shown (as proposed), then the next."""
+        p = self._current()
+        if p is None:
+            return
+        if p.get("label") == BAD_CHANNEL:
+            self._snapshot()
+            self.rejected = [r for r in self.rejected if not same_suggestion(r, p)]
+            if p.get("channel") and p["channel"] not in self.bads:
+                self.bads.append(str(p["channel"]))
+                self._display_changed()
+            self._refresh()
+        else:
+            self._keep(p)
+        self._on_answer()
+
+    def reject_current(self) -> None:
+        """N (verify): no to the suggestion shown, then the next."""
+        p = self._current()
+        if p is None:
+            return
+        self._snapshot()
+        self.marks = [m for m in self.marks if not (
+            m.get("suggestion") and same_suggestion(m["suggestion"], p))]  # fmt: skip
+        if not any(same_suggestion(r, p) for r in self.rejected):
+            self.rejected.append(dict(p))
+        if p.get("label") == BAD_CHANNEL and p.get("channel") in self.bads:
+            self.bads.remove(str(p["channel"]))
+            self._display_changed()
+        self.clear_selection()
+        self._refresh()
+        self._on_answer()
+
+    def edit_current(self) -> None:
+        """E: keep the suggestion shown, its span selected to retime and its
+        label to change (edited once they differ)."""
+        p = self._current()
+        if p is None or p.get("label") == BAD_CHANNEL:
+            return
+        if self.answer_of(p) is None or self.verdict_of(p) == "rejected":
+            self._keep(p)
+        answer = self.answer_of(p)
+        if answer is not None:
+            self.edit_mark(answer)
+
+    def _keep(self, p: dict[str, Any]) -> None:
+        """Answer suggestion ``p`` yes: a mark as proposed, unless it has one."""
+        self._snapshot()
+        self.rejected = [r for r in self.rejected if not same_suggestion(r, p)]
+        if self.answer_of(p) is None:
+            self.marks.append({"onset": round(float(p["onset"]), 6),
+                               "duration": round(float(p["duration"]), 6),
+                               "label": p["label"], "suggestion": dict(p)})  # fmt: skip
+            self.marks.sort(key=lambda m: (m["onset"], m["label"]))
+        self._refresh()
+
+    def _on_answer(self) -> None:
+        """A suggestion got its answer: on to the next, if so chosen."""
+        self._update_points()
+        if (self.auto_next.isChecked() and self.point_index is not None
+                and self.point_index < len(self.points) - 1):  # fmt: skip
+            self.go_point(self.point_index + 1)
+
+    def _key_n(self) -> None:
+        """N: no to the suggestion shown (verify), else the next unreviewed part."""
+        if self.decision == "verify" and self._current() is not None:
+            self.reject_current()
+        else:
+            self.next_unreviewed()
 
     def go_point(self, index: int) -> None:
         """Show review point ``index``, centred, and select it: its answer to
@@ -995,8 +1155,9 @@ class ReviewWindow(StackedWindow):
             self.edit_mark(answer)
         else:
             self.select(t0, t1)
-        self.point_index, self.current_point = index, t0
+        self.point_index, self.current_point = index, point
         self._update_points()
+        self.suggestions.selectRow(index)
 
     def next_unreviewed(self) -> None:
         after = self._view[1] if self._view is not None else 0.0
@@ -1032,6 +1193,9 @@ class ReviewWindow(StackedWindow):
     def _update_palette(self) -> None:
         keys = [f"{k + 1} {self.label.itemText(k)}"
                 for k in range(min(9, self.label.count()))]  # fmt: skip
+        if self.points:
+            keys.insert(0, "Y yes · N no · E edit" if self.decision == "verify"
+                        else "Y yes · E edit · Del no")  # fmt: skip
         self.palette_hint.setText("Keys: " + " · ".join(keys) if keys else "")
 
     def _mark(self, label: str) -> None:
@@ -1048,6 +1212,10 @@ class ReviewWindow(StackedWindow):
                 self._refresh()
             self._answered(mark)
             return
+        if self.decision == "verify" and self.current_point is None:
+            self.progress.setText("Verify: answer each suggestion with Y (yes), "
+                                  "N (no) or E (edit).")  # fmt: skip
+            return
         if not self.has_selection():
             self.progress.setText("Drag on the traces from the start to the end "
                                   "of a span first.")  # fmt: skip
@@ -1059,23 +1227,23 @@ class ReviewWindow(StackedWindow):
         self._answered(self.editing)
 
     def _answered(self, mark: dict[str, Any]) -> None:
-        """A review point got its answer: on to the next, if so chosen."""
-        if mark.get("point") is None or self.point_index is None:
+        """A suggestion got its answer: on to the next, if so chosen."""
+        if mark.get("suggestion") is None or self.point_index is None:
             return
-        self._update_points()
-        if self.auto_next.isChecked() and self.point_index < len(self.points) - 1:
-            self.go_point(self.point_index + 1)
+        self.rejected = [r for r in self.rejected
+                         if not same_suggestion(r, mark["suggestion"])]  # fmt: skip
+        self._on_answer()
 
     def add_mark(self, onset: float, duration: float, label: str,
-                 point: float | None = None) -> dict[str, Any]:  # fmt: skip
+                 point: dict[str, Any] | None = None) -> dict[str, Any]:  # fmt: skip
         self._snapshot()
         mark: dict[str, Any] = {
             "onset": round(onset, 6),
             "duration": round(duration, 6),
             "label": label,
         }
-        if point is not None:  # the review point it answers
-            mark["point"] = round(point, 6)
+        if point is not None:  # the suggestion it answers
+            mark["suggestion"] = dict(point)
         self.marks.append(mark)
         self.marks.sort(key=lambda m: (m["onset"], m["label"]))
         self._refresh()
@@ -1090,6 +1258,7 @@ class ReviewWindow(StackedWindow):
         """Delete: the mark the span is on, else the rows chosen in the table."""
         if self.editing is not None and self.editing in self.marks:
             self._snapshot()
+            self._rejected_by_removing(self.editing)
             self.marks.remove(self.editing)
             self.clear_selection()
             self._refresh()
@@ -1098,8 +1267,15 @@ class ReviewWindow(StackedWindow):
         if rows:
             self._snapshot()
         for row in rows:
+            self._rejected_by_removing(self.marks[row])
             del self.marks[row]
         self._refresh()
+
+    def _rejected_by_removing(self, mark: dict[str, Any]) -> None:
+        """Deleting the answer to a suggestion answers it no."""
+        s = mark.get("suggestion")
+        if s is not None and not any(same_suggestion(s, r) for r in self.rejected):
+            self.rejected.append(dict(s))
 
     def _show_mark(self, row: int, _column: int) -> None:
         m = self.marks[row]
@@ -1159,26 +1335,39 @@ class ReviewWindow(StackedWindow):
             span.setZValue(-4)
             self.plot.addItem(span)
             self._point_spans.append(span)
-        done_color = self.theme.status_color("ready")
-        answered = 0
-        for i, (span, point) in enumerate(zip(self._point_spans, self.points,
-                                              strict=False)):  # fmt: skip
-            done = self.answer_of(point) is not None
-            answered += done
-            pen = pg.mkPen(done_color if done else self.theme.accent,
-                           width=2 if i == self.point_index else 1,
-                           style=Qt.PenStyle.SolidLine if done
+        # dashed: as proposed (accent: no answer yet); solid: edited; red: no
+        colors = {"": self.theme.accent, "accepted": self.theme.status_color("ready"),
+                  "edited": self.theme.status_color("ready"),
+                  "rejected": self.theme.status_color("error")}  # fmt: skip
+        verdicts = [self.verdict_of(p) for p in self.points]
+        for i, (span, point, verdict) in enumerate(zip(
+                self._point_spans, self.points, verdicts, strict=False)):  # fmt: skip
+            pen = pg.mkPen(colors[verdict], width=2 if i == self.point_index else 1,
+                           style=Qt.PenStyle.SolidLine if verdict == "edited"
                            else Qt.PenStyle.DashLine)  # fmt: skip
             for line in span.lines:
                 line.setPen(pen)
             t0 = float(point["onset"])
             span.setRegion((t0, t0 + max(float(point["duration"]), 0.01)))
+            span.setVisible(point.get("label") != BAD_CHANNEL)  # no span to show
+        answered = sum(bool(v) for v in verdicts)
         at = "–" if self.point_index is None else str(self.point_index + 1)  # noqa: RUF001
-        self.point_label.setText(f"Point {at}/{len(self.points)} · "
+        self.point_label.setText(f"Suggestion {at}/{len(self.points)} · "
                                  f"{answered} answered")  # fmt: skip
-        self.coverage.points = [(float(p["onset"]), self.answer_of(p) is not None)
-                                for p in self.points]  # fmt: skip
+        self.coverage.points = [(float(p["onset"]), bool(v))
+                                for p, v in zip(self.points, verdicts,
+                                                strict=True)]  # fmt: skip
         self.coverage.update()
+        self.suggestions.setRowCount(len(self.points))
+        for row, (p, verdict) in enumerate(zip(self.points, verdicts, strict=True)):
+            what = str(p["label"]) + (f" {p['channel']}" if p.get("channel") else "")
+            texts = (f"{float(p['onset']):.3f}", what, str(p.get("origin") or ""),
+                     VERDICT_TEXT[verdict])  # fmt: skip
+            for col, text in enumerate(texts):
+                item = QTableWidgetItem(text)
+                if col == 3:
+                    item.setForeground(QColor(colors[verdict]))
+                self.suggestions.setItem(row, col, item)
 
     def _update_coverage(self) -> None:
         bar = self.coverage
@@ -1197,12 +1386,19 @@ class ReviewWindow(StackedWindow):
     # -- answer -----------------------------------------------------------------------
 
     def submit(self) -> None:
-        left = sum(self.answer_of(p) is None for p in self.points)
+        left = sum(not self.verdict_of(p) for p in self.points)
+        if left and self.decision == "verify":
+            QMessageBox.warning(
+                self, "Suggestions left",
+                f"{left} of {len(self.points)} suggestions have no answer yet. "
+                "Answer each with Y (yes), N (no) or E (edit) to save.",
+            )  # fmt: skip
+            return
         if left:
             ask = QMessageBox.question(
-                self, "Review points left",
-                f"{left} of {len(self.points)} review points have no answer. "
-                "Save the marks and continue anyway?",
+                self, "Suggestions left",
+                f"{left} of {len(self.points)} suggestions have no answer (they "
+                "are saved as rejected). Save the marks and continue anyway?",
             )  # fmt: skip
             if ask != QMessageBox.StandardButton.Yes:
                 return
@@ -1216,7 +1412,10 @@ class ReviewWindow(StackedWindow):
             if ask != QMessageBox.StandardButton.Yes:
                 return
         self.answered = True
-        self._submit([dict(m) for m in self.marks],
+        rejected = [{"onset": r["onset"], "duration": r["duration"],
+                     "label": r["label"], "suggestion": dict(r),
+                     "verdict": "rejected"} for r in self.rejected]  # fmt: skip
+        self._submit([dict(m) for m in self.marks] + rejected,
                      [[round(a, 6), round(b, 6)] for a, b in self.viewed],
                      list(self.bads))  # fmt: skip
         self.close()

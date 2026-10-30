@@ -18,6 +18,16 @@ made on another input are offered again to be confirmed, never reused silently
 
 A review produces events only. Cutting the rejected spans out is the Reject
 segments strip's job (``meegxer.core.reject_segments``), downstream.
+
+Suggestions (step 4b): the events the strip's ``points`` names (a detector's
+upstream, or the recording's own) are suggestions. Each gets a verdict,
+``accepted``, ``edited`` or ``rejected``, kept with its origin in the marks
+file; rejected ones are recorded but not emitted. The strip takes those labels
+over: later strips see its verdicts, not the suggestions
+(``meegxer.core.events``). With ``decision`` ``verify`` every suggestion needs
+a verdict; with ``free`` one left without an answer is rejected (the window
+opens each as a mark, so leaving it alone accepts it). A detector's
+``bad_channel`` suggestions become bad channels when accepted.
 """
 
 from __future__ import annotations
@@ -56,22 +66,81 @@ PRESET_UNITS = {"highpass": "Hz", "lowpass": "Hz", "notch": "Hz",
                 "sensitivity": "µV/mm", "page": "s"}  # fmt: skip
 DEFAULT_LABELS = "BAD"
 BOUNDARY = "boundary"  # the event at a cut (EEGLAB's name for it)
+BAD_CHANNEL = "bad_channel"  # a channel proposed as bad (payload: channel, reason)
+DECISIONS = ("free", "verify")
+VERDICTS = ("accepted", "edited", "rejected")
+
+
+def _number(value: object, name: str) -> float:
+    number = float(str(value))
+    if number < 0 or not math.isfinite(number):
+        raise ValueError(f"{name} must be a number >= 0")
+    return number
 
 
 @dataclass(frozen=True, slots=True)
-class Mark:
-    """A labelled span, in seconds from the recording's start."""
+class Suggestion:
+    """An event the review is asked about (a review point): where it is, in
+    seconds from the recording's start, and which strip proposed it
+    (``input``: the recording's own); ``channel`` for a ``bad_channel``."""
 
     onset: float
     duration: float
     label: str
-    point: float | None = None  # onset of the review point it answers (s)
+    origin: str = ""
+    channel: str = ""
+
+    def to_wire(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"onset": self.onset, "duration": self.duration,
+                               "label": self.label, "origin": self.origin}  # fmt: skip
+        if self.channel:
+            out["channel"] = self.channel
+        return out
+
+    @classmethod
+    def from_wire(cls, data: dict[str, Any]) -> Suggestion:
+        return cls(_number(data["onset"], "onset"),
+                   _number(data.get("duration", 0.0), "duration"),
+                   str(data["label"]), str(data.get("origin") or ""),
+                   str(data.get("channel") or ""))  # fmt: skip
+
+    def same(self, other: Suggestion) -> bool:
+        """The same suggestion (times to the microsecond)."""
+        return (
+            (self.label, self.origin, self.channel)
+            == (other.label, other.origin, other.channel)
+            and _close(self.onset, other.onset)
+            and _close(self.duration, other.duration)
+        )
+
+
+def _close(a: float, b: float) -> bool:
+    return abs(a - b) < 1e-6
+
+
+@dataclass(frozen=True, slots=True)
+class Mark:
+    """A labelled span, in seconds from the recording's start; for the answer
+    to a suggestion, the suggestion and its verdict."""
+
+    onset: float
+    duration: float
+    label: str
+    suggestion: Suggestion | None = None
+    verdict: str = ""  # accepted, edited or rejected (a rejected one: not emitted)
+
+    @property
+    def point(self) -> float | None:
+        """Onset of the suggestion it answers (s)."""
+        return None if self.suggestion is None else self.suggestion.onset
 
     def to_wire(self) -> dict[str, Any]:
         out: dict[str, Any] = {"onset": self.onset, "duration": self.duration,
                                "label": self.label}  # fmt: skip
-        if self.point is not None:
-            out["point"] = self.point
+        if self.suggestion is not None:
+            out["suggestion"] = self.suggestion.to_wire()
+        if self.verdict:
+            out["verdict"] = self.verdict
         return out
 
     @classmethod
@@ -82,10 +151,15 @@ class Mark:
             raise ValueError("a mark needs a label")
         if onset < 0 or duration < 0 or not math.isfinite(onset + duration):
             raise ValueError(f"mark {label!r}: onset and duration must be >= 0")
-        point = data.get("point")
-        if point in ("", "n/a"):
-            point = None
-        return cls(onset, duration, label, None if point is None else float(point))
+        given = data.get("suggestion")
+        suggestion = Suggestion.from_wire(given) if isinstance(given, dict) else None
+        point = data.get("point")  # before 0.2.17: the onset of the point only
+        if suggestion is None and point not in (None, "", "n/a"):
+            suggestion = Suggestion(_number(point, "point"), 0.0, label)
+        verdict = str(data.get("verdict") or "")
+        if verdict not in ("", *VERDICTS):
+            raise ValueError(f"mark {label!r}: verdict must be one of {VERDICTS}")
+        return cls(onset, duration, label, suggestion, verdict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +198,8 @@ class ReviewAnswer:
     viewed: tuple[Span, ...] = ()
     bads: tuple[str, ...] = ()  # channels marked bad (labels)
     epochs: tuple[EpochVerdict, ...] = ()  # an epoch review's verdicts
+    rejected: tuple[Suggestion, ...] = ()  # suggestions answered no (also: a
+    # mark with verdict "rejected" and its suggestion, as the wire gives them)
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +217,8 @@ class ReviewRequest:
     viewed: tuple[Span, ...] = ()  # looked at in the review before
     bads: tuple[str, ...] = ()  # channels marked bad in the review before
     display: dict[str, Any] = dataclasses.field(default_factory=dict)  # presets
-    points: tuple[Mark, ...] = ()  # events to step through (review points)
+    points: tuple[Suggestion, ...] = ()  # suggestions to step through
+    decision: str = "free"  # or "verify": every suggestion needs a verdict
     # an epoch review (meegxer.core.epoch_review): the epochs to review, and
     # their data (not sent: the window fetches it, offline_review_epochs)
     kind: str = "marks"  # or "epochs"
@@ -159,6 +236,7 @@ class ReviewRequest:
             "reject": list(self.reject), "viewed": [list(v) for v in self.viewed],
             "bads": list(self.bads), "display": dict(self.display),
             "points": [m.to_wire() for m in self.points],
+            "decision": self.decision,
         }  # fmt: skip
 
 
@@ -205,9 +283,16 @@ class ReviewStrip(Processor):
                  "description": "Comma-separated labels offered for marks "
                                 "(the input's event types are offered too)"},
                 {"name": "points", "type": "string", "default": "",
-                 "description": "Comma-separated event labels to step through "
-                                "as review points (e.g. a detector's): each is "
-                                "selected in turn, to label and retime"},
+                 "description": "Comma-separated event labels to review as "
+                                "suggestions (e.g. a detector's; bad_channel "
+                                "for its proposed bad channels): each gets a "
+                                "verdict, and later strips see the verdicts "
+                                "instead"},
+                {"name": "decision", "type": "enum", "default": "free",
+                 "choices": list(DECISIONS),
+                 "description": "free: suggestions open as marks to keep, edit "
+                                "or delete; verify: yes or no for each "
+                                "suggestion, no other marks"},
                 {"name": "reject", "type": "string", "default": "BAD",
                  "description": "Comma-separated labels the Reject key gives "
                                 "a span (a Reject segments strip after this "
@@ -243,6 +328,12 @@ class ReviewStrip(Processor):
         inside = tuple(e for e in self.marks if lo <= e.sample_index < hi)
         return TransformResult(with_bads(block, self.bads), {}, inside)
 
+    @staticmethod
+    def takes_over(params: Params) -> tuple[str, ...]:
+        """The labels it reviews as suggestions: later strips see its verdicts
+        for them, not the events from before it (``meegxer.core.events``)."""
+        return point_words(params)
+
 
 def with_bads(block: Block, bads: Sequence[str]) -> Block:
     """``block`` with ``bads`` added to its stream's bad channels (those it
@@ -273,14 +364,76 @@ def point_words(params: Params) -> tuple[str, ...]:
     return tuple(_words(params["points"]))
 
 
-def review_points(events: Sequence[Event], params: Params, sfreq: float
-                  ) -> tuple[Mark, ...]:  # fmt: skip
-    """The events to step through (labels named by ``points``), as spans in
-    seconds."""
+def review_points(events: Sequence[tuple[Event, str]], params: Params,
+                  sfreq: float) -> tuple[Suggestion, ...]:  # fmt: skip
+    """The suggestions: the events (with their origins) whose labels
+    ``points`` names, as spans in seconds."""
     words = point_words(params)
-    return tuple(Mark(e.sample_index / sfreq, e.duration / sfreq, e.label)
-                 for e in sorted(events, key=lambda e: e.sample_index)
-                 if words and e.label in words)  # fmt: skip
+    return tuple(
+        Suggestion(round(e.sample_index / sfreq, 6), round(e.duration / sfreq, 6),
+                   e.label, origin, str(e.payload.get("channel") or ""))
+        for e, origin in sorted(events, key=lambda p: p[0].sample_index)
+        if words and e.label in words
+    )  # fmt: skip
+
+
+class VerdictsMissing(ValueError):
+    """A verify review left suggestions without a verdict."""
+
+
+def settle(
+    suggestions: Sequence[Suggestion],
+    answer: ReviewAnswer,
+    decision: str,
+) -> tuple[tuple[Mark, ...], tuple[str, ...]]:
+    """The marks to save (each suggestion's verdict among them, rejected ones
+    as rows of their own) and the bad channels, from the reviewer's answer.
+
+    A mark answering a suggestion is ``accepted`` when its span and label are
+    the suggestion's, else ``edited``; a mark answering a suggestion that is
+    no longer there is kept as the reviewer's own. A ``bad_channel``
+    suggestion is accepted when its channel is among the answer's bad
+    channels. A suggestion with no answer is rejected with ``free``; with
+    ``verify`` it is an error (:class:`VerdictsMissing`)."""
+    rejections = [
+        *answer.rejected,
+        *(
+            m.suggestion
+            for m in answer.marks
+            if m.verdict == "rejected" and m.suggestion
+        ),
+    ]
+    own: list[Mark] = []
+    answered: list[Mark] = []
+    for m in answer.marks:
+        given = m.suggestion
+        s = next((s for s in suggestions if given and s.same(given)), None)
+        if m.verdict == "rejected":
+            continue  # a rejection (in rejections)
+        if s is None or s.label == BAD_CHANNEL:
+            own.append(Mark(m.onset, m.duration, m.label))
+            continue
+        same = (m.label == s.label and _close(m.onset, s.onset)
+                and _close(m.duration, s.duration))  # fmt: skip
+        answered.append(Mark(m.onset, m.duration, m.label, s,
+                             "accepted" if same else "edited"))  # fmt: skip
+    missing = []
+    for s in suggestions:
+        if s.label == BAD_CHANNEL and s.channel in answer.bads:
+            answered.append(Mark(s.onset, 0.0, s.label, s, "accepted"))
+            continue
+        if any(a.suggestion is s for a in answered):
+            continue
+        if decision == "verify" and not any(s.same(r) for r in rejections):
+            missing.append(s)
+            continue
+        answered.append(Mark(s.onset, s.duration, s.label, s, "rejected"))
+    if missing:
+        raise VerdictsMissing(
+            f"{len(missing)} suggestion(s) have no verdict (decision verify): "
+            + ", ".join(f"{s.label} at {s.onset:g} s" for s in missing[:5])
+        )
+    return tuple(own + answered), tuple(answer.bads)
 
 
 def _words(text: object) -> list[str]:
@@ -369,19 +522,37 @@ def _sidecar(path: Path) -> Path:
     return path.with_suffix(".json")
 
 
+def _given(row: dict[str, str], key: str) -> str:
+    value = row.get(key) or ""
+    return "" if value == "n/a" else value
+
+
+def _row_mark(row: dict[str, str]) -> Mark:
+    """A mark from a row of the marks file (its suggestion and verdict when it
+    answers one; ``review_point``: the onset of the point, before step 4b)."""
+    label = row.get("trial_type") or row.get("value") or ""
+    data: dict[str, Any] = {"onset": row["onset"],
+                            "duration": row.get("duration") or 0.0,
+                            "label": label, "point": _given(row, "review_point"),
+                            "verdict": _given(row, "verdict")}  # fmt: skip
+    if _given(row, "suggestion_onset"):
+        data["suggestion"] = {
+            "onset": row["suggestion_onset"],
+            "duration": _given(row, "suggestion_duration") or 0.0,
+            "label": _given(row, "suggestion_label") or label,
+            "origin": _given(row, "suggestion_origin"),
+            "channel": _given(row, "channel"),
+        }
+    return Mark.from_wire(data)
+
+
 def load_review(path: Path) -> Review | None:
     """The review saved at ``path`` (None when there is none)."""
     if not path.is_file():
         return None
     with path.open(newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh, delimiter="\t"))
-    marks = tuple(
-        Mark.from_wire({"onset": r["onset"],
-                        "duration": r.get("duration") or 0.0,
-                        "label": r.get("trial_type") or r.get("value") or "",
-                        "point": r.get("review_point")})
-        for r in rows
-    )  # fmt: skip
+    marks = tuple(_row_mark(r) for r in rows)
     meta: dict[str, Any] = {}
     if _sidecar(path).is_file():
         meta = json.loads(_sidecar(path).read_text(encoding="utf-8")).get("MeegXer", {})
@@ -399,15 +570,27 @@ def save_review(path: Path, review: Review, node_id: str) -> None:
     """Write the events file and its JSON sidecar (the marks in onset order)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     marks = sorted(review.marks, key=lambda m: (m.onset, m.label))
-    points = any(m.point is not None for m in marks)
+    points = any(m.suggestion is not None for m in marks)
+    columns = ["channel", "suggestion_origin", "suggestion_label",
+               "suggestion_onset", "suggestion_duration", "verdict"]  # fmt: skip
     with path.open("w", newline="", encoding="utf-8") as fh:
         out = csv.writer(fh, delimiter="\t", lineterminator="\n")
         out.writerow(["onset", "duration", "trial_type",
-                      *(["review_point"] if points else [])])  # fmt: skip
+                      *(columns if points else [])])  # fmt: skip
         for m in marks:
             row = [f"{m.onset:.6f}", f"{m.duration:.6f}", m.label]
-            if points:
-                row.append("n/a" if m.point is None else f"{m.point:.6f}")
+            s = m.suggestion
+            if points and s is None:
+                row += ["n/a"] * len(columns)
+            elif s is not None:
+                row += [
+                    s.channel or "n/a",
+                    s.origin or "n/a",
+                    s.label,
+                    f"{s.onset:.6f}",
+                    f"{s.duration:.6f}",
+                    m.verdict or "n/a",
+                ]
             out.writerow(row)
     meta: dict[str, Any] = {
         "onset": {"Description": "Start of the span", "Units": "s"},
@@ -421,10 +604,22 @@ def save_review(path: Path, review: Review, node_id: str) -> None:
     }  # fmt: skip
     if review.crop is not None:  # the span kept, in s from the raw file's start
         meta["MeegXer"]["crop"] = list(review.crop)
-    if points:
-        meta["review_point"] = {"Description": "Onset of the review point (an "
-                                "event of the input) the mark answers",
-                                "Units": "s"}  # fmt: skip
+    if points:  # the suggestion each row answers (docs/REVIEW.md, step 4b)
+        meta.update({
+            "channel": {"Description": "Channel a bad_channel suggestion names"},
+            "suggestion_origin": {"Description": "Strip that proposed the "
+                                  "suggestion (input: the recording's own event)"},
+            "suggestion_label": {"Description": "Label of the suggestion"},
+            "suggestion_onset": {"Description": "Start of the suggestion",
+                                 "Units": "s"},
+            "suggestion_duration": {"Description": "Length of the suggestion",
+                                    "Units": "s"},
+            "verdict": {"Description": "The reviewer's verdict on the "
+                        "suggestion; rejected rows are not used as events",
+                        "Levels": {"accepted": "kept as proposed",
+                                   "edited": "kept, retimed or relabelled",
+                                   "rejected": "not an event"}},
+        })  # fmt: skip
     _sidecar(path).write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
 
@@ -439,4 +634,5 @@ def marks_to_events(marks: Sequence[Mark], sfreq: float) -> tuple[Event, ...]:
         Event(round(m.onset * sfreq), m.label, round(m.duration * sfreq),
               {"origin": "review"})
         for m in sorted(marks, key=lambda m: (m.onset, m.label))
+        if m.verdict != "rejected" and m.label != BAD_CHANNEL  # not events
     )  # fmt: skip

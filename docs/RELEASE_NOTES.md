@@ -7,6 +7,16 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Suggestions in the Review strip:** name a detector's labels in its
+  *Suggestions to review* (`points`) and each one gets a verdict, yes, no or
+  edited, kept with the strip that proposed it in the marks file (rejected
+  ones too, so a detector's misses can be counted). Later strips see only the
+  verdicts: a rejected `BAD_peak` is no longer cut. *Decision* *Verify* is a
+  yes/no queue (keys Y, N, E) that must be finished before saving; *Free*
+  opens each suggestion as a mark to keep, change or delete. A detector's
+  proposed bad channels (`bad_channel`) are answered the same way. Control
+  API 0.2.17.
+
 - **Fixed: recovering a long recording.** Recovering an unfinished recording
   wrote the whole file inside one control call, and the GUI gives up on a
   reply after 3 s: a recording of an hour or more (40 s to write at 64

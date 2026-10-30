@@ -23,6 +23,7 @@ from meegxer.core.review import (
     Mark,
     ReviewNeeded,
     ReviewRequest,
+    Suggestion,
     load_review,
     review_path,
 )
@@ -454,21 +455,27 @@ def test_review_points_are_offered_and_answers_keep_their_point(
 
     def review(req: ReviewRequest) -> list[Mark]:
         asked.append(req)
+        first, second = req.points
         # the physician: the first is a spindle (retimed), the second is not
         return [
-            Mark(0.9, 0.7, "spindle", point=1.0),
-            Mark(3.0, 0.4, "not_spindle", point=3.0),
+            Mark(0.9, 0.7, "spindle", first),
+            Mark(3.0, 0.4, "not_spindle", second),
         ]
 
     BatchScheduler(review=review).run(graph)
-    assert asked[0].points == (Mark(1.0, 0.5, "beta"), Mark(3.0, 0.4, "beta"))
-    assert asked[0].to_wire()["points"][0] == {"onset": 1.0, "duration": 0.5,
-                                               "label": "beta"}  # fmt: skip
+    assert asked[0].points == (Suggestion(1.0, 0.5, "beta", "input"),
+                               Suggestion(3.0, 0.4, "beta", "input"))  # fmt: skip
+    assert asked[0].to_wire()["points"][0] == {
+        "onset": 1.0, "duration": 0.5, "label": "beta", "origin": "input"}  # fmt: skip
     saved = load_review(file)
     assert saved is not None
-    assert [m.point for m in saved.marks] == [1.0, 3.0]
-    assert "review_point" in file.read_text().splitlines()[0]
-    # a mark from the wire keeps its point; one without has none
+    assert [(m.point, m.verdict) for m in saved.marks] == [(1.0, "edited"),
+                                                           (3.0, "edited")]  # fmt: skip
+    assert "suggestion_onset" in file.read_text().splitlines()[0]
+    # a mark from the wire keeps its suggestion; one without has none
+    wired = Mark.from_wire({"onset": 1, "label": "x", "suggestion": {
+        "onset": 2.5, "duration": 0, "label": "beta", "origin": "det"}})  # fmt: skip
+    assert wired.suggestion == Suggestion(2.5, 0.0, "beta", "det")
     assert Mark.from_wire({"onset": 1, "label": "x", "point": 2.5}).point == 2.5
     assert Mark.from_wire({"onset": 1, "label": "x"}).to_wire() == {
         "onset": 1.0,

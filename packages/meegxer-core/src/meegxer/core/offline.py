@@ -439,9 +439,10 @@ class OfflineJob:
         bads: list[str] | None = None,
         epochs: list[dict[str, Any]] | None = None,
     ) -> None:
-        """The marks for the strip the run waits at, the spans looked at
-        (seconds) and the channels marked bad, or an epoch review's verdicts;
-        the run goes on."""
+        """The marks for the strip the run waits at (a suggestion answered no:
+        a mark with verdict ``rejected``), the spans looked at (seconds) and
+        the channels marked bad, or an epoch review's verdicts; the run goes
+        on."""
         if self.review_request is None:
             raise RuntimeError("no review is waiting")
         self._review_reply = ReviewAnswer(

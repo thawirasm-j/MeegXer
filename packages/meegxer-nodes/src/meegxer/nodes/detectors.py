@@ -26,12 +26,12 @@ import numpy as np
 from meegxer.core.block import Block, Event, SignalInfo
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, Processor, TransformResult
+from meegxer.core.review import BAD_CHANNEL  # a channel proposed as bad
 from meegxer.core.serialization import State
 from meegxer.nodes._manifest import stream_manifest
 
 UV = 1e-6  # thresholds are set in µV; signals are in volts
 BLINK_MIN_SECONDS = 10.0  # MNE's EOG filter is 10 s long: shorter pieces skipped
-BAD_CHANNEL = "bad_channel"  # a channel proposed as bad (payload: channel, reason)
 _EOG_LABEL = re.compile(r"^(V|H)?EOG", re.IGNORECASE)
 
 

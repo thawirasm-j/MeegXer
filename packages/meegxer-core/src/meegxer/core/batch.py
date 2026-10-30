@@ -67,6 +67,7 @@ from meegxer.core.review import (
     ReviewNeeded,
     ReviewRequest,
     ReviewStrip,
+    VerdictsMissing,
     cut_blocks,
     display_presets,
     load_review,
@@ -79,6 +80,7 @@ from meegxer.core.review import (
     review_path,
     review_points,
     save_review,
+    settle,
 )
 from meegxer.core.serialization import canonical_json, fingerprint
 from meegxer.core.stage import Stage, StageStatus, labelled_input, signal_fingerprint
@@ -406,7 +408,11 @@ class BatchScheduler:
         if saved is not None and saved.upstream == input_fp:
             marks, review = saved.marks, saved
         else:
-            seen = self._rail.visible_to(self._graph, node.id, sfreq=rate or None)
+            pairs = self._rail.visible_with_origins(self._graph, node.id,
+                                                    sfreq=rate or None)  # fmt: skip
+            seen = [e for e, _ in pairs]
+            suggestions = review_points(pairs, stage.params, rate) if rate else ()
+            decision = str(stage.params["decision"])
             request = ReviewRequest(
                 node.id, path, input_fp,
                 "input changed" if saved is not None else "not reviewed",
@@ -417,19 +423,22 @@ class BatchScheduler:
                 saved.viewed if saved is not None else (),
                 saved.bads if saved is not None else (),
                 display_presets(stage.params),
-                review_points(seen, stage.params, rate) if rate else (),
+                suggestions, decision=decision,
             )  # fmt: skip
             if self.review is None:
                 raise ReviewNeeded(request)
             answer = self.review(request)
             if not isinstance(answer, ReviewAnswer):  # just the marks
                 answer = ReviewAnswer(tuple(m for m in answer if isinstance(m, Mark)))
-            marks = tuple(answer.marks)
             unknown = sorted(set(answer.bads) - set(labels))
             if unknown:
                 raise GraphError(f"{node.id}: no channels {unknown} to mark bad")
+            try:
+                marks, bads = settle(suggestions, answer, decision)
+            except VerdictsMissing as exc:
+                raise GraphError(f"{node.id}: {exc}") from exc
             review = Review(marks, input_fp, now_iso(), merge_spans(answer.viewed),
-                            self.reviewer, tuple(answer.bads))  # fmt: skip
+                            self.reviewer, bads)  # fmt: skip
             save_review(path, review, node.id)
         events = marks_to_events(marks, rate)
         stage.processor.marks = events
