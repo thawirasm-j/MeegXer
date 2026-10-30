@@ -7,7 +7,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
-Nothing yet.
+- **Fixed: the chain shows the strips that write events.** The Events rail
+  above the chain was drawn only when the recording had events, and only from
+  the input: a Review strip, a detector or Reject segments never showed on
+  it. Now the Events rail starts at the first strip that writes events when
+  the recording has none, and every later one adds to it (○), as the events
+  themselves always did. A strip that reads events (CSP) after a review or a
+  detector no longer shows "needs Events".
 
 ## 0.3.1b4 (not tagged yet: after the maintainer's test)
 

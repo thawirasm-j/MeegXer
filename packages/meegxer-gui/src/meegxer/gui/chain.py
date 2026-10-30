@@ -502,8 +502,14 @@ class RailBoard(QWidget):
             k = produced[rail.producer] = produced.get(rail.producer, -1) + 1
             x0 = rect.right() - PORT - 14 * k
             xs = [x for r in rail.readers if (x := self._read_x(r, rail.id))]
+            xs += [x for w in rail.writers if (x := self._write_x(w))]
             out.append((rail, x0, max([x0, *xs])))
         return out
+
+    def _write_x(self, strip_id: str) -> float | None:
+        """Where a strip adding to a rail (the Events rail) pushes up into it."""
+        rect = self._rect(strip_id)
+        return None if rect is None else rect.right() - PORT
 
     def _vertical(self, painter: QPainter, x: float, y0: float, y1: float,
                   crossings: list[tuple[float, float]]) -> None:  # fmt: skip
@@ -574,6 +580,17 @@ class RailBoard(QWidget):
             painter.setPen(QPen(colour, 2))
             painter.setBrush(colour)
             painter.drawEllipse(QPointF(x0, y), 3.5, 3.5)
+            # up arrows from the strips adding to it (reviews, detectors)
+            for writer in rail.writers:
+                rect, x = self._rect(writer), self._write_x(writer)
+                if rect is None or x is None:
+                    continue
+                painter.setPen(QPen(colour, 1.6))
+                self._vertical(painter, x, y + 9, rect.top(), crossings(x, rail.lane))
+                _head(painter, colour, QPointF(x, y + 4), 0, -1)
+                painter.setPen(QPen(colour, 1.6))  # ○: adds to a rail it did not start
+                painter.setBrush(QColor(self.theme.background))
+                painter.drawEllipse(QPointF(x, y), 3.5, 3.5)
             # down arrows into the readers
             for reader in rail.readers:
                 rect, x = self._rect(reader), self._read_x(reader, rail.id)
@@ -668,6 +685,8 @@ class RailBoard(QWidget):
             else:
                 readers = ", ".join(rail.readers) or "nothing yet"
                 tip = f"{rail.label} rail, from {rail.producer}\nRead by: {readers}"
+                if rail.writers:
+                    tip += f"\nAdded to by: {', '.join(rail.writers)}"
                 if self.tappable(rail):
                     tip += "\nClick its name: show it in the view above"
                 QToolTip.showText(event.globalPos(), tip, self)

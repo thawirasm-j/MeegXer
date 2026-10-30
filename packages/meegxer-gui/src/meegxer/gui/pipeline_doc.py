@@ -72,6 +72,12 @@ class Rail:
     producer: str  # strip id
     readers: list[str] = field(default_factory=list)
     lane: int = 0
+    writers: list[str] = field(default_factory=list)  # later strips adding to it
+
+
+# strips that put events on the Events rail besides the Event detection ones
+# (Review, Review epochs, the detectors): Reject segments marks each cut
+EVENT_WRITERS = frozenset({"meegxer.core.reject_segments"})
 
 
 def tap_id(strip_id: str) -> str:
@@ -468,7 +474,10 @@ class PipelineDoc:
         """The parallel rails of this chain and the strips that need a rail that
         is not there (strip id -> rail).
 
-        Events: the input's events, read by strips that fit on labelled trials.
+        Events: started by the input when it has events, else by the first
+        strip that writes events (a review, a detector); every later strip
+        that writes events adds to it, and strips that fit on labelled trials
+        read it.
         Features: one rail per feature strip, read by the strips that take it
         as input. Every rail runs on to the end of the chain, so each has its
         own row: Events on top, then the feature rails, earliest highest (a
@@ -491,12 +500,23 @@ class PipelineDoc:
             or any(p.get("rail") == "events" for p in self.manifest(s)["inputs"][1:])
         ]  # fmt: skip
         source = self.source
+        writers = [s.id for s in self.strips[1:] if self.writes_events(s)]
         if source is not None and self.carries_events():
-            rails.append(Rail("events", "events", "Events", source.id, labelled,
-                              lane=len(rails)))  # fmt: skip
-        else:
-            needs.update({sid: "Events" for sid in labelled})
+            writers.insert(0, source.id)
+        if writers:
+            start = order[writers[0]]  # a reader before the first writer has none
+            readers = [sid for sid in labelled if order[sid] > start]
+            rails.append(Rail("events", "events", "Events", writers[0], readers,
+                              lane=len(rails), writers=writers[1:]))  # fmt: skip
+            labelled = [sid for sid in labelled if order[sid] <= start]
+        needs.update({sid: "Events" for sid in labelled})
         return rails, needs
+
+    def writes_events(self, strip: StripNode) -> bool:
+        """It puts events on the Events rail: an Event detection strip (review,
+        detector, or a plugin in that category) or a Reject segments strip."""
+        manifest = self.manifest(strip)
+        return manifest.get("category") == "events" or strip.node in EVENT_WRITERS
 
     def _port_rails(self, rails: list[Rail], needs: dict[str, str]) -> None:
         """Rails written by extra output ports (spec 0.2.17), read by the extra

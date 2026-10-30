@@ -277,6 +277,26 @@ def test_events_rail_comes_from_the_input_and_csp_needs_it(doc: PipelineDoc) -> 
     assert (events.producer, events.readers, needs) == ("input", [csp.id], {})
 
 
+def test_a_review_starts_the_events_rail_or_adds_to_it(doc: PipelineDoc) -> None:
+    """Labels are events: a strip writing events starts the Events rail when
+    the input has none, and adds to it when it has."""
+    early = doc.insert(len(doc.strips), "meegxer.nodes.csp")  # before any events
+    amp = doc.insert(len(doc.strips), "meegxer.nodes.detect_amplitude")
+    rev = doc.insert(len(doc.strips), "meegxer.core.review")
+    rej = doc.insert(len(doc.strips), "meegxer.core.reject_segments")
+    late = doc.insert(len(doc.strips), "meegxer.nodes.csp")
+    rails, needs = doc.rails()
+    events = next(r for r in rails if r.kind == "events")
+    assert (events.producer, events.writers) == (amp.id, [rev.id, rej.id])
+    # Reject segments both reads the rail (what to cut) and adds to it (boundaries)
+    assert events.readers == [rej.id, late.id] and needs == {early.id: "Events"}
+    doc.input_events = 3  # the recording's own events: the input starts it
+    rails, needs = doc.rails()
+    events = next(r for r in rails if r.kind == "events")
+    assert (events.producer, events.writers) == ("input", [amp.id, rev.id, rej.id])
+    assert events.readers == [early.id, rej.id, late.id] and needs == {}
+
+
 def test_a_live_lsl_input_with_markers_starts_the_events_rail(
     doc: PipelineDoc,
 ) -> None:
