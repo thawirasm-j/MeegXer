@@ -9,7 +9,8 @@ Wire format (one multipart message per probe per frame; see
 ``spec/display-protocol.md``): ``[topic, header, payload]`` where topic is the probe
 id (UTF-8), header is JSON and payload is float32 ``(2, n_channels, n_bins)``
 little-endian (row 0 = min, row 1 = max). A Features probe sends its feature
-windows instead (header ``kind: "features"``, payload the window's values).
+windows instead (header ``kind: "features"``, payload the window's values); an
+ERP tap sends its running ERP that way, with each condition's epoch count.
 """
 
 from __future__ import annotations
@@ -32,8 +33,9 @@ from meegxer.core.block import (
 )
 from meegxer.core.passband import filters_from_wire, filters_wire
 
-DISPLAY_PROTOCOL = "meegxer.display/0.3"
-_ACCEPTED = ("meegxer.display/0.1", "meegxer.display/0.2", DISPLAY_PROTOCOL)
+DISPLAY_PROTOCOL = "meegxer.display/0.4"
+_ACCEPTED = ("meegxer.display/0.1", "meegxer.display/0.2", "meegxer.display/0.3",
+             DISPLAY_PROTOCOL)  # fmt: skip
 
 type ZmqContext = zmq.Context[zmq.Socket[bytes]]
 
@@ -114,6 +116,7 @@ class FeatureFrame:
     unit: str = ""  # display protocol 0.3, as FeatureBlock
     unit_dim: str = ""
     units: tuple[str, ...] = ()
+    counts: tuple[int, ...] = ()  # 0.4: an ERP tap's epochs per condition
 
 
 def encode_frame(frame: DisplayFrame) -> list[bytes]:
@@ -151,6 +154,8 @@ def encode_features(frame: FeatureFrame) -> list[bytes]:
         "shape": list(frame.values.shape),
         **units_wire(frame.unit, frame.unit_dim, frame.units),
     }
+    if frame.counts:
+        header["counts"] = list(frame.counts)
     payload = np.asarray(frame.values).astype("<f4").tobytes()
     return [frame.probe.encode(), json.dumps(header).encode(), payload]
 
@@ -171,6 +176,7 @@ def decode_frame(parts: Sequence[bytes]) -> DisplayFrame | FeatureFrame:
             {k: tuple(v) for k, v in header.get("coords", {}).items()},
             values.astype(np.float64),
             *units_from_wire(header),
+            tuple(int(n) for n in header.get("counts", ())),
         )
     n_ch, n_bins = len(header["ch_labels"]), header["n_bins"]
     arr: npt.NDArray[np.float32] = np.frombuffer(payload, dtype="<f4").reshape(

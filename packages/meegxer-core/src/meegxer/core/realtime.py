@@ -57,6 +57,7 @@ from meegxer.core.node import (
     output_blocks,
 )
 from meegxer.core.ports import PortType
+from meegxer.core.probes import ErpProbe
 from meegxer.core.rails import (
     RailError,
     RailFeed,
@@ -320,6 +321,17 @@ class RealtimeScheduler:
 
         self.submit(apply).result(timeout=10)
 
+    def reset_probe(self, node_id: str) -> None:
+        """Start an ERP tap's running averages over (its view's Reset)."""
+
+        def apply() -> None:
+            node = self.graph[node_id]
+            if not isinstance(node.impl, ErpProbe):
+                raise GraphError(f"{node_id!r} is not an ERP tap")
+            node.impl.reset()
+
+        self.submit(apply).result(timeout=10)
+
     def clear_calibration(self, node_id: str | None = None) -> list[str]:
         """Drop fitted models explicitly (all nodes, or one). Returns the ids."""
 
@@ -502,6 +514,8 @@ class RealtimeScheduler:
                 for port, (producer, _) in self.graph.rail_sources(node.id).items()
                 if producer
             })  # fmt: skip
+            if isinstance(node.impl, ErpProbe):  # a change upstream: start over
+                node.impl.follow(self._input_fps[node.id])
             if isinstance(node.impl, Stage):
                 outputs[node.id] = node.impl.output_fingerprint(
                     self._input_fps[node.id]
@@ -541,7 +555,8 @@ class RealtimeScheduler:
                     node.impl.tap(item)
                     if isinstance(item, Block):
                         self._feed_display(node, item)
-                    elif isinstance(item, FeatureBlock) and self.display is not None:
+                    elif (isinstance(item, FeatureBlock) and self.display is not None
+                          and not isinstance(node.impl, ErpProbe)):  # fmt: skip
                         self._pending_features.setdefault(node.id, []).append(item)
             elif isinstance(node.impl, Sink):
                 for item in output_blocks(upstream):  # feature windows one by one
@@ -724,6 +739,22 @@ class RealtimeScheduler:
                                  w.units)
                 )  # fmt: skip
             windows.clear()
+        for node in self.graph.nodes:  # an ERP tap: its running ERP, when new
+            probe = node.impl
+            if not isinstance(probe, ErpProbe) or not probe.changed:
+                continue
+            probe.changed = False
+            erp = probe.average()
+            if erp is None:
+                continue
+            seq = self._seq.get(node.id, 0)
+            self._seq[node.id] = seq + 1
+            counts = tuple(probe.counts[str(c)] for c in erp.coords["condition"])
+            self.display.publish(
+                FeatureFrame(node.id, seq, erp.window, sfreq, erp.dims,
+                             dict(erp.coords), erp.data, erp.unit,
+                             counts=counts)
+            )  # fmt: skip
 
     # -- status ---------------------------------------------------------------------
 

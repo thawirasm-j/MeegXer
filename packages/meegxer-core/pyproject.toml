@@ -41,6 +41,7 @@ dependencies = [
 "meegxer.core.epoch_review" = "meegxer.core.epoch_review:EpochReview"
 "meegxer.core.reject_segments" = "meegxer.core.reject_segments:RejectSegments"
 "meegxer.core.feature_probe" = "meegxer.core.probes:FeatureProbe"
+"meegxer.core.erp_probe" = "meegxer.core.probes:ErpProbe"
 "meegxer.core.set_writer" = "meegxer.core.sinks:SetSink"
 "meegxer.core.edf_writer" = "meegxer.core.sinks:EdfSink"
 "meegxer.core.feature_tsv" = "meegxer.core.sinks:FeatureTsvSink"

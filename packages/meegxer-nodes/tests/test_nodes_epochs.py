@@ -129,6 +129,72 @@ def test_live_epochs_match_the_batch_run(tmp_path: Path) -> None:
         np.testing.assert_allclose(a.data, b.data)
 
 
+def test_an_erp_tap_live_and_offline(tmp_path: Path) -> None:
+    """M10.3: the ERP tap's running mean per label reaches the display stream
+    live with its counts, and the offline run gives the same ERP."""
+    import time
+
+    from meegxer.core.display import (
+        DisplayPublisher,
+        DisplaySubscriber,
+        FeatureFrame,
+    )
+    from meegxer.core.offline import OfflineJob
+
+    events = tmp_path / "events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n1.0\t0\tgo\n"
+                      "2.5\t0\tstop\n4.0\t0\tgo\n")  # fmt: skip
+
+    def graph() -> Graph:
+        return graph_from([
+            {"id": "src", "node": "meegxer.core.synthetic",
+             "params": {"duration": 5.0, "n_channels": 2, "sfreq": SFREQ},
+             "recording": {"events": {"file": str(events)}}},
+            {"id": "ep", "node": "meegxer.nodes.epochs",
+             "params": {"tmin": -0.2, "tmax": 0.5}},
+            {"id": "erp", "node": "meegxer.core.erp_probe", "input": "ep:epochs"},
+            {"id": "tap", "node": "meegxer.core.feature_probe",
+             "input": "ep:epochs", "params": {"keep_windows": 0}},
+        ])  # fmt: skip
+
+    publisher = DisplayPublisher("tcp://127.0.0.1:*")
+    subscriber = DisplaySubscriber(publisher.endpoint, ["erp"])
+    time.sleep(0.2)
+    live = graph()
+    scheduler = RealtimeScheduler(live, max_block=13, display=publisher)
+    scheduler.start()
+    frames = []
+    deadline = time.monotonic() + 20  # the first epoch ends 1.5 s in
+    while time.monotonic() < deadline:
+        frame = subscriber.recv(timeout=0.5)
+        if frame is not None:
+            frames.append(frame)
+        elif not scheduler.running:
+            break
+    assert scheduler.wait(20)
+    subscriber.close()
+    publisher.close()
+    last = frames[-1]
+    assert isinstance(last, FeatureFrame)
+    assert last.dims == ("condition", "channel", "time")
+    assert last.coords["condition"] == ("go", "stop") and last.counts == (2, 1)
+    tap = live["tap"].impl
+    assert isinstance(tap, FeatureProbe)
+    go = [w.data[0] for w in tap.windows if w.coords["epoch"] == ("go",)]
+    # float32 on the wire
+    np.testing.assert_allclose(last.values[0], np.mean(go, axis=0),
+                               rtol=1e-6, atol=1e-12)  # fmt: skip
+
+    job = OfflineJob(graph())
+    job.start()
+    job.join(30)
+    assert job.state == "done", job.error
+    erp = job.erp("erp")
+    assert erp["coords"]["condition"] == ["go", "stop"] and erp["counts"] == [2, 1]
+    np.testing.assert_allclose(erp["values"][0], np.mean(go, axis=0))
+    job.discard()
+
+
 def test_a_batch_run_writes_the_epochs_rail_and_skips_epochs_over_a_cut(
     tmp_path: Path,
 ) -> None:

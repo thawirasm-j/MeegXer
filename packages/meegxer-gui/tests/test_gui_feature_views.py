@@ -427,7 +427,54 @@ def test_an_epochs_rail_tap_draws_without_error(
         assert win.offline_state == "done", win.logbox.toPlainText()
         win.click_tap("epochs1:epochs", False)
         win.redraw()
-        assert win.views.currentWidget() is win.feature_view
-        assert "3 windows" in win.feature_view.legend.text()
+        view = win.erp_view  # an epochs rail: its ERP (M10.3)
+        assert win.views.currentWidget() is view
+        assert "3 epochs (offline run)" in view.legend.text()
+        assert view.reset.isHidden()  # nothing to reset offline
+        assert view.channel.currentText() == "Cz"
+        assert [name for name, _, _ in view.curves()] == ["go (n=3)"]
+        view.condition.setCurrentText("go")  # one condition: the channels
+        assert [name for name, _, _ in view.curves()] == ["Fz", "Cz", "Pz"]
+        assert view.channel.isHidden() and not view.channels.isHidden()
     finally:
         win.close()
+
+
+def test_a_live_erp_tap_counts_and_resets(
+    qapp: QApplication,
+    daemon: tuple[str, subprocess.Popen[bytes]],
+    tmp_path: Path,
+) -> None:
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    events = tmp_path / "events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n1.0\t0\tgo\n"
+                      "1.5\t0\tstop\n2.0\t0\tgo\n")  # fmt: skip
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        assert win.doc.source is not None
+        win.doc.source.recording = {"events": {"file": str(events)}}
+        win.insert_strip(len(win.doc.strips), "meegxer.nodes.epochs")
+        win.click_tap("epochs1:epochs", False)
+        win.start()
+        assert win.running, win.logbox.toPlainText()
+
+        def counts() -> tuple[int, ...]:
+            frame = win.erp_frames.get("tap_epochs1__epochs")
+            return () if frame is None else frame.counts
+
+        wait_for(qapp, lambda: sum(counts()) == 3, 30)
+        win.redraw()
+        view = win.erp_view
+        assert win.views.currentWidget() is view and not view.reset.isHidden()
+        assert [name for name, _, _ in view.curves()] == ["go (n=2)", "stop (n=1)"]
+        view.reset.click()  # start over: no epochs come after the third
+        wait_for(qapp, lambda: counts() == (), 10)
+        win.redraw()
+        assert view.curves() == [] and "0 epochs" in view.legend.text()
+        win.stop()
+    finally:
+        win.close()
+        dispose(qapp, win.stacked, win.recording_window, win)

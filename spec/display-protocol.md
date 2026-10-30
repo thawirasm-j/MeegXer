@@ -1,4 +1,4 @@
-# MeegXer display protocol (`meegxer.display/0.3`, unstable)
+# MeegXer display protocol (`meegxer.display/0.4`, unstable)
 
 Decimated envelopes of every probe, and the windows of every Features probe,
 published by the core on a ZeroMQ PUB socket
@@ -70,8 +70,22 @@ the node states them:
  "dims": ["channel", "frequency"], "unit": "V^2/Hz", "...": "..."}
 ```
 
-Viewers should accept 0.1 messages (envelopes without classes) and 0.2 messages
-(feature windows without units) as well.
+0.4 adds `counts` for an ERP tap (`meegxer.core.erp_probe`, `docs/RAILS.md`): its
+frame is its whole running ERP, `dims` `["condition", "channel", "time"]`, the
+mean of each condition's epochs so far, and `counts` gives how many epochs each
+condition's mean holds. It is sent at a display flush when the ERP changed (a new
+epoch, a reset); after a reset the `condition` coordinate is empty until the next
+epoch. Its `window` spans the first to the last epoch averaged.
+
+```json
+{"protocol": "meegxer.display/0.4", "kind": "features", "probe": "tap_ep__epochs",
+ "dims": ["condition", "channel", "time"],
+ "coords": {"condition": ["go", "stop"], "...": "..."}, "counts": [42, 13],
+ "unit": "V", "...": "..."}
+```
+
+Viewers should accept 0.1 messages (envelopes without classes), 0.2 messages
+(feature windows without units) and 0.3 messages (no `counts`) as well.
 
 ## Alignment
 

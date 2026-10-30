@@ -14,6 +14,7 @@ TITLES = {
     "meegxer.core.edf_writer": "EDF file",
     "meegxer.core.feature_tsv": "Features table",
     "meegxer.core.feature_probe": "Features tap",
+    "meegxer.core.erp_probe": "ERP tap",
     "meegxer.core.bids_writer": "BIDS dataset",
     "meegxer.core.bids_features": "BIDS features table",
     "meegxer.core.epochs_writer": "Epochs and ERPs file",

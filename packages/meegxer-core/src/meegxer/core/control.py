@@ -184,6 +184,8 @@ class Daemon:
             "run_offline": self.run_offline,
             "offline_window": self.offline_window,
             "offline_features": self.offline_features,
+            "offline_erp": self.offline_erp,
+            "reset_probe": self.reset_probe,
             "offline_events": self.offline_events,
             "submit_review": self.submit_review,
             "offline_review_epochs": self.offline_review_epochs,
@@ -675,6 +677,19 @@ class Daemon:
             raise ValueError("reduce must be 'none' or 'mean'")
         return self._offline.feature_windows(probe, int(start), int(stop),
                                              int(max_windows), reduce)  # fmt: skip
+
+    def offline_erp(self, probe: str) -> dict[str, Any]:
+        """The running ERP of one ERP tap of the current offline run."""
+        if self._offline is None:
+            raise RuntimeError("no offline run")
+        return self._offline.erp(probe)
+
+    def reset_probe(self, probe: str) -> dict[str, Any]:
+        """Start a live ERP tap's running averages over."""
+        if self._scheduler is None or not self._scheduler.running:
+            raise RuntimeError("the pipeline is not running")
+        self._scheduler.reset_probe(probe)
+        return self.status()
 
     def shutdown(self) -> str:
         self._stop.set()

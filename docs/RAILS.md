@@ -126,8 +126,24 @@ output strip chooses which line it draws from.
   offline write the same epochs whatever the block sizes (acceptance test 1).
   A gap in the sample index (a cut) starts it over.
 - **Offline store:** the offline feature store keeps each epoch's label
-  (`offline_features` returns `labels`, control API 0.2.10). A Features tap on
-  the rail shows the epochs.
+  (`offline_features` returns `labels`, control API 0.2.10).
+- **ERP tap (M10.3):** the GUI taps an epochs rail with an **ERP tap**
+  (`meegxer.core.erp_probe`), not a Features tap. It keeps a sum and a count
+  of the epochs of each label, in the core, so the mean (MNE's
+  `Epochs.average` over the same epochs) is exact however many display frames
+  are lost (rule 2).
+  - **What it covers:** every epoch since the run started, its last *Reset*
+    (`reset_probe`, control API 0.2.20), or a change upstream of the tap (its
+    input fingerprint changes; rule 7: no mean across a change). Another epoch
+    span or montage starts it over too.
+  - **Live:** at each display flush where it changed it sends its whole ERP as
+    one features frame: `dims` `(condition, channel, time)`, with each
+    condition's epoch count (`counts`, display protocol 0.4).
+  - **Offline:** the same tap runs in the offline run; `offline_erp` reads it.
+  - **The ERP view:** *Show* `All conditions` draws each condition on one
+    channel (Cz first) with its n in the legend; one condition draws the
+    channels picked under *Channels* overlaid (butterfly). *Reset* (live)
+    starts the averages over.
 - **Reviewed epochs:** a **Review epochs** strip after it
   (`meegxer.core.epoch_review`, `docs/REVIEW.md` step 5) reads the rail and
   starts its own `epochs` rail with the epochs a person kept and relabelled,
@@ -174,7 +190,8 @@ output strip chooses which line it draws from.
   detector).
 - Hovering a rail names it, its producer, the strips adding to it and its
   readers.
-- **Clicking a rail's name shows it** (◇, ◆ while shown): a feature rail in the
+- **Clicking a rail's name shows it** (◇, ◆ while shown): an epochs rail in the
+  ERP view, another feature rail in the
   feature view (a spectrum, or values over time), the ICs rail as component
   traces coloured by ICLabel class. It is shown alone, in place of the signal
   taps, until clicked again or a signal tap is clicked.
