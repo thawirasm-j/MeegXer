@@ -19,8 +19,14 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from PySide6.QtCore import QByteArray, Qt, QTimer
-from PySide6.QtGui import QCloseEvent, QGuiApplication, QKeySequence, QShortcut
+from PySide6.QtCore import QByteArray, Qt, QTimer, QUrl
+from PySide6.QtGui import (
+    QCloseEvent,
+    QDesktopServices,
+    QGuiApplication,
+    QKeySequence,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
@@ -145,6 +151,7 @@ class MainWindow(QMainWindow):
         self.offline_total = 0
         self.offline_state = ""
         self.offline_stopping = False  # stop_offline asked; the strip finishes
+        self._unseen = 0  # log lines written while the log is hidden
         self.review_window: ReviewWindow | None = None  # a review strip waits
         self.epoch_window: EpochReviewWindow | None = None  # an epoch review waits
         self.import_window: ReviewWindow | None = None  # a review at import
@@ -160,6 +167,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("MeegXer")
         self.resize(1440, 900)
         self._build()
+        shown = bool(self.state.get("log_visible", True))
+        self.log_btn.setChecked(shown)
+        self.show_log(shown)
         self._apply_view_settings()
         self._fill_recent()
         self._load_initial()
@@ -268,6 +278,12 @@ class MainWindow(QMainWindow):
         self.progress_bar.setMaximumWidth(260)
         self.progress_bar.setVisible(False)
         lay.addWidget(self.progress_bar)
+        self.qc_btn = QPushButton("QC summary")
+        self.qc_btn.setToolTip("Open the QC summary of the last all-subjects run "
+                               "(qc.html, one row per recording)")  # fmt: skip
+        self.qc_btn.clicked.connect(self.open_qc_summary)
+        self.qc_btn.setVisible(False)
+        lay.addWidget(self.qc_btn)
         lay.addSpacing(8)
         for text, slot, tip in (
             ("New…", self.new_from_template, "A pipeline from a template (Ctrl+N)"),
@@ -308,6 +324,11 @@ class MainWindow(QMainWindow):
             label.setObjectName("meter")
             self.meters[key] = label
             lay.addWidget(label)
+        self.log_btn = QPushButton("Log")
+        self.log_btn.setCheckable(True)
+        self.log_btn.setToolTip("Show or hide the log")
+        self.log_btn.toggled.connect(self.show_log)
+        lay.addWidget(self.log_btn)
         self.theme_btn = QPushButton("☀")
         self.theme_btn.setToolTip("Switch between dark and light themes")
         self.theme_btn.clicked.connect(self.toggle_theme)
@@ -322,6 +343,24 @@ class MainWindow(QMainWindow):
 
     def log(self, text: str) -> None:
         self.logbox.appendPlainText(f"{time.strftime('%H:%M:%S')}  {text}")
+        if not self.log_btn.isChecked():  # hidden: count what has not been seen
+            self._unseen += 1
+            self.log_btn.setText(f"Log ({self._unseen})")
+
+    def show_log(self, shown: bool) -> None:
+        """Show or hide the log (the inspector then takes its width)."""
+        self.logbox.setVisible(shown)
+        if shown:
+            self._unseen = 0
+            self.log_btn.setText("Log")
+        self.state["log_visible"] = shown
+
+    def open_qc_summary(self) -> None:
+        path = self.offline_recordings.get("summary", "")
+        if path and Path(path).is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        else:
+            self.log(f"No QC summary to open{f' ({path} is gone)' if path else ''}.")
 
     def call(self, method: str, **params: Any) -> Any:
         try:
@@ -528,6 +567,8 @@ class MainWindow(QMainWindow):
         rec = self.offline_recordings
         many = not live and busy and int(rec.get("total") or 0) > 1
         self.progress_bar.setVisible(many)
+        self.qc_btn.setVisible(not live and not busy
+                               and bool(rec.get("summary")))  # fmt: skip
         if many:  # an all-subjects run: recordings finished of how many
             self.progress_bar.setRange(0, int(rec["total"]))
             self.progress_bar.setValue(max(int(rec.get("index") or 1) - 1, 0))

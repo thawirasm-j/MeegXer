@@ -46,6 +46,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   Ctrl+O and Ctrl+S for New, Open and Save; Space starts or stops (a focused
   button or list keeps Space for itself). The arrow on *Open…* lists the
   recent pipelines and sessions.
+- **QC summary and log:** after an all-subjects run, *QC summary* opens its
+  `qc.html`. *Log* shows or hides the log (the inspector then takes its
+  width); hidden, it counts the lines written meanwhile, and the choice is
+  remembered.
 - **Fix:** a strip reading a rail (e.g. a writer after an Epochs strip) lost
   that choice when the GUI saved the pipeline.
 
