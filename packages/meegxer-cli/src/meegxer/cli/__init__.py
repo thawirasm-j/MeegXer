@@ -30,6 +30,58 @@ def nodes() -> None:
 
 
 @app.command()
+def templates() -> None:
+    """List the pipeline templates and the sample datasets."""
+    from meegxer.core.samples import SAMPLES, fetched, sample_dir
+    from meegxer.core.templates import TEMPLATES
+
+    for t in TEMPLATES.values():
+        typer.echo(f"{t.name:14} {t.title} (sample: {t.sample})\n{'':14} "
+                   f"{t.description}")  # fmt: skip
+    typer.echo("")
+    for s in SAMPLES.values():
+        root = sample_dir() / s.name
+        have = sum(fetched(root, subject) for subject in s.subjects)
+        size = f", {s.size} each" if s.size else ""
+        typer.echo(f"{s.name:14} {s.title}: {have} of {len(s.subjects)} subjects "
+                   f"fetched{size}, in {root}")  # fmt: skip
+
+
+@app.command()
+def new(
+    template: Annotated[str, typer.Argument(help="Template name (meegxer templates).")],
+    output: Annotated[Path, typer.Argument(help="Pipeline file to write.")],
+    sample: Annotated[
+        bool,
+        typer.Option(
+            help="Read the template's sample dataset (each subject is "
+            "downloaded when a run first reads it)."
+        ),
+    ] = False,
+    force: Annotated[bool, typer.Option(help="Replace the file if it exists.")] = False,
+) -> None:
+    """Write a new pipeline from a template."""
+    import json
+
+    from meegxer.core.templates import TEMPLATES, template_pipeline
+
+    if template not in TEMPLATES:
+        typer.echo(f"error: no template {template!r} (one of: "
+                   f"{', '.join(TEMPLATES)})", err=True)  # fmt: skip
+        raise typer.Exit(code=1)
+    if output.exists() and not force:
+        typer.echo(f"error: {output} exists (--force replaces it)", err=True)
+        raise typer.Exit(code=1)
+    pipeline = template_pipeline(template, sample=sample)
+    output.write_text(json.dumps(pipeline, indent=2) + "\n", encoding="utf-8")
+    typer.echo(f"wrote {output}")
+    root = next(n for n in pipeline["nodes"] if n["id"] == "input").get("params", {})
+    dataset = root.get("root") or "DATASET"
+    typer.echo(f"run it: meegxer run {output} --bids {dataset}"
+               + (" --subjects 001" if sample else ""))  # fmt: skip
+
+
+@app.command()
 def run(
     pipeline: Annotated[
         Path, typer.Argument(help="Pipeline or session (.meegxer.json) file.")
@@ -227,6 +279,7 @@ def _run_bids(
     from meegxer.core.cache import DirectoryCache
     from meegxer.core.registry import Registry
     from meegxer.core.review import ReviewNeeded
+    from meegxer.core.samples import ensure_recording, needs_fetch
     from meegxer.core.session import adopt_models, load_session, read_session
 
     try:
@@ -249,6 +302,9 @@ def _run_bids(
         label = recording_label(params)
         prefix = f"[{i}/{len(recordings)}] {label}"
         try:
+            if needs_fetch(params):  # a sample dataset: its subject on first use
+                typer.echo(f"{prefix}: downloading this sample subject")
+                ensure_recording(params)
             loaded = load_session(
                 document,
                 registry,

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from datetime import datetime
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QProgressDialog,
     QPushButton,
     QSplitter,
     QStackedWidget,
@@ -39,6 +41,7 @@ from PySide6.QtWidgets import (
 )
 
 from meegxer.core import settings as core_settings
+from meegxer.core.bids_out import find_recordings
 from meegxer.core.block import units_from_wire
 from meegxer.core.control import RpcError
 from meegxer.core.display import DisplayFrame, FeatureFrame
@@ -48,6 +51,7 @@ from meegxer.core.manifest import SPEC_VERSION
 from meegxer.core.notices import LOCAL_CODE_NOTICE
 from meegxer.core.passband import filters_from_wire
 from meegxer.core.review import REVIEW_NODE
+from meegxer.core.samples import ensure_recording
 from meegxer.core.session import (
     free_text,
     is_session,
@@ -56,6 +60,7 @@ from meegxer.core.session import (
     state_from_json,
     write_session,
 )
+from meegxer.core.templates import TEMPLATES, template_pipeline
 from meegxer.gui.buffers import FeatureBuffer, ProbeBuffer
 from meegxer.gui.chain import ChainView
 from meegxer.gui.colormaps import Maps
@@ -71,6 +76,7 @@ from meegxer.gui.recording_window import RecordingWindow
 from meegxer.gui.review_window import ReviewWindow
 from meegxer.gui.settings_dialog import SettingsDialog
 from meegxer.gui.signal_view import Panner, SignalView, StackedWindow, Window
+from meegxer.gui.template_dialog import TemplateDialog
 from meegxer.gui.theme import Theme, load_theme, stylesheet
 from meegxer.gui.wheel import install_wheel_guard
 
@@ -246,6 +252,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.stop_btn)
         lay.addSpacing(8)
         for text, slot in (
+            ("New…", self.new_from_template),
             ("Open…", self.open_pipeline),
             ("Save…", self.save_pipeline),
             ("Save session…", self.save_session),
@@ -864,6 +871,65 @@ class MainWindow(QMainWindow):
             return
         self._default_taps()
         self._structure_changed(f"Opened {path}.")
+
+    def new_from_template(self) -> None:
+        """A pipeline from a template (``meegxer.core.templates``); with its
+        sample dataset, the first subject is fetched now (in the background),
+        the others when a run reads them."""
+        dialog = TemplateDialog(self)
+        dialog.setStyleSheet(stylesheet(self.theme, self.scale))
+        if not dialog.exec():
+            return
+        name, sample = dialog.choice()
+        label = TEMPLATES[name].title
+        if not sample:
+            self._load_template(label, template_pipeline(name))
+            return
+        job: dict[str, Any] = {}
+
+        def fetch() -> None:
+            try:
+                pipeline = template_pipeline(name, sample=True)
+                root = Path(next(n for n in pipeline["nodes"]
+                                 if n["id"] == "input")["params"]["root"])  # fmt: skip
+                first = find_recordings(root)
+                if first:
+                    ensure_recording(first[0])
+                job["pipeline"] = pipeline
+            except Exception as exc:  # no network, a full disk, …
+                job["error"] = exc
+
+        thread = threading.Thread(target=fetch, daemon=True)
+        progress = QProgressDialog(
+            f"Getting the sample data for {label} (the first subject)…", "", 0, 0, self
+        )
+        progress.setCancelButton(None)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.show()
+        timer = QTimer(self)
+
+        def poll() -> None:
+            if thread.is_alive():
+                return
+            timer.stop()
+            progress.close()
+            if "error" in job:
+                self.log(f"Could not get the sample data: {job['error']}")
+                return
+            self._load_template(f"{label} on the sample data", job["pipeline"])
+
+        timer.timeout.connect(poll)
+        thread.start()
+        timer.start(100)
+
+    def _load_template(self, label: str, pipeline: dict[str, Any]) -> None:
+        try:
+            self.doc.load_pipeline(pipeline)
+        except (ValueError, KeyError) as exc:
+            self.log(f"Could not open the template: {exc}")
+            return
+        self._default_taps()
+        self._structure_changed(f"New from template: {label}.")
 
     def open_session(self, path: str) -> None:
         """Load a session: its pipeline here, its fitted models in the daemon

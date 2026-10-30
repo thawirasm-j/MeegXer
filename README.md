@@ -104,6 +104,21 @@ A first look in the GUI, about five minutes, no EEG hardware needed:
 6. **Keep it:** *Save…* writes the chain as a pipeline file; *Save session…* also
    keeps the fitted models (ICA) so a rerun gives the same output.
 
+**Start from a template:** *New…* offers an ERP study, resting-state spectra
+and ICA cleaning, each reading a BIDS dataset into its BIDS derivatives. Tick
+*Use the sample data* to run it on a public dataset: ERP CORE's flanker task
+(one subject) for the ERP study, the EEGBCI eyes open and eyes closed baseline
+runs (109 subjects) for the others. Each subject is downloaded (with MNE's
+fetchers, then written as BIDS) the first time a run reads it, so a run over
+three subjects fetches three. The datasets go to `meegxer-samples` in MNE's data
+folder (Settings → Data & storage, or `MEEGXER_SAMPLE_DIR`).
+
+```bash
+meegxer templates                        # the templates and sample datasets
+meegxer new rest rest.json --sample      # a pipeline over the EEGBCI sample
+meegxer run rest.json --bids ~/mne_data/meegxer-samples/eegbci --subjects 001,002
+```
+
 The same pipeline runs without the GUI:
 
 ```bash

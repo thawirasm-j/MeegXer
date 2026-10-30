@@ -626,9 +626,16 @@ def find_recordings(
     runs: list[str] | None = None,
 ) -> list[dict[str, str]]:
     """The EEG recordings of a raw BIDS dataset that match, as BidsSource
-    parameters (one per recording, in a stable order)."""
+    parameters (one per recording, in a stable order). A sample dataset
+    (``meegxer.core.samples``) lists every recording, fetched or not."""
     from mne_bids import find_matching_paths
 
+    from meegxer.core.samples import listed_recordings
+
+    listed = listed_recordings(root, subjects=subjects, sessions=sessions,
+                               tasks=tasks, runs=runs)  # fmt: skip
+    if listed is not None:
+        return listed
     paths = find_matching_paths(
         root, subjects=subjects or None, sessions=sessions or None,
         tasks=tasks or None, runs=runs or None, datatypes="eeg", suffixes="eeg",

@@ -1,0 +1,11 @@
+{
+  "spec_version": "0.2.20",
+  "nodes": [
+    {"id": "input", "node": "meegxer.core.bids"},
+    {"id": "filter", "node": "meegxer.nodes.fir_filter_zerophase",
+     "params": {"kind": "highpass", "low": 1.0}},
+    {"id": "reref", "node": "meegxer.nodes.rereference"},
+    {"id": "ica", "node": "meegxer.nodes.ica"},
+    {"id": "out", "node": "meegxer.core.bids_writer"}
+  ]
+}

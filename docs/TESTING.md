@@ -279,3 +279,36 @@ uv run meegxer run clean.json --bids DS --subjects 01 --task TASK --overwrite
 | B5 rerun skip, interrupt and resume | pass | |
 | B6 ICA (blinks reduced, session check) | pass | Same run: ICA removed 3 components, all ICLabel eye (≥ 0.92); frontal (Fp1/Fp2, 0.5–8 Hz) events over 75 µV 15 → 0, p99.9 86 → 17 µV. Alpha (8–12 Hz, all channels) 35 % lower than without ICA: eye-component content in frontal channels |
 | B7 GUI offline BIDS writer | pass | |
+
+## C. Templates and sample data (needs the internet)
+
+The tests use fake fetchers; this checks the real downloads (ERP CORE from
+osf.io, EEGBCI from physionet.org). Use an empty sample folder:
+`set MEEGXER_SAMPLE_DIR=C:\meegxer-samples` (or `export` on macOS/Linux).
+
+1. `uv run meegxer templates` lists three templates and both samples, with
+   0 of 1 and 0 of 109 subjects fetched.
+2. `uv run meegxer new erp erp.json --sample`, then the `meegxer run …` line it
+   prints without `--subjects`. Expect sub-001 downloaded once, then
+   `derivatives\meegxer\sub-001\eeg\sub-001_task-flanker_desc-clean_epo.fif` and
+   `_ave.fif`. In MNE: `mne.read_evokeds(…)` gives four ERPs (compatible and
+   incompatible flankers, target left and right); no response epochs.
+3. `uv run meegxer new rest rest.json --sample`, then run it with
+   `--subjects 001,002`: two subjects downloaded, four recordings done
+   (`resteyesopen`, `resteyesclosed`), each with `_psd_features.tsv` and
+   `_bands_features.tsv`. Run it again with `--subjects 001,002,003`: only 003
+   is downloaded; 001 and 002 are skipped as done.
+4. GUI: *New…* → *ICA cleaning*, tick *Use the sample data*: a progress box
+   while subject 001 downloads, then the chain (Input on the sample, high-pass,
+   reference, ICA, BIDS writer). *Recording…* shows 64 channels with positions.
+   *▶ Run offline* with *Subject* `001` runs it; with *Subject* empty it runs
+   every subject, downloading each in turn (stop it after a few).
+5. The BIDS validator on the sample folder: no errors.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| C1 listing | | |
+| C2 ERP CORE ERPs (labels, count) | | |
+| C3 EEGBCI per-subject fetch, rerun | | |
+| C4 GUI New from template with the sample | | |
+| C5 validator on the sample dataset | | |

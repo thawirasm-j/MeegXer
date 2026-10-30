@@ -139,6 +139,10 @@
         "data_dir": {
           "description": "Where your recordings live (e.g. a BIDS dataset): file dialogs for recording files (channel locations, montages, events) start there (empty: the last-used folder).",
           "type": "string"
+        },
+        "sample_dir": {
+          "description": "Where the sample datasets and their downloads go (empty: meegxer-samples in MNE's data folder, downloads in MNE's). MEEGXER_SAMPLE_DIR overrides it.",
+          "type": "string"
         }
       }
     }
