@@ -299,8 +299,8 @@ def test_chain_puts_every_strip_on_the_signal_and_rails_above(
         ("CSP", [], 0)]  # fmt: skip
     assert board.needs == {"csp1": "Events"}
     assert board.lanes == 4  # a row per rail (ICA writes the ICs), one for Events
-    labels = {
-        w.strip_id: label.text()
+    labels = {  # the full heading (a narrow strip shows it ending in "…")
+        w.strip_id: getattr(label, "full_text", label.text())
         for w in strips
         if (label := w.findChild(QLabel, "group")) is not None
     }
