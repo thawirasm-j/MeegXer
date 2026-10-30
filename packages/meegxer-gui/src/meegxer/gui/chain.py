@@ -72,6 +72,22 @@ def _led(color: str, size: int = 10) -> QLabel:
     return led
 
 
+class ElidedLabel(QLabel):
+    """One line of text that ends in "…" when the label is narrower than it,
+    at whatever width the layout gives it (fonts differ between platforms, so
+    a width worked out beforehand would clip on some)."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.full_text = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        self.setText(self.fontMetrics().elidedText(
+            self.full_text, Qt.TextElideMode.ElideRight, self.width()))  # fmt: skip
+
+
 class StripWidget(QFrame):
     """One node: title, status LED, the parameters chosen for the strip."""
 
@@ -129,14 +145,8 @@ class StripWidget(QFrame):
         full = (
             "Input" if manifest["role"] == "source" else title(strip.node, strip.params)
         )
-        name = QLabel()
+        name = ElidedLabel(full)  # in its own (bold) font, at the width it gets
         name.setObjectName("title")
-        name.ensurePolished()  # measure in the title's (bold) font, not the default
-        name.setText(
-            name.fontMetrics().elidedText(
-                full, Qt.TextElideMode.ElideRight, STRIP_WIDTH - 60
-            )
-        )
         name.setToolTip(full)
         head.addWidget(name, 1)
         if manifest["role"] != "source":
@@ -176,7 +186,8 @@ class StripWidget(QFrame):
             fm = value.fontMetrics()
             needed = key.fontMetrics().horizontalAdvance(pretty) + gap
             if needed + fm.horizontalAdvance(text) <= width:  # both on one line
-                key.setText(pretty)
+                key = ElidedLabel(pretty)  # a pixel short still shows "…"
+                key.setObjectName("muted")
                 value.setText(text)
                 row = QHBoxLayout()
                 row.setSpacing(gap)
@@ -184,11 +195,11 @@ class StripWidget(QFrame):
                 row.addWidget(value)
                 lay.addLayout(row)
             else:  # the value on a line of its own, under its name
-                key.setText(key.fontMetrics().elidedText(
-                    pretty, Qt.TextElideMode.ElideRight, width))  # fmt: skip
-                value.setText(fm.elidedText(text, Qt.TextElideMode.ElideRight, width))
+                key, value = ElidedLabel(pretty), ElidedLabel(text)
+                key.setObjectName("muted")
+                value.setAlignment(Qt.AlignmentFlag.AlignRight)
                 lay.addWidget(key)
-                lay.addWidget(value, alignment=Qt.AlignmentFlag.AlignRight)
+                lay.addWidget(value)
             key.setToolTip(f"{pretty}: {text}")
             value.setToolTip(f"{pretty}: {text}")
         lay.addStretch(1)

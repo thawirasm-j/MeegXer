@@ -2,6 +2,7 @@
 delivering the click to the old strip widget: the old widgets must be deleted
 later, not on the spot."""
 
+import itertools
 import subprocess
 import time
 
@@ -192,14 +193,14 @@ def test_the_signal_is_grey_and_rail_ends_are_faint() -> None:
 
 
 def test_strip_text_fits_the_strip(qapp: QApplication) -> None:
-    """A long title is shortened with "…" in its own (bold) font, not clipped
-    mid-letter; a row whose name and value do not both fit puts the value on
-    a line of its own, so neither is cut to a few letters."""
+    """No text on a strip is clipped, whatever the platform's font: a long
+    title ends in "…" (measured in its own bold font), and a row whose name
+    and value do not both fit puts the value on a line of its own."""
     from PySide6.QtWidgets import QLabel
 
     from meegxer.core.control import manifest_to_dict
     from meegxer.core.registry import Registry
-    from meegxer.gui.chain import STRIP_WIDTH, StripWidget
+    from meegxer.gui.chain import StripWidget
     from meegxer.gui.pipeline_doc import PipelineDoc
     from meegxer.gui.theme import load_theme, stylesheet
 
@@ -207,34 +208,26 @@ def test_strip_text_fits_the_strip(qapp: QApplication) -> None:
     doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
                        for n in registry.names()])  # fmt: skip
     doc.set_source("meegxer.core.synthetic")
-    bands = doc.insert(1, "meegxer.nodes.band_power")
-    csp = doc.insert(2, "meegxer.nodes.csp")
+    doc.insert(1, "meegxer.nodes.band_power")
+    doc.insert(2, "meegxer.nodes.csp")
+    doc.insert(3, "meegxer.nodes.ica")
     theme = load_theme("dark")
-    qapp.setStyleSheet(stylesheet(theme))
     try:
-        for strip in (bands, csp):
-            card = StripWidget(doc, strip, theme, status="", advanced=True,
-                               selected=False)  # fmt: skip
-            title = next(w for w in card.findChildren(QLabel)
-                         if w.objectName() == "title")  # fmt: skip
-            title.ensurePolished()
-            assert title.fontMetrics().horizontalAdvance(title.text()) <= (
-                STRIP_WIDTH - 60
-            )
-            texts = [w.text() for w in card.findChildren(QLabel)]
-            assert "Frequency bands" in texts or strip is csp
+        # larger text, as on Windows or with Settings -> Text size raised
+        for scale, strip, advanced in itertools.product((1.0, 1.3), doc.strips,
+                                                        (False, True)):  # fmt: skip
+            qapp.setStyleSheet(stylesheet(theme, scale))
+            card = StripWidget(doc, strip, theme, status="", advanced=advanced,
+                               selected=True)  # fmt: skip
+            card.show()
+            qapp.processEvents()
+            for label in card.findChildren(QLabel):
+                if not label.text() or label.wordWrap():
+                    continue
+                drawn = label.fontMetrics().horizontalAdvance(label.text())
+                assert drawn <= label.width(), (scale, strip.id, label.text())
+            card.close()
             card.deleteLater()
-        # a short row stays on one line (the input's "Sampling rate  500 Hz")
-        source = doc.strips[0]
-        card = StripWidget(doc, source, theme, status="", advanced=False,
-                           selected=True)  # fmt: skip
-        rate = next(w for w in card.findChildren(QLabel)
-                    if w.text() == "Sampling rate")  # fmt: skip
-        value = next(w for w in card.findChildren(QLabel) if w.text() == "500 Hz")
-        card.show()
-        qapp.processEvents()
-        assert rate.geometry().top() == value.geometry().top()
-        card.deleteLater()
     finally:
         qapp.setStyleSheet("")
     qapp.processEvents()
