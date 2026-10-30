@@ -61,8 +61,8 @@ class TemplateDialog(QDialog):
         self.sample.setText(f"Use the sample data: {sample.title}")
         size = f" ({sample.size} each)" if sample.size else ""
         self.sample_note.setText(
-            f"{sample.description} {len(sample.subjects)} subject(s); each is "
-            f"downloaded the first time a run reads it{size}, the first one now."
+            f"{sample.description} Each subject is downloaded the first time a "
+            f"run reads it{size}, the first one now."
         )
 
     def choice(self) -> tuple[str, bool]:

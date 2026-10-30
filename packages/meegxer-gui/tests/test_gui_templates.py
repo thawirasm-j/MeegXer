@@ -45,7 +45,8 @@ def test_the_dialog_describes_each_template_and_its_sample(qapp: QApplication) -
     dialog.templates.setCurrentRow(list(TEMPLATES).index("rest"))
     assert "spectrum" in dialog.description.text()
     assert "EEGBCI" in dialog.sample.text()
-    assert "109 subject(s)" in dialog.sample_note.text()
+    note = dialog.sample_note.text()
+    assert note.count("109") == 1 and "first time a run reads it" in note
     dialog.sample.setChecked(True)
     assert dialog.choice() == ("rest", True)
 

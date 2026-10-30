@@ -28,6 +28,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   after, the epochs and ERPs), and the derivatives get `qc.tsv` and `qc.html`,
   one row per recording (`--no-report` leaves them out). Epoch files now keep
   the channels' positions.
+- **Display fixes:** long strip names end in "…" instead of being cut
+  mid-letter; a setting whose name and value do not both fit on a strip shows
+  the value on its own line (no more "Fre… …, gamma:30…"); a file setting
+  shows the file's name; volt-based features are drawn in µV, µV² and µV²/Hz
+  (a power spectrum in dB re 1 µV²/Hz), as in the signal and spectrum views,
+  instead of "V² (x1e-12)"; the Recording window names the recording, not the
+  input's node.
 - **Fix:** a strip reading a rail (e.g. a writer after an Epochs strip) lost
   that choice when the GUI saved the pipeline.
 

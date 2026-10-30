@@ -131,6 +131,7 @@ class StripWidget(QFrame):
         )
         name = QLabel()
         name.setObjectName("title")
+        name.ensurePolished()  # measure in the title's (bold) font, not the default
         name.setText(
             name.fontMetrics().elidedText(
                 full, Qt.TextElideMode.ElideRight, STRIP_WIDTH - 60
@@ -163,26 +164,30 @@ class StripWidget(QFrame):
             chip.setStyleSheet(f"color: {colour}; font-size: 8pt; font-weight: 600;")
             lay.addWidget(chip)
         lay.addSpacing(4)
+        width = STRIP_WIDTH - 28  # inside the card's margins
         for pname in doc.shown_params(strip, advanced):
-            row = QHBoxLayout()
             pretty = param_label(pname)
             text = doc.format_param(strip, pname)
-            value = QLabel()
-            value.setText(
-                value.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, 88)
-            )
-            room = STRIP_WIDTH - 28 - value.sizeHint().width()
-            key = QLabel(
-                value.fontMetrics().elidedText(
-                    pretty, Qt.TextElideMode.ElideRight, max(room, 30)
-                )
-            )
+            key, value = QLabel(), QLabel()
             key.setObjectName("muted")
+            key.ensurePolished()
+            fm = value.fontMetrics()
+            needed = key.fontMetrics().horizontalAdvance(pretty) + 8
+            if needed + fm.horizontalAdvance(text) <= width:  # both on one line
+                key.setText(pretty)
+                value.setText(text)
+                row = QHBoxLayout()
+                row.addWidget(key, 1)
+                row.addWidget(value)
+                lay.addLayout(row)
+            else:  # the value on a line of its own, under its name
+                key.setText(key.fontMetrics().elidedText(
+                    pretty, Qt.TextElideMode.ElideRight, width))  # fmt: skip
+                value.setText(fm.elidedText(text, Qt.TextElideMode.ElideRight, width))
+                lay.addWidget(key)
+                lay.addWidget(value, alignment=Qt.AlignmentFlag.AlignRight)
             key.setToolTip(f"{pretty}: {text}")
             value.setToolTip(f"{pretty}: {text}")
-            row.addWidget(key, 1)
-            row.addWidget(value)
-            lay.addLayout(row)
         lay.addStretch(1)
         if manifest.get("requires_fit") and doc.mode == "live":
             calib = QPushButton("Calibrate")
@@ -191,6 +196,7 @@ class StripWidget(QFrame):
         elif manifest.get("requires_fit"):
             fit_note = QLabel("fits on the whole recording")
             fit_note.setObjectName("muted")
+            fit_note.setWordWrap(True)  # a strip is narrower than the note
             lay.addWidget(fit_note)
         if problem:
             self.setToolTip(

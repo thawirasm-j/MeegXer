@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+from pathlib import PurePath
 from typing import Any, Literal
 
 from meegxer.core.registry import canonical_name
@@ -627,8 +628,8 @@ class PipelineDoc:
             text = f"{float(value):g}"
         elif spec["type"] == "string":
             text = str(value) or "-"
-            if len(text) > 14:
-                text = "…" + text[-13:]
+            if spec.get("path") and value:  # the name; the inspector has the path
+                text = PurePath(str(value).replace("\\", "/")).name or text
         else:
             text = str(value)
         unit = unit_label(spec.get("unit"))

@@ -189,3 +189,41 @@ def test_the_signal_is_grey_and_rail_ends_are_faint() -> None:
         assert signal_colour(theme) == theme.text_muted
         assert signal_colour(theme) != rail_colour(theme, "signal")
         assert _toward_text(rail_colour(theme, "features"), theme).alphaF() < 0.6
+
+
+def test_strip_text_fits_the_strip(qapp: QApplication) -> None:
+    """A long title is shortened with "…" in its own (bold) font, not clipped
+    mid-letter; a row whose name and value do not both fit puts the value on
+    a line of its own, so neither is cut to a few letters."""
+    from PySide6.QtWidgets import QLabel
+
+    from meegxer.core.control import manifest_to_dict
+    from meegxer.core.registry import Registry
+    from meegxer.gui.chain import STRIP_WIDTH, StripWidget
+    from meegxer.gui.pipeline_doc import PipelineDoc
+    from meegxer.gui.theme import load_theme, stylesheet
+
+    registry = Registry.from_entry_points()
+    doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
+                       for n in registry.names()])  # fmt: skip
+    doc.set_source("meegxer.core.synthetic")
+    bands = doc.insert(1, "meegxer.nodes.band_power")
+    csp = doc.insert(2, "meegxer.nodes.csp")
+    theme = load_theme("dark")
+    qapp.setStyleSheet(stylesheet(theme))
+    try:
+        for strip in (bands, csp):
+            card = StripWidget(doc, strip, theme, status="", advanced=True,
+                               selected=False)  # fmt: skip
+            title = next(w for w in card.findChildren(QLabel)
+                         if w.objectName() == "title")  # fmt: skip
+            title.ensurePolished()
+            assert title.fontMetrics().horizontalAdvance(title.text()) <= (
+                STRIP_WIDTH - 60
+            )
+            texts = [w.text() for w in card.findChildren(QLabel)]
+            assert "Frequency bands" in texts or strip is csp
+            card.deleteLater()
+    finally:
+        qapp.setStyleSheet("")
+    qapp.processEvents()
