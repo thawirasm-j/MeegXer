@@ -7,6 +7,7 @@ from meegxer.core.block import Block, SignalInfo, concat_blocks
 from meegxer.core.conformance import check_blockwise_equivalence
 from meegxer.core.graph import Graph
 from meegxer.core.node import Processor
+from meegxer.core.ports import PortType
 from meegxer.core.probes import MemoryProbe
 from meegxer.core.registry import Registry
 from meegxer.core.sources import SyntheticSource
@@ -171,7 +172,10 @@ def _stream(stage: Stage, block: Block, sizes: list[int]) -> Block:
     fp = signal_fingerprint(block.info)
     outs, start = [], block.sample_index
     for size in sizes:
-        result = stage.transform(block.slice(start, start + size), fp)
+        piece = block.slice(start, start + size)
+        rails = {p.name: piece if p.type is PortType.SIGNAL else ()
+                 for p in stage.manifest.rail_inputs}  # fmt: skip
+        result = stage.transform(piece, fp, rails)
         assert isinstance(result.block, Block)
         outs.append(result.block)
         start += size

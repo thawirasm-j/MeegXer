@@ -18,7 +18,10 @@ before it.
   across a cut a Reject segments strip made is left out too: its samples are not all
   there (the strip gets each piece between cuts on its own).
 
-Offline only for now: it sees the whole recording (each piece between cuts).
+Live and offline: between blocks it keeps the newest samples an epoch still
+needs and the events whose epochs are not complete yet, so an epoch is written
+in the block that brings its last sample (the same epochs as one pass over the
+recording). A gap in the sample index (a cut) starts it over.
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ from typing import ClassVar
 
 import numpy as np
 
-from meegxer.core.block import CHANNEL_TYPES, Block, Event, FeatureBlock
+from meegxer.core.block import CHANNEL_TYPES, Block, Event, FeatureBlock, concat_blocks
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, Processor, RailInput, TransformResult
 from meegxer.core.serialization import State
@@ -48,11 +51,11 @@ class Epochs(Processor):
         {
             "spec_version": "0.2.20",
             "name": "meegxer.nodes.epochs",
-            "version": "0.1.0",
+            "version": "0.2.0",
             "type": "stream",
             "description": "Cut epochs around events onto a side rail (the "
                            "signal goes on unchanged).",
-            "availability": "offline",
+            "availability": "both",
             "inputs": [{"name": "in", "type": "signal"},
                        {"name": "events", "type": "events", "rail": "events"}],
             "outputs": [{"name": "out", "type": "signal"},
@@ -97,18 +100,76 @@ class Epochs(Processor):
     ) -> TransformResult:
         events = rails.get("events", ())
         assert isinstance(events, tuple)
-        windows = cut_epochs(block, [e for e in events if isinstance(e, Event)],
-                             params)  # fmt: skip
-        return TransformResult(block, {}, (), {"epochs": tuple(windows)})
+        marks = [e for e in events if isinstance(e, Event)]
+        seen, held = _held(state, block)
+        joined = concat_blocks([seen, block]) if seen is not None else block
+        marks = held + marks
+        windows = cut_epochs(joined, marks, params)
+        return TransformResult(block, _keep(joined, marks, params), (),
+                               {"epochs": tuple(windows)})  # fmt: skip
+
+
+def _span(params: Params, sfreq: float) -> tuple[int, int]:
+    """The epoch's first and last sample, counted from its event."""
+    tmin, tmax = float(params["tmin"]), float(params["tmax"])
+    if tmax <= tmin:
+        raise ValueError(f"tmax ({tmax:g} s) must be after tmin ({tmin:g} s)")
+    return round(tmin * sfreq), round(tmax * sfreq)
+
+
+def _keep(joined: Block, marks: list[Event], params: Params) -> State:
+    """What the next block needs: the newest samples an epoch can still start
+    in, the events whose epochs end after this block, and the marks to reject
+    that reach into the samples kept."""
+    first, last = _span(params, joined.info.sfreq)
+    start = max(joined.sample_index,
+                joined.stop_index - max(last - first, -first))  # fmt: skip
+    reject = _words(params["reject"])
+    held = [e for e in marks
+            if e.sample_index + last + 1 > joined.stop_index
+            or (reject and e.duration and e.label.startswith(reject)
+                and e.sample_index + e.duration > start)]  # fmt: skip
+    return {
+        "start": start,
+        "timestamp": joined.timestamp
+        + (start - joined.sample_index) / joined.info.sfreq,
+        "data": np.array(joined.data[:, start - joined.sample_index :]),
+        "events": [
+            {"sample": e.sample_index, "label": e.label, "duration": e.duration}
+            for e in held
+        ],
+    }
+
+
+def _held(state: State | None, block: Block) -> tuple[Block | None, list[Event]]:
+    """The samples and events kept from the blocks before, if ``block``
+    follows on from them (else nothing: a cut, or a new stream)."""
+    if not state or state.get("start") is None:
+        return None, []
+    data = state["data"]
+    assert isinstance(data, np.ndarray)
+    start, stamp, kept = state["start"], state["timestamp"], state["events"]
+    assert isinstance(start, int) and isinstance(stamp, float)
+    assert isinstance(kept, list)
+    if start + data.shape[1] != block.sample_index or (
+        data.shape[0] != block.info.n_channels
+    ):
+        return None, []
+    seen = Block(data, block.info, start, stamp)
+    events = []
+    for e in kept:
+        assert isinstance(e, dict)
+        sample, label, duration = e["sample"], e["label"], e["duration"]
+        assert isinstance(sample, int) and isinstance(label, str)
+        assert isinstance(duration, int)
+        events.append(Event(sample, label, duration))
+    return seen, events
 
 
 def cut_epochs(block: Block, events: list[Event], params: Params) -> list[FeatureBlock]:
     """The epochs of ``block`` around the chosen events, in event order."""
     sfreq = block.info.sfreq
-    tmin, tmax = float(params["tmin"]), float(params["tmax"])
-    if tmax <= tmin:
-        raise ValueError(f"tmax ({tmax:g} s) must be after tmin ({tmin:g} s)")
-    first, last = round(tmin * sfreq), round(tmax * sfreq)  # samples from the event
+    first, last = _span(params, sfreq)  # samples from the event
     if params["baseline"] == "pre-stimulus" and first >= 0:
         raise ValueError("a pre-stimulus baseline needs tmin < 0 (or baseline none)")
     wanted = set(_words(params["events"]))

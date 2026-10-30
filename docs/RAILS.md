@@ -97,7 +97,7 @@ output strip chooses which line it draws from.
   strip; an ICA strip after it rewrites it, drawn as the file's rail ending at the
   ICA strip and a new ICs rail starting there.
 
-## Epochs rail (built, offline)
+## Epochs rail (built, live and offline)
 
 - **Who writes it:** the **Epochs** strip (`meegxer.nodes.epochs`, Epochs).
   It passes the signal on unchanged and writes its `epochs` output (a Features
@@ -119,6 +119,12 @@ output strip chooses which line it draws from.
     with one of these words is left out.
 - **Left out:** an epoch across a cut (each piece between cuts is epoched on
   its own), or one running off either end of the recording.
+- **Live:** between blocks the strip keeps the newest samples an epoch can
+  still need (the longer of the epoch and `-tmin`), the events whose epochs
+  end after the block, and the marks to reject that reach into those samples.
+  An epoch is written in the block that brings its last sample, so live and
+  offline write the same epochs whatever the block sizes (acceptance test 1).
+  A gap in the sample index (a cut) starts it over.
 - **Offline store:** the offline feature store keeps each epoch's label
   (`offline_features` returns `labels`, control API 0.2.10). A Features tap on
   the rail shows the epochs.
