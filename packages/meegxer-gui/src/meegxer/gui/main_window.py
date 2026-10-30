@@ -22,14 +22,17 @@ import numpy.typing as npt
 from PySide6.QtCore import QByteArray, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
     QButtonGroup,
+    QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -37,6 +40,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -87,6 +91,7 @@ DEFAULT_CHAIN: list[tuple[str, dict[str, Any]]] = [
 ]
 
 EPOCH_POINTS = 400  # samples per epoch and channel the epoch review draws
+RECENT = 8  # pipelines and sessions on the Open button's menu
 IMPORT_TAP = "import_review"  # the tap of a review at import's run
 
 
@@ -156,7 +161,9 @@ class MainWindow(QMainWindow):
         self.resize(1440, 900)
         self._build()
         self._apply_view_settings()
+        self._fill_recent()
         self._load_initial()
+        self._mark_saved()  # what it starts with has nothing unsaved
         # recordings being recovered in the daemon, watched until written
         self._recovering: set[str] = set()
         self._recovery_timer = QTimer(self)
@@ -234,6 +241,11 @@ class MainWindow(QMainWindow):
         self.recording_window = RecordingWindow(self.call, self.theme)
         self.recording_window.start_dir = lambda: self._start_dir("data_dir")
         QShortcut(QKeySequence("Ctrl+,"), self, self.open_settings)
+        QShortcut(QKeySequence("Ctrl+N"), self, self.new_from_template)
+        QShortcut(QKeySequence("Ctrl+O"), self, self.open_pipeline)
+        QShortcut(QKeySequence("Ctrl+S"), self, self.save_pipeline)
+        # a text field keeps its spaces: it takes the key before the shortcut
+        QShortcut(QKeySequence("Space"), self, self.start_or_stop)
         self.recording_window.applied.connect(self.apply_recording)
         self.recording_window.review_requested.connect(self.review_at_import)
 
@@ -257,15 +269,28 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         lay.addWidget(self.progress_bar)
         lay.addSpacing(8)
-        for text, slot in (
-            ("New…", self.new_from_template),
-            ("Open…", self.open_pipeline),
-            ("Save…", self.save_pipeline),
-            ("Save session…", self.save_session),
-            ("Share session…", self.share_session),
-        ):
+        for text, slot, tip in (
+            ("New…", self.new_from_template, "A pipeline from a template (Ctrl+N)"),
+            ("Open…", self.open_pipeline, "Open a pipeline or session (Ctrl+O); "
+             "the arrow lists recent files"),
+            ("Save…", self.save_pipeline, "Save the pipeline (Ctrl+S)"),
+            ("Save session…", self.save_session, ""),
+            ("Share session…", self.share_session, ""),
+        ):  # fmt: skip
+            if text == "Open…":  # with the recent files on its arrow
+                tool = QToolButton()
+                tool.setText(text)
+                tool.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+                self.recent_menu = QMenu(tool)
+                tool.setMenu(self.recent_menu)
+                tool.clicked.connect(lambda _=False: self.open_pipeline())
+                tool.setToolTip(tip)
+                lay.addWidget(tool)
+                continue
             b = QPushButton(text)
-            b.clicked.connect(slot)
+            b.clicked.connect(lambda _=False, f=slot: f())
+            if tip:
+                b.setToolTip(tip)
             lay.addWidget(b)
         lay.addSpacing(12)
         self.mode_group = QButtonGroup(self)
@@ -409,7 +434,25 @@ class MainWindow(QMainWindow):
     def _remember_file(self, path: str, pipeline: bool = False) -> None:
         self.state["last_dir"] = str(Path(path).parent)
         if pipeline:
-            self.state["last_pipeline"] = str(Path(path).resolve())
+            full = str(Path(path).resolve())
+            self.state["last_pipeline"] = full
+            recent = [p for p in self.state.get("recent_pipelines", []) if p != full]
+            self.state["recent_pipelines"] = [full, *recent][:RECENT]
+            self._fill_recent()
+
+    def _fill_recent(self) -> None:
+        """The Open button's menu: the pipelines and sessions opened or saved
+        lately, newest first (those still there)."""
+        menu = self.recent_menu
+        menu.clear()
+        remembered = self.state.get("recent_pipelines", [])
+        recent = [p for p in remembered if Path(p).is_file()]
+        for path in recent:
+            action = menu.addAction(Path(path).name)
+            action.setToolTip(path)
+            action.triggered.connect(lambda _=False, p=path: self.open_recent(p))
+        if not recent:
+            menu.addAction("No recent files").setEnabled(False)
 
     def save_state(self) -> None:
         self.state["view"] = self.view.view_state()
@@ -862,6 +905,19 @@ class MainWindow(QMainWindow):
         self.log("Stopped.")
         self.refresh_chain()
 
+    def start_or_stop(self) -> None:
+        """Space: start (or run offline) when idle, stop when running. On a
+        focused button or list, Space keeps its usual meaning."""
+        focus = QApplication.focusWidget()
+        if isinstance(focus, QAbstractButton):
+            focus.animateClick()
+            return
+        if isinstance(focus, QComboBox):
+            focus.showPopup()
+            return
+        busy = self.running or self.offline_state in ("running", "review")
+        (self.stop if busy else self.start)()
+
     def restart(self) -> None:
         self.call("stop")
         self.running = False
@@ -869,12 +925,21 @@ class MainWindow(QMainWindow):
 
     def open_pipeline(self) -> None:
         """Open a pipeline, or a session (``*.meegxer.json``) with its models."""
+        if not self._keep_changes():
+            return
         path, _ = QFileDialog.getOpenFileName(
             self, "Open pipeline or session", self._start_dir(),
             "Pipeline or session (*.json);;MeegXer session (*.meegxer.json)",
         )  # fmt: skip
-        if not path:
-            return
+        if path:
+            self.open_file(path)
+
+    def open_recent(self, path: str) -> None:
+        if self._keep_changes():
+            self.open_file(path)
+
+    def open_file(self, path: str) -> None:
+        """Open the pipeline or session at ``path`` (no question asked)."""
         self._remember_file(path, pipeline=True)
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -887,11 +952,14 @@ class MainWindow(QMainWindow):
             return
         self._default_taps()
         self._structure_changed(f"Opened {path}.")
+        self._mark_saved()
 
     def new_from_template(self) -> None:
         """A pipeline from a template (``meegxer.core.templates``); with its
         sample dataset, the first subject is fetched now (in the background),
         the others when a run reads them."""
+        if not self._keep_changes():
+            return
         dialog = TemplateDialog(self)
         dialog.setStyleSheet(stylesheet(self.theme, self.scale))
         if not dialog.exec():
@@ -946,6 +1014,7 @@ class MainWindow(QMainWindow):
             return
         self._default_taps()
         self._structure_changed(f"New from template: {label}.")
+        self._mark_saved()  # nothing of the user's to lose yet
 
     def open_session(self, path: str) -> None:
         """Load a session: its pipeline here, its fitted models in the daemon
@@ -977,6 +1046,7 @@ class MainWindow(QMainWindow):
             self.log(f"Session: {warning}")
         models = ", ".join(reply.get("models", [])) or "none"
         self._structure_changed(f"Opened session {path} (fitted models: {models}).")
+        self._mark_saved()
 
     def offer_recovery(self) -> None:
         """Offer to save each recording a crashed run left unfinished (the file
@@ -1106,18 +1176,55 @@ class MainWindow(QMainWindow):
         self.log(f"Saved session {path} (fitted models: {models}; "
                  f"output files: {outputs}{shared}).")  # fmt: skip
 
-    def save_pipeline(self) -> None:
+    def save_pipeline(self) -> bool:
+        """Save the chain as a pipeline file; False if no file was chosen."""
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save pipeline",
             str(Path(self._start_dir()) / "pipeline.json"),
             "Pipeline (*.json)",
         )
-        if path:
-            self._remember_file(path, pipeline=True)
-            text = json.dumps(self.doc.to_pipeline(taps=False), indent=2)
-            Path(path).write_text(text + "\n", encoding="utf-8")
-            self.log(f"Saved {path}.")
+        if not path:
+            return False
+        self._remember_file(path, pipeline=True)
+        text = json.dumps(self.doc.to_pipeline(taps=False), indent=2)
+        Path(path).write_text(text + "\n", encoding="utf-8")
+        self.log(f"Saved {path}.")
+        self._mark_saved()
+        return True
+
+    # -- unsaved changes --------------------------------------------------------------
+
+    def _pipeline_text(self) -> str:
+        try:
+            return json.dumps(self.doc.to_pipeline(taps=False), sort_keys=True)
+        except (KeyError, ValueError):
+            return ""
+
+    def _mark_saved(self) -> None:
+        """The chain as it is now has nothing unsaved (opened, saved, new)."""
+        self._saved_text = self._pipeline_text()
+
+    def modified(self) -> bool:
+        """Whether the chain changed since it was opened, saved or made."""
+        return self._pipeline_text() != self._saved_text
+
+    def _keep_changes(self) -> bool:
+        """Before the chain is replaced: True to go on. With unsaved changes,
+        asks to save them (Save, Discard, or Cancel to stay)."""
+        if not self.modified():
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle("Unsaved changes")
+        box.setText("The pipeline has changes that are not saved. Save them first?")
+        box.setStandardButtons(QMessageBox.StandardButton.Save
+                               | QMessageBox.StandardButton.Discard
+                               | QMessageBox.StandardButton.Cancel)  # fmt: skip
+        box.setDefaultButton(QMessageBox.StandardButton.Save)
+        answer = box.exec()
+        if answer == QMessageBox.StandardButton.Save:
+            return self.save_pipeline()
+        return answer == QMessageBox.StandardButton.Discard
 
     # -- daemon events ----------------------------------------------------------------
 
