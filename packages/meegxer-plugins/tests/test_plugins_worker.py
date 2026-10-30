@@ -1,3 +1,4 @@
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -122,7 +123,9 @@ def test_stdout_pollution_is_a_protocol_error(
 
 
 def test_dead_worker_reports_crash() -> None:
-    worker = PluginWorker(LocalLauncher(("false",), allow=True), max_restarts=0)
+    # a process that exits at once with an error (no "false" on Windows)
+    dies = (sys.executable, "-c", "raise SystemExit(1)")
+    worker = PluginWorker(LocalLauncher(dies, allow=True), max_restarts=0)
     with pytest.raises(PluginCrashed):
         worker.start()
     with pytest.raises((PluginCrashed, PluginTimeout)):
