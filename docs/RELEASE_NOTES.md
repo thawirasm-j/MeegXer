@@ -7,6 +7,32 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+Nothing yet.
+
+## 0.3.1b4 (2026-10-30)
+
+The review track (`docs/REVIEW.md`, Design v2 steps 1 to 5): a person can
+review a recording at import or at any point of a pipeline, with a clinical
+display, take or refuse a detector's suggestions one by one, and review
+epochs with their ERP. Every review is saved per recording, with who reviewed
+and on what input, and its result travels as events to the strips after it
+and into the output files. Milestone status: `docs/ROADMAP.md` → *Status*.
+
+### Upgrading from 0.3.1b3
+
+- **A Review strip no longer cuts.** Add a *Reject segments* strip after it to
+  keep cutting the `BAD…` spans.
+- **A Review strip's `points` take their labels over:** strips after it see the
+  reviewer's verdicts instead of the events named. With *Decision* *Free* (the
+  default) every point opens as a mark, so one left alone is kept as before.
+- **The amplitude envelope is computed differently** (below): live it is
+  delayed by `lookahead` and starts from 2 Hz (`low`); offline it is the
+  whole-recording analytic signal. Results differ slightly from 0.3.1b3.
+- Control API 0.2.8 → 0.2.17 (`spec/control-api.md`): upgrade the GUI and
+  the daemon together (the `meegxer` bundle does).
+
+### What changed
+
 - **The amplitude envelope uses published methods only.** It used a scheme of
   its own (the Hilbert transform over overlapping pieces, an approximation).
   Now:
@@ -31,27 +57,6 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   the recording has none, and every later one adds to it (○), as the events
   themselves always did. A strip that reads events (CSP) after a review or a
   detector no longer shows "needs Events".
-
-## 0.3.1b4 (not tagged yet: after the maintainer's test)
-
-The review track (`docs/REVIEW.md`, Design v2 steps 1 to 5): a person can
-review a recording at import or at any point of a pipeline, with a clinical
-display, take or refuse a detector's suggestions one by one, and review
-epochs with their ERP. Every review is saved per recording, with who reviewed
-and on what input, and its result travels as events to the strips after it
-and into the output files. Milestone status: `docs/ROADMAP.md` → *Status*.
-
-### Upgrading from 0.3.1b3
-
-- **A Review strip no longer cuts.** Add a *Reject segments* strip after it to
-  keep cutting the `BAD…` spans.
-- **A Review strip's `points` take their labels over:** strips after it see the
-  reviewer's verdicts instead of the events named. With *Decision* *Free* (the
-  default) every point opens as a mark, so one left alone is kept as before.
-- Control API 0.2.8 → 0.2.17 (`spec/control-api.md`): upgrade the GUI and
-  the daemon together (the `meegxer` bundle does).
-
-### What changed
 
 - **Rejected epochs reach the output files:** each epoch rejected in a
   *Review epochs* strip is now also a `rejected_epoch` event over its window,
