@@ -144,13 +144,20 @@ output strip chooses which line it draws from.
   - ↓ from a rail into each strip that reads it (an output reads one line, a
     labelled fit also reads Events);
   - ↑ from a feature strip into its rail, near its right edge, with ● where it
-    starts the rail; ○ will mark a strip that adds to an existing rail (Events);
+    starts the rail, and ○ where a strip adds to a rail it did not start
+    (Events: a review, a detector, Reject segments);
   - outputs only pull; they push nothing;
   - a hop where an arrow crosses another rail or the signal;
   - the rail's name above its producer.
+- **The Events rail** starts at the input when the recording (or the LSL
+  marker stream) has events, else at the first strip that writes events (an
+  Event detection strip: a review, a detector; or Reject segments). Every
+  later strip writing events adds to it (○).
 - **A strip that needs a rail the chain lacks** shows a red "needs Events" at the
-  top row (e.g. CSP on a recording without events).
-- Hovering a rail names it, its producer and its readers.
+  top row (e.g. CSP on a recording without events, before any review or
+  detector).
+- Hovering a rail names it, its producer, the strips adding to it and its
+  readers.
 - **Clicking a rail's name shows it** (◇, ◆ while shown): a feature rail in the
   feature view (a spectrum, or values over time), the ICs rail as component
   traces coloured by ICLabel class. It is shown alone, in place of the signal
