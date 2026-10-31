@@ -298,3 +298,34 @@ class Sink(_ConfiguredNode):
 
     def close(self) -> None:
         """Flush and release resources."""
+
+
+class ActionSink(Sink):
+    """A trusted host sink that acts on events (presses keys, drives a
+    device; rule 9: only host sinks act). It acts only while armed, and only
+    by hand: ``arm`` is called for one live run (the GUI's switch, ``meegxer
+    arm``), never from a pipeline or a session, and never in a batch run.
+    The live scheduler hands it each new event it sees (``act``), as soon as
+    the event is on the Events rail; ``close`` (the run's end) disarms it."""
+
+    def __init__(self, params: Mapping[str, object] | None = None) -> None:
+        super().__init__(params)
+        self.armed = False
+
+    def write(self, block: AnyBlock) -> None:
+        """The signal it reads only places it in the chain."""
+
+    def arm(self, on: bool) -> None:
+        """Start (or stop) acting. Raise when it cannot act here."""
+        self.armed = bool(on)
+
+    @abstractmethod
+    def act(self, events: Sequence[Event]) -> None:
+        """New events it sees (live, armed or not: it decides)."""
+
+    def action_status(self) -> dict[str, Any]:
+        """What the status shows for it (``armed`` and its counts)."""
+        return {"armed": self.armed}
+
+    def close(self) -> None:
+        self.arm(False)

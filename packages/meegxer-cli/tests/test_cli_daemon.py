@@ -74,3 +74,29 @@ def test_cli_times_out_without_daemon() -> None:
     finally:
         control_module.ControlClient.__init__ = original  # type: ignore[method-assign]
     assert result.exit_code == 1 and "no reply" in result.output
+
+
+def test_arm_the_keyboard_for_the_run(
+    control: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rule 9: the keyboard sink acts only once armed by hand, for one run."""
+    from meegxer.nodes.actions import KeyboardSink
+
+    pressed: list[str] = []
+    fake = staticmethod(lambda esc: (pressed.append, lambda: None))
+    monkeypatch.setattr(KeyboardSink, "keyboard", fake)
+    pipeline = tmp_path / "keys.json"
+    pipeline.write_text(json.dumps({"spec_version": "0.2.23", "nodes": [
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"duration": 0, "n_channels": 2, "sfreq": 100}},
+        {"id": "keys", "node": "meegxer.nodes.keyboard"},
+    ]}))  # fmt: skip
+    c = ["--control", control]
+    cli("load", str(pipeline), *c)
+    off = runner.invoke(app, ["arm", "keys", *c])  # not running: refused
+    assert off.exit_code == 1 and "start the live run first" in off.output
+    cli("start", *c)
+    assert "keys: ARMED" in cli("arm", "keys", *c)
+    assert "ARMED  pressed 0  dropped 0" in cli("status", *c)
+    assert "keys: disarmed" in cli("arm", "keys", "--off", *c)
+    cli("stop", *c)

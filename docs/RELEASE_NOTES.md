@@ -21,6 +21,23 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   left, as the rail is drawn: an LDA strip's class events are written to the
   `.set` after it. A processor still sees only the events of the strips it
   reads from.
+- **Keyboard sink (M11.4).** The *Keyboard (key presses)* output (Actions)
+  presses a key for each event it maps, e.g. `pred_left=left,
+  pred_right=right` after an LDA strip. Safety first (rule 9: only host
+  sinks act):
+  - it is off until armed by hand for one live run: *Arm* in its card, or
+    `meegxer arm NODE`. A pipeline or a session never arms it, and a batch
+    run never presses anything;
+  - at most *Keys per second* (default 2); the rest are dropped and counted;
+  - Esc, *Disarm* (or `meegxer arm NODE --off`) and *Stop* disarm it. While
+    armed its strip is red and says so.
+
+  It uses pynput (new dependency of `meegxer-nodes`), which needs a desktop
+  session; on Linux it builds `evdev` from source. MeegXer is **not a
+  medical device**: said in the README and the new About box (*?*).
+- Control API 0.2.24: `arm`, and `armed`/`pressed`/`dropped` in an action
+  sink's status. Live runs hand action sinks each new event as it reaches
+  the rail.
 - **Fixed: live recordings lost their events.** A live run's file writers
   never got the Events rail: the `.set` or EDF of a live run had no markers,
   cues or detector marks. They now get it every 2 s while the run goes (so a

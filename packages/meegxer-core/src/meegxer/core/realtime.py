@@ -54,9 +54,10 @@ from meegxer.core.display import (
     Envelope,
     FeatureFrame,
 )
-from meegxer.core.events import INPUT, EventsRail
+from meegxer.core.events import INPUT, EventsRail, seen_ids
 from meegxer.core.graph import Graph, GraphError, GraphNode, positions_message
 from meegxer.core.node import (
+    ActionSink,
     Probe,
     RailInput,
     RailOutput,
@@ -239,6 +240,7 @@ class RealtimeScheduler:
         self._kept = EventsRail()
         self._events_given: dict[str, int] = {}  # sink id -> events last given
         self._events_due = 0.0  # when the writers next get the rail
+        self._new_events: list[tuple[Event, str]] = []  # this block's, to act on
         self._stop_index = 0  # end of the last block processed
         self._fitted: deque[tuple[int, int]] = deque(maxlen=32)  # labelled stretches
         self._input_fps: dict[str, str] = {}
@@ -399,6 +401,7 @@ class RealtimeScheduler:
             self._kept.sfreq = source.info.sfreq
             played = recording_events(source_node.impl)  # a played recording's
             self._add_events(played)
+            self._new_events.clear()  # all at once, ahead of time: no action
             self.metrics.input_events += len(played)
             chunk = self.max_block or max(1, int(source.info.sfreq))
             while self._running.is_set():
@@ -419,6 +422,7 @@ class RealtimeScheduler:
                 self._stop_index = block.stop_index
                 self._process(block)
                 self._give_events()
+                self._act()
                 elapsed = time.perf_counter() - started
                 self.metrics.blocks += 1
                 self.metrics.samples += block.n_samples
@@ -467,6 +471,43 @@ class RealtimeScheduler:
         """Onto the Events rail, and onto the copy the writers record."""
         self._rail.add(events, origin, sfreq)
         self._kept.add(events, origin, sfreq)
+        self._new_events.extend((e, origin) for e in events)
+
+    def _act(self) -> None:
+        """Hand each action sink (rule 9) the new events it sees: the input's
+        and those of every strip to its left (docs/RAILS.md)."""
+        new, self._new_events = self._new_events, []
+        if not new:
+            return
+        for node in self.graph.nodes:
+            if not isinstance(node.impl, ActionSink):
+                continue
+            seen = {INPUT, *seen_ids(self.graph, node.id)}
+            events = [e for e, origin in new if origin in seen]
+            if events:
+                try:
+                    node.impl.act(events)
+                except Exception as exc:  # it stops acting; the run goes on
+                    node.impl.armed = False
+                    self.metrics.errors.append(f"{node.id}: {exc} (disarmed)")
+            if node.impl.notes:
+                self.metrics.errors.extend(f"{node.id}: {n}" for n in node.impl.notes)
+                node.impl.notes.clear()
+
+    def arm(self, node_id: str, on: bool) -> dict[str, Any]:
+        """Arm (or disarm) an action sink for this run (rule 9: by hand)."""
+
+        def apply() -> dict[str, Any]:
+            node = self.graph[node_id]
+            if not isinstance(node.impl, ActionSink):
+                raise GraphError(f"{node_id!r} is not an action sink")
+            if on and not self._running.is_set():
+                raise GraphError("start the live run first: arming lasts one run")
+            node.impl.arm(on)
+            return node.impl.action_status()
+
+        result: dict[str, Any] = self.submit(apply).result(timeout=10)
+        return result
 
     def _give_events(self, final: bool = False) -> None:
         """Hand each sink the events it sees (its own input's and every strip's
@@ -904,6 +945,9 @@ class RealtimeScheduler:
                         {"pass_uncalibrated": n.impl.pass_uncalibrated}
                         if isinstance(n.impl, Stage) and n.impl.manifest.requires_fit
                         else {}
+                    ),
+                    **(
+                        n.impl.action_status() if isinstance(n.impl, ActionSink) else {}
                     ),
                 }
                 for n in self.graph.nodes

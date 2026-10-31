@@ -617,3 +617,29 @@ nothing but the repository. Step 3 plays the recording in real time (about
 | L2 GUI offline: chain, *Reads*, the LDA tap | passed | run by Claude offscreen |
 | L3 live: CSP then LDA calibrated, events in the live .set | passed | run by Claude through the daemon and the CLI; both ready, p95 latency 3.6 ms; events in the live .set after the fix |
 | L4 real data | | |
+
+## M. Keyboard sink (M11.4)
+
+Already run by Claude on a virtual X display (Xvfb): the live CSP → LDA
+pipeline with a keyboard strip. Before arming, nothing was pressed; once
+armed, the presses arrived at ≤ 2 per second; *Disarm*, Esc and *Stop* each
+stopped them. On your machine (Windows), where the keys really land:
+
+1. `uv run python tools/lda_demo.py OUT`, *Open…* `OUT/csp_lda.json`, add
+   *Keyboard (key presses)* at the end (Actions). Its keys default to
+   `pred_left=left, pred_right=right`.
+2. Live: *Run*, calibrate CSP (40 s) then LDA (40 s). Open Notepad (or any
+   text field) beside MeegXer.
+3. Select the keyboard strip: *Arm*. The strip turns red ("ARMED · Esc
+   disarms"). Notepad's cursor moves left and right, at most twice a second.
+4. Press Esc: it disarms (the log says "disarmed by Esc"). Arm again, then
+   *Stop*: disarmed. Run again: it starts disarmed.
+5. *?* (top right): the About box says MeegXer is not a medical device.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| M1 nothing pressed until armed | passed | run by Claude (Xvfb, daemon + CLI): 0 presses in 5 s disarmed; arming before *Run* refused |
+| M2 presses at most 2/s once armed | passed | run by Claude (Xvfb): 14 presses in 10 s, left and right, never closer than 0.5 s; the rest counted as dropped |
+| M3 Esc, *Disarm*, *Stop* disarm | passed | run by Claude (Xvfb): 0 presses after each; the GUI's *Arm* turns the strip red, *Stop* clears it (offscreen) |
+| M4 on Windows: keys land in another app | | |
+| M5 About box statement | | |

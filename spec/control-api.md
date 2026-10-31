@@ -54,6 +54,7 @@ remote GUI).
 | `clear_calibration` | `node` (optional) | `{cleared, status}`: drops the fitted model of one node, or of every node when `node` is omitted |
 | `reset_probe` (0.2.20) | `probe` | status. Starts a live ERP tap's running averages over (the ERP view's *Reset*; `docs/RAILS.md`). Refused when the pipeline is not running or the probe is not an ERP tap |
 | `set_pass_uncalibrated` | `node`, `enabled` | status. Per-node opt-in: while the node has no valid model, pass data through unprocessed (marked as bypassed) instead of blocking |
+| `arm` (0.2.24) | `node`, `on` (default true) | status. Arm or disarm an action sink (the keyboard) for the running live run (rule 9: only by hand). Refused when no live run is running; the run's end, Esc or `on: false` disarms it. Never stored in a pipeline or a session |
 | `set_strip_params` | `node`, `params` (up to 3 names) | the pipeline. Display only: which parameters the node's strip shows in the UI's advanced mode |
 | `describe_source` | `node` (a source entry of a pipeline, with optional `recording`) | `{sfreq, n_samples, duration_s, stream_id, channels, events, event_labels, events_origin, recording, notes, carries}`. `channels`: per channel `{label, original, type, bad, position}` after the overrides (`original` is the label the source reports; `position` is `[x, y, z]` in metres or `null`). `events`: `{onset, duration, label}` (seconds) after renaming and dropping; `event_labels`: the event names before renaming; `events_origin`: `recording`, `file` or `none`. Opens the file or stream to read it. A BIDS input with an empty `subject` (every subject, 0.2.7) describes its first recording. `notes` (0.2.21): what reading the file decided, in words (an XDF file: its signal and marker streams, an assumed unit, lost samples); `[]` for most files. `carries` (0.2.22): the rails the input starts, e.g. `["ics"]` for an EEGLAB `.set` with a decomposition (`docs/RAILS.md`) |
 | `list_montages` | – | names of the standard montages `recording.montage` accepts |
@@ -93,6 +94,8 @@ remote GUI).
 - Node `status`: `ready`, `uncalibrated`, `calibrating`, `needs-refit` (processors), or
   `stopped` before the first start. Nodes that need calibration also report
   `pass_uncalibrated`, and, while stopped, `calibrated` (whether a model is kept).
+  An action sink (0.2.24) reports `armed`, and the keyboard `pressed` and
+  `dropped` (keys over its rate).
 - Without a valid model a node blocks: nothing passes it (default, rule 7). With
   `pass_uncalibrated` the data passes unprocessed and every downstream block lists the
   node in `bypassed`; display frames carry the same list.

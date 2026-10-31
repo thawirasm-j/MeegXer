@@ -322,7 +322,9 @@ Still to come: sources declaring extra outputs, custom scripts, the Octave SDK.
 5. LDA classifier reading a feature rail and adding events (done, M11.3: its main
    input is the feature strip, chosen under *Reads*, spec 0.2.23).
 6. Sources rail: inverse on a template head (cached ahead for Sterile mode).
-7. Event outputs: keyboard sink, events writer, epoching.
+7. Event outputs: keyboard sink (done, M11.4: an action sink, armed by hand,
+   acting on each new event it sees as it reaches the rail), events writer,
+   epoching (done, M10.2).
 8. An events strip (e.g. "LSL markers") for an external event source: it adds to
    the Events rail (○) rather than starting it. Its markers are still placed on
    the input's sample index; its place in the chain only decides which strips
