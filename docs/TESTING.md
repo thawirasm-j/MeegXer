@@ -446,15 +446,18 @@ classes) and `OUT/ica_demo_unclassified.set` (without the classes). An EEGLAB
 
 ## H. Python API (M10.7)
 
-On your own recording with events (a `.set`, `.edf`, `.fif`, …), in the
-MeegXer folder after `git pull` and `uv sync --all-packages`:
+In the MeegXer folder after `git pull` and `uv sync --all-packages`:
 
 ```bash
-uv run python tools/api_check.py RECORDING EVENT --plot
+uv run python tools/api_check.py --plot
 ```
 
-EVENT is one of the recording's event labels (e.g. a stimulus code). The
-script band-passes (1 to 30 Hz) and cuts epochs on EVENT (-200 to 800 ms)
+With no recording named, it uses the ERP CORE flanker sample (downloaded the
+first time, unless §C already did) and its most frequent event. For your own recording
+with events (a `.set`, `.edf`, `.fif`, …), name it, and optionally one of its
+event labels (the script lists them):
+`uv run python tools/api_check.py C:\data\sub-01.set [LABEL] --plot`. The
+script band-passes (1 to 30 Hz) and cuts epochs on the event (-200 to 800 ms)
 with `meegxer.api.run`, from an `mne.io.Raw` and from the file.
 
 1. It prints `H1 Raw: … annotations (the input: …)`: as many annotations as
