@@ -741,7 +741,13 @@ class FileSource(_RawSource):
     def _read_recording(self) -> mne.io.BaseRaw:
         import mne
 
+        from meegxer.core.mne_ica import FIF_ENDINGS
+
         path = self._path()
+        if path.name.lower().endswith(FIF_ENDINGS):  # MNE's name for an ICA file
+            raise ValueError(f"{path.name} is an MNE ICA file, not a recording: "
+                             "choose the recording as the input's File, and this "
+                             "file as its MNE ICA file")  # fmt: skip
         if path.suffix.lower() == ".xdf":
             from meegxer.core.xdf import read_xdf
 

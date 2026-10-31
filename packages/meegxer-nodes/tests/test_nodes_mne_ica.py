@@ -184,3 +184,15 @@ def test_a_shared_session_names_no_ica_file() -> None:
         ]}}  # fmt: skip
     params = share_safe(session)["pipeline"]["nodes"][0]["params"]
     assert params == {"path": "<input>.fif", "ica": ""}
+
+
+def test_an_ica_file_given_as_the_recording_says_where_it_goes(
+    tmp_path: Path, fitted: tuple[mne.io.RawArray, Any]
+) -> None:
+    """Both of the File input's fields take .fif: an ICA file chosen as the
+    recording says so, instead of MNE's "No raw data in …" (§H5)."""
+    ica_file = tmp_path / "rec-ica.fif"
+    fitted[1].save(ica_file, verbose="error")
+    source = FileSource({"path": str(ica_file)})
+    with pytest.raises(ValueError, match="is an MNE ICA file, not a recording"):
+        _ = source.info
