@@ -7,6 +7,32 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+## 0.4.0b2 (2026-10-31): Interop: XDF, EEGLAB and MNE
+
+MeegXer now reads and writes what the other EEG tools use:
+- LabRecorder's XDF files;
+- EEGLAB's ICA decompositions, read from a `.set` and stored in the `.set` written;
+- MNE's ICA files, both ways;
+- MNE objects from Python: `from meegxer.api import run`, with Raw or Epochs back.
+
+Checked by hand in `docs/TESTING.md` §F, §G and §H. Milestone status:
+`docs/ROADMAP.md` → *Status*.
+
+### Upgrading from 0.4.0b1
+
+- Pipelines, sessions and settings from 0.4.0b1 load unchanged. The File
+  input gains *MNE ICA file* (`ica`, empty by default), and node versions are
+  unchanged, so saved sessions keep their fitted models.
+- Spec 0.2.22: a pipeline file that feeds the ICs (a `component` rail) into a
+  strip that only takes electrodes (re-reference, interpolation, CSD, EOG
+  regression, ICA, the MNE ICA writer) is now refused with a message. Before,
+  such a run gave meaningless output.
+- Control API 0.2.22: `describe_source` returns `notes` and `carries`. The GUI
+  and the daemon come from the same release; after upgrading, stop an old
+  daemon first (`meegxer shutdown`).
+
+### What's new
+
 - **Only sensible wiring of the ICs** (spec 0.2.22): strips that only make
   sense on electrodes (re-reference, interpolation, CSD, EOG regression, ICA)
   and the MNE ICA writer no longer offer *Reads → ICs*, and a pipeline file
@@ -51,6 +77,18 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   assumed unit. The import's notes (the streams used, an assumed unit, lost
   samples) go to the log (control API 0.2.21: `describe_source` returns
   `notes`).
+- **Fixes:**
+  - *Reads → ICs* (on a strip after an ICA strip, or after an input carrying
+    a decomposition) no longer stops the GUI with `KeyError`.
+  - In *Channels*, components listed beside the head (they have no place on
+    it) each keep a readable row, and a long list scrolls.
+  - The save dialog completes a writer's naming convention: `clean` becomes
+    `clean-ica.fif` for the MNE ICA writer and `clean-epo.fif` for the epochs
+    writer.
+  - An MNE ICA file chosen as the recording says where it belongs, instead of
+    MNE's "No raw data".
+  - `meegxer.api.run` on a template made for BIDS input leaves out its BIDS
+    writer, with a warning, instead of failing at the end.
 
 ## 0.4.0b1 (2026-10-31)
 
