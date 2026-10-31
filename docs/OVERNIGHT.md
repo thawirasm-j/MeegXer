@@ -31,7 +31,12 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
    and live. §L run by me: the CLI run, the GUI through the real window
    (offscreen), and live through the daemon (`calibrate csp1`, then
    `calibrate lda1`; both ready, p95 latency 3.6 ms). Left for you: L4 (real
-   EEGBCI data). This PR.
+   EEGBCI data). PR #143.
+4. **Fix: live recordings keep their events.** The live scheduler keeps an
+   untrimmed copy of the Events rail and hands each writer what it sees,
+   every 2 s while running (so a crash recovery keeps most of it) and in
+   full before closing. Default taken: **2 s** between header rewrites (the
+   spool header is rewritten whole, with an fsync). This PR.
 
 ## Defaults taken (small choices)
 
@@ -48,10 +53,10 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
 
 ## Found on the way
 
-- **Live file writers record no events at all** (not the cues, not markers,
-  not LDA's): the live scheduler never gives sinks the Events rail. This
-  predates tonight; offline runs are fine. I'm fixing it in its own PR next
-  (the keyboard sink needs live events too).
+- **Live file writers recorded no events at all** (not the cues, not
+  markers, not LDA's): the live scheduler never gave sinks the Events rail.
+  This predates tonight; offline runs were fine. Fixed in its own PR (4
+  below).
 
 ## Waiting for you
 

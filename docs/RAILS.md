@@ -76,7 +76,9 @@ output strip chooses which line it draws from.
   off the signal: the LDA strip's class events reach a writer reading the
   signal (M11.3). A processor sees its ancestors' only, because its input
   fingerprint names them (rule 7). The offline views see what a writer at the
-  chain's end would see.
+  chain's end would see. Live, the writers get the rail every 2 s (a crash
+  recovery keeps most of it) and in full before they close; the live scheduler
+  keeps an untrimmed copy for them.
 - **Across a rate change** (a Resample strip): the rail counts the input's
   samples; a strip at another rate sees, and adds, events at its own rate,
   mapped by the exact ratio of the rates to the nearest sample (rule 8). A

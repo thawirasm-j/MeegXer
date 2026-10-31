@@ -606,8 +606,8 @@ nothing but the repository. Step 3 plays the recording in real time (about
 3. Live: switch the input to live and *Run*. Then:
    - Calibrate *CSP* for 40 s. Once it is ready, calibrate *LDA* for 40 s.
    - Both turn ready, and LDA's tap shows the probabilities as they come.
-   - The live `.set` does not have the events yet: the next PR writes the
-     Events rail in live runs.
+   - *Stop*: the live `.set` has the cues and, from LDA's calibration on,
+     the `pred_` events.
 4. Real data (optional, needs the download): the EEGBCI sample's motor
    imagery runs, with *Classes* `T1, T2` on CSP and LDA.
 
@@ -615,5 +615,5 @@ nothing but the repository. Step 3 plays the recording in real time (about
 |---|---|---|
 | L1 CLI run, events in the .set | passed | run by Claude; 583 `pred_left`, 374 `pred_right`; every in-trial window matched its cue (training data) |
 | L2 GUI offline: chain, *Reads*, the LDA tap | passed | run by Claude offscreen |
-| L3 live: CSP then LDA calibrated | passed | run by Claude through the daemon and the CLI; both ready, p95 latency 3.6 ms |
+| L3 live: CSP then LDA calibrated, events in the live .set | passed | run by Claude through the daemon and the CLI; both ready, p95 latency 3.6 ms; events in the live .set after the fix |
 | L4 real data | | |

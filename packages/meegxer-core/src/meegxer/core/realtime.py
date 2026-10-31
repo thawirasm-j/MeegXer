@@ -40,6 +40,7 @@ import pylsl
 
 from meegxer.core.block import (
     Block,
+    Event,
     FeatureBlock,
     SignalInfo,
     Windows,
@@ -53,7 +54,7 @@ from meegxer.core.display import (
     Envelope,
     FeatureFrame,
 )
-from meegxer.core.events import EventsRail
+from meegxer.core.events import INPUT, EventsRail
 from meegxer.core.graph import Graph, GraphError, GraphNode, positions_message
 from meegxer.core.node import (
     Probe,
@@ -78,6 +79,7 @@ from meegxer.core.stage import Stage, StageStatus, StaleModelError, signal_finge
 
 Clock = Callable[[], float]
 EVENTS_KEEP_SECONDS = 60.0  # live Events rail kept beyond open calibrations
+EVENTS_TO_SINKS_SECONDS = 2.0  # how often live writers get the Events rail
 RAIL_HOLD_SECONDS = 30.0  # how long a reader's input waits for a lagging rail
 FEATURE_FRAMES_PER_FLUSH = 16  # newest feature windows sent per probe and frame
 
@@ -233,6 +235,10 @@ class RealtimeScheduler:
                         (node.id, port)
                     )
         self._rail = EventsRail()
+        # the whole rail, never trimmed: what the file writers record
+        self._kept = EventsRail()
+        self._events_given: dict[str, int] = {}  # sink id -> events last given
+        self._events_due = 0.0  # when the writers next get the rail
         self._stop_index = 0  # end of the last block processed
         self._fitted: deque[tuple[int, int]] = deque(maxlen=32)  # labelled stretches
         self._input_fps: dict[str, str] = {}
@@ -390,8 +396,9 @@ class RealtimeScheduler:
             self._refresh_fingerprints()
             assert isinstance(source_node.impl, Source)
             self._rail.sfreq = source.info.sfreq  # the rail counts on its clock
+            self._kept.sfreq = source.info.sfreq
             played = recording_events(source_node.impl)  # a played recording's
-            self._rail.add(played)
+            self._add_events(played)
             self.metrics.input_events += len(played)
             chunk = self.max_block or max(1, int(source.info.sfreq))
             while self._running.is_set():
@@ -411,6 +418,7 @@ class RealtimeScheduler:
                 started = time.perf_counter()
                 self._stop_index = block.stop_index
                 self._process(block)
+                self._give_events()
                 elapsed = time.perf_counter() - started
                 self.metrics.blocks += 1
                 self.metrics.samples += block.n_samples
@@ -422,6 +430,10 @@ class RealtimeScheduler:
             self.metrics.errors.append(traceback.format_exc(limit=5))
         finally:
             self._drain_commands()
+            try:
+                self._give_events(final=True)
+            except Exception:
+                self.metrics.errors.append(traceback.format_exc(limit=5))
             for node in self.graph.nodes:
                 if isinstance(node.impl, Sink):
                     try:
@@ -449,6 +461,34 @@ class RealtimeScheduler:
                 "input or a shorter calibration)"
             )
 
+    def _add_events(
+        self, events: Sequence[Event], origin: str = INPUT, sfreq: float | None = None
+    ) -> None:
+        """Onto the Events rail, and onto the copy the writers record."""
+        self._rail.add(events, origin, sfreq)
+        self._kept.add(events, origin, sfreq)
+
+    def _give_events(self, final: bool = False) -> None:
+        """Hand each sink the events it sees (its own input's and every strip's
+        to its left, docs/RAILS.md) when they changed, at most every
+        EVENTS_TO_SINKS_SECONDS, and once more before it closes: a live
+        recording keeps its markers, and a crash recovery most of them."""
+        now = time.monotonic()
+        if not final and now < self._events_due:
+            return
+        self._events_due = now + EVENTS_TO_SINKS_SECONDS
+        source = self.graph.source.impl
+        assert isinstance(source, Source)
+        for node in self.graph.nodes:
+            if not isinstance(node.impl, Sink):
+                continue
+            span = self._spans.get(node.input_node or "")
+            rate = span[2] if span is not None else source.info.sfreq
+            seen = self._kept.visible_to(self.graph, node.id, sfreq=rate)
+            if final or len(seen) != self._events_given.get(node.id, 0):
+                node.impl.write_events(seen)
+                self._events_given[node.id] = len(seen)
+
     def _take_input_events(self, source: Source) -> None:
         """Live events from the input onto the rail; count the late ones (inside a
         stretch a labelled calibration already fitted on: a missed trial) and
@@ -460,7 +500,7 @@ class RealtimeScheduler:
                 any(a <= e.sample_index < b for a, b in self._fitted) for e in events
             )
             self.metrics.input_events += len(events)
-            self._rail.add(events)
+            self._add_events(events)
         keep = self._stop_index - round(EVENTS_KEEP_SECONDS * sfreq)
         for blocks, _ in self._calibration.values():
             if blocks:
@@ -726,7 +766,7 @@ class RealtimeScheduler:
             return self._without_model(node, block)
         written.update(result.rails)
         self.metrics.events += len(result.events)
-        self._rail.add(result.events, node.id, _rate(block))
+        self._add_events(result.events, node.id, _rate(block))
         if isinstance(result.block, FeatureBlock):
             return (result.block,)
         if isinstance(result.block, Block) and result.block.n_samples == 0:

@@ -21,6 +21,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   left, as the rail is drawn: an LDA strip's class events are written to the
   `.set` after it. A processor still sees only the events of the strips it
   reads from.
+- **Fixed: live recordings lost their events.** A live run's file writers
+  never got the Events rail: the `.set` or EDF of a live run had no markers,
+  cues or detector marks. They now get it every 2 s while the run goes (so a
+  crash recovery keeps most of it), and in full before the file is closed.
 - Spec 0.2.23: a processor's main input may be Features (built-in nodes;
   plugins still take Signal input).
 
