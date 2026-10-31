@@ -49,6 +49,12 @@ PATH; nothing else on the system changes.
    The GUI starts the processing engine (the daemon) in the background if none is
    running. Closing the GUI while a pipeline runs leaves the engine running; stop
    it with `meegxer stop`, or `meegxer shutdown` to end the daemon.
+5. Optional: put MeegXer in the Start menu and on the desktop
+   (`meegxer-gui --remove-shortcut` takes them away again):
+
+   ```powershell
+   meegxer-gui --create-shortcut
+   ```
 
 - **Network drives:** Python cannot load its libraries from a network share
   ("DLL load failed ... The parameter is incorrect"). If your user folder is on a

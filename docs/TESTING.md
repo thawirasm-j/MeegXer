@@ -670,3 +670,21 @@ On your machine:
 | N2 live keys follow the targets | passed | run by Claude (Xvfb); 74 presses in 60 s; 67/67 in-look detections |
 | N3 the template (New…) | passed | run by Claude (CLI `meegxer new ssvep_bci`; the dialog hides the sample) |
 | N4 on Windows, keys in another app | | |
+
+## O. Shortcuts (M11.6)
+
+Already run by Claude on Linux: `meegxer-gui --create-shortcut` wrote
+`~/.local/share/applications/meegxer.desktop`, whose command starts MeegXer,
+and `--remove-shortcut` removed it. Windows and macOS were run only with the
+system calls faked, so they need a real machine:
+
+1. Windows: `meegxer-gui --create-shortcut` (PowerShell). *MeegXer* is in
+   the Start menu and on the desktop. Each starts MeegXer with no console
+   window behind it.
+2. `meegxer-gui --remove-shortcut`: both are gone.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| O1 Linux menu entry starts MeegXer | passed | run by Claude |
+| O2 Windows Start menu and desktop, no console | | |
+| O3 remove | passed (Linux) | Windows to check |

@@ -51,7 +51,12 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
    template (LSL → SSVEP detection → keyboard), and `tools/ssvep_demo.py`, a
    synthetic SSVEP recording played live. §N run by me on Xvfb with real key
    presses (detections 100 % correct on the synthetic looks). Also fixed on
-   the way: the feature view drew SSVEP's unitless scores in dB. This PR.
+   the way: the feature view drew SSVEP's unitless scores in dB. PR #146.
+7. **M11.6 shortcuts**: `meegxer-gui --create-shortcut` / `--remove-shortcut`
+   (Windows Start menu and desktop; Linux application menu; macOS
+   `~/Applications`). Run by me on Linux; Windows and macOS only with the
+   system calls faked. Left for you: O2 (Windows, no console window). PR
+   (queued).
 
 ## Defaults taken (small choices)
 
@@ -77,6 +82,9 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
 | 19 | SSVEP template | **Live from LSL**, no sample dataset (templates may now have none; the dialog hides the sample checkbox, `--sample` is refused) | MNE's SSVEP dataset as a sample: I could not confirm its citation and licence, which the BIDS sample needs |
 | 20 | Template settings | Targets 8, 10, 12, 15 Hz, filter-bank CCA, 2 s windows every 0.5 s; keys arrows (8 left, 10 right, 12 up, 15 down); no channel picking (the description says to add Pick channels for the occipital ones) | |
 | 21 | SSVEP node version | 0.1.0 → 0.2.0 (new settings; same output with them off) | |
+| 22 | Shortcut target | This Python with `-m meegxer.gui.app` (`pythonw.exe` on Windows: no console), so it starts the MeegXer it was made from | The `meegxer-gui` script: a console window opens behind it on Windows |
+| 23 | Windows `.lnk` | Written by PowerShell's `WScript.Shell` (built into Windows) | pywin32: a new dependency |
+| 24 | Icon | None yet (the system's default); worth designing one | A placeholder icon |
 | 8 | References | Fisher 1936, Blankertz et al. 2011, Ledoit & Wolf 2004, scikit-learn (Pedregosa et al. 2011). DOIs checked by web search (doi.org is blocked from here) | |
 
 ## Found on the way
@@ -93,3 +101,5 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
   `T1, T2`).
 - M4/M5: the keyboard on Windows (keys landing in Notepad), the About box.
 - N4: the SSVEP demo's keys on Windows.
+- O2: the shortcuts on Windows.
+- An icon for MeegXer (shortcuts and the window use the system default).
