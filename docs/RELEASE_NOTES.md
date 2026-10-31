@@ -7,23 +7,30 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
-- **Two reviewers** (review step 6b): a Review strip's *Reviewers* set to 2
-  has each recording reviewed twice, blind: reviewer 1 marks it, then
-  reviewer 2 (another person; the run says so if the same name comes back)
-  marks it without seeing the first's marks. Then the resolve: the marks both
-  made alike are kept, and every mark only one of them made is a suggestion,
-  named by its reviewer, to accept, edit or reject. The resolve window shows
-  their agreement (Cohen's kappa per label, 1 s windows), and the review
-  report lists both reviewers and the kappa. Each reviewer's own marks are
-  kept in a sidecar of their own (control API 0.2.23).
-- **Review report** (review step 6a): each recording's QC report has a
-  section for each review of it (at import, and each Review or Review epochs
-  strip): who reviewed and when, how much of the recording they viewed, the
-  marks per label (how many, how long), the bad channels, how they answered a
-  detector's suggestions, and the epochs kept and rejected per label. The
-  dataset's `qc.tsv` and `qc.html` get the same columns, so reviews compare
-  across subjects (`docs/REVIEW.md`).
-## Next (not released yet)
+## 0.4.0b3 (2026-10-31): Editing and review
+
+Undo and redo for every edit, and the review track finished: a review
+report in every recording's QC report, and two reviewers, blind, then
+resolved, with their agreement. This completes M10 (research workflows), but
+for the SSVEP BCI template, which comes with M11's BCI work. Checked in
+`docs/TESTING.md`: §I by the maintainer on Windows, §J and §K by Claude
+through the real window (offscreen).
+
+### Upgrading from 0.4.0b2
+
+- Pipelines, sessions and settings from 0.4.0b2 load unchanged. The Review
+  strip gains *Reviewers* (1 by default: as before); node versions are
+  unchanged.
+- QC reports and `qc.tsv` gain the review columns (`<strip>_reviewer`,
+  `_marks`, `_verdicts`, …); a dataset's older rows keep theirs until run
+  again.
+- Control API 0.2.23 (the review request's `note`, and the reasons of the
+  two-reviewer passes): the GUI and the daemon come from the same release;
+  after upgrading, stop an old daemon first (`meegxer shutdown`).
+- scikit-learn is now a declared dependency of `meegxer-core` (it came with
+  MNE's dependencies before).
+
+### What's new
 
 - **Undo and redo** (M10.10): *↶ Undo* and *↷ Redo* in the top bar, or Ctrl+Z
   and Ctrl+Shift+Z (or Ctrl+Y). They undo any change to the chain (a strip
@@ -34,6 +41,22 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   pipeline without a restart; undoing a change to the chain restarts it, as
   the change did. *Open…* and *New…* start a new history (a text field keeps
   its own Ctrl+Z while it has the focus).
+- **Review report** (review step 6a): each recording's QC report has a
+  section for each review of it (at import, and each Review or Review epochs
+  strip): who reviewed and when, how much of the recording they viewed, the
+  marks per label (how many, how long), the bad channels, how they answered a
+  detector's suggestions, and the epochs kept and rejected per label. The
+  dataset's `qc.tsv` and `qc.html` get the same columns, so reviews compare
+  across subjects (`docs/REVIEW.md`).
+- **Two reviewers** (review step 6b): a Review strip's *Reviewers* set to 2
+  has each recording reviewed twice, blind: reviewer 1 marks it, then
+  reviewer 2 (another person; the run says so if the same name comes back)
+  marks it without seeing the first's marks. Then the resolve: the marks both
+  made alike are kept, and every mark only one of them made is a suggestion,
+  named by its reviewer, to accept, edit or reject. The resolve window shows
+  their agreement (Cohen's kappa per label, 1 s windows), and the review
+  report lists both reviewers and the kappa. Each reviewer's own marks are
+  kept in a sidecar of their own (control API 0.2.23).
 
 ## 0.4.0b2 (2026-10-31): Interop: XDF, EEGLAB and MNE
 

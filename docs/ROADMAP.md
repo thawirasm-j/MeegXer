@@ -43,13 +43,14 @@ methods paper. Milestones and their state also live in `docs/WORKPLAN.md`
 
 One PR per item, as before. Items keep their IDs (M9.1 …) in commits and PRs.
 
-## Status (2026-10-31, 0.4.0b2)
+## Status (2026-10-31, 0.4.0b3)
 
 M9 is done (0.3.0b1 to 0.3.1b3). M10's exit criterion is met in 0.4.0b1: an
 ERP and a resting-state study run end to end from the GUI and the CLI (the
 maintainer's checks, `docs/TESTING.md` §C to §E). 0.4.0b2 adds the interop
-items (M10.5–M10.7, checked in §F to §H). Its open items (below) come in later
-0.4.0 betas.
+items (M10.5–M10.7, checked in §F to §H) and 0.4.0b3 undo and the end of the
+review track (M10.10, M10.11, §I to §K): M10 is done, but for the SSVEP BCI
+template (M10.9), which comes with M11's BCI work.
 
 | Item | State | Where |
 |---|---|---|
