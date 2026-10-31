@@ -124,7 +124,10 @@ class EpochReviewWindow(QWidget):
         self.label = QComboBox()
         self.label.setEditable(True)  # a new label is typed in
         self.label.addItems([str(x) for x in request.get("labels", [])])
-        self.label.setMinimumWidth(140)
+        self.label.setSizeAdjustPolicy(  # the longest label, whole
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+        self.label.setMinimumWidth(240)
         tools.addWidget(self.label)
         relabel = QPushButton("Label (L)")
         relabel.setToolTip("Give the selected epoch the label chosen")

@@ -16,6 +16,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
+    QGridLayout,
     QHBoxLayout,
     QPushButton,
     QToolTip,
@@ -153,14 +154,21 @@ class ChannelPicker(QWidget):
         lay.addWidget(self.head, 1)
         side = QVBoxLayout()
         self.buttons = QWidget()  # the quick choices (not in single mode)
-        buttons = QHBoxLayout(self.buttons)
+        buttons = QGridLayout(self.buttons)  # 2 x 2: each one readable
         buttons.setContentsMargins(0, 0, 0, 0)
-        for text, slot in (("All", self.show_all), ("None", self.show_none),
-                           ("Standard 19", self.show_standard),
-                           ("Default", self.show_default)):  # fmt: skip
+        for k, (text, tip, slot) in enumerate((
+            ("All", "Show every channel", self.show_all),
+            ("None", "Hide every channel", self.show_none),
+            ("Standard 19", "The 19 electrodes of the 10-20 system",
+             self.show_standard),
+            ("Default", "The channels shown first (Settings → Visualization)",
+             self.show_default),
+        )):  # fmt: skip
             b = QPushButton(text)
+            b.setToolTip(tip)
+            b.setMinimumWidth(b.fontMetrics().horizontalAdvance(text) + 24)
             b.clicked.connect(lambda _=False, f=slot: f())
-            buttons.addWidget(b)
+            buttons.addWidget(b, k // 2, k % 2)
         side.addWidget(self.buttons)
         self.unplaced = QVBoxLayout()
         side.addLayout(self.unplaced)

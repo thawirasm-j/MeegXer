@@ -366,3 +366,4 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 | E6 ms axis and SEM band | pass | |
 | E7 custom baseline (zero over 100–300 ms; refusals) | pass | |
 | E8 head picker in the feature view and both review windows | pass | |
+| E9 epoch times in ms (50 ms steps); long labels whole; picker buttons readable | | |

@@ -84,6 +84,8 @@ class ErpView(QWidget):
             "Every condition on one channel, or one condition on the channels "
             "picked on the head (butterfly)"
         )
+        # long labels (stimulus/compatible/target_left) come with the epochs
+        self.condition.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.condition.currentIndexChanged.connect(lambda _: self._mode())
         bar.addWidget(self.condition)
         self.channels = HeadChannelMenu(theme)
