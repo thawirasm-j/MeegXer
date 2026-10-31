@@ -12,7 +12,8 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   keep seconds, as MNE takes them; `meegxer set` too). Long event labels fit:
   the ERP view's *Show*, the epoch review's label and the strip's text fields
   widen to them. The head picker's *All*, *None*, *Standard 19* and *Default*
-  sit two by two, each readable.
+  sit two by two, each readable. (Fixed before release: the ms fields lost
+  their zeros, -200 ms reading -2 ms; the strip in the chain reads ms too.)
 - **Amplitude range setting:** amplitude plots (the signal view, the feature
   view's amplitudes over time, the ERP view, the epoch review's ERP) fit
   their y-axis centred on zero by default, -r to r with r the largest value,

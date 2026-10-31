@@ -66,7 +66,9 @@ class _Number(QDoubleSpinBox):
     """A float field without trailing zeros (``500 Hz``, not ``500.000 Hz``)."""
 
     def textFromValue(self, value: float) -> str:
-        return f"{value:.{self.decimals()}f}".rstrip("0").rstrip(".")
+        text = f"{value:.{self.decimals()}f}"
+        # only decimals lose their trailing zeros: 200 ms stays 200, not 2
+        return text.rstrip("0").rstrip(".") if "." in text else text
 
 
 class PathEdit(QWidget):
