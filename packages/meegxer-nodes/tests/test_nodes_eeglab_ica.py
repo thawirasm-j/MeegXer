@@ -13,6 +13,7 @@ from typing import Any
 
 import mne
 import numpy as np
+import pytest
 
 from meegxer.core.batch import BatchScheduler
 from meegxer.core.block import Block
@@ -24,6 +25,7 @@ from meegxer.core.eeglab_ica import (
 )
 from meegxer.core.graph import Graph
 from meegxer.core.manifest import SPEC_VERSION
+from meegxer.core.ports import PortTypeError
 from meegxer.core.probes import MemoryProbe
 from meegxer.core.recording import describe
 from meegxer.core.registry import Registry
@@ -178,3 +180,25 @@ def test_a_spatial_strip_after_it_leaves_the_decomposition_out(tmp_path: Path) -
     assert read_decomposition(out) is None
     assert ("set: ICA decomposition not stored: reref1 transforms the channels "
             "after it") in result.skipped  # fmt: skip
+
+
+@pytest.mark.parametrize("node", ["meegxer.nodes.rereference", "meegxer.nodes.ica",
+                                  "meegxer.nodes.csd", "meegxer.nodes.interpolate_bads",
+                                  "meegxer.nodes.eog_regression",
+                                  "meegxer.core.ica_writer"])  # fmt: skip
+def test_electrode_only_strips_refuse_the_ics(tmp_path: Path, node: str) -> None:
+    """Spec 0.2.22: strips that only make sense on electrodes (and the MNE ICA
+    writer, which stores the decomposition of electrodes) take sensor space,
+    so a pipeline wiring the ICs into them is refused; a spectrum takes them."""
+    path = write_set(tmp_path / "rec.set", classes=True)
+    params = {"path": str(tmp_path / "out-ica.fif")} if "writer" in node else {}
+    nodes: list[dict[str, Any]] = [
+        {"id": "input", "node": "meegxer.core.file", "params": {"path": str(path)}},
+        {"id": "x", "node": node, "input": "input:ics", "params": params},
+    ]
+    with pytest.raises(PortTypeError, match="takes sensor space"):
+        Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": nodes},
+                        Registry.from_entry_points())  # fmt: skip
+    nodes[1] = {"id": "x", "node": "meegxer.nodes.psd", "input": "input:ics"}
+    Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": nodes},
+                    Registry.from_entry_points())  # fmt: skip

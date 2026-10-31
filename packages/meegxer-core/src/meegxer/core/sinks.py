@@ -36,7 +36,9 @@ from meegxer.core.settings import config_dir
 BOUNDARY = "boundary"  # the event at a cut (meegxer.core.review)
 
 
-def _sink_manifest(name: str, input_type: str, extension: str) -> Manifest:
+def _sink_manifest(
+    name: str, input_type: str, extension: str, input_space: str = ""
+) -> Manifest:
     return Manifest.from_dict(
         {
             "spec_version": "0.2.0",
@@ -44,7 +46,13 @@ def _sink_manifest(name: str, input_type: str, extension: str) -> Manifest:
             "version": "0.1.0",
             "type": "stream",
             "role": "sink",
-            "inputs": [{"name": "in", "type": input_type}],
+            "inputs": [
+                {
+                    "name": "in",
+                    "type": input_type,
+                    **({"space": input_space} if input_space else {}),
+                }
+            ],
             "outputs": [],
             "params": [
                 {

@@ -18,7 +18,10 @@ def stream_manifest(
     requires_positions: bool = False,
     channel_types: list[str] | None = None,
     rail_outputs: list[dict[str, str]] | None = None,
+    input_space: str = "",
 ) -> Manifest:
+    """A stream processor's manifest. ``input_space``: the space its input
+    must be in (``sensor`` for strips that only make sense on electrodes)."""
     return Manifest.from_dict(
         {
             "spec_version": "0.2.0",
@@ -26,7 +29,13 @@ def stream_manifest(
             "version": version,
             "type": "stream",
             "description": description,
-            "inputs": [{"name": "in", "type": "signal"}],
+            "inputs": [
+                {
+                    "name": "in",
+                    "type": "signal",
+                    **({"space": input_space} if input_space else {}),
+                }
+            ],
             "outputs": [{"name": "out", "type": "signal"}, *(rail_outputs or [])],
             "params": params,
             "live_params": live_params or [],

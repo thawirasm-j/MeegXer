@@ -36,7 +36,7 @@ SYNTHETIC = "meegxer.core.synthetic"
 # the GUI's defaults where they differ from the node's: synthetic input played
 # live runs until stopped (a live calibration never runs out of it)
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
-SPEC_VERSION = "0.2.21"
+SPEC_VERSION = "0.2.22"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -441,16 +441,19 @@ class PipelineDoc:
 
     def rail_choices(self, strip: StripNode) -> list[str]:
         """Rail outputs of earlier strips this one could take as its main input
-        (``"ica1:ics"``, spec 0.2.18), nearest first."""
+        (``"ica1:ics"``, spec 0.2.18), nearest first: of its type, and of its
+        space when both name one (spec 0.2.22: no ICs for re-reference)."""
         inputs = self.manifest(strip)["inputs"]
         if not inputs:
             return []
+        space = inputs[0].get("space", "")
         index = self.strips.index(strip)
         return [
             f"{earlier.id}:{port['name']}"
             for earlier in reversed(self.strips[:index])
             for port in self.rail_outputs(earlier)
             if port["type"] == inputs[0]["type"]
+            and not (space and port.get("space") and port["space"] != space)
         ]
 
     def choice_label(self, choice: str) -> str:

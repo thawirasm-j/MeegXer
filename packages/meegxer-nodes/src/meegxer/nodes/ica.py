@@ -204,6 +204,7 @@ class ICAClean(Processor):
         requires_positions=True,  # ICLabel
         rail_outputs=[{"name": "ics", "type": "signal", "rail": "ics",
                        "space": "component"}],
+        input_space="sensor",  # electrodes only (spec 0.2.22)
     )  # fmt: skip
 
     def fit(self, calibration: Block, params: Params) -> State:

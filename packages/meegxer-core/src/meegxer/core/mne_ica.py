@@ -127,7 +127,9 @@ class IcaWriter(Sink):
     ICs rail's nearest writer before it (the input's file or ICA, or an ICA
     strip), with the components that strip removed marked ``exclude``."""
 
-    manifest: ClassVar[Manifest] = _sink_manifest(ICA_WRITER, "signal", ".fif")
+    # the decomposition of electrodes: a component rail is no input (spec 0.2.22)
+    manifest: ClassVar[Manifest] = _sink_manifest(ICA_WRITER, "signal", ".fif",
+                                                  input_space="sensor")  # fmt: skip
 
     def __init__(self, params: Mapping[str, object] | None = None) -> None:
         super().__init__(params)

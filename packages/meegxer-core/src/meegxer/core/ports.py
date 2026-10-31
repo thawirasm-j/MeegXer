@@ -46,11 +46,18 @@ class Port:
 
 
 def check_connection(output: Port, input: Port) -> None:
-    """Raise unless an output port may feed the given input port."""
+    """Raise unless an output port may feed the given input port: the same
+    type, and the same space when both name one (spec 0.2.22: a component
+    rail cannot feed an input that takes sensor space)."""
     if output.type is not input.type:
         raise PortTypeError(
             f"cannot connect {output.type} output {output.name!r} to "
             f"{input.type} input {input.name!r}"
+        )
+    if output.space and input.space and output.space != input.space:
+        raise PortTypeError(
+            f"cannot connect {output.space}-space output {output.name!r} to an "
+            f"input that takes {input.space} space ({input.name!r})"
         )
 
 

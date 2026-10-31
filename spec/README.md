@@ -38,6 +38,11 @@ define it.
     `dataset_description.json` with `GeneratedBy`, and the run's session file
     next to each recording. 0.2.11: epochs (`_epo.fif`) and their ERPs
     (`_ave.fif`). 0.2.12: QC reports (`_report.html`, `qc.tsv`, `qc.html`).
+  - 0.2.22: Signal port spaces are checked: an output and an input that both
+    name a `space` connect only when it is the same (a `component` rail, the
+    ICs, cannot feed an input that takes `sensor` space, e.g. re-reference or
+    an ICA). A port that names none connects to any. Hosts offer only
+    matching rails.
   - 0.2.21: a source may have extra outputs, each naming a rail its input
     carries (the File input's `ics`: an EEGLAB file's components); only
     outputs, and still none for probes and sinks.

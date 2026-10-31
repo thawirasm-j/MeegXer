@@ -427,3 +427,7 @@ def test_a_files_ics_rail_starts_at_the_input_and_ends_at_ica(
     assert own.follows == files.id and own.lane == files.lane  # its row goes on
     assert doc.rail_lanes() == 1 + max(r.lane for r in rails if r.id != own.id)
     assert doc.rail_choices(psd)[:2] == [f"{ica.id}:ics", "input:ics"]  # nearest
+    # electrode-only strips (spec 0.2.22: sensor space) are not offered the ICs
+    reref = doc.insert(len(doc.strips), "meegxer.nodes.rereference")
+    writer = doc.insert(len(doc.strips), "meegxer.core.ica_writer")
+    assert doc.rail_choices(reref) == [] and doc.rail_choices(writer) == []

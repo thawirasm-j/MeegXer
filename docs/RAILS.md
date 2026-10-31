@@ -92,6 +92,12 @@ output strip chooses which line it draws from.
   (`IC01`...). Each channel has ICLabel's most likely class and its probability
   as attributes (`SignalInfo.ch_classes`, `ch_scores`).
 - **A strip can take it as its main input:** `input: "ica1:ics"` (spec 0.2.18).
+  Only a strip that makes sense on components: the ICs rail is in `component`
+  space, and strips that only make sense on electrodes take `sensor` space
+  (re-reference, interpolation, CSD, EOG regression, ICA, and the MNE ICA
+  writer, which stores the decomposition of electrodes). Spaces that differ
+  do not connect (spec 0.2.22): *Reads* does not offer the ICs there, and a
+  pipeline file wiring them is refused.
   In the inspector, a strip on the signal gets *Reads*: the signal, or a rail
   output such as *ICs (ICA + ICLabel)*; e.g. PSD or band power per component.
   The chain draws it as a reader of the ICs rail, without a pull from the signal.
