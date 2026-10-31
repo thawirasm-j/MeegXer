@@ -61,7 +61,8 @@ def from_mne(ica: Any) -> Decomposition:
     notes = []
     if ica.exclude:
         marked = ", ".join(str(k + 1) for k in sorted(ica.exclude))
-        notes.append(f"the file marks components {marked} for removal "
+        which = "component" if len(ica.exclude) == 1 else "components"
+        notes.append(f"the file marks {which} {marked} for removal "
                      "(kept on the rail: an ICA strip removes components)")  # fmt: skip
     return Decomposition(
         tuple(channels), weights, np.linalg.pinv(weights), None, "", tuple(notes),
