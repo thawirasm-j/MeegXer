@@ -56,8 +56,14 @@ class TemplateDialog(QDialog):
 
     def _show(self, row: int) -> None:
         template = list(TEMPLATES.values())[max(row, 0)]
-        sample = SAMPLES[template.sample]
         self.description.setText(template.description)
+        has_sample = bool(template.sample)  # a live template has none
+        self.sample.setVisible(has_sample)
+        self.sample_note.setVisible(has_sample)
+        if not has_sample:
+            self.sample.setChecked(False)
+            return
+        sample = SAMPLES[template.sample]
         self.sample.setText(f"Use the sample data: {sample.title}")
         size = f" ({sample.size} each)" if sample.size else ""
         self.sample_note.setText(

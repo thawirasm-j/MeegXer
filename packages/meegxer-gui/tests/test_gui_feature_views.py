@@ -295,6 +295,13 @@ def test_feature_view_labels_the_value_axis_with_the_unit(qapp: QApplication) ->
     view.refresh(in_db, "PSD", 0.0, 60.0)
     y = next(c for c in view.plot._curves if c.isVisible()).getData()[1]
     assert left.labelText == "value (dB)" and y[0] == 3.0  # not converted again
+    freqs: dict[str, tuple[str | float, ...]] = {"frequency": (8.0, 10.0)}
+    values = np.array([[0.2, 0.9]])
+    scores = FeatureSeries("tap_ssvep", ("frequency",), freqs, np.array([2.0]),
+                           values, unit="1")  # fmt: skip
+    view.refresh(scores, "SSVEP", 0.0, 60.0)
+    y = next(c for c in view.plot._curves if c.isVisible()).getData()[1]
+    assert left.labelText == "value" and list(y) == [0.2, 0.9]  # scores: no dB
 
     fooof = FeatureSeries("tap_sp1", ("channel", "measure"),
                           {"channel": ("Fz",), "measure": ("exponent", "cf")},

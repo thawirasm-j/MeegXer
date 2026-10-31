@@ -164,6 +164,8 @@ PARAMS: dict[str, str] = {
     "shrinkage": "Shrinkage",
     "min_probability": "Event only from probability",
     "event_prefix": "Event label prefix",
+    "detections": "Detections as events",
+    "min_score": "Event only from score",
     "keys": "Keys (event label = key)",
     "max_rate": "Keys per second at most",
     "tmin": "Trial start",

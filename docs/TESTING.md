@@ -643,3 +643,30 @@ stopped them. On your machine (Windows), where the keys really land:
 | M3 Esc, *Disarm*, *Stop* disarm | passed | run by Claude (Xvfb): 0 presses after each; the GUI's *Arm* turns the strip red, *Stop* clears it (offscreen) |
 | M4 on Windows: keys land in another app | | |
 | M5 About box statement | | |
+
+## N. SSVEP → keypress demo (M10.9, M11's exit criterion)
+
+Already run by Claude, on a virtual X display (Xvfb) with real key presses.
+- Offline: 156 of 156 detections in the targets' looks were correct.
+- Live, armed: 74 presses in 60 s (at most 2/s); all 67 in-look detections
+  correct; p95 latency 2.6 ms.
+- The GUI armed it offscreen (screenshot checked).
+
+On your machine:
+
+1. `uv run python tools/ssvep_demo.py OUT`. *Open…* `OUT/ssvep_keys.json`.
+   It is the *SSVEP BCI (keys)* template reading the demo recording instead
+   of an amplifier.
+2. Live, *Run*. Tap the SSVEP strip: four scores (8, 10, 12, 15 Hz), the
+   target's highest during each 5 s look.
+3. Arm the keyboard strip with Notepad beside MeegXer. The arrow keys follow
+   the targets: 8 Hz left, 10 right, 12 up, 15 down. At most 2 per second.
+4. *New…* → *SSVEP BCI (keys)*: no sample checkbox; the input is LSL (your
+   amplifier's stream name).
+
+| Item | Value / result | Notes |
+|---|---|---|
+| N1 detections offline | passed | run by Claude; 156/156 in-look windows correct |
+| N2 live keys follow the targets | passed | run by Claude (Xvfb); 74 presses in 60 s; 67/67 in-look detections |
+| N3 the template (New…) | passed | run by Claude (CLI `meegxer new ssvep_bci`; the dialog hides the sample) |
+| N4 on Windows, keys in another app | | |

@@ -63,18 +63,18 @@ template (M10.9), which comes with M11's BCI work.
 | M10.6 EEGLAB decompositions | Done: a `.set` with `icaweights` starts the ICs rail at the Input strip (the file's ICLabel classes, else computed), rewritten by an ICA strip after it; the `.set` writer stores the decomposition that unmixes its data, with the ICLabel classes (removed components dropped, as `pop_subcomp`) | PR #128, #129, #130 |
 | M10.7 MNE Python API | Done: `meegxer.api.run(pipeline, raw)` gives the chain's end as `mne.io.Raw`, an Epochs strip's epochs as `mne.Epochs`, or a rail output (the ICs) (`docs/PYTHON_API.md`); MNE ICA `-ica.fif` files start the ICs rail (File input, `ica=`) and the *MNE ICA (.fif)* writer stores it | PR #131 – #136 |
 | M10.8 Batch workers, QC report | Done: `--jobs N` worker processes (and `general.batch_jobs` for the GUI's all-subjects run), a QC report per recording (mne.Report) and the dataset's `qc.tsv` and `qc.html` | PR #107 |
-| M10.9 Templates, sample data | Partly: ERP, resting-state and ICA cleaning templates (GUI *New…*, `meegxer new`), and the ERP CORE and EEGBCI samples, fetched per subject on first use. The SSVEP BCI template waits for M11 | PR #106, #112 |
+| M10.9 Templates, sample data | Done: ERP, resting-state and ICA cleaning templates (GUI *New…*, `meegxer new`), and the ERP CORE and EEGBCI samples, fetched per subject on first use; the live *SSVEP BCI (keys)* template (LSL → SSVEP detection with detections as events → keyboard), with `tools/ssvep_demo.py` to try it without an amplifier | PR #106, #112, this PR |
 | M10.10 Undo for chain edits | Done: *Undo* and *Redo* (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) for every chain and setting edit, quick changes of one setting as one step; live, settings undo without a restart (`meegxer.gui.history`) | this PR |
 | M10.11 Manual review (added) | Done: steps 1–5 of `docs/REVIEW.md` Design v2 done: Review strip, Reject segments, review display, review at import, review points, detectors, suggestions with verdicts, epoch review, rejected epochs on the Events rail. Step 6 done: the review report, in the QC report (6a), and two reviewers, blind, then resolved, with Cohen's kappa (6b) | PR #81 – #100, #139, this PR |
 | M11.3 LDA classifier | Done: the *LDA* strip reads a feature strip (CSP, band power…; *Reads*), fits shrinkage LDA (scikit-learn, Ledoit-Wolf) on the windows lying in its classes' trials, and gives each window's class probabilities and a `pred_<class>` event on the Events rail; offline and live (spec 0.2.23) | PR #143 |
-| M11.4 Keyboard sink | Done: the *Keyboard (key presses)* output presses a key for each event it maps (`pred_left=left`), only while armed by hand for one live run (the strip's *Arm*, `meegxer arm NODE`), at most *Keys per second* (2), disarmed by Esc, *Disarm* or *Stop*; never in a batch run, never from a pipeline (pynput). "Not a medical device" in the README and the new About box. Live runs now hand action sinks each new event and file writers the Events rail | this PR |
+| M11.4 Keyboard sink | Done: the *Keyboard (key presses)* output presses a key for each event it maps (`pred_left=left`), only while armed by hand for one live run (the strip's *Arm*, `meegxer arm NODE`), at most *Keys per second* (2), disarmed by Esc, *Disarm* or *Stop*; never in a batch run, never from a pipeline (pynput). "Not a medical device" in the README and the new About box. Live runs now hand action sinks each new event and file writers the Events rail | PR #145 |
 
 Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
 "M10.2b" and "M10.2c" are the review strip, cuts and the stacked review window
 (now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
 reference.
 
-**Next:** M11, BCI path first (the maintainer's order): the SSVEP BCI template and demo (M10.9's last part, M11's SSVEP → keypress exit criterion), then Sterile mode (M11.1).
+**Next:** M11's SSVEP → keypress half of the exit criterion is met (`tools/ssvep_demo.py`, `docs/TESTING.md` §N); its other half, Sterile mode (M11.1), needs Docker or Podman, then plugin hardening (M11.2), the Octave script tier (M11.5) and shortcut creation (M11.6).
 
 ### M9: Fix and harden (0.3.0bN)
 

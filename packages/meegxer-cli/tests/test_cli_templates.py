@@ -171,3 +171,16 @@ def test_new_refuses_an_unknown_template_or_an_existing_file(tmp_path: Path) -> 
     (tmp_path / "x.json").write_text("{}")
     again = runner.invoke(app, ["new", "erp", str(tmp_path / "x.json")])
     assert "exists" in again.output
+
+
+def test_the_live_ssvep_template_has_no_sample(tmp_path: Path) -> None:
+    pipe = tmp_path / "ssvep.json"
+    refused = runner.invoke(app, ["new", "ssvep_bci", str(pipe), "--sample"])
+    assert refused.exit_code == 1 and "no sample dataset" in refused.output
+    made = runner.invoke(app, ["new", "ssvep_bci", str(pipe)])
+    assert made.exit_code == 0 and "run it live" in made.output
+    nodes = {n["id"]: n for n in json.loads(pipe.read_text())["nodes"]}
+    assert nodes["input"]["node"] == "meegxer.core.lsl_in"
+    assert nodes["ssvep"]["params"]["detections"] is True
+    assert "ssvep_8=left" in nodes["keys"]["params"]["keys"]
+    assert "sample: none" in runner.invoke(app, ["templates"]).output
