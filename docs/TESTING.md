@@ -362,7 +362,7 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 | E3 butterfly and channel choice | pass | |
 | E4 reset, and a change upstream | pass | |
 | E5 offline ERP view (counts as C2) | pass | |
-| E3b head picker: one channel, then the butterfly's channels | | |
-| E6 ms axis and SEM band | | |
-| E7 custom baseline (zero over 100–300 ms; refusals) | | |
-| E8 head picker in the feature view and both review windows | | |
+| E3b head picker: one channel, then the butterfly's channels | pass | |
+| E6 ms axis and SEM band | pass | |
+| E7 custom baseline (zero over 100–300 ms; refusals) | pass | |
+| E8 head picker in the feature view and both review windows | pass | |
