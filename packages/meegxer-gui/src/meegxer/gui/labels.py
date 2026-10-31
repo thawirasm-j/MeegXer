@@ -166,6 +166,8 @@ PARAMS: dict[str, str] = {
     "reg": "Covariance shrinkage",
     "events": "Around events",
     "baseline": "Baseline",
+    "baseline_start": "Baseline start",
+    "baseline_end": "Baseline end",
     "import_review": "Use the review made at import",
     # the Review strip: review points, and the display it opens with
     "points": "Suggestions to review (event labels)",
@@ -181,6 +183,7 @@ PARAMS: dict[str, str] = {
 # (parameter name, value) -> label for enum choices
 CHOICES: dict[tuple[str, str], str] = {
     ("baseline", "pre-stimulus"): "Before the event (tmin..0)",
+    ("baseline", "custom"): "Custom (baseline start..end)",
     ("baseline", "none"): "None",
     ("decision", "free"): "Free (suggestions as marks)",
     ("decision", "verify"): "Verify (yes or no for each)",

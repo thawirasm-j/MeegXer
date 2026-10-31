@@ -12,7 +12,9 @@ before it.
 - ``tmin``/``tmax``: the epoch, in seconds from the event (``tmin`` may be
   negative: before it).
 - ``baseline`` ``pre-stimulus``: each channel's mean over ``tmin``..0 is
-  subtracted (MNE's ``baseline=(None, 0)``); ``none`` keeps the signal as is.
+  subtracted (MNE's ``baseline=(None, 0)``); ``custom``: its mean over
+  ``baseline_start``..``baseline_end`` (MNE's ``baseline=(a, b)``), inside the
+  epoch; ``none`` keeps the signal as is. MNE's ``rescale`` subtracts it.
 - ``reject``: an epoch overlapping a mark whose label starts with one of these
   words (``BAD``) is left out (MNE's ``reject_by_annotation``). An epoch
   across a cut a Reject segments strip made is left out too: its samples are not all
@@ -30,10 +32,11 @@ from collections.abc import Mapping
 from typing import ClassVar
 
 import numpy as np
+from mne.baseline import rescale
 
 from meegxer.core.block import CHANNEL_TYPES, Block, Event, FeatureBlock, concat_blocks
 from meegxer.core.manifest import Manifest
-from meegxer.core.node import Params, Processor, RailInput, TransformResult
+from meegxer.core.node import Mode, Params, Processor, RailInput, TransformResult
 from meegxer.core.serialization import State
 from meegxer.nodes.references import credits
 
@@ -73,8 +76,18 @@ class Epochs(Processor):
                  "max": 60.0, "unit": "s", "primary": True,
                  "description": "End of the epoch, from the event"},
                 {"name": "baseline", "type": "enum", "default": "pre-stimulus",
-                 "choices": ["pre-stimulus", "none"],
-                 "description": "Subtract each channel's mean over tmin..0"},
+                 "choices": ["pre-stimulus", "custom", "none"],
+                 "description": "Subtract each channel's mean over tmin..0 "
+                                "(pre-stimulus) or over baseline_start.."
+                                "baseline_end (custom)"},
+                {"name": "baseline_start", "type": "float", "default": -0.2,
+                 "min": -60.0, "max": 60.0, "unit": "s",
+                 "description": "Start of a custom baseline, from the event "
+                                "(baseline custom)"},
+                {"name": "baseline_end", "type": "float", "default": 0.0,
+                 "min": -60.0, "max": 60.0, "unit": "s",
+                 "description": "End of a custom baseline, from the event "
+                                "(baseline custom)"},
                 {"name": "reject", "type": "string", "default": "BAD",
                  "advanced": True,
                  "description": "Leave out epochs overlapping a mark whose "
@@ -84,6 +97,13 @@ class Epochs(Processor):
             **credits("meegxer.nodes.epochs"),
         }
     )  # fmt: skip
+
+    def for_mode(self, params: Params, mode: Mode) -> Processor:
+        """Refuse a wrong span or baseline before a run or a live change (in
+        seconds; whether a short baseline holds a sample waits for the rate)."""
+        _span(params, 1.0)  # tmax after tmin
+        _baseline(params, float(params["tmin"]), float(params["tmax"]))
+        return self
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
@@ -166,17 +186,42 @@ def _held(state: State | None, block: Block) -> tuple[Block | None, list[Event]]
     return seen, events
 
 
+def _baseline(
+    params: Params, tmin: float, tmax: float, times: tuple[float, ...] = ()
+) -> tuple[float | None, float] | None:
+    """The baseline as MNE takes it (``(None, 0)``, ``(a, b)``), or None;
+    ``times`` (the epoch's samples, when the rate is known) must hold one."""
+    kind = params["baseline"]
+    if kind == "none":
+        return None
+    if kind == "pre-stimulus":
+        if tmin >= 0:
+            raise ValueError("a pre-stimulus baseline needs tmin < 0 "
+                             "(or baseline custom or none)")  # fmt: skip
+        return (None, 0.0)
+    a, b = float(params["baseline_start"]), float(params["baseline_end"])
+    if b <= a:
+        raise ValueError(f"the baseline's end ({b:g} s) must be after its "
+                         f"start ({a:g} s)")  # fmt: skip
+    if a < tmin or b > tmax:
+        raise ValueError(f"the baseline ({a:g} to {b:g} s) must lie within the "
+                         f"epoch ({tmin:g} to {tmax:g} s)")  # fmt: skip
+    if times and not any(a <= t <= b for t in times):
+        raise ValueError(f"the baseline ({a:g} to {b:g} s) holds no sample")
+    return (a, b)
+
+
 def cut_epochs(block: Block, events: list[Event], params: Params) -> list[FeatureBlock]:
     """The epochs of ``block`` around the chosen events, in event order."""
     sfreq = block.info.sfreq
     first, last = _span(params, sfreq)  # samples from the event
-    if params["baseline"] == "pre-stimulus" and first >= 0:
-        raise ValueError("a pre-stimulus baseline needs tmin < 0 (or baseline none)")
+    times = tuple(round(k / sfreq, 9) for k in range(first, last + 1))
+    baseline = _baseline(params, float(params["tmin"]), float(params["tmax"]),
+                         times)  # fmt: skip
     wanted = set(_words(params["events"]))
     reject = _words(params["reject"])
     bad = [(e.sample_index, e.sample_index + e.duration) for e in events
            if reject and e.duration and e.label.startswith(reject)]  # fmt: skip
-    times = tuple(round(k / sfreq, 9) for k in range(first, last + 1))
     out: list[FeatureBlock] = []
     for e in sorted(events, key=lambda e: e.sample_index):
         if e.label == BOUNDARY or (reject and e.label.startswith(reject)):
@@ -191,8 +236,9 @@ def cut_epochs(block: Block, events: list[Event], params: Params) -> list[Featur
         data = np.array(
             block.data[:, lo - block.sample_index : hi - block.sample_index]
         )
-        if params["baseline"] == "pre-stimulus":
-            data -= data[:, : 1 - first].mean(axis=1, keepdims=True)  # tmin..0
+        if baseline is not None:
+            rescale(data, np.asarray(times), baseline, mode="mean", copy=False,
+                    verbose=False)  # fmt: skip
         out.append(FeatureBlock(
             data[np.newaxis], ("epoch", "channel", "time"), (lo, hi),
             block.timestamp + (lo - block.sample_index) / sfreq,

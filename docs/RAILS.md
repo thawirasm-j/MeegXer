@@ -114,7 +114,10 @@ output strip chooses which line it draws from.
   - `events`: the labels to cut around (empty: every event).
   - `tmin`/`tmax`: the epoch, in seconds from the event (default -0.2 to 0.8).
   - `baseline`: `pre-stimulus` subtracts each channel's mean over tmin..0
-    (the default, MNE's `(None, 0)`); `none` keeps the signal as is.
+    (the default, MNE's `(None, 0)`); `custom` its mean over
+    `baseline_start`..`baseline_end` (seconds from the event, inside the
+    epoch; MNE's `(a, b)`); `none` keeps the signal as is. MNE's `rescale`
+    subtracts it, so the epochs equal `mne.Epochs(…, baseline=…)`'s.
   - `reject` (default `BAD`): an epoch overlapping a mark whose label starts
     with one of these words is left out.
 - **Left out:** an epoch across a cut (each piece between cuts is epoched on
