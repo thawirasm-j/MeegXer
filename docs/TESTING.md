@@ -533,18 +533,25 @@ restart. On your machine (Windows), in the GUI:
 
 ## J. Review report (review step 6a)
 
-Already run by Claude: a BIDS run with a blink detector and a Review strip
-(reviewer, marks, a bad channel, suggestions accepted, edited and rejected),
-its QC row and report checked and the report's *Review* section rendered.
-On your machine (Windows), with a dataset you reviewed (or the EEGBCI sample
-with a Review strip added):
+Already run by Claude, offscreen through the real window, with the data
+below: both subjects reviewed, `qc.tsv` with the reviewer, marks, verdicts
+and viewed %, and *QC summary* shown. On your machine (Windows):
 
-1. Run every subject (*Run offline* on a BIDS input, or
-   `meegxer run PIPELINE --bids DS`), reviewing when asked.
-2. Open a recording's report (`…_desc-clean_report.html`): a *Review (…)*
-   section lists the reviewer, viewed %, marks per label, bad channels and
-   suggestions answered.
-3. *QC summary* (or `qc.html`): the same columns per recording.
+`uv run python tools/review_demo.py OUT` writes two small BIDS datasets (2
+subjects, 60 s, an EOG channel with 4 blinks each) and a pipeline next to
+each: `OUT/j/review.json` (blink detector → Review asking about its blinks →
+BIDS writer, every subject) and `OUT/k/two_reviewers.json` (§K). First
+`uv run meegxer shutdown`.
+
+1. GUI: *Open…* `OUT/j/review.json`; *Run offline*; give your name. Each
+   subject's review window opens in turn: answer its blink suggestions (Y or
+   N), mark a span or two (drag, then *Reject* or *Annotate*), page through
+   to the end, *Save marks and continue*.
+2. When the run is done, *QC summary* opens `qc.html`: a row per subject with
+   `review1_reviewer`, `review1_marks`, `review1_verdicts`,
+   `review1_viewed_percent`. Its report link (or
+   `OUT/j/ds/derivatives/meegxer/sub-01/eeg/sub-01_task-rest_desc-clean_report.html`)
+   has a *Review (review1)* section with the same, and the marks per label.
 
 | Item | Value / result | Notes |
 |---|---|---|
@@ -553,21 +560,25 @@ with a Review strip added):
 
 ## K. Two reviewers (review step 6b)
 
-Already run by Claude, offscreen through the real window: a Review strip with
-*Reviewers* 2; reviewer A marked (header "Reviewer 1 of 2"); a second run as A
-stopped with "needs a second reviewer"; reviewer B marked blind (header
-"Reviewer 2 of 2", none of A's marks shown); the resolve window offered only
-the two marks they disagreed on, named by reviewer, with Cohen's kappa in its
-heading; Y and N saved the resolved marks with both raters and the kappa. On
-your machine (Windows), with any recording:
+Already run by Claude, offscreen through the real window, with the data of
+§J's tool: A's run reviewed both subjects as reviewer 1 and stopped ("needs a
+second reviewer"); B's run asked "Reviewer 2 of 2" (A's marks hidden), then
+"Resolve" with only the disagreements; `qc.tsv` has `review1_raters` "A, B"
+and `review1_kappa`. On your machine (Windows), one person can play both
+reviewers by giving a different name each run:
 
-1. Add a Review strip, set *Reviewers* to 2, *Run offline*; give one name
-   (e.g. A) and mark a few spans; save.
-2. *Run offline* again as A: the log says it needs a second reviewer.
-3. *Run offline* as B: A's marks are not shown; mark some spans (some like
-   A's, some not); save. The resolve window opens: its heading gives the
-   kappa; the suggestions list each mark only one of you made, with *From*
-   naming the reviewer. Answer each (Y, N or E); save.
+1. *Open…* `OUT/k/two_reviewers.json`; *Run offline*; name **A**. Each
+   subject's window says *Reviewer 1 of 2*: answer the blinks, mark a BAD
+   span (e.g. 25–27 s), save. The run then ends with "needs a second
+   reviewer: A reviewed as reviewer 1" for each subject (expected: listed as
+   failed).
+2. *Run offline* again; name **A** again: the same message (A cannot be
+   reviewer 2).
+3. *Run offline*; name **B**. *Reviewer 2 of 2*: none of A's marks are shown.
+   Answer the blinks, mark BAD at 25–27 s (as A) and at 44–46 s (A did not),
+   save. Then *Resolve*: the heading gives Cohen's kappa; the suggestions list
+   only the 44–46 s span, *From* reviewer 2 (B). Answer it, save.
+4. *QC summary*: `review1_raters` "A, B" and `review1_kappa` per label.
 
 | Item | Value / result | Notes |
 |---|---|---|
