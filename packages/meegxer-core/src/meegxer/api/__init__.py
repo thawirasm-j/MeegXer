@@ -30,6 +30,7 @@ def run(
     raw: Any,
     *,
     output: str | None = None,
+    ica: Any = None,
     block_size: int | None = None,
     allow_version_mismatch: bool = False,
 ) -> Any:
@@ -47,6 +48,9 @@ def run(
       for an Epochs strip (or Review epochs) its epochs (``mne.Epochs``;
       None when no event was cut). ``"strip:port"``: that rail output, e.g.
       ``"ica1:ics"`` for the ICA strip's components (``misc`` channels).
+    - ``ica``: an ``mne.preprocessing.ICA`` of ``raw``, or its file
+      (``-ica.fif``): its components start the ICs rail at the input
+      (``"input:ics"``), instead of a ``.set``'s own.
 
     The returned Raw has the events on the Events rail there as
     annotations (a ``boundary`` at each cut), the channels' types and
@@ -68,6 +72,11 @@ def run(
         source: FileSource = FileSource({"path": str(raw)})
     else:
         source = RawInput(raw)
+    if isinstance(ica, str | PathLike):
+        import mne
+
+        ica = mne.preprocessing.read_ica(str(ica), verbose="error")
+    source.mne_ica = ica
     graph.replace(graph.source.id, source)
     for node_id in drop_shared_sinks(graph):  # a shared session's writers
         logger.info("%s writes nowhere (shared without its file name)", node_id)

@@ -39,6 +39,7 @@ BY_NODE: dict[str, list[Reference]] = {
     "meegxer.core.file": [MNE],
     "meegxer.core.bids": _BIDS,
     "meegxer.core.set_writer": [MNE],
+    "meegxer.core.ica_writer": [MNE],
     "meegxer.core.edf_writer": [MNE],
     "meegxer.core.bids_writer": _BIDS,
     "meegxer.core.bids_features": _BIDS,
@@ -77,6 +78,7 @@ def collect(references: Iterable[Mapping[str, str]]) -> list[dict[str, str]]:
 # where each built-in core node is listed in the GUI (manifest ``category``)
 CATEGORIES = {
     "meegxer.core.set_writer": "files",
+    "meegxer.core.ica_writer": "files",
     "meegxer.core.edf_writer": "files",
     "meegxer.core.feature_tsv": "files",
     "meegxer.core.bids_writer": "files",

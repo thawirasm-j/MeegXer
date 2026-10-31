@@ -19,13 +19,14 @@ node code as the GUI's offline runs and `meegxer run`). It ships with
 and no node package (an import-linter contract): the strips come through the
 node registry.
 
-## `run(pipeline, raw, *, output=None, block_size=None, allow_version_mismatch=False)`
+## `run(pipeline, raw, *, output=None, ica=None, block_size=None, allow_version_mismatch=False)`
 
 | Argument | What it takes |
 |---|---|
 | `pipeline` | A pipeline file (`.json`) or session file (`.meegxer.json`), or the same as a dict. A session's calibrated models are used where they fit this input; otherwise they are refitted (with a warning). |
 | `raw` | An `mne.io.Raw`, or a recording file the File input reads (`.set`, `.edf`, `.bdf`, `.vhdr`, `.fif`, `.xdf`, …). |
 | `output` | Where the result is read; see below. |
+| `ica` | An `mne.preprocessing.ICA` of `raw`, or its file (`-ica.fif`): its components start the ICs rail at the input (`output="input:ics"`, or an ICA-reading strip), instead of a `.set`'s own. |
 | `block_size` | Feed the strips in blocks of this many samples (as `meegxer run --block-size`). |
 | `allow_version_mismatch` | Run a session whose node versions or plugin images differ (their models are refitted). |
 
@@ -57,9 +58,13 @@ with the feature writer (`.tsv`) in the pipeline.
 - A Review strip not yet reviewed stops the run (`meegxer.core.review.ReviewNeeded`).
 - What the run noted goes to the `meegxer` logger (`logging`). Saves it skipped, and models it could not reuse, are Python warnings.
 
-## Next
+## MNE ICA files
 
-MNE ICA files (`-ica.fif`) on the ICs rail (M10.7b):
-- the File input reads one onto the ICs rail;
-- an *MNE ICA (.fif)* writer stores the rail's decomposition;
-- `run(..., ica=...)` takes an `mne.preprocessing.ICA`.
+An MNE ICA (`-ica.fif`) goes both ways (`meegxer.core.mne_ica`, `docs/RAILS.md`):
+- **In:** `run(..., ica=ica)` here, or the File input's *MNE ICA file* in the GUI and pipelines (`ica`), starts the ICs rail with MNE's own sources.
+- **Out:** the *MNE ICA (.fif)* writer stores the ICs rail's decomposition for `mne.preprocessing.read_ica`. The components an ICA strip removed are marked `exclude`, and ICLabel's classes go in `labels_`.
+
+```python
+ica = mne.preprocessing.read_ica("sub-01-ica.fif")
+ics = run("pipeline.json", raw, ica=ica, output="input:ics")
+```

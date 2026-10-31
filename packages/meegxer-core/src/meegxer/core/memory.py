@@ -37,16 +37,18 @@ EPOCHS_OUTPUT = "meegxer.api.epochs"
 class RawInput(FileSource):
     """An MNE Raw in memory as the File input (a copy: the caller's Raw is
     left as it is). Its annotations are the input's events; it has no review
-    at import (that belongs to a file)."""
+    at import (that belongs to a file). ``ica``: an ``mne.preprocessing.ICA``
+    of it, whose components start the ICs rail."""
 
-    def __init__(self, raw: Any) -> None:
+    def __init__(self, raw: Any, ica: Any = None) -> None:
         super().__init__({"import_review": False})
         self._mne_raw = raw
+        self.mne_ica = ica
 
     def _files(self) -> list[Path]:
         return []
 
-    def _load(self) -> Any:
+    def _read_recording(self) -> Any:
         return self._mne_raw.copy().load_data(verbose="error")
 
     def _stream_id(self) -> str:
@@ -61,6 +63,8 @@ class RawInput(FileSource):
         digest = hashlib.sha256(np.ascontiguousarray(data).tobytes())
         digest.update(repr((info.ch_labels, info.sfreq, info.bads,
                             self._annotations)).encode())  # fmt: skip
+        if self._decomposition is not None:  # its ICA, if given
+            digest.update(np.ascontiguousarray(self._decomposition.weights).tobytes())
         return digest.hexdigest()
 
     def input_files(self) -> list[Path]:

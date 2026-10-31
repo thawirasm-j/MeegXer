@@ -15,6 +15,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   strip's epochs as `mne.Epochs`; `output="ica1:ics"` returns the ICA
   components. It runs the same code as the GUI and `meegxer run`, and what a
   `.set` written at the same place would hold. See `docs/PYTHON_API.md`.
+- **MNE ICA files** (M10.7): the File input's *MNE ICA file* (an
+  `-ica.fif` of the recording), or `run(..., ica=ica)`, starts the ICs rail
+  with MNE's own components (projectors and all), classified by ICLabel. The
+  new *MNE ICA (.fif)* output writes the ICs rail's decomposition for
+  `mne.preprocessing.read_ica`: the input's, or the ICA strip's with the
+  components it removed marked `exclude` and ICLabel's classes in `labels_`.
 - **EEGLAB decompositions** (M10.6): an EEGLAB `.set` carrying an ICA
   decomposition (`icaweights`) starts the ICs rail at the Input strip: tap it
   to see its components, with the file's ICLabel classes (or ICLabel's,

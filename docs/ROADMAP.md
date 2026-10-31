@@ -59,7 +59,7 @@ in later 0.4.0 betas.
 | M10.4 Bad segments | Done, as the review track below: detectors write `BAD_…` spans, a Reject segments strip cuts them, the Epochs strip leaves out epochs overlapping them | PR #87, #97 |
 | M10.5 XDF input | Done: the File input opens LabRecorder `.xdf` files (pyxdf): the first EEG stream (or one by name), its marker streams as events on the nearest sample, units to volts (µV assumed where a file states none, and said so), a `BAD_gap` mark where samples were lost | PR #125 |
 | M10.6 EEGLAB decompositions | Done: a `.set` with `icaweights` starts the ICs rail at the Input strip (the file's ICLabel classes, else computed), rewritten by an ICA strip after it; the `.set` writer stores the decomposition that unmixes its data, with the ICLabel classes (removed components dropped, as `pop_subcomp`) | PR #128, #129, #130 |
-| M10.7 MNE Python API | Partly: `meegxer.api.run(pipeline, raw)` gives the chain's end as `mne.io.Raw`, an Epochs strip's epochs as `mne.Epochs`, or a rail output (the ICs) (`docs/PYTHON_API.md`). MNE ICA `.fif` files on the ICs rail are next | this PR |
+| M10.7 MNE Python API | Done: `meegxer.api.run(pipeline, raw)` gives the chain's end as `mne.io.Raw`, an Epochs strip's epochs as `mne.Epochs`, or a rail output (the ICs) (`docs/PYTHON_API.md`); MNE ICA `-ica.fif` files start the ICs rail (File input, `ica=`) and the *MNE ICA (.fif)* writer stores it | PR #131, this PR |
 | M10.8 Batch workers, QC report | Done: `--jobs N` worker processes (and `general.batch_jobs` for the GUI's all-subjects run), a QC report per recording (mne.Report) and the dataset's `qc.tsv` and `qc.html` | PR #107 |
 | M10.9 Templates, sample data | Partly: ERP, resting-state and ICA cleaning templates (GUI *New…*, `meegxer new`), and the ERP CORE and EEGBCI samples, fetched per subject on first use. The SSVEP BCI template waits for M11 | PR #106, #112 |
 | M10.10 Undo for chain edits | Open (the review window has undo) | |
@@ -70,7 +70,7 @@ Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
 (now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
 reference.
 
-**Next:** the open M10 items: the MNE Python API (M10.7), undo (M10.10), review step 6 (M10.11).
+**Next:** the open M10 items: undo (M10.10), review step 6 (M10.11).
 
 ### M9: Fix and harden (0.3.0bN)
 

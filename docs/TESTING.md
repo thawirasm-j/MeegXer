@@ -466,9 +466,32 @@ with `meegxer.api.run`, from an `mne.io.Raw` and from the file.
    `from meegxer.api import run` and a pipeline of yours saved from the GUI
    (*Save*), e.g. `run("my_pipeline.json", raw)`: it returns an `mne.io.Raw`.
 
+MNE ICA files: `uv run python tools/mne_ica_demo.py OUT` writes
+`OUT/ica_demo_raw.fif` (the ICA test recording) and `OUT/ica_demo-ica.fif`
+(MNE's own ICA of it: 15 components, component 1 marked excluded). An MNE ICA
+of your own recording works too. First `uv run meegxer shutdown`.
+
+5. GUI: *Input → File*, `ica_demo_raw.fif`; with *Advanced* on, the
+   input's *MNE ICA file* `ica_demo-ica.fif`. At once the log says `MNE
+   ICA decomposition: 15 components on 19 channels start the ICs rail; ICLabel
+   classes computed when a run first reads them` and that the file marks
+   component 1 for removal; the chain shows the ICs rail from the Input strip.
+   After *Start*, its tap shows IC01 to IC15 with classes.
+6. Add *Output → MNE ICA file (.fif)* `OUT/clean-ica.fif` after an ICA strip;
+   *Start*. In Python: `mne.preprocessing.read_ica(r"OUT/clean-ica.fif")`
+   shows the ICA strip's components with the removed ones marked for
+   exclusion (`ica.exclude`, as its inspector lists them) and `ica.labels_`
+   ICLabel's classes. Without an ICA strip (and no ICA on the input) the log
+   says `no ICA decomposition before it`.
+7. Python: `run(PIPELINE, raw, ica=r"OUT/ica_demo-ica.fif",
+   output="input:ics")` returns the 15 components as an `mne.io.Raw`.
+
 | Item | Value / result | Notes |
 |---|---|---|
 | H1 Raw back, with the input's annotations | | |
 | H2 Epochs on the event; the ERP | | |
 | H3 the same from the file | | |
 | H4 a GUI pipeline from your own Python | | |
+| H5 an MNE ICA file starts the ICs rail (GUI) | | |
+| H6 the MNE ICA writer; `read_ica` reads it | | |
+| H7 `ica=` in Python | | |

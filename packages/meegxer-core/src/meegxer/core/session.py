@@ -44,7 +44,7 @@ from meegxer.core.serialization import State, hash_state
 from meegxer.core.stage import FittedModel, Stage
 
 SESSION_FORMAT = "1.0"
-PATH_PARAMS = ("path", "root")  # parameters holding file or folder locations
+PATH_PARAMS = ("path", "root", "ica")  # parameters holding file or folder locations
 PACKAGES = (
     "meegxer-core", "meegxer-nodes", "meegxer-gui", "meegxer-cli",
     "meegxer-plugins", "numpy", "scipy", "mne", "mne-bids", "eeglabio", "edfio",
@@ -513,6 +513,8 @@ def share_safe(session: Mapping[str, Any]) -> dict[str, Any]:
                 params["path"] = places[key(path)] = f"<input>{_suffix(path)}"
             if isinstance(root, str) and root and not is_placeholder(root):
                 params["root"] = "<input-root>"
+            if params.get("ica"):  # an MNE ICA file: it belongs to its recording
+                params["ica"] = ""
         else:
             if isinstance(path, str) and path and not is_placeholder(path):
                 params["path"] = output(path)
