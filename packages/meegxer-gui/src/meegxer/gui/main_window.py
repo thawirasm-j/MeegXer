@@ -80,6 +80,12 @@ from meegxer.gui.connection import DaemonLink
 from meegxer.gui.epoch_review_window import EpochReviewWindow
 from meegxer.gui.erp_view import Erp, ErpView
 from meegxer.gui.feature_view import FeatureSeries, FeatureView
+from meegxer.gui.history import (
+    EditHistory,
+    changed_params,
+    describe_edit,
+    same_structure,
+)
 from meegxer.gui.inspector import Inspector
 from meegxer.gui.labels import param_label
 from meegxer.gui.names import title
@@ -152,6 +158,8 @@ class MainWindow(QMainWindow):
         self.offline_sfreq = 0.0
         self.offline_total = 0
         self.offline_state = ""
+        self.history = EditHistory()  # undo and redo of the chain (M10.10)
+        self._restoring = False  # an undo or redo is being applied
         self.offline_stopping = False  # stop_offline asked; the strip finishes
         self._unseen = 0  # log lines written while the log is hidden
         self.review_window: ReviewWindow | None = None  # a review strip waits
@@ -177,7 +185,7 @@ class MainWindow(QMainWindow):
         self._apply_view_settings()
         self._fill_recent()
         self._load_initial()
-        self._mark_saved()  # what it starts with has nothing unsaved
+        self._mark_saved(new_history=True)  # what it starts with has nothing unsaved
         # recordings being recovered in the daemon, watched until written
         self._recovering: set[str] = set()
         self._recovery_timer = QTimer(self)
@@ -262,6 +270,9 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+N"), self, self.new_from_template)
         QShortcut(QKeySequence("Ctrl+O"), self, self.open_pipeline)
         QShortcut(QKeySequence("Ctrl+S"), self, self.save_pipeline)
+        QShortcut(QKeySequence("Ctrl+Z"), self, self.undo)
+        QShortcut(QKeySequence("Ctrl+Shift+Z"), self, self.redo)
+        QShortcut(QKeySequence("Ctrl+Y"), self, self.redo)
         # a text field keeps its spaces: it takes the key before the shortcut
         QShortcut(QKeySequence("Space"), self, self.start_or_stop)
         self.recording_window.applied.connect(self.apply_recording)
@@ -315,6 +326,18 @@ class MainWindow(QMainWindow):
             b.clicked.connect(lambda _=False, f=slot: f())
             if tip:
                 b.setToolTip(tip)
+            lay.addWidget(b)
+        lay.addSpacing(8)
+        self.undo_btn = QPushButton("↶ Undo")
+        self.undo_btn.setToolTip("Undo the last change to the chain or a setting "
+                                 "(Ctrl+Z)")  # fmt: skip
+        self.undo_btn.clicked.connect(lambda _=False: self.undo())
+        self.redo_btn = QPushButton("↷ Redo")
+        self.redo_btn.setToolTip("Redo the change last undone (Ctrl+Shift+Z or "
+                                 "Ctrl+Y)")  # fmt: skip
+        self.redo_btn.clicked.connect(lambda _=False: self.redo())
+        for b in (self.undo_btn, self.redo_btn):
+            b.setEnabled(False)
             lay.addWidget(b)
         lay.addSpacing(12)
         self.mode_group = QButtonGroup(self)
@@ -545,6 +568,7 @@ class MainWindow(QMainWindow):
         self.view.names = self._probe_names()
         self.refresh_inspector()
         self._transport()
+        self._record_edit()
 
     def _probe_names(self) -> dict[str, str]:
         """Legend names: "Input", "after Notch" (the id is added when two strips
@@ -871,6 +895,7 @@ class MainWindow(QMainWindow):
         self.doc.get(strip_id).strip_params = names
         if self.running:
             self.call("set_strip_params", node=strip_id, params=names)
+        self._record_edit()
         self.chain.rebuild(
             self.doc,
             self.theme,
@@ -1028,7 +1053,7 @@ class MainWindow(QMainWindow):
             return
         self._default_taps()
         self._structure_changed(f"Opened {path}.")
-        self._mark_saved()
+        self._mark_saved(new_history=True)
 
     def new_from_template(self) -> None:
         """A pipeline from a template (``meegxer.core.templates``); with its
@@ -1090,7 +1115,7 @@ class MainWindow(QMainWindow):
             return
         self._default_taps()
         self._structure_changed(f"New from template: {label}.")
-        self._mark_saved()  # nothing of the user's to lose yet
+        self._mark_saved(new_history=True)  # nothing of the user's to lose yet
 
     def open_session(self, path: str) -> None:
         """Load a session: its pipeline here, its fitted models in the daemon
@@ -1122,7 +1147,7 @@ class MainWindow(QMainWindow):
             self.log(f"Session: {warning}")
         models = ", ".join(reply.get("models", [])) or "none"
         self._structure_changed(f"Opened session {path} (fitted models: {models}).")
-        self._mark_saved()
+        self._mark_saved(new_history=True)
 
     def offer_recovery(self) -> None:
         """Offer to save each recording a crashed run left unfinished (the file
@@ -1277,9 +1302,73 @@ class MainWindow(QMainWindow):
         except (KeyError, ValueError):
             return ""
 
-    def _mark_saved(self) -> None:
-        """The chain as it is now has nothing unsaved (opened, saved, new)."""
+    def _mark_saved(self, new_history: bool = False) -> None:
+        """The chain as it is now has nothing unsaved (opened, saved, new);
+        ``new_history``: it was opened or made, so undo starts afresh."""
         self._saved_text = self._pipeline_text()
+        if new_history:
+            self.history.reset(self._saved_text)
+            self._update_undo()
+
+    # -- undo and redo (M10.10) -------------------------------------------------------
+
+    def _record_edit(self) -> None:
+        """After anything that may have changed the chain: a step to undo."""
+        if not self._restoring and self.history.record(self._pipeline_text()):
+            self._update_undo()
+
+    def _update_undo(self) -> None:
+        if not hasattr(self, "redo_btn"):  # edits while the window is built
+            return
+        self.undo_btn.setEnabled(bool(self.history.undo_stack))
+        self.redo_btn.setEnabled(bool(self.history.redo_stack))
+
+    def undo(self) -> None:
+        """Back to the chain before the last edit (Ctrl+Z)."""
+        before = self.history.current
+        text = self.history.undo()
+        if text is not None:
+            self._restore(text, "Undo", describe_edit(text, before))
+
+    def redo(self) -> None:
+        """The edit last undone, again (Ctrl+Shift+Z or Ctrl+Y)."""
+        before = self.history.current
+        text = self.history.redo()
+        if text is not None:
+            self._restore(text, "Redo", describe_edit(before, text))
+
+    def _restore(self, text: str, verb: str, what: str) -> None:
+        """Make the chain ``text`` again. Running live, settings alone go to
+        the daemon as edits of them do (no restart); any other change
+        restarts the run, as the edit did."""
+        after = json.loads(text)
+        before = self.doc.to_pipeline(taps=False)
+        message = f"{verb}: {what}."
+        self._restoring = True
+        try:
+            if self.running and same_structure(before["nodes"], after["nodes"]):
+                self.log(message)
+                for sid, name, value in changed_params(before["nodes"], after["nodes"]):
+                    self.change_param(sid, name, value)
+            else:
+                mode, source = self.doc.input_mode, self.doc.source_entry()
+                self.doc.load_pipeline(after)
+                if (
+                    self.doc.source is not None
+                    and after["nodes"][0]["node"] == source["node"]
+                ):
+                    self.doc.input_mode = (
+                        mode  # the mode is the window's, not the chain's
+                    )
+                if self.selected not in {s.id for s in self.doc.strips}:
+                    self.selected = None
+                self._structure_changed(message)
+                if not self.running and self.doc.source_entry() != source:
+                    self._describe_input()  # another file: what it carries
+        finally:
+            self._restoring = False
+        self.history.current = self._pipeline_text()
+        self._update_undo()
 
     def modified(self) -> bool:
         """Whether the chain changed since it was opened, saved or made."""
