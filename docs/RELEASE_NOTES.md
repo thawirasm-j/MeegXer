@@ -7,6 +7,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Review report** (review step 6a): each recording's QC report has a
+  section for each review of it (at import, and each Review or Review epochs
+  strip): who reviewed and when, how much of the recording they viewed, the
+  marks per label (how many, how long), the bad channels, how they answered a
+  detector's suggestions, and the epochs kept and rejected per label. The
+  dataset's `qc.tsv` and `qc.html` get the same columns, so reviews compare
+  across subjects (`docs/REVIEW.md`).
 ## Next (not released yet)
 
 - **Undo and redo** (M10.10): *↶ Undo* and *↷ Redo* in the top bar, or Ctrl+Z

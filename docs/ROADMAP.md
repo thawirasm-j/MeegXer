@@ -64,14 +64,14 @@ items (M10.5–M10.7, checked in §F to §H). Its open items (below) come in lat
 | M10.8 Batch workers, QC report | Done: `--jobs N` worker processes (and `general.batch_jobs` for the GUI's all-subjects run), a QC report per recording (mne.Report) and the dataset's `qc.tsv` and `qc.html` | PR #107 |
 | M10.9 Templates, sample data | Partly: ERP, resting-state and ICA cleaning templates (GUI *New…*, `meegxer new`), and the ERP CORE and EEGBCI samples, fetched per subject on first use. The SSVEP BCI template waits for M11 | PR #106, #112 |
 | M10.10 Undo for chain edits | Done: *Undo* and *Redo* (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) for every chain and setting edit, quick changes of one setting as one step; live, settings undo without a restart (`meegxer.gui.history`) | this PR |
-| M10.11 Manual review (added) | Steps 1–5 of `docs/REVIEW.md` Design v2 done: Review strip, Reject segments, review display, review at import, review points, detectors, suggestions with verdicts, epoch review, rejected epochs on the Events rail. Step 6 (a second reviewer, a review report) open | PR #81 – #100 |
+| M10.11 Manual review (added) | Steps 1–5 of `docs/REVIEW.md` Design v2 done: Review strip, Reject segments, review display, review at import, review points, detectors, suggestions with verdicts, epoch review, rejected epochs on the Events rail. Step 6a (the review report, in the QC report) done; 6b (a second reviewer, blind, compare and resolve, Cohen's kappa) open | PR #81 – #100, this PR |
 
 Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
 "M10.2b" and "M10.2c" are the review strip, cuts and the stacked review window
 (now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
 reference.
 
-**Next:** the open M10 item: review step 6 (M10.11).
+**Next:** the open M10 item: review step 6b, a second reviewer (M10.11).
 
 ### M9: Fix and harden (0.3.0bN)
 

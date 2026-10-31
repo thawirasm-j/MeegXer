@@ -3,7 +3,9 @@
 Each recording gets an HTML report (``mne.Report``) next to its derivatives,
 ``…_desc-<label>_report.html``: a MeegXer table (the chain, how much of the
 recording was kept, bad channels, what each fitted model does, epochs kept per
-label), the power spectra of the input and of the processed recording, and the
+label), each review of it (``meegxer.core.review_report``: who, when, how much
+was viewed, the marks per label, bad channels, suggestions answered, epochs
+kept), the power spectra of the input and of the processed recording, and the
 epochs and ERPs when the run wrote them. The same table goes to ``…_qc.json``;
 the dataset's ``qc.tsv`` and ``qc.html`` collect them, one row per recording.
 """
@@ -74,6 +76,10 @@ def _recording_qc(graph: Any, target: Any, label: str) -> dict[str, Any]:
             described = stage.processor.describe_model(stage.model.data, stage.params)
             for key, value in described.items():
                 row[f"{node.id}_{key}"] = value
+    from meegxer.core.review_report import review_row, review_sections, section_html
+
+    reviews = review_sections(graph)  # at import, and each review strip's
+    row.update(review_row(reviews))
     epochs = evokeds = None
     if target.path("epo.fif").is_file():
         epochs = mne.read_epochs(target.path("epo.fif"), verbose="error")
@@ -88,6 +94,8 @@ def _recording_qc(graph: Any, target: Any, label: str) -> dict[str, Any]:
     writer = next(n.id for n in graph.nodes if isinstance(n.impl, BidsWriter))
     chain = _describe_chain(graph, writer)
     report.add_html(_table({**row, "chain": chain}), title="MeegXer")
+    for section in reviews:  # who reviewed, what they marked and answered
+        report.add_html(section_html(section), title=section.title)
     raw = getattr(source, "_load", None)
     if raw is not None:
         report.add_raw(raw(), title="Input", psd=True, butterfly=False)

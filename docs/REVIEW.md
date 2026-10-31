@@ -127,7 +127,10 @@ Who reviews, and what helps them:
      provenance. *Built* (see *Built: step 4b* below).
 5. **Epoch review** (accept, reject or label each epoch), and the ERP view.
    *Built* (see *Built: step 5* below), as its own strip and window.
-6. **Later:** a second reviewer with compare and resolve; a review report.
+6. **A review report and a second reviewer**, in two PRs (decisions below):
+   - 6a. the review report, in each recording's QC report. *Built*.
+   - 6b. a second reviewer: blind, then compare and resolve, with Cohen's
+     kappa in the report.
 
 ### Step 4b: decisions (2026-10-30; built)
 
@@ -147,6 +150,31 @@ Who reviews, and what helps them:
 - **Proposed bad channels** (a detector's `bad_channel` events) are asked
   about in the queue like the spans; only confirmed ones become bad.
 - **Headless runs stop** while a suggestion has no verdict (principle 5).
+
+### Step 6: decisions (2026-10-31)
+
+- **The review report is part of the QC report** (`meegxer.core.qc`, written
+  for BIDS-derivative and batch runs). Each recording's report gets a section
+  per review: the review at import first, then each Review and Review epochs
+  strip with a sidecar (`meegxer.core.review_report`). The `qc.tsv` row gets
+  the same fields, prefixed by the strip's id (`import_` for the review at
+  import):
+  - `reviewer`, `reviewed` (when, UTC);
+  - `viewed_percent`: the spans looked at, merged, as a share of the recording;
+  - `marks`: per label, how many and how long (`BAD: 2 (3.5 s); blink: 4 (1.2 s)`);
+    a rejected suggestion is no mark;
+  - `bad_channels`; `verdicts`: suggestions answered per detector
+    (`blinks1: accepted 2, edited 1, rejected 6`); `crop_s` (review at import);
+  - for an epoch review, `epochs`: per label, kept and rejected.
+  Only what the sidecars hold is reported; nothing is recomputed.
+- **A second reviewer is blind, then resolved** (6b): with two reviewers, each
+  marks without seeing the other's marks, in a sidecar of their own; a
+  Compare view shows both and their agreement, and the resolver settles the
+  disagreements. The resolved marks are the strip's sidecar and go on.
+- **Agreement is Cohen's kappa** (Cohen 1960), per label, over 1-second
+  windows (each marked or not by each reviewer), from scikit-learn's
+  `cohen_kappa_score`; the 1 s window is MeegXer's choice, said so in the
+  help.
 
 ## Built so far (v1)
 
