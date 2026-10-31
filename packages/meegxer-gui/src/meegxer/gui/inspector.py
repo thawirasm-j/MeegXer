@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from meegxer.gui.labels import choice_label, param_label, unit_label
+from meegxer.gui.labels import SHOWN_IN_MS, choice_label, param_label, unit_label
 from meegxer.gui.names import title
 from meegxer.gui.pipeline_doc import MAX_STRIP_PARAMS, PipelineDoc, StripNode
 from meegxer.gui.theme import DEFAULT_GROUPS, Theme
@@ -160,9 +160,26 @@ def param_step(spec: dict[str, Any], value: Any) -> float:
     return step
 
 
-def _editor(spec: dict[str, Any], value: Any) -> tuple[QWidget, Any]:
-    """A control for one parameter and the signal that reports a final value."""
+def _editor(
+    spec: dict[str, Any], value: Any, ms_step: float | None = None
+) -> tuple[QWidget, Any]:
+    """A control for one parameter and the signal that reports a final value.
+    With ``ms_step`` a parameter in seconds is shown and edited in ms (the
+    field keeps its ``scale``; ``_value`` turns it back into seconds)."""
     kind = spec["type"]
+    if kind == "float" and ms_step and spec.get("unit") == "s":
+        ms = _Number()
+        ms.setDecimals(0)
+        ms.setRange(
+            spec["min"] * 1e3 if spec["min"] is not None else -1e12,
+            spec["max"] * 1e3 if spec["max"] is not None else 1e12,
+        )
+        ms.setValue(float(value) * 1e3)
+        ms.setSingleStep(ms_step)
+        ms.setSuffix(" ms")
+        ms.setProperty("scale", 1e3)
+        ms.setKeyboardTracking(False)
+        return ms, ms.valueChanged
     if kind == "bool":
         box = QCheckBox(param_label(spec["name"], spec))
         box.setChecked(bool(value))
@@ -178,6 +195,10 @@ def _editor(spec: dict[str, Any], value: Any) -> tuple[QWidget, Any]:
         return edit, edit.finished
     if kind == "string":
         line = QLineEdit(str(value))
+        # wide enough for what it holds (event labels such as
+        # stimulus/compatible/target_left, comma-separated)
+        room = line.fontMetrics().horizontalAdvance(str(value)) + 24
+        line.setMinimumWidth(min(max(line.sizeHint().width(), room, 220), 480))
         return line, line.editingFinished
     spin: QSpinBox | QDoubleSpinBox
     if kind == "int":
@@ -215,7 +236,8 @@ def _value(widget: QWidget) -> Any:
     if isinstance(widget, QLineEdit | PathEdit):
         return widget.text()
     if isinstance(widget, QSpinBox | QDoubleSpinBox):
-        return widget.value()
+        scale = widget.property("scale")  # shown in ms, kept in seconds
+        return widget.value() / scale if scale else widget.value()
     raise TypeError(widget)
 
 
@@ -422,7 +444,8 @@ class Inspector(QScrollArea):
         switches: list[QWidget] = []
         for spec in specs:
             name = spec["name"]
-            editor, changed = _editor(spec, strip.params.get(name, spec["default"]))
+            editor, changed = _editor(spec, strip.params.get(name, spec["default"]),
+                                      SHOWN_IN_MS.get((strip.node, name)))  # fmt: skip
             changed.connect(
                 lambda *_, n=name, w=editor: self.param_changed.emit(
                     strip.id, n, _value(w)

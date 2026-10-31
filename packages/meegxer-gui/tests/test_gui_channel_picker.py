@@ -42,6 +42,12 @@ def test_clicking_the_head_and_the_quick_choices(qapp: QApplication) -> None:
     picker.show()
     qapp.processEvents()
     assert set(picker.boxes) == {"Aux1"}  # no place on the head: a check box
+    from PySide6.QtWidgets import QPushButton
+
+    buttons = picker.buttons.findChildren(QPushButton)
+    for b in buttons:  # 2 x 2, each wide enough for its words
+        assert b.width() >= b.fontMetrics().horizontalAdvance(b.text())
+    assert len({b.y() for b in buttons}) == 2  # two rows
     cz = picker.head._to_px(*picker.head.points["Cz"])
     QTest.mouseClick(picker.head, Qt.MouseButton.LeftButton,
                      pos=QPointF(cz).toPoint())  # fmt: skip

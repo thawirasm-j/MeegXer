@@ -7,6 +7,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Epoch times in ms:** the Epochs strip's trial start and end and its
+  baseline start and end are shown and typed in ms, 50 ms a step (pipelines
+  keep seconds, as MNE takes them; `meegxer set` too). Long event labels fit:
+  the ERP view's *Show*, the epoch review's label and the strip's text fields
+  widen to them. The head picker's *All*, *None*, *Standard 19* and *Default*
+  sit two by two, each readable.
 - **Custom baseline:** the Epochs strip's *baseline* has a `custom` choice:
   each channel's mean over *baseline start* .. *baseline end* (seconds from
   the event, inside the epoch) is subtracted, as MNE's `baseline=(a, b)`.

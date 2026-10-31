@@ -248,6 +248,16 @@ def choice_label(name: str, value: Any) -> str:
     return CHOICES.get((name, str(value)), str(value))
 
 
+# Parameters kept in seconds (as MNE takes them) but shown and edited in ms,
+# 50 ms a step: (node, parameter) -> step in ms
+SHOWN_IN_MS: dict[tuple[str, str], float] = {
+    ("meegxer.nodes.epochs", "tmin"): 50.0,
+    ("meegxer.nodes.epochs", "tmax"): 50.0,
+    ("meegxer.nodes.epochs", "baseline_start"): 50.0,
+    ("meegxer.nodes.epochs", "baseline_end"): 50.0,
+}
+
+
 def unit_label(unit: str | None) -> str:
     return UNITS.get(unit or "", unit or "")
 

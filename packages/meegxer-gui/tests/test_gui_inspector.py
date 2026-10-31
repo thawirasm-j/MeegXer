@@ -206,3 +206,22 @@ def test_path_parameters_have_a_browse_button(
     root.button.click()
     assert seen[-1] == ("input", "root", str(tmp_path))
     dispose(qapp, ins)
+
+
+def test_epoch_times_are_shown_in_ms_and_kept_in_seconds(
+    qapp: QApplication, doc: PipelineDoc
+) -> None:
+    """The Epochs strip's trial and baseline times: edited in ms, 50 ms a
+    step; the pipeline keeps seconds, as MNE takes them."""
+    from PySide6.QtWidgets import QDoubleSpinBox
+
+    strip = doc.insert(len(doc.strips), "meegxer.nodes.epochs")
+    ins, seen = show(qapp, doc, strip.id, advanced=False)
+    fields = [f for f in ins.findChildren(QDoubleSpinBox) if f.suffix() == " ms"]
+    assert sorted(f.value() for f in fields) == [-200.0, -200.0, 0.0, 800.0]
+    assert all(f.singleStep() == 50.0 for f in fields)
+    tmax = next(f for f in fields if f.value() == 800.0)
+    tmax.setValue(650.0)  # typed in ms ...
+    assert seen[-1][1] == "tmax"
+    assert seen[-1][2] == pytest.approx(0.65)  # ... sent in seconds
+    dispose(qapp, ins)
