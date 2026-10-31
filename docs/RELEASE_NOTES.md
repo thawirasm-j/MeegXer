@@ -12,8 +12,8 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   to see its components, with the file's ICLabel classes (or ICLabel's,
   computed by MeegXer when the file has none), map them on the head, or give
   them to a spectrum or band-power strip. An ICA strip after the input makes
-  its own: the chain draws the file's rail ending there. The log says what the
-  file carries. *Save as .set* stores the decomposition with the data, as
+  its own: the chain ends the file's rail there and goes on with the ICA's on
+  the same row. The log says what the file carries as soon as it is chosen. *Save as .set* stores the decomposition with the data, as
   EEGLAB does: the file's, or the ICA strip's without the components it
   removed (as `pop_subcomp`), with the ICLabel classes, so EEGLAB and MNE
   open the cleaned file with its ICA. After a re-reference (or another strip

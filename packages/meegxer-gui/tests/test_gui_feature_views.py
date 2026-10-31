@@ -542,9 +542,10 @@ def test_an_eeglab_files_ics_from_the_input(
     daemon: tuple[str, subprocess.Popen[bytes]],
     tmp_path: Path,
 ) -> None:
-    """M10.6: a .set carrying EEGLAB's decomposition and ICLabel classes: the
-    input starts the ICs rail (a tap on it shows the components with their
-    classes, the head plot maps them back from the file's mixing)."""
+    """M10.6: a .set carrying EEGLAB's decomposition and ICLabel classes: once
+    chosen (before any run), the input starts the ICs rail (a tap on it shows
+    the components with their classes, the head plot maps them back from the
+    file's mixing)."""
     from meegxer.core.eeglab_ica import Decomposition, write_decomposition
     from meegxer.gui.connection import DaemonLink
     from meegxer.gui.main_window import MainWindow
@@ -568,9 +569,8 @@ def test_an_eeglab_files_ics_from_the_input(
     try:
         win.change_source("meegxer.core.file")
         assert win.doc.source is not None
-        win.doc.source.params["path"] = str(path)
-        win._describe_input()
-        assert win.doc.input_rails == ("ics",)
+        win.change_param(win.doc.source.id, "path", str(path))  # the inspector's
+        assert win.doc.input_rails == ("ics",)  # as soon as it is chosen
         assert "start the ICs rail" in win.logbox.toPlainText()
         win.start()
         wait_for(qapp, lambda: win.offline_state in ("done", "error"), 120)

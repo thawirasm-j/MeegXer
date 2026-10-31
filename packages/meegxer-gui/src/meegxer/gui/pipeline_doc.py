@@ -76,6 +76,7 @@ class Rail:
     lane: int = 0
     writers: list[str] = field(default_factory=list)  # later strips adding to it
     ends: str = ""  # the strip rewriting it (an ICA after a file's ICs): it ends there
+    follows: str = ""  # the rail it rewrites, whose row it continues
 
 
 # strips that put events on the Events rail besides the Event detection ones
@@ -500,7 +501,8 @@ class PipelineDoc:
         Features: one rail per feature strip, read by the strips that take it
         as input. Every rail runs on to the end of the chain, so each has its
         own row: Events on top, then the feature rails, earliest highest (a
-        strip pushing up into its rail crosses no earlier rail)."""
+        strip pushing up into its rail crosses no earlier rail). A rail that
+        rewrites another (an ICA strip after a file's ICs) continues its row."""
         needs: dict[str, str] = {}
         rails: list[Rail] = []
         for strip in self.strips[1:]:
@@ -511,8 +513,12 @@ class PipelineDoc:
         self._port_rails(rails, needs)
         order = {s.id: i for i, s in enumerate(self.strips)}
         rails.sort(key=lambda r: order[r.producer])  # stable: a strip's own order
-        for i, rail in enumerate(rails):  # in chain order
-            rail.lane = len(rails) - 1 - i
+        rows = [r for r in rails if not r.follows]
+        lane = {r.id: len(rows) - 1 - i for i, r in enumerate(rows)}  # chain order
+        for rail in rails:  # a rail comes after the one it rewrites
+            if rail.follows:
+                lane[rail.id] = lane[rail.follows]
+            rail.lane = lane[rail.id]
         labelled = [
             s.id for s in self.strips[1:]
             if self.manifest(s).get("fit_events")
@@ -526,7 +532,7 @@ class PipelineDoc:
             start = order[writers[0]]  # a reader before the first writer has none
             readers = [sid for sid in labelled if order[sid] > start]
             rails.append(Rail("events", "events", "Events", writers[0], readers,
-                              lane=len(rails), writers=writers[1:]))  # fmt: skip
+                              lane=len(rows), writers=writers[1:]))  # fmt: skip
             labelled = [sid for sid in labelled if order[sid] <= start]
         needs.update({sid: "Events" for sid in labelled})
         return rails, needs
@@ -567,6 +573,7 @@ class PipelineDoc:
                     rails.append(rail)
                     if name in written:  # rewritten here: the earlier one ends
                         written[name].ends = strip.id
+                        rail.follows = written[name].id
                     written[name] = rail
         for rail in rails:  # strips taking the rail as their main input
             if rail.kind != "events" and ":" in rail.id:

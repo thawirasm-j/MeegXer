@@ -863,6 +863,8 @@ class MainWindow(QMainWindow):
                     f"{self._name(strip_id)}: {param_label(name)} changed, restarting."
                 )
                 self.restart()
+        elif self.doc.role(strip) == "source":  # a new file: what it carries now
+            self._describe_input()
         self.refresh_chain()
 
     def change_strip_params(self, strip_id: str, names: list[str]) -> None:

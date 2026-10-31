@@ -416,16 +416,17 @@ ICA test recording, 19 channels, with EEGLAB's decomposition and ICLabel
 classes) and `OUT/ica_demo_unclassified.set` (without the classes). An EEGLAB
 `.set` of your own with ICA works too. First `uv run meegxer shutdown`.
 
-1. GUI: *Input → File*, `ica_demo.set`. The log says `EEGLAB decomposition:
-   18 components on 19 channels start the ICs rail; ICLabel classes from the
-   file`; the chain shows an ICs rail starting at the Input strip.
+1. GUI: *Input → File*, `ica_demo.set`. At once (before *Start*), the log says
+   `EEGLAB decomposition: 18 components on 19 channels start the ICs rail;
+   ICLabel classes from the file`; the chain shows an ICs rail starting at the
+   Input strip.
 2. *Start* (offline), then click the ICs rail's name: 18 components IC01 to
    IC18, coloured by class, each named with its class and probability in
    *Channels*. *Spectrum*: the head plot maps them back on the electrodes.
-3. Add an ICA strip: the file's ICs rail ends at it (a bar) and ICA's ICs
-   rail starts there.
-4. `ica_demo_unclassified.set`: the log says `ICLabel classes computed when a
-   run first reads them`; after *Start*, the components have classes too.
+3. Add an ICA strip: the file's ICs rail ends at its left edge (a bar) and
+   ICA's ICs rail goes on from it along the same row.
+4. `ica_demo_unclassified.set`: at once, the log says `ICLabel classes
+   computed when a run first reads them`; after *Start*, the components have classes too.
 5. Writing: `ica_demo.set`, an ICA strip, then *Output → Save as .set*
    `OUT/clean.set`; *Start*. Open `clean.set` in EEGLAB if you have it
    (*Tools → Inspect/label components*: N components with their classes, N =
@@ -441,3 +442,4 @@ classes) and `OUT/ica_demo_unclassified.set` (without the classes). An EEGLAB
 | G2 components with classes; the head plot | passed | |
 | G3 an ICA strip ends the file's rail | passed | New ICs should be on the same level as the terminated old IC |
 | G4 classes computed for the unclassified file | partial | the log notes, but after clicking "Run", not immediate |
+| G5 the written `.set` keeps the ICA (EEGLAB or MNE); none after a re-reference | | |

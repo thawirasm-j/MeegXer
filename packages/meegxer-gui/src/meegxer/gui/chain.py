@@ -540,7 +540,8 @@ class RailBoard(QWidget):
             xs = [x for r in rail.readers if (x := self._read_x(r, rail.id))]
             xs += [x for w in rail.writers if (x := self._write_x(w))]
             if rail.ends and (end := self._rect(rail.ends)) is not None:
-                xs.append(end.center().x())  # rewritten there: it ends
+                xs.append(end.left() + 6)  # rewritten there: it ends, its row
+                # going on from the rewriter's port (its name in between)
             out.append((rail, x0, max([x0, *xs])))
         return out
 
