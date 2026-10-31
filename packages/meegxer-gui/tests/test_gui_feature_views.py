@@ -431,11 +431,19 @@ def test_an_epochs_rail_tap_draws_without_error(
         assert win.views.currentWidget() is view
         assert "3 epochs (offline run)" in view.legend.text()
         assert view.reset.isHidden()  # nothing to reset offline
-        assert view.channel.currentText() == "Cz"
-        assert [name for name, _, _ in view.curves()] == ["go (n=3)"]
+        assert view.channel == "Cz" and view.channels.text() == "Channel: Cz"
+        assert [c.name for c in view.curves()] == ["go (n=3)"]
+        go = view.curves()[0]
+        assert go.times[0] == pytest.approx(-200.0)  # ms from the event
+        assert go.sem is not None and np.isfinite(go.sem).all()  # 3 epochs
+        view.channels.picker.toggle("Pz")  # a click on the head: Pz alone
+        assert view.channel == "Pz" and [c.name for c in view.curves()] == ["go (n=3)"]
         view.condition.setCurrentText("go")  # one condition: the channels
-        assert [name for name, _, _ in view.curves()] == ["Fz", "Cz", "Pz"]
-        assert view.channel.isHidden() and not view.channels.isHidden()
+        assert [c.name for c in view.curves()] == ["Fz", "Cz", "Pz"]
+        view.channels.picker.toggle("Fz")  # several now: Fz hidden
+        assert [c.name for c in view.curves()] == ["Cz", "Pz"]
+        view.condition.setCurrentText("All conditions")  # back to its channel
+        assert view.channel == "Pz" and view.channels.hidden == {"Fz", "Cz"}
     finally:
         win.close()
 
@@ -469,7 +477,10 @@ def test_a_live_erp_tap_counts_and_resets(
         win.redraw()
         view = win.erp_view
         assert win.views.currentWidget() is view and not view.reset.isHidden()
-        assert [name for name, _, _ in view.curves()] == ["go (n=2)", "stop (n=1)"]
+        assert [c.name for c in view.curves()] == ["go (n=2)", "stop (n=1)"]
+        stop = view.curves()[1]
+        assert stop.sem is not None and np.isnan(stop.sem).all()  # one epoch
+        view.sem.setChecked(True)  # the band: none for the single stop epoch
         view.reset.click()  # start over: no epochs come after the third
         wait_for(qapp, lambda: counts() == (), 10)
         win.redraw()

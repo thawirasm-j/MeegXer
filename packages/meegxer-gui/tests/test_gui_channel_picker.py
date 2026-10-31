@@ -59,6 +59,27 @@ def test_clicking_the_head_and_the_quick_choices(qapp: QApplication) -> None:
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
+def test_one_channel_at_a_time(qapp: QApplication) -> None:
+    """Single mode (the ERP view's conditions on one channel): a click on the
+    head or a check box shows that channel alone, and none is never shown."""
+    picker = ChannelPicker(load_theme("dark"))
+    labels = (*STANDARD_19, "Aux1")
+    picker.set_channels(labels, set(labels) - {"Cz"}, frozenset())
+    picker.set_single(True)
+    assert picker.buttons.isHidden()  # no All / None in single mode
+    picker.toggle("Pz")
+    assert set(labels) - picker.hidden == {"Pz"}
+    picker.toggle("Pz")  # clicking it again keeps it
+    assert set(labels) - picker.hidden == {"Pz"}
+    picker.boxes["Aux1"].setChecked(True)
+    assert set(labels) - picker.hidden == {"Aux1"}
+    picker.set_single(False)
+    picker.toggle("Cz")
+    assert set(labels) - picker.hidden == {"Aux1", "Cz"}
+    picker.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
 def test_the_signal_view_shows_the_19_first(qapp: QApplication) -> None:
     view = SignalView(load_theme("dark"))
     view.types = TYPES

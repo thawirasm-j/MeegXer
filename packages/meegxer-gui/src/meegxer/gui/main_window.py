@@ -12,7 +12,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -1577,7 +1577,7 @@ class MainWindow(QMainWindow):
         m["display"].setText(f"display frames skipped {shown}" if self.buffers else "")
 
     def on_frame(self, frame: DisplayFrame | FeatureFrame) -> None:
-        if isinstance(frame, FeatureFrame) and frame.dims[:1] == ("condition",):
+        if isinstance(frame, FeatureFrame) and "condition" in frame.dims:
             self.erp_frames[frame.probe] = frame  # an ERP tap: the newest whole
             return
         if isinstance(frame, FeatureFrame):
@@ -1774,11 +1774,7 @@ class MainWindow(QMainWindow):
         frame = self.erp_frames.get(probe)
         if frame is None:
             return None
-        return Erp(tuple(str(c) for c in frame.coords.get("condition", ())),
-                   frame.counts,
-                   tuple(str(c) for c in frame.coords.get("channel", ())),
-                   np.asarray(frame.coords.get("time", ()), dtype=float),
-                   frame.values, frame.unit)  # fmt: skip
+        return _erp(frame.dims, frame.coords, frame.counts, frame.values, frame.unit)
 
     def _offline_erp(self, probe: str) -> Erp | None:
         """Read again when the run moves on (at most once a second while it
@@ -1796,14 +1792,10 @@ class MainWindow(QMainWindow):
         if self.offline_state:
             reply = self.call("offline_erp", probe=probe)
             if reply is not None and reply["dims"]:
-                coords = reply["coords"]
-                erp = Erp(tuple(coords["condition"]), tuple(reply["counts"]),
-                          tuple(coords["channel"]),
-                          np.asarray(coords["time"], dtype=float),
-                          np.asarray(reply["values"], dtype=float).reshape(
-                              len(coords["condition"]), len(coords["channel"]),
-                              len(coords["time"])),
-                          str(reply.get("unit", "")))  # fmt: skip
+                values = np.array(reply["values"], dtype=float)  # null: NaN
+                erp = _erp(tuple(reply["dims"]), reply["coords"],
+                           tuple(reply["counts"]), values,
+                           str(reply.get("unit", "")))  # fmt: skip
         self._erp_cache[probe] = (key, now, erp)
         return erp
 
@@ -1949,3 +1941,24 @@ class MainWindow(QMainWindow):
             )
         self.link.close()
         super().closeEvent(event)
+
+
+def _erp(
+    dims: tuple[str, ...],
+    coords: Mapping[str, Sequence[object]],
+    counts: tuple[int, ...],
+    values: npt.NDArray[np.float64],
+    unit: str,
+) -> Erp:
+    """An ERP tap's frame or offline reply: ``(stat, condition, channel,
+    time)``, the means and their SEM (display protocol 0.4)."""
+    shape = tuple(len(coords.get(d, ())) for d in dims)
+    values = np.asarray(values, dtype=float).reshape(shape)
+    stats = [str(s) for s in coords.get("stat", ("mean",))]
+    if "stat" not in dims:
+        values = values[np.newaxis]
+    sem = values[stats.index("sem")] if "sem" in stats else None
+    return Erp(tuple(str(c) for c in coords.get("condition", ())), counts,
+               tuple(str(c) for c in coords.get("channel", ())),
+               np.asarray(coords.get("time", ()), dtype=float),
+               values[stats.index("mean")], unit, sem)  # fmt: skip

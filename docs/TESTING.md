@@ -341,12 +341,16 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
    few seconds it shows `go (n=…)` and `stop (n=…)` on Cz, the counts
    growing by one each 2.4 s, the curves flattening toward 0 µV (the
    synthetic input has no evoked response).
-3. *Show* `go`: the channels overlaid (butterfly); *Channels* hides some.
-   *Show* `All conditions` and another channel in the channel list.
+3. *Show* `go`: the channels overlaid (butterfly); clicks on the head under
+   *Channels* hide some. *Show* `All conditions`: *Channel* opens the head,
+   and a click picks the one channel every condition is drawn on.
 4. *Reset*: the legend reads `0 epochs`, then the counts start again at 1.
    Change the Epochs strip's `tmax` while it runs: it starts over too.
 5. Offline: the ERP template on the ERP CORE sample (§C), *Start*, then the
    epochs rail: four conditions with the counts of C2.
+6. The time axis reads ms (-200 … 800). Tick *SEM*: each curve gets a shaded
+   band (mean ± SEM) in its colour, narrowing as epochs add up; a condition
+   with a single epoch has none.
 
 | Item | Value / result | Notes |
 |---|---|---|
@@ -354,3 +358,5 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 | E3 butterfly and channel choice | pass | |
 | E4 reset, and a change upstream | pass | |
 | E5 offline ERP view (counts as C2) | pass | |
+| E3b head picker: one channel, then the butterfly's channels | | |
+| E6 ms axis and SEM band | | |

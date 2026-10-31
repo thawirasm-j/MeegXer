@@ -176,14 +176,17 @@ def test_an_erp_tap_live_and_offline(tmp_path: Path) -> None:
     publisher.close()
     last = frames[-1]
     assert isinstance(last, FeatureFrame)
-    assert last.dims == ("condition", "channel", "time")
+    assert last.dims == ("stat", "condition", "channel", "time")
     assert last.coords["condition"] == ("go", "stop") and last.counts == (2, 1)
     tap = live["tap"].impl
     assert isinstance(tap, FeatureProbe)
     go = [w.data[0] for w in tap.windows if w.coords["epoch"] == ("go",)]
     # float32 on the wire
-    np.testing.assert_allclose(last.values[0], np.mean(go, axis=0),
+    np.testing.assert_allclose(last.values[0, 0], np.mean(go, axis=0),
                                rtol=1e-6, atol=1e-12)  # fmt: skip
+    sem = np.std(go, axis=0, ddof=1) / np.sqrt(len(go))
+    np.testing.assert_allclose(last.values[1, 0], sem, rtol=1e-5, atol=1e-12)
+    assert np.isnan(last.values[1, 1]).all()  # one stop epoch: no SEM
 
     job = OfflineJob(graph())
     job.start()
@@ -191,7 +194,9 @@ def test_an_erp_tap_live_and_offline(tmp_path: Path) -> None:
     assert job.state == "done", job.error
     erp = job.erp("erp")
     assert erp["coords"]["condition"] == ["go", "stop"] and erp["counts"] == [2, 1]
-    np.testing.assert_allclose(erp["values"][0], np.mean(go, axis=0))
+    np.testing.assert_allclose(erp["values"][0][0], np.mean(go, axis=0))
+    np.testing.assert_allclose(erp["values"][1][0], sem)
+    assert erp["values"][1][1][0][0] is None  # NaN as null (JSON)
     job.discard()
 
 

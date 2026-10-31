@@ -9,6 +9,7 @@ import numpy as np
 
 from meegxer.core.block import (
     Block,
+    Coordinate,
     EventBlock,
     FeatureBlock,
     FloatArray,
@@ -126,15 +127,18 @@ class FeatureProbe(Probe):
 class ErpProbe(Probe):
     """The running ERP of an epochs tap (docs/RAILS.md): the mean of every
     epoch of each label since the run started, its last reset, or a change
-    upstream (``follow``). It keeps a sum and a count per label, so the mean
-    is exact however many display frames are lost; the same mean as MNE's
-    ``Epochs.average`` over those epochs."""
+    upstream (``follow``), with its standard error (SEM). It keeps each
+    label's running mean, sum of squared deviations and count (Welford's
+    update), so both are exact however many display frames are lost. The
+    mean is MNE's ``Epochs.average`` over those epochs; the SEM uses the
+    sample standard deviation (n - 1), as ``scipy.stats.sem`` (MNE's
+    ``Epochs.standard_error`` divides by n)."""
 
     manifest: ClassVar[Manifest] = Manifest.from_dict(
         {
             "spec_version": "0.2.0",
             "name": "meegxer.core.erp_probe",
-            "version": "0.1.0",
+            "version": "0.2.0",
             "type": "analysis",
             "role": "probe",
             "inputs": [{"name": "in", "type": "features"}],
@@ -148,7 +152,8 @@ class ErpProbe(Probe):
 
     def __init__(self, params: dict[str, object] | None = None) -> None:
         super().__init__(params)
-        self.sums: dict[str, FloatArray] = {}
+        self.means: dict[str, FloatArray] = {}
+        self.squares: dict[str, FloatArray] = {}  # sums of squared deviations
         self.counts: dict[str, int] = {}
         self.channels: tuple[str, ...] = ()
         self.times: tuple[float, ...] = ()
@@ -168,11 +173,15 @@ class ErpProbe(Probe):
             self.reset()  # another epoch shape or montage: start over
             self.channels, self.times, self.unit = channels, times, block.unit
         label = str(block.coords["epoch"][0])
-        if label in self.sums:
-            self.sums[label] = self.sums[label] + block.data[0]
-        else:
-            self.sums[label] = np.array(block.data[0], dtype=np.float64)
-        self.counts[label] = self.counts.get(label, 0) + 1
+        x = np.asarray(block.data[0], dtype=np.float64)
+        n = self.counts.get(label, 0) + 1
+        if n == 1:
+            mean, squares = x.copy(), np.zeros_like(x)
+        else:  # Welford (1962): numerically stable running mean and variance
+            delta = x - self.means[label]
+            mean = self.means[label] + delta / n
+            squares = self.squares[label] + delta * (x - mean)
+        self.means[label], self.squares[label], self.counts[label] = mean, squares, n
         lo = block.window[0] if self.window is None else self.window[0]
         self.window = (lo, block.window[1])
         self.changed = True
@@ -185,26 +194,31 @@ class ErpProbe(Probe):
             self.reset()
 
     def reset(self) -> None:
-        if self.sums:
+        if self.counts:
             self.changed = True
-        self.sums, self.counts, self.window = {}, {}, None
+        self.means, self.squares, self.counts, self.window = {}, {}, {}, None
 
     def clear(self) -> None:
         self.reset()
 
     def average(self) -> FeatureBlock | None:
-        """The ERP of each label (sorted), ``dims`` ``(condition, channel,
-        time)``; None before the first epoch. ``counts`` gives each one's n."""
+        """Each label's ERP (labels sorted) and its SEM, ``dims`` ``(stat,
+        condition, channel, time)`` with ``stat`` ``(mean, sem)``; None before
+        the first epoch. ``counts`` gives each label's n. The SEM is the
+        sample standard deviation over sqrt(n), NaN for a single epoch."""
         if not self.channels:
             return None
-        sums, counts = self.sums, self.counts  # reset() replaces both
-        labels = tuple(sorted(sums))
-        shape = (len(labels), len(self.channels), len(self.times))
-        data = np.zeros(shape)
+        means, squares, counts = self.means, self.squares, self.counts  # reset()
+        labels = tuple(sorted(means))
+        data = np.zeros((2, len(labels), len(self.channels), len(self.times)))
         for k, label in enumerate(labels):
-            data[k] = sums[label] / counts[label]
+            n = counts[label]
+            data[0, k] = means[label]
+            data[1, k] = (np.sqrt(squares[label] / (n - 1) / n) if n > 1
+                          else np.nan)  # fmt: skip
+        coords: dict[str, Coordinate] = {"stat": ("mean", "sem"), "condition": labels,
+                  "channel": self.channels, "time": self.times}  # fmt: skip
         return FeatureBlock(
-            data, ("condition", "channel", "time"), self.window or (0, 0), 0.0,
-            {"condition": labels, "channel": self.channels, "time": self.times},
-            unit=self.unit,
+            data, ("stat", "condition", "channel", "time"), self.window or (0, 0),
+            0.0, coords, unit=self.unit,
         )  # fmt: skip

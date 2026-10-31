@@ -268,6 +268,18 @@ class HeadChannelMenu(ChannelMenu):
         self._caption()
         self.changed.emit()
 
+    def set_single(self, on: bool) -> None:
+        """One channel at a time (``ChannelPicker.set_single``)."""
+        self.picker.set_single(on)
+        self._caption()
+
+    def _caption(self) -> None:
+        if not self.picker.single:
+            super()._caption()
+            return
+        shown = [lb for lb in self.labels if lb not in self.hidden]
+        self.setText(f"Channel: {shown[0]}" if len(shown) == 1 else "Channel")
+
     def _set(self, hidden: set[str]) -> None:
         self.hidden = hidden
         self.picker._apply(set(hidden), emit=False)

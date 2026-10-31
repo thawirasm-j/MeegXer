@@ -128,22 +128,28 @@ output strip chooses which line it draws from.
 - **Offline store:** the offline feature store keeps each epoch's label
   (`offline_features` returns `labels`, control API 0.2.10).
 - **ERP tap (M10.3):** the GUI taps an epochs rail with an **ERP tap**
-  (`meegxer.core.erp_probe`), not a Features tap. It keeps a sum and a count
-  of the epochs of each label, in the core, so the mean (MNE's
-  `Epochs.average` over the same epochs) is exact however many display frames
-  are lost (rule 2).
+  (`meegxer.core.erp_probe`), not a Features tap. It keeps each label's
+  running mean, sum of squared deviations and count, in the core (Welford's
+  update), so the mean (MNE's `Epochs.average` over the same epochs) and its
+  standard error are exact however many display frames are lost (rule 2).
+  - **SEM:** the sample standard deviation (n − 1) over √n, as
+    `scipy.stats.sem` (the maintainer's choice; MNE's `Epochs.standard_error`
+    divides by n). None for a single epoch.
   - **What it covers:** every epoch since the run started, its last *Reset*
     (`reset_probe`, control API 0.2.20), or a change upstream of the tap (its
     input fingerprint changes; rule 7: no mean across a change). Another epoch
     span or montage starts it over too.
   - **Live:** at each display flush where it changed it sends its whole ERP as
-    one features frame: `dims` `(condition, channel, time)`, with each
-    condition's epoch count (`counts`, display protocol 0.4).
+    one features frame: `dims` `(stat, condition, channel, time)`, the mean
+    and its SEM, with each condition's epoch count (`counts`, display
+    protocol 0.4).
   - **Offline:** the same tap runs in the offline run; `offline_erp` reads it.
-  - **The ERP view:** *Show* `All conditions` draws each condition on one
-    channel (Cz first) with its n in the legend; one condition draws the
-    channels picked under *Channels* overlaid (butterfly). *Reset* (live)
-    starts the averages over.
+  - **The ERP view:** times in ms from the event. *Show* `All conditions`
+    draws each condition on one channel (Cz first; a click on the head
+    picks another) with its n in the legend; one condition draws the
+    channels picked on the head overlaid (butterfly). *SEM* (off by
+    default) shades each curve's mean ± SEM. *Reset* (live) starts the
+    averages over.
 - **Reviewed epochs:** a **Review epochs** strip after it
   (`meegxer.core.epoch_review`, `docs/REVIEW.md` step 5) reads the rail and
   starts its own `epochs` rail with the epochs a person kept and relabelled,

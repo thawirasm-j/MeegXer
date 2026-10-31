@@ -11,11 +11,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   An epoch is written as soon as its last sample arrives, the same epochs a
   run over the recording writes.
 - **ERP view** (M10.3): clicking an epochs rail shows its ERPs, live or
-  offline: every condition on one channel (Cz first) with its number of
-  epochs, or one condition on the channels you pick (butterfly). Live, the
-  mean grows with each epoch; *Reset* starts it over, and so does any change
-  before the tap. The core keeps the sums, so the mean is exact even when the
-  GUI skips display frames.
+  offline, in ms from the event: every condition on one channel (Cz first,
+  picked on a head plot) with its number of epochs, or one condition on the
+  channels you pick on the head (butterfly). *SEM* shades each mean ± its
+  standard error (sample SD over √n). Live, the mean grows with each epoch;
+  *Reset* starts it over, and so does any change before the tap. The core
+  keeps the running mean and variance, so both are exact even when the GUI
+  skips display frames. The epoch review window's ERP is in ms too.
 - **Epochs and ERPs into files** (M10.2, M10.3): an *Epochs and ERPs file*
   strip writes the epochs of the nearest epochs rail as `-epo.fif` (MNE) or an
   epoched EEGLAB `.set`, and their average per label (the ERPs) as `-ave.fif`.
