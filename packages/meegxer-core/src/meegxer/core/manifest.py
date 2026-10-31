@@ -18,7 +18,7 @@ import jsonschema
 
 from meegxer.core.ports import EVENTS_RAIL, Port, PortType
 
-SPEC_VERSION = "0.2.20"
+SPEC_VERSION = "0.2.21"
 
 type ParamValue = float | int | bool | str
 type ParamType = Literal["float", "int", "bool", "enum", "string"]
@@ -247,7 +247,8 @@ class Manifest:
 
     def _check_rail_ports(self) -> None:
         """Main ports (the first of each) name no rail; every further port does.
-        Only a processor has rail ports; no output writes the Events rail (events
+        Only a processor has rail ports, and a source rail outputs (what its
+        file carries, e.g. a decomposition); no output writes the Events rail (events
         travel with the transform's result); the Events rail is read by an Events
         port; a space is for Signal ports."""
         for kind, ports in (("input", self.inputs), ("output", self.outputs)):
@@ -260,7 +261,9 @@ class Manifest:
                                         "only further ports name a rail")  # fmt: skip
                 if i == 0:
                     continue
-                if self.role != "processor":
+                if self.role != "processor" and not (
+                    self.role == "source" and kind == "output"
+                ):
                     raise ManifestError(f"a {self.role} has one {kind} port")
                 if not port.rail:
                     raise ManifestError(f"extra {kind} {port.name!r} must name the "

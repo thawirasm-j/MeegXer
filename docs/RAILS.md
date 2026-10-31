@@ -85,7 +85,7 @@ output strip chooses which line it draws from.
   already fitted on: missed trials), and the LSL input's `markers` and
   `markers_dropped` (before the first sample, or without a label).
 
-## ICs rail (built, step 4a)
+## ICs rail (built, steps 4a and 4b)
 
 - **ICA + ICLabel writes it:** an extra output (`ics`, space `component`) carries
   the component activations (`weights @ x`, in volts), one channel per component
@@ -97,9 +97,25 @@ output strip chooses which line it draws from.
   The chain draws it as a reader of the ICs rail, without a pull from the signal.
 - **Refits:** a refit of ICA changes its components, so the strips reading them
   need a refit too (their input fingerprint names the rail).
-- **Next (4b):** an EEGLAB file's decomposition starts the ICs rail at the Input
-  strip; an ICA strip after it rewrites it, drawn as the file's rail ending at the
-  ICA strip and a new ICs rail starting there.
+- **From an EEGLAB file (4b, M10.6):** a `.set` with `icaweights` starts the ICs
+  rail at the Input strip (`meegxer.core.eeglab_ica`; the File input's rail
+  output `ics`, spec 0.2.21: a source's extra outputs name the rails its input
+  carries).
+  - The decomposition: MNE's `read_ica_eeglab` (`icaweights @ icasphere`, or
+    `pinv(icawinv)` where components were removed in EEGLAB), on the channels
+    of `icachansind`; activations `weights @ x` as ICA's.
+  - ICLabel classes: the file's (`EEG.etc.ic_classification.ICLabel`) when it
+    has them, else ICLabel's, computed by the ICA strip (reached through the
+    node registry: the core imports no node package) when a run first reads
+    them; without positions or the ICA strip they stay unclassified, and the
+    notes say why.
+  - `describe_source` says what the input carries (`carries`, control API
+    0.2.22) and the notes how (`EEGLAB decomposition: 18 components on 19
+    channels start the ICs rail; ICLabel classes from the file`); `get_model`
+    on the input gives the decomposition, for the IC head plot.
+  - An ICA strip after the input rewrites the rail: later readers get ICA's
+    (the nearest writer, rule 7). The chain draws the file's rail ending at
+    the ICA strip, with a bar, and ICA's starting there.
 
 ## Epochs rail (built, live and offline)
 

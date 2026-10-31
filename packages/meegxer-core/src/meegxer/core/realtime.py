@@ -507,6 +507,8 @@ class RealtimeScheduler:
         src = self.graph.source
         fp = signal_fingerprint(src.impl.info) if isinstance(src.impl, Source) else ""
         outputs = {src.id: fp}
+        for port in src.manifest.rail_outputs:  # what the input carries
+            outputs[f"{src.id}:{port.name}"] = rail_fingerprint(fp, port.name)
         for node in self.graph.nodes[1:]:
             assert node.input is not None
             self._input_fps[node.id] = with_rails(outputs.get(node.input, ""), {
@@ -529,6 +531,7 @@ class RealtimeScheduler:
         outputs: dict[str, Block | tuple[FeatureBlock, ...] | None] = {
             self.graph.source.id: block
         }
+        self._source_rails(block, outputs)
         sink_hit = False
         for node in self.graph.nodes[1:]:
             assert node.input is not None
@@ -613,6 +616,28 @@ class RealtimeScheduler:
                 feed = self._feed(reader, block.info.sfreq)
                 feed.push_rail(reader_port, data, block.stop_index)
         return out
+
+    def _source_rails(
+        self, block: Block, outputs: dict[str, Block | tuple[FeatureBlock, ...] | None]
+    ) -> None:
+        """What the input's rail outputs carry over ``block`` (a file's ICs), to
+        their readers and to strips taking one as their main input."""
+        src = self.graph.source
+        if not src.manifest.rail_outputs or not isinstance(src.impl, Source):
+            return
+        written = src.impl.rails(block)
+        for port in src.manifest.rail_outputs:
+            data = written.get(port.name)
+            if data is None and port.type is PortType.FEATURES:
+                data = ()
+            if isinstance(data, Block) and not data.n_samples:
+                data = None
+            outputs[f"{src.id}:{port.name}"] = data
+            if data is None:
+                continue
+            for reader, reader_port in self._subscribers.get((src.id, port.name), []):
+                feed = self._feed(reader, block.info.sfreq)
+                feed.push_rail(reader_port, data, block.stop_index)
 
     def _feed(self, node_id: str, sfreq: float) -> RailFeed:
         feed = self._feeds.get(node_id)

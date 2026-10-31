@@ -113,6 +113,10 @@ def offline_input_fingerprints(graph: Graph) -> dict[str, str]:
     for node in graph.nodes:
         if isinstance(node.impl, Source):
             outputs[node.id] = source_fingerprint(node.impl)
+            for port in node.manifest.rail_outputs:  # what the file carries
+                outputs[f"{node.id}:{port.name}"] = rail_fingerprint(
+                    outputs[node.id], port.name
+                )
             continue
         assert node.input is not None
         inputs[node.id] = outputs.get(node.input, "")
@@ -240,6 +244,12 @@ class BatchScheduler:
                 streams[node.id] = list(self._read_source(node.impl))
                 result.fingerprints[node.id] = source_fingerprint(node.impl)
                 result.computed.append(node.id)
+                if node.manifest.rail_outputs:  # what the file carries (ICs)
+                    for block in streams[node.id]:
+                        if isinstance(block, Block):
+                            self._keep_rails(node.id, TransformResult(
+                                block, {}, (), node.impl.rails(block)))  # fmt: skip
+                    self._rail_streams(node, streams, result)
             else:
                 assert node.input is not None
                 upstream = streams[node.input]

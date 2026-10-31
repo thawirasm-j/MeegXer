@@ -38,6 +38,9 @@ define it.
     `dataset_description.json` with `GeneratedBy`, and the run's session file
     next to each recording. 0.2.11: epochs (`_epo.fif`) and their ERPs
     (`_ave.fif`). 0.2.12: QC reports (`_report.html`, `qc.tsv`, `qc.html`).
+  - 0.2.21: a source may have extra outputs, each naming a rail its input
+    carries (the File input's `ics`: an EEGLAB file's components); only
+    outputs, and still none for probes and sinks.
   - 0.2.20: a string parameter may say it is a path: `path` is `file` (a file
     to read), `folder` or `save` (a file to write), with optional `extensions`
     (`[".set"]`) for the dialog's filter. Hosts offer a Browse button with the

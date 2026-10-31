@@ -36,7 +36,7 @@ SYNTHETIC = "meegxer.core.synthetic"
 # the GUI's defaults where they differ from the node's: synthetic input played
 # live runs until stopped (a live calibration never runs out of it)
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
-SPEC_VERSION = "0.2.20"
+SPEC_VERSION = "0.2.21"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -75,6 +75,7 @@ class Rail:
     readers: list[str] = field(default_factory=list)
     lane: int = 0
     writers: list[str] = field(default_factory=list)  # later strips adding to it
+    ends: str = ""  # the strip rewriting it (an ICA after a file's ICs): it ends there
 
 
 # strips that put events on the Events rail besides the Event detection ones
@@ -128,6 +129,8 @@ class PipelineDoc:
         self.manifests: dict[str, Manifest] = {m["name"]: m for m in manifests}
         self.strips: list[StripNode] = []
         self.input_mode: Mode = "live"
+        # the rails the input starts (describe_source "carries": a .set's ICs)
+        self.input_rails: tuple[str, ...] = ()
         self.input_events = 0  # events the input carries (from its description)
 
     # -- manifests ----------------------------------------------------------------
@@ -314,13 +317,22 @@ class PipelineDoc:
         return [s for s in self.strips[1:] if self.produces_features(s)]
 
     def rail_taps(self) -> list[str]:
-        """Signal rail outputs a tap can show (``ica1:ics``: the components)."""
+        """Signal rail outputs a tap can show (``ica1:ics``: the components;
+        ``input:ics``: a file's own)."""
         return [
             f"{s.id}:{port['name']}"
-            for s in self.strips[1:]
-            for port in self.manifest(s)["outputs"][1:]
-            if port.get("rail") and port["type"] == "signal"
+            for s in self.strips
+            for port in self.rail_outputs(s)
+            if port["type"] == "signal"
         ]
+
+    def rail_outputs(self, strip: StripNode) -> list[dict[str, Any]]:
+        """A strip's rail outputs; the input's only those its file carries
+        (``input_rails``: an EEGLAB file with a decomposition, its ICs)."""
+        ports = [p for p in self.manifest(strip)["outputs"][1:] if p.get("rail")]
+        if strip is self.source:
+            ports = [p for p in ports if p["name"] in self.input_rails]
+        return ports
 
     def tap_kind(self, key: str) -> str:
         """``signal`` (after a strip on the signal), ``rail`` (a Signal rail
@@ -436,8 +448,8 @@ class PipelineDoc:
         return [
             f"{earlier.id}:{port['name']}"
             for earlier in reversed(self.strips[:index])
-            for port in self.manifest(earlier)["outputs"][1:]
-            if port.get("rail") and port["type"] == inputs[0]["type"]
+            for port in self.rail_outputs(earlier)
+            if port["type"] == inputs[0]["type"]
         ]
 
     def choice_label(self, choice: str) -> str:
@@ -531,8 +543,11 @@ class PipelineDoc:
         strip writes needs it."""
         written: dict[str, Rail] = {}  # rail name -> its nearest writer so far
         count: dict[str, int] = {}  # writers of each rail so far (Epochs·2)
-        for strip in self.strips[1:]:
+        for strip in self.strips:
             manifest = self.manifest(strip)
+            if strip is self.source:  # the rails its file carries (a .set's ICs)
+                manifest = {**manifest, "inputs": [], "outputs": [
+                    manifest["outputs"][0], *self.rail_outputs(strip)]}  # fmt: skip
             for port in manifest["inputs"][1:]:
                 name = port.get("rail", "")
                 if not name or name == "events":
@@ -550,6 +565,8 @@ class PipelineDoc:
                                                 else "")  # fmt: skip
                     rail = Rail(rail_id, port["type"], label, strip.id)
                     rails.append(rail)
+                    if name in written:  # rewritten here: the earlier one ends
+                        written[name].ends = strip.id
                     written[name] = rail
         for rail in rails:  # strips taking the rail as their main input
             if rail.kind != "events" and ":" in rail.id:
@@ -694,8 +711,8 @@ class PipelineDoc:
                         "params": params,
                     }
                 )
-            for port in self.manifest(strip)["outputs"][1:]:
-                if port.get("rail") and port["type"] in ("signal", "features"):
+            for port in self.rail_outputs(strip):
+                if port["type"] in ("signal", "features"):
                     key = f"{strip.id}:{port['name']}"
                     if port["type"] == "signal":
                         node = PROBE

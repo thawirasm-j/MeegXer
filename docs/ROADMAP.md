@@ -58,7 +58,7 @@ in later 0.4.0 betas.
 | M10.3 ERP view | Done: the ERP view of an epochs rail, live (the Epochs strip runs live; an ERP tap keeps each condition's running mean in the core, with *Reset*) and offline; the epoch review window's ERP; ERP export (`-ave.fif`) | PR #93, #105, #116, #117 |
 | M10.4 Bad segments | Done, as the review track below: detectors write `BAD_…` spans, a Reject segments strip cuts them, the Epochs strip leaves out epochs overlapping them | PR #87, #97 |
 | M10.5 XDF input | Done: the File input opens LabRecorder `.xdf` files (pyxdf): the first EEG stream (or one by name), its marker streams as events on the nearest sample, units to volts (µV assumed where a file states none, and said so), a `BAD_gap` mark where samples were lost | PR #125 |
-| M10.6 EEGLAB decompositions | Open (the ICs rail starts at ICA only) | |
+| M10.6 EEGLAB decompositions | Partly: a `.set` with `icaweights` starts the ICs rail at the Input strip (the file's ICLabel classes, else computed), rewritten by an ICA strip after it. Writing the decomposition into `.set` files is next | PR #128 |
 | M10.7 MNE Python API | Open | |
 | M10.8 Batch workers, QC report | Done: `--jobs N` worker processes (and `general.batch_jobs` for the GUI's all-subjects run), a QC report per recording (mne.Report) and the dataset's `qc.tsv` and `qc.html` | PR #107 |
 | M10.9 Templates, sample data | Partly: ERP, resting-state and ICA cleaning templates (GUI *New…*, `meegxer new`), and the ERP CORE and EEGBCI samples, fetched per subject on first use. The SSVEP BCI template waits for M11 | PR #106, #112 |

@@ -408,3 +408,28 @@ with the old code; after the shutdown the GUI starts a new one.
 | F3 27 epochs on Marker; ERP view | passed | |
 | F4 no epoch across the gap | passed | |
 | F5 CLI run with -i clock_resets.xdf | passed | |
+
+## G. EEGLAB decompositions (M10.6)
+
+`uv run python tools/eeglab_ica_demo.py OUT` writes `OUT/ica_demo.set` (the
+ICA test recording, 19 channels, with EEGLAB's decomposition and ICLabel
+classes) and `OUT/ica_demo_unclassified.set` (without the classes). An EEGLAB
+`.set` of your own with ICA works too. First `uv run meegxer shutdown`.
+
+1. GUI: *Input → File*, `ica_demo.set`. The log says `EEGLAB decomposition:
+   18 components on 19 channels start the ICs rail; ICLabel classes from the
+   file`; the chain shows an ICs rail starting at the Input strip.
+2. *Start* (offline), then click the ICs rail's name: 18 components IC01 to
+   IC18, coloured by class, each named with its class and probability in
+   *Channels*. *Spectrum*: the head plot maps them back on the electrodes.
+3. Add an ICA strip: the file's ICs rail ends at it (a bar) and ICA's ICs
+   rail starts there.
+4. `ica_demo_unclassified.set`: the log says `ICLabel classes computed when a
+   run first reads them`; after *Start*, the components have classes too.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| G1 the log note; the ICs rail from the Input strip | | |
+| G2 components with classes; the head plot | | |
+| G3 an ICA strip ends the file's rail | | |
+| G4 classes computed for the unclassified file | | |

@@ -261,7 +261,11 @@ class Daemon:
         if node not in graph:
             raise ValueError(f"no node {node!r}")
         impl = graph[node].impl
-        model = impl.model if isinstance(impl, Stage) else None
+        if not isinstance(impl, Stage):  # an input carrying a decomposition
+            carried = getattr(impl, "ica_model", lambda: None)()
+            data = None if carried is None else state_to_json(carried)
+            return {"node": node, "model": data}
+        model = impl.model
         data = None if model is None else state_to_json(model.data)
         return {"node": node, "model": data}
 

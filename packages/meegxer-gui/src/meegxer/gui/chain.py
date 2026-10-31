@@ -539,6 +539,8 @@ class RailBoard(QWidget):
             x0 = rect.right() - PORT - 14 * k
             xs = [x for r in rail.readers if (x := self._read_x(r, rail.id))]
             xs += [x for w in rail.writers if (x := self._write_x(w))]
+            if rail.ends and (end := self._rect(rail.ends)) is not None:
+                xs.append(end.center().x())  # rewritten there: it ends
             out.append((rail, x0, max([x0, *xs])))
         return out
 
@@ -603,10 +605,13 @@ class RailBoard(QWidget):
             # solid to the last reader, then dashed and fainter to the end
             painter.setPen(QPen(colour, 2))
             painter.drawLine(QPointF(x0, y), QPointF(x1, y))
-            faint = _toward_text(colour.name(), self.theme)
-            painter.setPen(QPen(faint, 1.2, Qt.PenStyle.DashLine))
-            painter.drawLine(QPointF(x1, y), QPointF(end - 6, y))
-            _head(painter, faint, QPointF(end, y), 1, 0)
+            if rail.ends:  # rewritten by a later strip: it ends there, a bar
+                painter.drawLine(QPointF(x1, y - 5), QPointF(x1, y + 5))
+            else:
+                faint = _toward_text(colour.name(), self.theme)
+                painter.setPen(QPen(faint, 1.2, Qt.PenStyle.DashLine))
+                painter.drawLine(QPointF(x1, y), QPointF(end - 6, y))
+                _head(painter, faint, QPointF(end, y), 1, 0)
             # up arrow from the producer into its start
             prod = self._rect(rail.producer)
             assert prod is not None
