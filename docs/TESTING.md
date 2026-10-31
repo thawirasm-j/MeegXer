@@ -443,3 +443,32 @@ classes) and `OUT/ica_demo_unclassified.set` (without the classes). An EEGLAB
 | G3 an ICA strip ends the file's rail | passed | |
 | G4 classes computed for the unclassified file | passed | |
 | G5 the written `.set` keeps the ICA (EEGLAB or MNE); none after a re-reference | passed | |
+
+## H. Python API (M10.7)
+
+On your own recording with events (a `.set`, `.edf`, `.fif`, …), in the
+MeegXer folder after `git pull` and `uv sync --all-packages`:
+
+```bash
+uv run python tools/api_check.py RECORDING EVENT --plot
+```
+
+EVENT is one of the recording's event labels (e.g. a stimulus code). The
+script band-passes (1 to 30 Hz) and cuts epochs on EVENT (-200 to 800 ms)
+with `meegxer.api.run`, from an `mne.io.Raw` and from the file.
+
+1. It prints `H1 Raw: … annotations (the input: …)`: as many annotations as
+   the input has; MNE's browser shows the cleaned recording with them.
+2. `H2 Epochs: N on 'EVENT', -200 to 800 ms`; MNE's ERP figure looks like
+   an ERP of that event.
+3. `H3 from the file: N epochs (the same)`.
+4. In your own Python (IPython or Jupyter, in the same environment):
+   `from meegxer.api import run` and a pipeline of yours saved from the GUI
+   (*Save*), e.g. `run("my_pipeline.json", raw)`: it returns an `mne.io.Raw`.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| H1 Raw back, with the input's annotations | | |
+| H2 Epochs on the event; the ERP | | |
+| H3 the same from the file | | |
+| H4 a GUI pipeline from your own Python | | |

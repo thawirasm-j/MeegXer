@@ -86,6 +86,7 @@ timeout = 120
 # Architecture rules from CLAUDE.md, enforced on every CI run (lint-imports).
 [tool.importlinter]
 root_packages = [
+    "meegxer.api",
     "meegxer.core",
     "meegxer.nodes",
     "meegxer.plugins",
@@ -97,7 +98,7 @@ include_external_packages = true
 [[tool.importlinter.contracts]]
 name = "Rule 1: core is headless (no GUI toolkit, no GUI, node or plugin package)"
 type = "forbidden"
-source_modules = ["meegxer.core"]
+source_modules = ["meegxer.core", "meegxer.api"]  # the API ships with the core
 forbidden_modules = [
     "meegxer.gui",
     "meegxer.plugins",
@@ -114,7 +115,8 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "Plugins load only through entry points (no direct plugin or Docker imports)"
 type = "forbidden"
-source_modules = ["meegxer.core", "meegxer.nodes", "meegxer.gui", "meegxer.cli"]
+source_modules = ["meegxer.api", "meegxer.core", "meegxer.nodes", "meegxer.gui",
+                  "meegxer.cli"]
 forbidden_modules = ["meegxer.plugins", "docker"]
 
 [[tool.importlinter.contracts]]

@@ -55,6 +55,8 @@ def test_contracts_pass_on_clean_tree(tmp_path: Path) -> None:
     [
         ("core/meegxer/core/_bad.py", "import PySide6\n", "Rule 1"),
         ("core/meegxer/core/_bad.py", "import meegxer.gui\n", "Rule 1"),
+        ("core/meegxer/api/_bad.py", "import meegxer.nodes\n", "Rule 1"),
+        ("core/meegxer/api/_bad.py", "import meegxer.plugins\n", "Plugins load only"),
         ("cli/meegxer/cli/_bad.py", "import meegxer.plugins\n", "Plugins load only"),
         ("nodes/meegxer/nodes/_bad.py", "import docker\n", "Plugins load only"),
         (

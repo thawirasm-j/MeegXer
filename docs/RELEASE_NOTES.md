@@ -7,6 +7,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Python API** (M10.7): `from meegxer.api import run`, then
+  `run(pipeline, raw)` runs a pipeline (or session) over an `mne.io.Raw` in
+  memory, or a recording file, and returns the cleaned signal as
+  `mne.io.Raw`, with its events as annotations, the channels' types and
+  positions, and a `boundary` at each cut. `output="ep1"` returns an Epochs
+  strip's epochs as `mne.Epochs`; `output="ica1:ics"` returns the ICA
+  components. It runs the same code as the GUI and `meegxer run`, and what a
+  `.set` written at the same place would hold. See `docs/PYTHON_API.md`.
 - **EEGLAB decompositions** (M10.6): an EEGLAB `.set` carrying an ICA
   decomposition (`icaweights`) starts the ICs rail at the Input strip: tap it
   to see its components, with the file's ICLabel classes (or ICLabel's,
