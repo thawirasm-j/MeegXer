@@ -177,6 +177,13 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   with the question prompt), a manual check only the maintainer can run
   (Windows, real downloads, devices, how the GUI looks), or when a milestone
   is reached (its exit criterion met).
+- **Run the manual checks first.** Before asking the maintainer for a manual
+  check (`docs/TESTING.md`), Claude runs every step of it itself: scripts and
+  the CLI directly, GUI steps by driving the real window offscreen (the
+  daemon, `QT_QPA_PLATFORM=offscreen`, its log and screenshots), with the
+  test data in the repo or made by the tools. Only what needs the
+  maintainer's machine is left to them (Windows, real downloads, devices,
+  how the GUI looks), and the hand-off says what was already run.
 - **When to tag:** betas are themed. When a set of features is merged and its
   manual checks (`docs/TESTING.md`) pass, Claude proposes a tag (the next
   `bN`, or the next series when a milestone's exit criterion is met) with

@@ -242,3 +242,35 @@ def test_numbers_keep_their_zeros(qapp: QApplication) -> None:
                                   (0, 0.0, "0")):  # fmt: skip
         field.setDecimals(decimals)
         assert field.textFromValue(value) == text
+
+
+def test_a_writer_with_a_naming_convention_gets_its_ending(
+    qapp: QApplication, doc: PipelineDoc, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§H6: the MNE ICA writer refuses a file not named …-ica.fif (MNE's
+    convention); the save dialog completes a name typed without it, as the
+    epochs writer's to …-epo.fif (its .set stays .set)."""
+    from PySide6.QtWidgets import QFileDialog
+
+    from meegxer.gui.inspector import PathEdit
+
+    typed: list[str] = []
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                        lambda *a: (typed[-1], ""))  # fmt: skip
+    cases = [
+        ("meegxer.core.ica_writer", "clean", "clean-ica.fif"),
+        ("meegxer.core.ica_writer", "clean.fif", "clean-ica.fif"),
+        ("meegxer.core.ica_writer", "clean-ica.fif", "clean-ica.fif"),
+        ("meegxer.core.epochs_writer", "erp", "erp-epo.fif"),
+        ("meegxer.core.epochs_writer", "erp.set", "erp.set"),
+        ("meegxer.core.set_writer", "clean", "clean.set"),
+    ]
+    for node, name, expected in cases:
+        doc.insert(len(doc.strips), node)
+        writer = doc.strips[-1]
+        ins, seen = show(qapp, doc, writer.id, advanced=True)
+        typed.append(str(tmp_path / name))
+        ins.findChildren(PathEdit)[0].button.click()
+        assert seen[-1] == (writer.id, "path", str(tmp_path / expected)), node
+        dispose(qapp, ins)
+        doc.remove(writer.id)
