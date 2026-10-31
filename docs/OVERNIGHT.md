@@ -24,14 +24,37 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
    What only you can check: how the two-reviewer header and the report look
    on your machine. PR #141 (merged).
 2. **0.4.0b3 release notes** ("Editing and review": undo, the review report,
-   two reviewers), the roadmap status and §J/§K marked passed: this PR.
-   **Your decision:** tag `v0.4.0b3` (I can't push tags).
+   two reviewers), the roadmap status and §J/§K marked passed. PR #142
+   (merged). **Your decision:** tag `v0.4.0b3` (I can't push tags).
+3. **M11.3 LDA classifier**: the *LDA* strip reads a feature strip (CSP, band
+   power…) and gives class probabilities plus `pred_<class>` events. Offline
+   and live. §L run by me: the CLI run, the GUI through the real window
+   (offscreen), and live through the daemon (`calibrate csp1`, then
+   `calibrate lda1`; both ready, p95 latency 3.6 ms). Left for you: L4 (real
+   EEGBCI data). This PR.
 
 ## Defaults taken (small choices)
 
 | # | Where | Chosen | Passed over |
 |---|---|---|---|
+| 1 | How LDA gets its features | Its **main input is the feature strip** (*Reads*), as DESIGN.md and RAILS.md planned ("Features → Processor later"; "a reader takes the nearest rail of its input type"). Spec 0.2.23. The schedulers hand it `Windows`: the windows that ended in a stretch of the producer's input, so no second rate anywhere. | LDA on the signal with an extra Features *rail port*: it reuses the rail machinery, but needs a new way to name which feature strip, and doesn't match the docs |
+| 2 | Which windows train LDA | Windows lying **wholly** from *Trial start* to *Trial end* after a class cue (defaults 0.5–4 s); windows on two classes' trials are left out | Window *end* in the trial: more windows, but they would include pre-cue data |
+| 3 | When LDA emits a class event | One per window, at its **last sample** (when the decision exists), named **`pred_<class>`** so it never mixes with the cues on the rail; *Event only from probability* (default 0: every window) and the prefix are MeegXer's settings, live (no refit) | Events named exactly as the class: a keyboard sink mapping `left` would also fire on the cue markers |
+| 4 | Parameter names | `min_probability` and `event_prefix`, not `threshold`/`prefix`: the GUI's rule is "the same name means the same thing on every node", and `threshold` is already "Removal threshold" | |
+| 5 | Who sees LDA's events | **An output strip (sink) sees every event on the rail to its left**, as the chain draws it, so a `.set` writer after LDA records `pred_` events. A **processor still sees only its ancestors'** events: its fingerprint names them, so a changed event marks it for a refit (rule 7) | Every strip sees everything to its left: would break rule 7 (a CSP after LDA could fit on predicted events without its fingerprint knowing) |
+| 6 | Plugins with a Features input | Refused with a clear message (built-in only for now) | Extending the plugin protocol: a bigger change, not needed for M11 |
+| 7 | The demo data | `tools/lda_demo.py`: synthetic motor imagery (mu ERD over the hemisphere opposite the hand), so §L needs no download | The EEGBCI sample: real, but needs the download (left to you as L4) |
+| 8 | References | Fisher 1936, Blankertz et al. 2011, Ledoit & Wolf 2004, scikit-learn (Pedregosa et al. 2011). DOIs checked by web search (doi.org is blocked from here) | |
+
+## Found on the way
+
+- **Live file writers record no events at all** (not the cues, not markers,
+  not LDA's): the live scheduler never gives sinks the Events rail. This
+  predates tonight; offline runs are fine. I'm fixing it in its own PR next
+  (the keyboard sink needs live events too).
 
 ## Waiting for you
 
-- Tag `v0.4.0b3` once this PR is merged.
+- Tag `v0.4.0b3` (#142 is merged).
+- L4: the LDA strip on real motor-imagery data (EEGBCI sample, *Classes*
+  `T1, T2`).

@@ -38,6 +38,11 @@ define it.
     `dataset_description.json` with `GeneratedBy`, and the run's session file
     next to each recording. 0.2.11: epochs (`_epo.fif`) and their ERPs
     (`_ave.fif`). 0.2.12: QC reports (`_report.html`, `qc.tsv`, `qc.html`).
+  - 0.2.23: an analysis processor's main input may be Features: a classifier
+    reading a feature strip (the LDA strip reads CSP's windows). Its fit gets
+    the windows that ended in the calibration stretch, and the events inside
+    it; its transform the windows each stretch of input completes. Plugins
+    still take Signal input.
   - 0.2.22: Signal port spaces are checked: an output and an input that both
     name a `space` connect only when it is the same (a `component` rail, the
     ICs, cannot feed an input that takes `sensor` space, e.g. re-reference or

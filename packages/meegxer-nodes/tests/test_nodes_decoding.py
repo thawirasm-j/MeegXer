@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from meegxer.core.batch import BatchScheduler, offline_input_fingerprints
-from meegxer.core.block import Block, Event, SignalInfo
+from meegxer.core.block import Block, Event, FeatureBlock, SignalInfo
 from meegxer.core.conformance import check_blockwise_equivalence
 from meegxer.core.graph import Graph
 from meegxer.core.registry import Registry
@@ -173,3 +173,205 @@ def test_live_calibration_from_a_played_recording_matches_batch(
     np.testing.assert_allclose(
         np.asarray(models[1]["filters"]), np.asarray(models[0]["filters"])
     )
+
+
+# -- LDA (spec 0.2.23: a processor reading a feature strip) ---------------------
+
+
+def windows_of(
+    n: int = 40, seed: int = 0, sfreq: float = FS
+) -> tuple[Any, list[Event]]:
+    """Feature windows of 2 values, 1 s long, one per trial of 'left' or
+    'right' (4 s apart, starting 0.5 s after the cue), the classes apart in
+    their mean; and the cues."""
+    from meegxer.core.block import FeatureBlock, Windows
+
+    rng = np.random.default_rng(seed)
+    out, events = [], []
+    for k in range(n):
+        label = "left" if k % 2 == 0 else "right"
+        onset = int(k * 4 * sfreq)
+        events.append(Event(onset, label))
+        start = onset + int(0.5 * sfreq)
+        mean = (1.0, -1.0) if label == "left" else (-1.0, 1.0)
+        values = np.array(mean) + rng.standard_normal(2)
+        span = (start, start + int(sfreq))
+        names = {"component": ("CSP1", "CSP2")}
+        out.append(FeatureBlock(values, ("component",), span, start / sfreq, names))
+    return Windows(tuple(out), sfreq, 0, int(n * 4 * sfreq)), events
+
+
+@pytest.mark.parametrize("shrinkage", [True, False])
+def test_lda_matches_scikit_learn(shrinkage: bool) -> None:
+    from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+
+    from meegxer.nodes.decoding import LDA
+
+    windows, events = windows_of()
+    stage = Stage(LDA(), {"shrinkage": shrinkage, "tmin": 0.0, "tmax": 2.0})
+    fp = labelled_input("fp", events)
+    stage.fit(windows, fp, events)
+    model = stage.model.data  # type: ignore[union-attr]
+    assert model["classes"] == ["left", "right"] and model["windows"] == [20, 20]
+    x = np.stack([w.data for w in windows.windows])
+    y = np.array([k % 2 for k in range(len(x))])
+    ref = LinearDiscriminantAnalysis(
+        solver="lsqr", shrinkage="auto" if shrinkage else None
+    ).fit(x, y)
+    result = stage.transform(windows, fp)
+    out = result.block
+    assert isinstance(out, tuple) and len(out) == len(x)
+    np.testing.assert_allclose(np.stack([w.data for w in out]), ref.predict_proba(x),
+                               rtol=1e-10)  # fmt: skip
+    assert out[0].coords["class"] == ("left", "right") and out[0].unit == "1"
+    assert [w.window for w in out] == [w.window for w in windows.windows]
+    # a class event at each window's last sample, named apart from the cues
+    predicted = [e.label for e in result.events]
+    assert predicted == [f"pred_{('left', 'right')[k]}" for k in ref.predict(x)]
+    assert result.events[0].sample_index == windows.windows[0].window[1] - 1
+    assert sum(lb == f"pred_{e.label}" for lb, e in zip(predicted, events,
+                                                       strict=True)) >= 36  # fmt: skip
+
+
+def test_lda_least_probability_and_prefix_need_no_refit() -> None:
+    from meegxer.nodes.decoding import LDA
+
+    windows, events = windows_of()
+    stage = Stage(LDA(), {"tmin": 0.0, "tmax": 2.0})
+    fp = labelled_input("fp", events)
+    stage.fit(windows, fp, events)
+    stage.set_params(min_probability=0.999, event_prefix="key_")
+    assert stage.status(fp).value == "ready"
+    result = stage.transform(windows, fp)
+    assert 0 < len(result.events) < len(windows.windows)
+    assert all(e.label.startswith("key_") for e in result.events)
+    assert all(float(e.payload["probability"]) >= 0.999  # type: ignore[arg-type]
+               for e in result.events)  # fmt: skip
+
+
+def test_lda_explains_what_it_cannot_fit() -> None:
+    from meegxer.core.block import Windows
+    from meegxer.core.stage import StaleModelError
+    from meegxer.nodes.decoding import LDA
+
+    windows, events = windows_of(n=6)
+    fp = labelled_input("fp", events)
+    with pytest.raises(ValueError, match="no events"):
+        Stage(LDA(), {}).fit(windows, "fp")
+    # default trial 0.5-4 s: the 1 s windows from 0.5 s lie in it
+    Stage(LDA(), {}).fit(windows, fp, events)
+    with pytest.raises(ValueError, match=r"too few of \['left', 'right'\].*shorter"):
+        Stage(LDA(), {"tmin": 1.0}).fit(windows, fp, events)
+    with pytest.raises(ValueError, match="no feature windows"):
+        Stage(LDA(), {}).fit(Windows((), FS, 0, 100), fp, events)
+    stage = Stage(LDA(), {})
+    stage.fit(windows, fp, events)
+    other = Windows(windows.windows, 2 * FS, 0, windows.stop_index)
+    with pytest.raises(StaleModelError, match="differ from the calibration"):
+        stage.transform(other, fp)
+
+
+def mi_raw(n_trials: int = 30, seed: int = 0) -> Any:
+    import mne
+
+    block, events = imagery(n_trials, seed)
+    raw = mne.io.RawArray(block.data, mne.create_info(list(LABELS), FS, "eeg"),
+                          verbose="error")  # fmt: skip
+    raw.set_annotations(mne.Annotations([e.sample_index / FS for e in events],
+                                        [0.0] * len(events),
+                                        [e.label for e in events]))  # fmt: skip
+    return raw
+
+
+def csp_lda(raw: Any) -> Graph:
+    from meegxer.core.memory import RawInput
+    from meegxer.nodes.decoding import LDA
+
+    graph = Graph()
+    graph.add(RawInput(raw), id="src")
+    graph.add(Stage(CSP(), {"n_components": 2, "window": 1.0, "step": 0.5,
+                            "tmin": 0.5, "tmax": 3.0}), id="csp")  # fmt: skip
+    graph.add(Stage(LDA(), {"tmin": 0.5, "tmax": 3.0}), id="lda")
+    return graph
+
+
+def test_csp_then_lda_in_a_batch_run() -> None:
+    """The LDA strip reads the CSP strip (its default input: the nearest
+    feature strip) and puts its class events on the Events rail."""
+    from meegxer.core.memory import RawOutput
+
+    graph = csp_lda(mi_raw())
+    assert graph["lda"].input == "csp"
+    out_sink = RawOutput()
+    graph.add(out_sink, id="out", input="src")  # an output reading the signal
+    scheduler = BatchScheduler()
+    result = scheduler.run(graph)
+    assert result.fitted == ["csp", "lda"]
+    out = result.outputs["lda"]
+    assert isinstance(out, list) and out
+    assert isinstance(out[0], FeatureBlock) and out[0].dims == ("class",)
+    stage = graph["lda"].impl
+    assert isinstance(stage, Stage) and stage.model is not None
+    assert stage.model.input_info.ch_labels == ("CSP1", "CSP2")
+    # windows wholly in a trial: classified as its cue, nearly always
+    predicted = result.events["lda"]
+    assert len(predicted) == len(out)
+    hits = total = 0
+    for e in predicted:
+        onset = (e.sample_index // 400) * 400  # trials every 4 s
+        if 50 + 100 <= e.sample_index - onset + 1 <= 300:  # its window: 0.5-3 s
+            total += 1
+            hits += e.label == "pred_" + ("left" if onset // 400 % 2 == 0 else "right")
+    assert total >= 30 and hits / total > 0.9, (hits, total)
+    # an output to its right gets the class events (the Events rail as drawn);
+    # a processor sees its ancestors' only (its fingerprint names them, rule 7)
+    labels = set(out_sink.raw.annotations.description)
+    assert {"pred_left", "pred_right", "left", "right"} <= labels
+    assert not any(e.label.startswith("pred_")
+                   for e in scheduler.rail_events("csp"))  # fmt: skip
+    # a change upstream of CSP marks both for a refit (rule 7)
+    before = offline_input_fingerprints(graph)["lda"]
+    graph["csp"].impl.set_params(n_components=3)  # type: ignore[union-attr]
+    after = offline_input_fingerprints(graph)["lda"]
+    assert after != before and stage.status(after).value == "needs-refit"
+
+
+def test_lda_calibrated_live_after_csp() -> None:
+    """Live: CSP calibrates on the first stretch, then LDA on the windows CSP
+    gives after it; each window's class comes as it ends, and is what the
+    same model gives on the same windows offline."""
+    from meegxer.core.block import Windows
+    from meegxer.core.probes import FeatureProbe
+    from meegxer.core.realtime import RealtimeScheduler
+
+    graph = csp_lda(mi_raw(n_trials=16))
+    taps = {name: FeatureProbe({"keep_windows": 0}) for name in ("csp", "lda")}
+    for name, tap in taps.items():
+        graph.add(tap, input=name)
+    import time
+
+    # the recording plays ten times faster than real time
+    scheduler = RealtimeScheduler(graph, max_block=37,
+                                  clock=lambda: 10 * time.perf_counter())  # fmt: skip
+    scheduler.calibrate("csp", 20.0)
+    scheduler.calibrate("lda", 20.0)
+    scheduler.start()
+    assert scheduler.wait(60)
+    status = scheduler.status()
+    assert status["errors"] == []
+    stage = graph["lda"].impl
+    assert isinstance(stage, Stage) and stage.model is not None
+    got = taps["lda"].windows
+    # LDA's calibration starts with CSP's first windows, once CSP is fitted
+    assert got and got[0].window[1] > 40 * FS
+    seen = {w.window: w for w in taps["csp"].windows}
+    again = stage.processor.transform_features(
+        Windows(tuple(seen[w.window] for w in got), FS, 0, 64 * 100),
+        stage.model.data,
+        None,
+        stage.params,
+    )
+    assert isinstance(again.block, tuple)
+    np.testing.assert_allclose([w.data for w in again.block],
+                               [w.data for w in got])  # fmt: skip
+    assert len(again.events) == len(got)

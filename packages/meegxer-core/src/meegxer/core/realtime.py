@@ -30,7 +30,7 @@ import threading
 import time
 import traceback
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -38,7 +38,14 @@ from typing import Any, Protocol
 import numpy as np
 import pylsl
 
-from meegxer.core.block import Block, FeatureBlock, SignalInfo, concat_blocks
+from meegxer.core.block import (
+    Block,
+    FeatureBlock,
+    SignalInfo,
+    Windows,
+    concat_blocks,
+    concat_windows,
+)
 from meegxer.core.display import (
     Decimator,
     DisplayFrame,
@@ -206,9 +213,14 @@ class RealtimeScheduler:
         self._thread: threading.Thread | None = None
         self._running = threading.Event()
         self._finished = threading.Event()
-        self._calibration: dict[str, tuple[list[Block], float]] = {}
+        self._calibration: dict[str, tuple[list[Block | Windows], float]] = {}
         # labelled fits waiting for markers: calibration, due time, rails over it
-        self._fits: dict[str, tuple[Block, float, Mapping[str, RailInput] | None]] = {}
+        self._fits: dict[
+            str, tuple[Block | Windows, float, Mapping[str, RailInput] | None]
+        ] = {}
+        # the input stretch each stage last ran on and its rate, for the windows
+        # of a feature strip as a processor's input (spec 0.2.23)
+        self._spans: dict[str, tuple[int, int, float]] = {}
         self._calibration_rails: dict[str, list[Mapping[str, RailInput]]] = {}
         self._feeds: dict[str, RailFeed] = {}  # readers of rails (wait and align)
         self._written: dict[str, RailOutput] = {}  # the last stage's rails
@@ -430,7 +442,7 @@ class RealtimeScheduler:
         """The input ended while a calibration was still collecting: say so
         (its node stays uncalibrated) instead of stopping without a reason."""
         for node_id, (blocks, seconds) in self._calibration.items():
-            got = sum(b.n_samples for b in blocks) / sfreq
+            got = sum(b.n_samples / _rate(b) for b in blocks)
             self.metrics.errors.append(
                 f"calibration of {node_id!r} did not finish: the input ended after "
                 f"{got:.1f} of {seconds:g} s; it stays uncalibrated (use a longer "
@@ -453,10 +465,10 @@ class RealtimeScheduler:
         for blocks, _ in self._calibration.values():
             if blocks:
                 first = blocks[0]
-                keep = min(keep, self._rail.index(first.sample_index, first.info.sfreq))
+                keep = min(keep, self._rail.index(first.sample_index, _rate(first)))
         for calibration, _, _ in self._fits.values():
             keep = min(keep, self._rail.index(calibration.sample_index,
-                                              calibration.info.sfreq))  # fmt: skip
+                                              _rate(calibration)))  # fmt: skip
         self._rail.trim(keep)
 
     def _finish_fits(self, now: bool = False) -> None:
@@ -470,7 +482,7 @@ class RealtimeScheduler:
     def _fit(
         self,
         node: GraphNode,
-        calibration: Block,
+        calibration: Block | Windows,
         rails: Mapping[str, RailInput] | None = None,
     ) -> None:
         stage = node.impl
@@ -478,13 +490,13 @@ class RealtimeScheduler:
         events = (
             self._rail.visible_to(
                 self.graph, node.id, calibration.sample_index,
-                calibration.stop_index, calibration.info.sfreq,
+                calibration.stop_index, _rate(calibration),
             )
             if stage.manifest.fit_events
             else ()
         )  # fmt: skip
         if stage.manifest.fit_events:  # on the rail's clock, as markers arrive
-            rate = calibration.info.sfreq
+            rate = _rate(calibration)
             first = self._rail.index(calibration.sample_index, rate)
             self._fitted.append((first, self._rail.index(calibration.stop_index, rate)))
         try:
@@ -535,6 +547,8 @@ class RealtimeScheduler:
             self.graph.source.id: block
         }
         self._source_rails(block, outputs)
+        self._spans[self.graph.source.id] = (block.sample_index, block.stop_index,
+                                             block.info.sfreq)  # fmt: skip
         sink_hit = False
         for node in self.graph.nodes[1:]:
             assert node.input is not None
@@ -544,12 +558,18 @@ class RealtimeScheduler:
                 continue
             started = time.perf_counter()
             if isinstance(node.impl, Stage):
-                # processors take Signal input in v1 (port types keep it so)
+                # Signal input, or a feature strip's windows (port types keep
+                # them apart, spec 0.2.23)
                 self._written = {}
-                outputs[node.id] = (
-                    self._run_stage(node, upstream)
+                given = (
+                    self._windows_in(node, upstream)
+                    if node.impl.takes_features
+                    else upstream
                     if isinstance(upstream, Block)
                     else None
+                )
+                outputs[node.id] = (
+                    self._run_stage(node, given) if given is not None else None
                 )
                 for port in node.manifest.rail_outputs:  # "id:port" main inputs
                     rail = self._written.get(port.name)
@@ -581,8 +601,20 @@ class RealtimeScheduler:
             if len(self.metrics.latencies) > 20000:
                 del self.metrics.latencies[:10000]
 
+    def _windows_in(
+        self, node: GraphNode, upstream: Block | tuple[FeatureBlock, ...]
+    ) -> Windows | None:
+        """The windows a feature strip handed on, over the stretch of its input
+        it just ran on (a processor taking Features, spec 0.2.23)."""
+        span = self._spans.get(node.input_node or "")
+        if isinstance(upstream, Block) or span is None:
+            return None
+        self._spans[node.id] = span
+        start, stop, rate = span
+        return Windows(upstream, rate, start, stop)
+
     def _run_stage(
-        self, node: GraphNode, block: Block
+        self, node: GraphNode, block: Block | Windows
     ) -> Block | tuple[FeatureBlock, ...] | None:
         """One block through a processor: a reader of rails first waits until
         they cover it (docs/RAILS.md); a writer hands its rails to their readers,
@@ -590,7 +622,7 @@ class RealtimeScheduler:
         stage = node.impl
         assert isinstance(stage, Stage)
         rails: dict[str, RailInput] | None = None
-        if stage.manifest.rail_inputs:
+        if stage.manifest.rail_inputs and isinstance(block, Block):
             feed = self._feed(node.id, block.info.sfreq)
             feed.push_main(block)
             rate = block.info.sfreq
@@ -606,6 +638,9 @@ class RealtimeScheduler:
             if got is None:
                 return None  # a rail it reads lags: wait (rule 8)
             block, rails = got
+        rate = _rate(block)
+        if isinstance(block, Block):
+            self._spans[node.id] = (block.sample_index, block.stop_index, rate)
         written: dict[str, RailOutput] = {}
         out = self._stage_step(node, block, rails, written)
         self._written = written  # the rails it wrote, for "id:port" readers
@@ -616,7 +651,7 @@ class RealtimeScheduler:
             if data is None:
                 continue
             for reader, reader_port in self._subscribers.get((node.id, port.name), []):
-                feed = self._feed(reader, block.info.sfreq)
+                feed = self._feed(reader, rate)
                 feed.push_rail(reader_port, data, block.stop_index)
         return out
 
@@ -653,7 +688,7 @@ class RealtimeScheduler:
     def _stage_step(
         self,
         node: GraphNode,
-        block: Block,
+        block: Block | Windows,
         rails: dict[str, RailInput] | None,
         written: dict[str, RailOutput],
     ) -> Block | tuple[FeatureBlock, ...] | None:
@@ -666,9 +701,9 @@ class RealtimeScheduler:
             blocks.append(block)
             if rails is not None:
                 self._calibration_rails.setdefault(node.id, []).append(rails)
-            if sum(b.n_samples for b in blocks) >= seconds * block.info.sfreq:
+            if sum(b.n_samples for b in blocks) >= seconds * _rate(block):
                 del self._calibration[node.id]
-                calibration = concat_blocks(blocks)
+                calibration = _joined(blocks)
                 pieces = self._calibration_rails.pop(node.id, [])
                 joined = (
                     join_inputs(pieces, stage.manifest.rail_inputs) if pieces else None
@@ -691,7 +726,7 @@ class RealtimeScheduler:
             return self._without_model(node, block)
         written.update(result.rails)
         self.metrics.events += len(result.events)
-        self._rail.add(result.events, node.id, block.info.sfreq)
+        self._rail.add(result.events, node.id, _rate(block))
         if isinstance(result.block, FeatureBlock):
             return (result.block,)
         if isinstance(result.block, Block) and result.block.n_samples == 0:
@@ -699,12 +734,13 @@ class RealtimeScheduler:
         return result.block
 
     @staticmethod
-    def _without_model(node: GraphNode, block: Block) -> Block | None:
+    def _without_model(node: GraphNode, block: Block | Windows) -> Block | None:
         """No valid model: block (default, rule 7) or, if the node opted in, pass
-        the data through unprocessed and mark it as bypassed by this node."""
+        the data through unprocessed and mark it as bypassed by this node
+        (windows have no Signal to pass on)."""
         stage = node.impl
         assert isinstance(stage, Stage)
-        if not stage.pass_uncalibrated:
+        if not stage.pass_uncalibrated or isinstance(block, Windows):
             return None
         marked = tuple(dict.fromkeys((*block.bypassed, node.id)))
         return dataclasses.replace(block, bypassed=marked)
@@ -840,3 +876,16 @@ class RealtimeScheduler:
                 snapshot[f"source_{attr}"] = getattr(source, attr)
         with self._lock:
             self._snapshot = snapshot
+
+
+def _rate(item: Block | Windows) -> float:
+    """The rate the sample indices of a block, or of windows, count."""
+    return item.sfreq if isinstance(item, Windows) else item.info.sfreq
+
+
+def _joined(pieces: Sequence[Block | Windows]) -> Block | Windows:
+    """A calibration stretch collected piece by piece, as one."""
+    windows = [p for p in pieces if isinstance(p, Windows)]
+    if windows:
+        return concat_windows(windows)
+    return concat_blocks([p for p in pieces if isinstance(p, Block)])

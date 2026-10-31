@@ -310,7 +310,9 @@ layout (M9.8; before, it stopped the run).
 
 **Decided**
 - Features → Sink only in v1 (view, export, LSL feature stream); Features → Processor
-  later, so the v1 scheduler needs no multi-rate processor edges.
+  later, so the v1 scheduler needs no multi-rate processor edges. (Built in M11.3,
+  spec 0.2.23: a Features-input processor gets the windows of a stretch of its
+  producer's input, so still no multi-rate edges.)
 
 ## M7 — Reproducibility and release gate
 

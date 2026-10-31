@@ -340,6 +340,11 @@ def plugin_class(
         raise PluginError(f"plugins must be processors, not {parsed.role}s")
     if parsed.name.startswith(RESERVED_PREFIXES):
         raise PluginError(f"plugin name {parsed.name!r} uses a reserved prefix")
+    if parsed.inputs[0].type.value != "signal":  # spec 0.2.23: built-ins only
+        raise PluginError(
+            "plugins take Signal input (a Features input, e.g. a classifier "
+            "reading a feature strip, is built-in only)"
+        )
     attrs: dict[str, Any] = {
         "manifest": parsed,
         "launcher": launcher,

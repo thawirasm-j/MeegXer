@@ -7,6 +7,23 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **LDA classifier (M11.3).** A new *Linear discriminant analysis (LDA)*
+  strip (Decoding & BCI) classifies the windows of a feature strip: it reads
+  the nearest one (CSP, band power, …) or the one chosen under *Reads*. It
+  fits shrinkage LDA (scikit-learn, Ledoit-Wolf; Blankertz et al. 2011;
+  *Shrinkage* off: plain LDA) on the windows lying wholly in its classes'
+  trials (*Trial start*/*Trial end* after each cue). It gives each window's
+  class probabilities (its own feature rail) and a class event (`pred_left`,
+  …) on the Events rail. Offline and live (`meegxer calibrate csp1`, then
+  `meegxer calibrate lda1`). *Event only from probability* and *Event label
+  prefix* are MeegXer's settings and need no refit.
+- An output strip (a file writer) now gets every event on the rail to its
+  left, as the rail is drawn: an LDA strip's class events are written to the
+  `.set` after it. A processor still sees only the events of the strips it
+  reads from.
+- Spec 0.2.23: a processor's main input may be Features (built-in nodes;
+  plugins still take Signal input).
+
 ## 0.4.0b3 (2026-10-31): Editing and review
 
 Undo and redo for every edit, and the review track finished: a review

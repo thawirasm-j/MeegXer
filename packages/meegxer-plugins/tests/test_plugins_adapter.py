@@ -108,6 +108,13 @@ def test_reserved_names_and_bad_manifests_rejected(
             "inputs": [{"name": "in", "type": "signal"}],
         }  # fmt: skip
         plugin_class(sink, launcher)
+    with pytest.raises(PluginError, match="Signal input"):  # spec 0.2.23
+        classifier = {
+            "spec_version": "0.2.23", "name": "lab.classify", "version": "0.1.0",
+            "type": "analysis", "inputs": [{"name": "in", "type": "features"}],
+            "outputs": [{"name": "out", "type": "features"}],
+        }  # fmt: skip
+        plugin_class(classifier, launcher)
 
 
 def test_plugins_run_in_both_schedulers(plugin: Callable[..., LocalLauncher]) -> None:

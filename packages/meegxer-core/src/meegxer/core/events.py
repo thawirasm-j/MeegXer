@@ -41,6 +41,19 @@ def upstream_ids(graph: Graph, node_id: str) -> set[str]:
     return found
 
 
+def seen_ids(graph: Graph, node_id: str) -> set[str]:
+    """The strips whose events ``node_id`` sees: its ancestors; for an output
+    (a sink), every strip before it in the chain, as the Events rail is drawn
+    (an LDA strip's class events reach a writer that reads the signal). A
+    processor sees its ancestors only: its input fingerprint names them, so a
+    changed event marks its model for a refit (rule 7)."""
+    found = upstream_ids(graph, node_id)
+    if graph[node_id].role.value == "sink":
+        ids = [n.id for n in graph.nodes]
+        found |= set(ids[: ids.index(node_id)])
+    return found
+
+
 def taken_over(graph: Graph, node_id: str) -> frozenset[str]:
     """The labels the strip ``node_id`` takes over from the strips before it
     (its processor's ``takes_over(params)``; none for most strips)."""
@@ -134,7 +147,8 @@ class EventsRail:
         stop: int | None = None,
         sfreq: float | None = None,
     ) -> tuple[Event, ...]:
-        """What ``node_id`` sees: the input's events and its upstream strips',
+        """What ``node_id`` sees: the input's events and its upstream strips' (an
+        output: every earlier strip's, ``seen_ids``),
         over ``[start, stop)`` counted at ``sfreq`` (its input's rate; None: the
         input's), and counted at that rate. Labels a strip before it takes over
         are left out where they come from before that strip."""
@@ -154,7 +168,7 @@ class EventsRail:
         if scale != 1:  # the samples that land in [start, stop) once mapped
             start = math.ceil((start - Fraction(1, 2)) / scale)
             stop = None if stop is None else math.ceil((stop - Fraction(1, 2)) / scale)
-        upstream = upstream_ids(graph, node_id)
+        upstream = seen_ids(graph, node_id)
         origins, hidden = {INPUT, *upstream}, _hidden(graph, upstream)
         lo = bisect.bisect_left(self._keys, (start, -1))
         hi = (len(self._keys) if stop is None

@@ -22,7 +22,9 @@ from meegxer.core.block import (
     Block,
     Event,
     SignalInfo,
+    Windows,
     concat_blocks,
+    feature_names,
 )
 from meegxer.core.manifest import ParamValue
 from meegxer.core.node import (
@@ -201,6 +203,12 @@ class Stage:
             return StageStatus.NEEDS_REFIT
         return StageStatus.READY
 
+    @property
+    def takes_features(self) -> bool:
+        """The main input is Features (a classifier reading a feature strip,
+        spec 0.2.23): fit and transform take ``Windows``."""
+        return self.manifest.inputs[0].type is PortType.FEATURES
+
     def begin_calibration(self) -> None:
         """Mark the stage as collecting calibration data (online flow)."""
         if not self.manifest.requires_fit:
@@ -209,7 +217,7 @@ class Stage:
 
     def fit(
         self,
-        calibration: Block,
+        calibration: Block | Windows,
         input_fp: str,
         events: Sequence[Event] = (),
         rails: Mapping[str, RailInput] | None = None,
@@ -231,6 +239,8 @@ class Stage:
                 "calibration data has no events (offline: the recording's events "
                 "or an events file; live: the LSL input's marker stream)"
             )
+        if isinstance(calibration, Windows):
+            return self._fit_windows(calibration, input_fp, inside)
         selected = self._selected(calibration)
         if selected is None:
             self._calibrating = False
@@ -260,6 +270,55 @@ class Stage:
         self.state = None
         return self.model
 
+    def _fit_windows(
+        self, calibration: Windows, input_fp: str, events: Sequence[Event]
+    ) -> FittedModel:
+        """Fit a node taking Features on the windows of the calibration
+        stretch; the model records their feature names as its input's labels."""
+        try:
+            if not calibration.windows:
+                raise ValueError(
+                    f"{self.manifest.name}: no feature windows to fit on (the "
+                    "strip it reads produced none in the calibration stretch)"
+                )
+            data = self.processor.fit_features(calibration, events, self.params)
+            check_state(data)
+            first = calibration.windows[0]
+            info = SignalInfo(feature_names(first), calibration.sfreq, first.stream_id)
+        finally:
+            self._calibrating = False
+        self.model = FittedModel(
+            data=data,
+            fingerprint=self.fingerprint(input_fp),
+            content_hash=hash_state(data),
+            input_info=info,
+        )
+        self.state = None
+        return self.model
+
+    def _transform_windows(self, windows: Windows, input_fp: str) -> TransformResult:
+        model: State = {}
+        if self.model is not None:
+            fitted = self.model.input_info
+            if windows.sfreq != fitted.sfreq or any(
+                feature_names(w) != fitted.ch_labels for w in windows.windows
+            ):
+                raise StaleModelError(
+                    f"{self.manifest.name}: the features or their rate differ "
+                    "from the calibration's"
+                )
+            model = self.model.data
+        result = self.processor.transform_features(
+            windows, model, self.state, self.params
+        )
+        self._check_rails_out(result)
+        for port in self.manifest.outputs[:1]:
+            for out_block in output_blocks(result.block):
+                check_block(port, out_block)
+        check_state(result.state)
+        self.state = result.state
+        return result
+
     def _rails_in(
         self, rails: Mapping[str, RailInput] | None
     ) -> Mapping[str, RailInput]:
@@ -288,15 +347,18 @@ class Stage:
 
     def transform(
         self,
-        block: Block,
+        block: Block | Windows,
         input_fp: str,
         rails: Mapping[str, RailInput] | None = None,
     ) -> TransformResult:
-        """Process one block; refuses to run on a missing or stale model. A node
-        with extra input ports gets ``rails`` over the block's samples."""
+        """Process one block (or, for a node taking Features, the windows of a
+        stretch); refuses to run on a missing or stale model. A node with extra
+        input ports gets ``rails`` over the block's samples."""
         status = self.status(input_fp)
         if status is not StageStatus.READY:
             raise StaleModelError(f"{self.manifest.name} is {status}, not ready")
+        if isinstance(block, Windows):
+            return self._transform_windows(block, input_fp)
         full = block
         if self.state is None:  # a new stream: forget what an earlier one left
             self._rest = []

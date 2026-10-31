@@ -49,6 +49,7 @@ TITLES = {
     "meegxer.nodes.morlet": "Wavelet power (Morlet)",
     "meegxer.nodes.ssvep_cca": "SSVEP detection",
     "meegxer.nodes.csp": "Common spatial patterns (CSP)",
+    "meegxer.nodes.lda": "Linear discriminant analysis (LDA)",
     "meegxer.core.lsl_features_out": "LSL features output",
     "eeglab.asr": "ASR cleaning (EEGLAB)",
 }
@@ -63,6 +64,7 @@ RAIL_NAMES = {
     "meegxer.nodes.complexity": "Complexity",
     "meegxer.nodes.ssvep_cca": "SSVEP",
     "meegxer.nodes.csp": "CSP",
+    "meegxer.nodes.lda": "LDA",
 }
 FILTER_KINDS = {
     "highpass": "High-pass",

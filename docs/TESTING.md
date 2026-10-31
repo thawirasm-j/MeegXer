@@ -586,3 +586,34 @@ reviewers by giving a different name each run:
 | K2 reviewer 2 blind | passed | run by Claude offscreen |
 | K3 the resolve window: disagreements, kappa | passed | run by Claude offscreen; raters A, B, kappa BAD 0.65 in qc.tsv |
 
+
+## L. LDA classifier (M11.3)
+
+Already run by Claude: the CLI run, the GUI offline run (offscreen, through
+the real window) and the live run through the daemon. Steps 1 and 2 need
+nothing but the repository. Step 3 plays the recording in real time (about
+2 minutes).
+
+1. `uv run python tools/lda_demo.py OUT`, then
+   `uv run meegxer run OUT/csp_lda.json`: "fitted: csp1, lda1".
+   `OUT/mi_lda.set` has the cues (`left`, `right`) and LDA's `pred_left` and
+   `pred_right` events, one per CSP window (every 0.25 s).
+2. GUI: *Open…* `OUT/csp_lda.json`.
+   - The LDA strip draws from the CSP rail and adds to Events.
+   - Its *Reads* says *Nearest (CSP)*.
+   - *Run offline*, then click the LDA strip's tap. The feature view shows
+     two probabilities over time, swapping at the trials.
+3. Live: switch the input to live and *Run*. Then:
+   - Calibrate *CSP* for 40 s. Once it is ready, calibrate *LDA* for 40 s.
+   - Both turn ready, and LDA's tap shows the probabilities as they come.
+   - The live `.set` does not have the events yet: the next PR writes the
+     Events rail in live runs.
+4. Real data (optional, needs the download): the EEGBCI sample's motor
+   imagery runs, with *Classes* `T1, T2` on CSP and LDA.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| L1 CLI run, events in the .set | passed | run by Claude; 583 `pred_left`, 374 `pred_right`; every in-trial window matched its cue (training data) |
+| L2 GUI offline: chain, *Reads*, the LDA tap | passed | run by Claude offscreen |
+| L3 live: CSP then LDA calibrated | passed | run by Claude through the daemon and the CLI; both ready, p95 latency 3.6 ms |
+| L4 real data | | |

@@ -36,7 +36,7 @@ SYNTHETIC = "meegxer.core.synthetic"
 # the GUI's defaults where they differ from the node's: synthetic input played
 # live runs until stopped (a live calibration never runs out of it)
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
-SPEC_VERSION = "0.2.22"
+SPEC_VERSION = "0.2.23"
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -81,7 +81,12 @@ class Rail:
 
 # strips that put events on the Events rail besides the Event detection ones
 # (Review, Review epochs, the detectors): Reject segments marks each cut
-EVENT_WRITERS = frozenset({"meegxer.core.reject_segments"})
+EVENT_WRITERS = frozenset(
+    {
+        "meegxer.core.reject_segments",
+        "meegxer.nodes.lda",  # its class events (pred_left …)
+    }
+)
 
 
 def tap_id(strip_id: str) -> str:
@@ -542,7 +547,8 @@ class PipelineDoc:
 
     def writes_events(self, strip: StripNode) -> bool:
         """It puts events on the Events rail: an Event detection strip (review,
-        detector, or a plugin in that category) or a Reject segments strip."""
+        detector, or a plugin in that category), a Reject segments strip or a
+        classifier (LDA)."""
         manifest = self.manifest(strip)
         return manifest.get("category") == "events" or strip.node in EVENT_WRITERS
 
