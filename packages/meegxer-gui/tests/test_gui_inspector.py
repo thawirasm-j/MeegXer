@@ -219,9 +219,26 @@ def test_epoch_times_are_shown_in_ms_and_kept_in_seconds(
     ins, seen = show(qapp, doc, strip.id, advanced=False)
     fields = [f for f in ins.findChildren(QDoubleSpinBox) if f.suffix() == " ms"]
     assert sorted(f.value() for f in fields) == [-200.0, -200.0, 0.0, 800.0]
+    # as shown: whole ms, no zeros lost (it read -2 ms for -200 ms)
+    assert sorted(f.text() for f in fields) == ["-200 ms", "-200 ms", "0 ms",
+                                                "800 ms"]  # fmt: skip
     assert all(f.singleStep() == 50.0 for f in fields)
+    assert doc.format_param(strip, "tmin") == "-200 ms"  # on the strip too
+    assert doc.format_param(strip, "tmax") == "800 ms"
     tmax = next(f for f in fields if f.value() == 800.0)
     tmax.setValue(650.0)  # typed in ms ...
     assert seen[-1][1] == "tmax"
     assert seen[-1][2] == pytest.approx(0.65)  # ... sent in seconds
     dispose(qapp, ins)
+
+
+def test_numbers_keep_their_zeros(qapp: QApplication) -> None:
+    """A float field drops trailing zeros of decimals only (500 Hz, 0.5 s)."""
+    from meegxer.gui.inspector import _Number
+
+    field = _Number()
+    for decimals, value, text in ((0, -200.0, "-200"), (0, 50.0, "50"),
+                                  (3, 500.0, "500"), (3, 0.5, "0.5"),
+                                  (0, 0.0, "0")):  # fmt: skip
+        field.setDecimals(decimals)
+        assert field.textFromValue(value) == text

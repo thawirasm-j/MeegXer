@@ -19,7 +19,7 @@ from pathlib import PurePath
 from typing import Any, Literal
 
 from meegxer.core.registry import canonical_name
-from meegxer.gui.labels import choice_label, unit_label
+from meegxer.gui.labels import SHOWN_IN_MS, choice_label, unit_label
 
 Mode = Literal["live", "offline"]
 Group = Literal["input", "preprocess", "features", "output"]
@@ -630,6 +630,8 @@ class PipelineDoc:
             text = "on" if value else "off"
         elif spec["type"] == "enum":
             text = choice_label(name, value)
+        elif spec["type"] == "float" and (strip.node, name) in SHOWN_IN_MS:
+            return f"{float(value) * 1e3:g} ms"  # kept in seconds, read in ms
         elif spec["type"] == "float":
             text = f"{float(value):g}"
         elif spec["type"] == "string":
