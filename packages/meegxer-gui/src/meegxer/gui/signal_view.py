@@ -240,9 +240,9 @@ class HeadChannelMenu(ChannelMenu):
         self.picker = ChannelPicker(theme)
         self.picker.changed.connect(self._picked)
         menu = QMenu(self)
-        holder = QWidgetAction(menu)
-        holder.setDefaultWidget(self.picker)
-        menu.addAction(holder)
+        self._holder = QWidgetAction(menu)
+        self._holder.setDefaultWidget(self.picker)
+        menu.addAction(self._holder)
         self.setMenu(menu)  # kept: the picker is updated, not rebuilt
 
     def set_labels(
@@ -261,7 +261,20 @@ class HeadChannelMenu(ChannelMenu):
         self.hidden = set(hide_by_default) & set(labels)
         self.picker.set_channels(labels, self.hidden, hide_by_default, wheel=wheel,
                                  colors=colors, notes=notes)  # fmt: skip
+        self._refit()
         self._caption()
+
+    def _refit(self) -> None:
+        """The menu keeps the size it measured when it was first shown: after
+        the channels change (e.g. a component list instead of a head), it
+        measures the picker again (re-adding its action marks it changed)."""
+        menu = self.menu()
+        if menu is None:
+            return
+        self.picker.adjustSize()
+        menu.removeAction(self._holder)
+        menu.addAction(self._holder)
+        menu.adjustSize()
 
     def _picked(self, hidden: set[str]) -> None:
         self.hidden = set(hidden)

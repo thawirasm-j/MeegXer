@@ -16,9 +16,11 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QPushButton,
+    QScrollArea,
     QToolTip,
     QVBoxLayout,
     QWidget,
@@ -136,6 +138,9 @@ class HeadPicker(QWidget):
         p.end()
 
 
+MAX_LIST_ROWS = 20  # listed channels shown before the list scrolls
+
+
 class ChannelPicker(QWidget):
     """The head picker, the channels without a place as check boxes, and
     quick choices; ``changed`` carries the hidden channels. With ``single``
@@ -170,8 +175,20 @@ class ChannelPicker(QWidget):
             b.clicked.connect(lambda _=False, f=slot: f())
             buttons.addWidget(b, k // 2, k % 2)
         side.addWidget(self.buttons)
-        self.unplaced = QVBoxLayout()
-        side.addLayout(self.unplaced)
+        # the channels without a place (e.g. a decomposition's components):
+        # one row each, scrolled past MAX_LIST_ROWS rows
+        listed = QWidget()
+        self.unplaced = QVBoxLayout(listed)
+        self.unplaced.setContentsMargins(0, 0, 0, 0)
+        self.unplaced.setSpacing(2)
+        self.list_area = QScrollArea()
+        self.list_area.setWidget(listed)
+        self.list_area.setWidgetResizable(True)
+        self.list_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.list_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        side.addWidget(self.list_area)
         side.addStretch(1)
         lay.addLayout(side)
         self.boxes: dict[str, QCheckBox] = {}
@@ -201,8 +218,23 @@ class ChannelPicker(QWidget):
             box.toggled.connect(lambda on, lb=label: self._box(lb, on))
             self.unplaced.addWidget(box)
             self.boxes[label] = box
+        self._size_list()
         self.head.setVisible(bool(self.head.points))
         self._apply(set(hidden), emit=False)
+
+    def _size_list(self) -> None:
+        """Every row at its own height, up to MAX_LIST_ROWS; then a scroll bar."""
+        boxes = list(self.boxes.values())
+        self.list_area.setVisible(bool(boxes))
+        if not boxes:
+            return
+        row = max(b.sizeHint().height() for b in boxes) + self.unplaced.spacing()
+        bar = self.list_area.verticalScrollBar().sizeHint().width()
+        wide = max(b.sizeHint().width() for b in boxes)
+        self.list_area.setMinimumWidth(
+            wide + (bar if len(boxes) > MAX_LIST_ROWS else 0)
+        )
+        self.list_area.setFixedHeight(row * min(len(boxes), MAX_LIST_ROWS))
 
     def _apply(self, hidden: set[str], emit: bool = True) -> None:
         self.hidden = hidden & set(self.labels)
