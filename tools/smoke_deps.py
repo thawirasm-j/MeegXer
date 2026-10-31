@@ -24,6 +24,7 @@ DEPENDENCIES: list[tuple[str, str, bool]] = [
     ("scipy", "scipy", True),
     ("pyzmq", "zmq", True),
     ("pylsl", "pylsl", True),
+    ("pyxdf", "pyxdf", True),
     ("mne", "mne", True),
     ("PySide6", "PySide6.QtCore", True),
     ("pyqtgraph", "pyqtgraph", True),

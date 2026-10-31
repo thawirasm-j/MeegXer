@@ -497,3 +497,41 @@ def test_a_live_erp_tap_counts_and_resets(
     finally:
         win.close()
         dispose(qapp, win.stacked, win.recording_window, win)
+
+
+def test_an_xdf_inputs_notes_reach_the_log(
+    qapp: QApplication,
+    daemon: tuple[str, subprocess.Popen[bytes]],
+    tmp_path: Path,
+) -> None:
+    """M10.5: what reading an XDF file decided (its streams, an assumed unit)
+    is said in the log when it becomes the input."""
+    import importlib.util
+
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    here = Path(__file__).parents[2] / "meegxer-core" / "tests" / "test_core_xdf.py"
+    spec = importlib.util.spec_from_file_location("xdf_writer", here)
+    assert spec is not None and spec.loader is not None
+    xdf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(xdf)
+    path = tmp_path / "rec.xdf"
+    xdf.write_xdf(path, [xdf.signal(channels=[{"label": c} for c in
+                                              ("Fz", "Cz", "Pz")]),
+                         xdf.markers("cues", [(1.0, "go")])])  # fmt: skip
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        assert win.doc.source is not None
+        win.doc.source.params["path"] = str(path)
+        info = win._describe_input()
+        assert info is not None and info["event_labels"] == ["go"]
+        log = win.logbox.toPlainText()
+        assert "Input: XDF: signal stream 'amp', markers from 'cues'" in log
+        assert "3 of 3 channels state no unit: taken to be in uV" in log
+        win._describe_input()  # the same input again: not logged twice
+        assert win.logbox.toPlainText().count("Input: XDF") == 1
+    finally:
+        win.close()

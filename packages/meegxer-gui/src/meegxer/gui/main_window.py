@@ -156,6 +156,7 @@ class MainWindow(QMainWindow):
         self._unseen = 0  # log lines written while the log is hidden
         self.review_window: ReviewWindow | None = None  # a review strip waits
         self.epoch_window: EpochReviewWindow | None = None  # an epoch review waits
+        self._input_notes: tuple[str, ...] = ()  # logged once per input
         self.import_window: ReviewWindow | None = None  # a review at import
         self._answered: dict[str, Any] | None = None  # until the run moves on
         self.offline_recordings: dict[str, Any] = {}  # an all-subjects BIDS run
@@ -782,6 +783,11 @@ class MainWindow(QMainWindow):
         info: dict[str, Any] | None = self.call(
             "describe_source", node=self.doc.source_entry()
         )
+        notes = tuple(info.get("notes", ())) if info else ()
+        if notes and notes != self._input_notes:  # e.g. an XDF's assumed unit
+            for note in notes:
+                self.log(f"Input: {note}")
+        self._input_notes = notes
         self.use_recording_info(info)
         return info
 

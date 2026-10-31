@@ -57,7 +57,7 @@ in later 0.4.0 betas.
 | M10.2 Epoching, events writer | Done: the Epochs strip and the epochs rail, every file writer records the Events rail (PR #90), and epoch files (`-epo.fif`, epoched `.set`, BIDS epochs) | PR #84, #90, #105 |
 | M10.3 ERP view | Done: the ERP view of an epochs rail, live (the Epochs strip runs live; an ERP tap keeps each condition's running mean in the core, with *Reset*) and offline; the epoch review window's ERP; ERP export (`-ave.fif`) | PR #93, #105, #116, #117 |
 | M10.4 Bad segments | Done, as the review track below: detectors write `BAD_…` spans, a Reject segments strip cuts them, the Epochs strip leaves out epochs overlapping them | PR #87, #97 |
-| M10.5 XDF input | Open | |
+| M10.5 XDF input | Done: the File input opens LabRecorder `.xdf` files (pyxdf): the first EEG stream (or one by name), its marker streams as events on the nearest sample, units to volts (µV assumed where a file states none, and said so), a `BAD_gap` mark where samples were lost | PR #125 |
 | M10.6 EEGLAB decompositions | Open (the ICs rail starts at ICA only) | |
 | M10.7 MNE Python API | Open | |
 | M10.8 Batch workers, QC report | Done: `--jobs N` worker processes (and `general.batch_jobs` for the GUI's all-subjects run), a QC report per recording (mne.Report) and the dataset's `qc.tsv` and `qc.html` | PR #107 |
@@ -70,7 +70,7 @@ Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
 (now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
 reference.
 
-**Next:** the open M10 items, XDF input first (M10.5).
+**Next:** the open M10 items: EEGLAB decompositions (M10.6), the MNE Python API (M10.7), undo (M10.10), review step 6 (M10.11).
 
 ### M9: Fix and harden (0.3.0bN)
 

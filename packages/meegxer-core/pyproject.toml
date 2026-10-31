@@ -28,6 +28,7 @@ dependencies = [
     "mne-bids>=0.16",
     "numpy>=2.1",
     "pylsl>=1.16",
+    "pyxdf>=1.17",
     "pyzmq>=26",
     "scipy>=1.14.1",
 ]

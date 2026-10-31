@@ -536,6 +536,7 @@ class _RawSource(Source):
         self._pos = 0
         self._annotations: list[dict[str, float | str]] = []
         self.import_reviewed = False  # the review at import was applied
+        self.notes: list[str] = []  # what reading the file decided (describe)
 
     def _load(self) -> mne.io.BaseRaw:
         raise NotImplementedError
@@ -624,7 +625,10 @@ class _RawSource(Source):
 
 
 class FileSource(_RawSource):
-    """EDF/BDF, EEGLAB .set, BrainVision, FIF: anything ``mne.io.read_raw`` reads."""
+    """EDF/BDF, EEGLAB .set, BrainVision, FIF: anything ``mne.io.read_raw``
+    reads; and XDF (LabRecorder) through pyxdf (``meegxer.core.xdf``): its
+    signal stream with its marker streams as events. ``notes`` say what was
+    decided reading it (an assumed unit, lost samples)."""
 
     manifest: ClassVar[Manifest] = _source_manifest(
         "meegxer.core.file",
@@ -635,9 +639,43 @@ class FileSource(_RawSource):
                 "default": "",
                 "primary": True,
                 "path": "file",
-                "extensions": [".set", ".edf", ".bdf", ".vhdr", ".fif", ".gdf", ".cnt"],
+                "extensions": [
+                    ".set",
+                    ".edf",
+                    ".bdf",
+                    ".vhdr",
+                    ".fif",
+                    ".gdf",
+                    ".cnt",
+                    ".xdf",
+                ],
             },
             IMPORT_REVIEW_PARAM,
+            {
+                "name": "xdf_stream",
+                "type": "string",
+                "default": "",
+                "advanced": True,
+                "description": "XDF: the signal stream, by name (empty: the "
+                "first EEG stream)",
+            },
+            {
+                "name": "xdf_markers",
+                "type": "string",
+                "default": "",
+                "advanced": True,
+                "description": "XDF: the marker streams, by name, comma-separated "
+                "(empty: every marker stream)",
+            },
+            {
+                "name": "xdf_unit",
+                "type": "enum",
+                "default": "uV",
+                "choices": ["uV", "mV", "V"],
+                "advanced": True,
+                "description": "XDF: the unit of channels the file states none "
+                "for (MeegXer's assumption; µV as the LSL input)",
+            },
         ],
     )
 
@@ -661,7 +699,18 @@ class FileSource(_RawSource):
     def _load(self) -> mne.io.BaseRaw:
         import mne
 
-        return mne.io.read_raw(self._path(), preload=True, verbose="ERROR")
+        path = self._path()
+        if path.suffix.lower() == ".xdf":
+            from meegxer.core.xdf import read_xdf
+
+            read = read_xdf(path, str(self.params["xdf_stream"]),
+                            str(self.params["xdf_markers"]),
+                            str(self.params["xdf_unit"]))  # fmt: skip
+            self.notes = [f"XDF: signal stream {read.stream!r}, markers from "
+                          f"{', '.join(map(repr, read.marker_streams)) or 'none'}",
+                          *read.notes]  # fmt: skip
+            return read.raw
+        return mne.io.read_raw(path, preload=True, verbose="ERROR")
 
 
 class BidsSource(_RawSource):

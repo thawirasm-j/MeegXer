@@ -82,10 +82,10 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   CI tests 3.13 + 3.14; revisit the floor when SPEC 0 drops 3.13, ~Oct 2027).
   Monorepo managed as a uv workspace. Only the core is a candidate for a later Rust rewrite,
   behind the same protocol.
-- Core: numpy, scipy, jsonschema, pylsl, pyzmq (JSON-RPC control and display both over
+- Core: numpy, scipy, jsonschema, pylsl, pyxdf, pyzmq (JSON-RPC control and display both over
   ZeroMQ); file I/O through MNE (mne-bids, eeglabio, edfio). Signals are in volts. Built-ins: MNE, SciPy, python-picard, mne-icalabel,
   mne-connectivity, antropy (ASR is the EEGLAB plugin). GUI: PySide6, pyqtgraph. CLI: Typer or Click.
-- I/O: BIDS (mne-bids), EDF/BDF, EEGLAB .set in; .set (eeglabio), EDF, BIDS-derivatives out.
+- I/O: BIDS (mne-bids), EDF/BDF, EEGLAB .set, XDF (pyxdf) in; .set (eeglabio), EDF, BIDS-derivatives out.
 - Performance escalation order: vectorize (preallocated ring buffers, no per-sample
   loops) → Numba → PyO3 Rust extension → full Rust core. Measure before escalating.
 
