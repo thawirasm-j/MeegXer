@@ -257,8 +257,9 @@ class Sink(_ConfiguredNode):
     def write(self, block: AnyBlock) -> None: ...
 
     def bind(self, graph: Any, node_id: str) -> None:
-        """Batch runs call this before running, with the graph the sink is in and
-        its id: for writers that need the input's identity (BIDS derivatives)."""
+        """Runs (batch and live) call this before running, with the graph the
+        sink is in and its id: for writers that need the input's identity (BIDS
+        derivatives) or what the strips before them learned (a .set's ICA)."""
 
     def finish(self) -> None:
         """Batch runs call this once every node has run (after ``close``): for

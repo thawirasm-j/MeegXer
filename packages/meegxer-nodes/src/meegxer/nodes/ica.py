@@ -231,6 +231,17 @@ class ICAClean(Processor):
             "classes": list(CLASSES),
         }
 
+    @staticmethod
+    def decomposition(model: State, params: Params) -> dict[str, Any]:
+        """The decomposition as fitted and the components ``params`` remove
+        from the data (for a ``.set`` writer after the strip,
+        ``meegxer.core.eeglab_ica.decomposition_for``)."""
+        return {"channels": list(model["channels"]),  # type: ignore[arg-type]
+                "weights": np.asarray(model["weights"]),
+                "winv": np.asarray(model["winv"]),
+                "probabilities": np.asarray(model["probabilities"]),
+                "removed": rejected(model, params)}  # fmt: skip
+
     def describe_model(self, model: State, params: Params) -> dict[str, str]:
         """The components and those removed, each with its ICLabel class."""
         proba = np.asarray(model["probabilities"])

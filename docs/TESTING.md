@@ -426,6 +426,14 @@ classes) and `OUT/ica_demo_unclassified.set` (without the classes). An EEGLAB
    rail starts there.
 4. `ica_demo_unclassified.set`: the log says `ICLabel classes computed when a
    run first reads them`; after *Start*, the components have classes too.
+5. Writing: `ica_demo.set`, an ICA strip, then *Output → Save as .set*
+   `OUT/clean.set`; *Start*. Open `clean.set` in EEGLAB if you have it
+   (*Tools → Inspect/label components*: N components with their classes, N =
+   18 less the components the ICA strip removed, as its inspector lists them),
+   or `uv run python -c "import mne; print(mne.preprocessing.read_ica_eeglab(r'OUT/clean.set'))"`
+   (`N ICA components`). Add a re-reference strip before the writer and run
+   again: the log says `ICA decomposition not stored: … transforms the
+   channels after it`.
 
 | Item | Value / result | Notes |
 |---|---|---|
@@ -433,3 +441,4 @@ classes) and `OUT/ica_demo_unclassified.set` (without the classes). An EEGLAB
 | G2 components with classes; the head plot | | |
 | G3 an ICA strip ends the file's rail | | |
 | G4 classes computed for the unclassified file | | |
+| G5 the written `.set` keeps the ICA (EEGLAB or MNE); none after a re-reference | | |

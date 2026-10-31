@@ -113,6 +113,22 @@ output strip chooses which line it draws from.
     0.2.22) and the notes how (`EEGLAB decomposition: 18 components on 19
     channels start the ICs rail; ICLabel classes from the file`); `get_model`
     on the input gives the decomposition, for the IC head plot.
+- **Into the `.set` written (M10.6):** the *Save as .set* writer stores the
+  decomposition that unmixes the data it writes, as EEGLAB keeps one
+  (`icaweights`, an identity `icasphere`, `icawinv`, `icachansind`, and the
+  ICLabel classes as `etc.ic_classification.ICLabel`): the ICs rail's nearest
+  writer before it (the input's file, or an ICA strip), less the components
+  the strip removed from the data, as EEGLAB's `pop_subcomp` (rows of
+  `icaweights` and columns of `icawinv` kept; MNE and EEGLAB then read
+  `icawinv`).
+  - None after a strip that mixes the channels (re-reference, interpolation,
+    CSD, EOG regression): the decomposition no longer unmixes the data, and
+    the notes say so. Filters, resampling and segment rejection keep it, as in
+    EEGLAB. A decomposition on a channel the writer no longer has is left out,
+    with a note.
+  - Live and offline alike (writers are bound to the graph in both
+    schedulers). A crashed run's recording (`meegxer recover`) is written from
+    its spool alone, without the decomposition.
   - An ICA strip after the input rewrites the rail: later readers get ICA's
     (the nearest writer, rule 7). The chain draws the file's rail ending at
     the ICA strip, with a bar, and ICA's starting there.
