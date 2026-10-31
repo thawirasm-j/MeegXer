@@ -79,6 +79,8 @@ class Rail:
     follows: str = ""  # the rail it rewrites, whose row it continues
 
 
+# strips that put events on the Events rail when a setting of theirs is on
+EVENT_SWITCHES = {"meegxer.nodes.ssvep_cca": "detections"}
 # strips that put events on the Events rail besides the Event detection ones
 # (Review, Review epochs, the detectors): Reject segments marks each cut
 EVENT_WRITERS = frozenset(
@@ -550,6 +552,9 @@ class PipelineDoc:
         detector, or a plugin in that category), a Reject segments strip or a
         classifier (LDA)."""
         manifest = self.manifest(strip)
+        switch = EVENT_SWITCHES.get(strip.node)  # events only when it is on
+        if switch is not None:
+            return bool(strip.params.get(switch))
         return manifest.get("category") == "events" or strip.node in EVENT_WRITERS
 
     def _port_rails(self, rails: list[Rail], needs: dict[str, str]) -> None:

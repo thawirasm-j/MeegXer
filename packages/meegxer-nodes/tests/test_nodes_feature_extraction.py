@@ -227,6 +227,25 @@ def test_ssvep_finds_the_stimulus_frequency(method: str) -> None:
             assert w.coords["frequency"][int(np.argmax(w.data))] == target
 
 
+def test_ssvep_detections_go_on_the_events_rail() -> None:
+    """With *Detections as events*, each window's best target (the published
+    decision rule) is an event at its last sample, for the keyboard strip."""
+    block = block_of(np.concatenate([ssvep(10.0), ssvep(15.0, seed=1)], axis=1))
+    stage = Stage(SSVEPCCA(), {"detections": True, "window": 2.0, "step": 2.0})
+    result = stage.transform(block, "fp")
+    assert isinstance(result.block, tuple) and len(result.block) == 4
+    assert [(e.sample_index, e.label) for e in result.events] == [
+        (int(2 * FS) - 1, "ssvep_10"), (int(4 * FS) - 1, "ssvep_10"),
+        (int(6 * FS) - 1, "ssvep_15"), (int(8 * FS) - 1, "ssvep_15")]  # fmt: skip
+    best = float(np.max(result.block[0].data))
+    assert result.events[0].payload["score"] == pytest.approx(best, abs=1e-6)
+    # off (the default): no events; a least score drops weak windows
+    assert Stage(SSVEPCCA(), {}).transform(block, "fp").events == ()
+    strict = Stage(SSVEPCCA(), {"detections": True, "min_score": 1e9,
+                                "window": 2.0, "step": 2.0})  # fmt: skip
+    assert strict.transform(block, "fp").events == ()
+
+
 def test_ssvep_ignores_bad_channels() -> None:
     x = ssvep(12.0)
     t = np.arange(x.shape[1]) / FS

@@ -5,7 +5,10 @@ sine and cosine references at f, 2f, ... (harmonics below Nyquist); the score is
 the largest canonical correlation (Lin et al. 2006). Filter-bank CCA (Chen et al.
 2015) repeats this on sub-bands [m * low, high] for m = 1..N (zero-phase
 Chebyshev type I filters on the window) and scores sum_m (m^-1.25 + 0.25) * r_m^2.
-No calibration is needed. The target with the highest score is the detected one.
+No calibration is needed. The target with the highest score is the detected one:
+with ``detections`` on, each window puts it on the Events rail at its last sample
+(``ssvep_12`` for 12 Hz), e.g. for the keyboard strip. ``min_score`` (a
+detection only from that score) and ``event_prefix`` are MeegXer's settings.
 """
 
 from __future__ import annotations
@@ -16,9 +19,10 @@ from typing import Any, ClassVar
 import numpy as np
 from scipy import signal as sps
 
-from meegxer.core.block import SignalInfo
+from meegxer.core.block import Block, Event, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest
-from meegxer.core.node import Params
+from meegxer.core.node import Params, TransformResult
+from meegxer.core.serialization import State
 from meegxer.nodes.features import WindowedFeatures, analysis_manifest
 
 FBCCA_A, FBCCA_B = 1.25, 0.25  # sub-band weights m^-a + b (Chen et al. 2015)
@@ -105,11 +109,43 @@ class SSVEPCCA(WindowedFeatures):
             {"name": "subband_high", "type": "float", "default": 88.0, "min": 5.0,
              "unit": "Hz", "advanced": True,
              "description": "Upper edge of every sub-band"},
+            {"name": "detections", "type": "bool", "default": False,
+             "primary": True,
+             "description": "Put each window's detected target on the Events "
+                            "rail (ssvep_12 for 12 Hz), e.g. for the keyboard"},
+            {"name": "min_score", "type": "float", "default": 0.0, "min": 0.0,
+             "advanced": True,
+             "description": "A detection only from this score (MeegXer's "
+                            "setting; 0: every window)"},
+            {"name": "event_prefix", "type": "string", "default": "ssvep_",
+             "advanced": True,
+             "description": "Start of the detection events' labels "
+                            "(MeegXer's setting)"},
         ],
         "SSVEP target scores by canonical correlation (CCA, filter-bank CCA).",
         window=2.0,
         step=0.5,
+        version="0.2.0",
+        live_params=["detections", "min_score", "event_prefix"],
     )  # fmt: skip
+
+    def transform(
+        self, block: Block, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        result = super().transform(block, model, state, params)
+        if not params["detections"]:
+            return result
+        least, prefix = float(params["min_score"]), str(params["event_prefix"])
+        events = []
+        for w in result.block if isinstance(result.block, tuple) else ():
+            assert isinstance(w, FeatureBlock)
+            k = int(np.argmax(w.data))
+            if w.data[k] >= least:  # at the window's last sample: decided then
+                freq = w.coords["frequency"][k]
+                payload = {"score": round(float(w.data[k]), 6)}
+                at = max(w.window[1] - 1, 0)
+                events.append(Event(at, f"{prefix}{freq:g}", payload=payload))
+        return result._replace(events=tuple(events))
 
     def features(
         self, x: np.ndarray, info: SignalInfo, params: Params

@@ -44,7 +44,14 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
    pipeline or session; pynput. "Not a medical device" in the README and a
    new About box (*?*, top right). §M run by me on a virtual X display
    (Xvfb) with real pynput. Left for you: M4 (keys landing in another app on
-   Windows) and M5 (how the About box looks). PR (queued).
+   Windows) and M5 (how the About box looks). PR #145.
+6. **SSVEP BCI template and keypress demo** (M10.9's last part; half of
+   M11's exit criterion): the SSVEP detection strip can put each window's
+   detected target on the Events rail (`ssvep_12`), a live *SSVEP BCI (keys)*
+   template (LSL → SSVEP detection → keyboard), and `tools/ssvep_demo.py`, a
+   synthetic SSVEP recording played live. §N run by me on Xvfb with real key
+   presses (detections 100 % correct on the synthetic looks). Also fixed on
+   the way: the feature view drew SSVEP's unitless scores in dB. This PR.
 
 ## Defaults taken (small choices)
 
@@ -65,6 +72,11 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
 | 14 | Armed state on screen | The strip turns red with "ARMED · Esc disarms"; the card shows pressed/dropped | A modal warning on arming |
 | 15 | About box | A *?* button beside ⚙ (there was no About box) | A menu bar |
 | 16 | pynput's install | It builds `evdev` from source on Linux (needs a C compiler and kernel headers; fine on CI and here; may matter on a Pi). Left out of `tools/smoke_deps.py`, because importing it needs a desktop session | |
+| 17 | SSVEP decisions as events | An option on the SSVEP detection strip, **off by default** (*Detections as events*): the window's best target, the published decision rule (Lin 2006; Chen 2015), at its last sample, `ssvep_<Hz>`; *Event only from score* (default 0) and the prefix are MeegXer's | An LDA after the scores: needs calibration, and CCA's point is that it needs none |
+| 18 | Parameter name | `detections` (the Epochs strip already uses `events` for something else) | |
+| 19 | SSVEP template | **Live from LSL**, no sample dataset (templates may now have none; the dialog hides the sample checkbox, `--sample` is refused) | MNE's SSVEP dataset as a sample: I could not confirm its citation and licence, which the BIDS sample needs |
+| 20 | Template settings | Targets 8, 10, 12, 15 Hz, filter-bank CCA, 2 s windows every 0.5 s; keys arrows (8 left, 10 right, 12 up, 15 down); no channel picking (the description says to add Pick channels for the occipital ones) | |
+| 21 | SSVEP node version | 0.1.0 → 0.2.0 (new settings; same output with them off) | |
 | 8 | References | Fisher 1936, Blankertz et al. 2011, Ledoit & Wolf 2004, scikit-learn (Pedregosa et al. 2011). DOIs checked by web search (doi.org is blocked from here) | |
 
 ## Found on the way
@@ -80,3 +92,4 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
 - L4: the LDA strip on real motor-imagery data (EEGBCI sample, *Classes*
   `T1, T2`).
 - M4/M5: the keyboard on Windows (keys landing in Notepad), the About box.
+- N4: the SSVEP demo's keys on Windows.

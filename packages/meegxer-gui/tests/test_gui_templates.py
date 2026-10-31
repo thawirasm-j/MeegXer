@@ -93,3 +93,13 @@ def test_new_from_template_on_the_sample_fetches_the_first_subject(
         assert [s.id for s in win.doc.strips][-1] == "bands_out"
     finally:
         win.close()
+
+
+def test_a_live_template_offers_no_sample(qapp: QApplication) -> None:
+    dialog = TemplateDialog()
+    dialog.templates.setCurrentRow(list(TEMPLATES).index("ssvep_bci"))
+    assert "keyboard" in dialog.description.text()
+    assert dialog.sample.isHidden() and dialog.sample_note.isHidden()
+    assert dialog.choice() == ("ssvep_bci", False)
+    dialog.templates.setCurrentRow(list(TEMPLATES).index("rest"))
+    assert not dialog.sample.isHidden()

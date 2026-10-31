@@ -35,6 +35,17 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   It uses pynput (new dependency of `meegxer-nodes`), which needs a desktop
   session; on Linux it builds `evdev` from source. MeegXer is **not a
   medical device**: said in the README and the new About box (*?*).
+- **SSVEP BCI template (M10.9, M11's demo).** *New…* → *SSVEP BCI (keys)*
+  (`meegxer new ssvep_bci OUT.json`): live from an LSL amplifier, SSVEP
+  detection (filter-bank CCA, targets at 8, 10, 12 and 15 Hz) with
+  *Detections as events*, and the keyboard pressing an arrow key per
+  detected target once armed. It has no sample dataset: try it with
+  `tools/ssvep_demo.py`, a synthetic SSVEP recording played live.
+- SSVEP detection: *Detections as events* (off by default) puts each
+  window's best target on the Events rail (`ssvep_12`); *Event only from
+  score* and the prefix are MeegXer's settings, live. Node version 0.2.0.
+- Feature view: values without a unit (SSVEP scores) are no longer drawn in
+  dB.
 - Control API 0.2.24: `arm`, and `armed`/`pressed`/`dropped` in an action
   sink's status. Live runs hand action sinks each new event as it reaches
   the rail.

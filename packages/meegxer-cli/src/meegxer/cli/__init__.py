@@ -36,7 +36,7 @@ def templates() -> None:
     from meegxer.core.templates import TEMPLATES
 
     for t in TEMPLATES.values():
-        typer.echo(f"{t.name:14} {t.title} (sample: {t.sample})\n{'':14} "
+        typer.echo(f"{t.name:14} {t.title} (sample: {t.sample or 'none'})\n{'':14} "
                    f"{t.description}")  # fmt: skip
     typer.echo("")
     for s in SAMPLES.values():
@@ -72,9 +72,17 @@ def new(
     if output.exists() and not force:
         typer.echo(f"error: {output} exists (--force replaces it)", err=True)
         raise typer.Exit(code=1)
+    if sample and not TEMPLATES[template].sample:
+        typer.echo(f"error: the {template} template has no sample dataset "
+                   "(try it with tools/ssvep_demo.py)", err=True)  # fmt: skip
+        raise typer.Exit(code=1)
     pipeline = template_pipeline(template, sample=sample)
     output.write_text(json.dumps(pipeline, indent=2) + "\n", encoding="utf-8")
     typer.echo(f"wrote {output}")
+    if not TEMPLATES[template].sample:  # live: an LSL amplifier
+        typer.echo(f"run it live: meegxer daemon --pipeline {output} --start "
+                   "(set the input's stream name first)")  # fmt: skip
+        return
     root = next(n for n in pipeline["nodes"] if n["id"] == "input").get("params", {})
     dataset = root.get("root") or "DATASET"
     typer.echo(f"run it: meegxer run {output} --bids {dataset}"

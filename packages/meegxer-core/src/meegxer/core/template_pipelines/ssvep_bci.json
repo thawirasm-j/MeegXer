@@ -1,0 +1,12 @@
+{
+  "spec_version": "0.2.23",
+  "nodes": [
+    {"id": "input", "node": "meegxer.core.lsl_in"},
+    {"id": "ssvep", "node": "meegxer.nodes.ssvep_cca",
+     "params": {"frequencies": "8, 10, 12, 15", "method": "fbcca",
+                "window": 2.0, "step": 0.5, "detections": true}},
+    {"id": "keys", "node": "meegxer.nodes.keyboard",
+     "params": {"keys": "ssvep_8=left, ssvep_10=right, ssvep_12=up, ssvep_15=down",
+                "max_rate": 2.0}}
+  ]
+}

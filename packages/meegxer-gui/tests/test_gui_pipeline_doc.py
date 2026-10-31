@@ -455,3 +455,10 @@ def test_a_classifier_reads_a_feature_strip(doc: PipelineDoc) -> None:
     assert lda.id not in missing
     graph = Graph.from_dict(doc.to_pipeline(), Registry.from_entry_points())
     assert graph[lda.id].input == csp.id
+
+
+def test_ssvep_adds_to_events_only_with_its_detections(doc: PipelineDoc) -> None:
+    ssvep = doc.insert(len(doc.strips), "meegxer.nodes.ssvep_cca")
+    assert not doc.writes_events(ssvep)
+    ssvep.params["detections"] = True
+    assert doc.writes_events(ssvep)

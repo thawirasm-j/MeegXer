@@ -2,7 +2,8 @@
 
 - **Spectrum** (the windows have a ``frequency`` dimension, e.g. PSD): one
   curve per channel over frequency; live the newest window, offline the mean of
-  the windows in the shown span. Positive values are drawn in dB.
+  the windows in the shown span. Positive values are drawn in dB, unless they
+  have no unit (``1``: SSVEP detection's correlation scores).
 - **Over time** (anything else, e.g. band power, entropy): one line per channel
   (or per feature), a point at the end of each window. Live, time is seconds
   before now or since the start (as in the signal view); offline, recording time.
@@ -409,7 +410,8 @@ class FeatureView(QWidget):
                 spectrum = np.nanmean(data, axis=0)  # one window live
             finite = spectrum[np.isfinite(spectrum)]
             db = (bool(finite.size) and bool((finite > 0).all())
-                  and value_label(series, chosen) != "value (dB)")  # fmt: skip
+                  and value_label(series, chosen) != "value (dB)"
+                  and _slice_unit(series, chosen) != "1")  # fmt: skip
             shown = 10 * np.log10(spectrum) if db else spectrum
             for c in chans:
                 st = styles[c]
