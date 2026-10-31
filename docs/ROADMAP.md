@@ -43,10 +43,12 @@ methods paper. Milestones and their state also live in `docs/WORKPLAN.md`
 
 One PR per item, as before. Items keep their IDs (M9.1 …) in commits and PRs.
 
-## Status (2026-10-30, 0.3.1b4)
+## Status (2026-10-31, 0.4.0b1)
 
-M9 is done (0.3.0b1 to 0.3.1b3). M10 is under way; its exit criterion (an ERP
-and a resting-state study end to end, GUI and CLI) is next.
+M9 is done (0.3.0b1 to 0.3.1b3). M10's exit criterion is met in 0.4.0b1: an
+ERP and a resting-state study run end to end from the GUI and the CLI (the
+maintainer's checks, `docs/TESTING.md` §C to §E). Its open items (below) come
+in later 0.4.0 betas.
 
 | Item | State | Where |
 |---|---|---|
@@ -68,9 +70,7 @@ Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
 (now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
 reference.
 
-**Next:** the M10 exit criterion. An ERP study and a resting-state study run
-end to end from the GUI and the CLI, building what blocks them first (epoch
-files, templates).
+**Next:** the open M10 items, XDF input first (M10.5).
 
 ### M9: Fix and harden (0.3.0bN)
 
