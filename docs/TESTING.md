@@ -377,6 +377,10 @@ holds a BioSemi EEG stream (8 channels, 100 Hz, 278 s of samples, no units
 stated) and a marker stream, recorded across a clock reset: no samples for
 274 s at 128.8 s. Your own LabRecorder file works too.
 
+Before you start: `uv run meegxer shutdown`. The GUI uses a daemon that is
+already running, so one started before `git pull` would still read XDF files
+with the old code; after the shutdown the GUI starts a new one.
+
 1. GUI: *Input → File*, choose `clock_resets.xdf`. The log says `Input: XDF:
    signal stream 'BioSemi', markers from 'MyMarkerStream'`, `8 of 8 channels
    state no unit: taken to be in uV`, `273.869 s of samples lost at 128.760 s
@@ -387,14 +391,20 @@ stated) and a marker stream, recorded across a clock reset: no samples for
    test data), the markers as event lines, a BAD_gap mark at 128.76 s.
 3. An Epochs strip on `Marker` (-200 to 800 ms): 27 epochs; the ERP view
    shows them.
-4. No epoch spans 128.76 s (the gap).
-5. CLI: `uv run meegxer run pipeline.json -i clock_resets.xdf -o out.set`
-   writes the file with the markers as events.
+4. and 5. CLI (`tools/xdf_check.py`), from the MeegXer folder, with
+   `XDF` the path to `clock_resets.xdf` and `OUT` a new folder:
+   - `uv run python tools/xdf_check.py write XDF OUT` writes
+     `OUT/xdf_epochs.json` (the file as the input, an Epochs strip on
+     `Marker`, the recording to `out.set`, the epochs to `out-epo.fif`).
+   - `uv run meegxer run OUT/xdf_epochs.json` runs it (F5).
+   - `uv run python tools/xdf_check.py check XDF OUT` prints
+     `F4: 27 epochs; gaps at 128.76 s; epochs across a gap: 0 (PASS)` and
+     `F5: out.set holds 166 events (166 in the XDF file, BAD_gap included)`.
 
 | Item | Value / result | Notes |
 |---|---|---|
 | F1 streams and notes in the log; channels and events listed | partial | No `10 markers left out` |
 | F2 278 s of signal, events in place, BAD_gap at 128.76 s | passed | |
 | F3 27 epochs on Marker; ERP view | passed | |
-| F4 no epoch across the gap | how? | |
-| F5 CLI run with -i clock_resets.xdf | no pipeline.json | |
+| F4 no epoch across the gap (`xdf_check.py check`) | how? | |
+| F5 CLI run of `xdf_epochs.json`; out.set holds 166 events | no pipeline.json | |
