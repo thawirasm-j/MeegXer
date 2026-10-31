@@ -572,6 +572,12 @@ def test_an_eeglab_files_ics_from_the_input(
         win.change_param(win.doc.source.id, "path", str(path))  # the inspector's
         assert win.doc.input_rails == ("ics",)  # as soon as it is chosen
         assert "start the ICs rail" in win.logbox.toPlainText()
+        # Reads → ICs: a rail output, not a strip (it raised KeyError, §H5)
+        psd = win.doc.insert(len(win.doc.strips), "meegxer.nodes.psd")
+        win.change_input(psd.id, "input:ics")
+        assert "reads ICs (Recording file)." in win.logbox.toPlainText()
+        win.change_input(psd.id, "")
+        win.doc.remove(psd.id)
         win.start()
         wait_for(qapp, lambda: win.offline_state in ("done", "error"), 120)
         assert win.offline_state == "done", win.logbox.toPlainText()
