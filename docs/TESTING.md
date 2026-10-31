@@ -437,8 +437,7 @@ classes) and `OUT/ica_demo_unclassified.set` (without the classes). An EEGLAB
 
 | Item | Value / result | Notes |
 |---|---|---|
-| G1 the log note; the ICs rail from the Input strip | | |
-| G2 components with classes; the head plot | | |
-| G3 an ICA strip ends the file's rail | | |
-| G4 classes computed for the unclassified file | | |
-| G5 the written `.set` keeps the ICA (EEGLAB or MNE); none after a re-reference | | |
+| G1 the log note; the ICs rail from the Input strip | partial | the log notes, but after clicking "Run", not immediate |
+| G2 components with classes; the head plot | passed | |
+| G3 an ICA strip ends the file's rail | passed | New ICs should be on the same level as the terminated old IC |
+| G4 classes computed for the unclassified file | partial | the log notes, but after clicking "Run", not immediate |
