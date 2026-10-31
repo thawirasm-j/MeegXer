@@ -3,6 +3,7 @@ write them, cut to each block by sample index in both schedulers (rule 4)."""
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
@@ -331,3 +332,88 @@ def test_a_signal_rail_at_another_rate_is_refused() -> None:
     check_rates({"ics": rail, "events": ()}, 250.0)
     with pytest.raises(RailError, match="before the rate changes"):
         check_rates({"ics": rail}, 500.0)
+
+
+class CarryingSource(SyntheticSource):
+    """A source whose file carries a rail (M10.6: an EEGLAB file's ICs): 3 x
+    its signal on the 'mixed' rail."""
+
+    manifest: ClassVar[Manifest] = dataclasses.replace(
+        SyntheticSource.manifest, name="test.carrying",
+        outputs=(Port("out", PortType.SIGNAL),
+                 Port("mix", PortType.SIGNAL, "mixed", "component")))  # fmt: skip
+
+    def rails(self, block: Block) -> dict[str, Block]:  # type: ignore[override]
+        return {"mix": Block(block.data * 3, block.info, block.sample_index,
+                             block.timestamp)}  # fmt: skip
+
+
+class MixReader(Processor):
+    """Subtracts the 'mixed' rail."""
+
+    manifest: ClassVar[Manifest] = manifest("mixreader", [
+        SIGNAL, {"name": "mix", "type": "signal", "rail": "mixed"}], [OUT])  # fmt: skip
+
+    def transform(
+        self, block: Block, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        return self.transform_rails(block, model, state, params, {})
+
+    def transform_rails(
+        self, block: Block, model: State, state: State | None, params: Params,
+        rails: Mapping[str, RailInput],
+    ) -> TransformResult:  # fmt: skip
+        mix = rails["mix"]
+        assert isinstance(mix, Block)
+        out = Block(block.data - mix.data, block.info, block.sample_index,
+                    block.timestamp)  # fmt: skip
+        return TransformResult(out, {})
+
+
+def carrying(*middle: Stage) -> Graph:
+    src = CarryingSource({"duration": 1.0, "n_channels": 2, "sfreq": 100.0})
+    return Graph.chain([src, *middle, Stage(MixReader()), MemoryProbe()])
+
+
+def test_an_input_starts_the_rail_its_file_carries() -> None:
+    """Rule 6 with a source's rail output: readers get it in batch and live, a
+    strip can take it as its main input, and a later writer rewrites it."""
+    graph = carrying()
+    assert graph.rail_sources("mixreader1") == {"mix": ("carrying1", "mix")}
+    x = expected(carrying())
+    batch = BatchScheduler(block_size=7).run(graph, keep=["mixreader1"])
+    out = batch.outputs["mixreader1"]
+    assert isinstance(out, Block)
+    np.testing.assert_allclose(out.data, -2 * x.data)  # x - 3x
+    fps = offline_input_fingerprints(carrying())
+    assert fps["mixreader1"] != fps.get("probe1")  # the rail is part of its input
+    live = carrying()
+    scheduler = RealtimeScheduler(live, max_block=13)
+    scheduler.start()
+    assert scheduler.wait(20) and scheduler.status()["errors"] == []
+    probe = live.nodes[-1].impl
+    assert isinstance(probe, MemoryProbe)
+    got = probe.signal()
+    np.testing.assert_allclose(got.data, -2 * x.data[:, : got.n_samples])
+    rewritten = carrying(Stage(DelayedWriter()))  # its rail shadows the input's
+    assert rewritten.rail_sources("mixreader1") == {"mix": ("delayed1", "mix")}
+    tap = Graph.chain([CarryingSource({"duration": 1.0, "n_channels": 2,
+                                       "sfreq": 100.0})])  # fmt: skip
+    tap.add(MemoryProbe(), id="tap", input="carrying1:mix")
+    BatchScheduler().run(tap)
+    tapped = tap["tap"].impl
+    assert isinstance(tapped, MemoryProbe)
+    np.testing.assert_allclose(tapped.signal().data, 3 * x.data)
+
+
+def test_a_sources_extra_output_names_its_rail() -> None:
+    source = {"spec_version": "0.2.17", "name": "test.carrier",
+              "version": "0.1.0", "type": "stream", "role": "source",
+              "inputs": [], "params": []}  # fmt: skip
+    carries = Manifest.from_dict({**source, "outputs": [
+        OUT, {"name": "ics", "type": "signal", "rail": "ics",
+              "space": "component"}]})  # fmt: skip
+    assert [p.rail for p in carries.rail_outputs] == ["ics"]
+    with pytest.raises(ManifestError, match="must name the rail"):
+        bare = {"name": "x", "type": "signal"}
+        Manifest.from_dict({**source, "outputs": [OUT, bare]})

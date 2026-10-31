@@ -205,6 +205,14 @@ class Source(_ConfiguredNode):
         """The files this source reads (recorded with their hashes in sessions)."""
         return []
 
+    def rails(self, block: Block) -> dict[str, RailOutput]:
+        """What the source's rail outputs (its extra outputs, e.g. the ICs of a
+        file that carries a decomposition, docs/RAILS.md) hold over the
+        samples of ``block``, which it just read; by output port. Default:
+        nothing (a source with rail outputs that has nothing to write leaves
+        its rails empty)."""
+        return {}
+
     def new_events(self) -> tuple[Event, ...]:
         """Live events the input carries that arrived since the last call (LSL
         markers), already placed on this source's sample index (rule 8). A

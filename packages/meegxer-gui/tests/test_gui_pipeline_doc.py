@@ -399,3 +399,29 @@ def test_a_file_parameter_shows_its_name(doc: PipelineDoc) -> None:
     assert doc.format_param(source, "path") == "rec.set"
     source.params["path"] = ""
     assert doc.format_param(source, "path") == "-"
+
+
+def test_a_files_ics_rail_starts_at_the_input_and_ends_at_ica(
+    doc: PipelineDoc,
+) -> None:
+    """M10.6: an EEGLAB file with a decomposition starts the ICs rail at the
+    Input strip (describe_source's carries); an ICA strip after it rewrites
+    it: the file's rail ends there and the ICA's starts."""
+    doc.set_source("meegxer.core.file")
+    psd = doc.insert(len(doc.strips), "meegxer.nodes.psd")
+    assert "input:ics" not in doc.rail_choices(psd)  # the file carries none
+    assert not any(n["node"] == "meegxer.core.probe" and n["input"] == "input:ics"
+                   for n in doc.to_pipeline()["nodes"])  # fmt: skip
+    doc.input_rails = ("ics",)  # a .set with icaweights
+    assert doc.rail_choices(psd) == ["input:ics"]
+    psd.input = "input:ics"
+    rails, _ = doc.rails()
+    files = next(r for r in rails if r.id == "input:ics")
+    assert files.producer == "input" and files.readers == [psd.id] and not files.ends
+    assert "input:ics" in doc.rail_taps() and doc.tap_kind("input:ics") == "rail"
+    ica = doc.insert(len(doc.strips) - 1, "meegxer.nodes.ica")
+    rails, _ = doc.rails()
+    files = next(r for r in rails if r.id == "input:ics")
+    assert files.ends == ica.id  # rewritten there
+    assert any(r.id == f"{ica.id}:ics" for r in rails)
+    assert doc.rail_choices(psd)[:2] == [f"{ica.id}:ics", "input:ics"]  # nearest

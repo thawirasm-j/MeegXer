@@ -756,8 +756,9 @@ class MainWindow(QMainWindow):
         offline view (live views have no absolute time axis) and start the
         chain's Events rail with them (live playback carries them too)."""
         events = len(info["events"]) if info else 0
-        if events != self.doc.input_events:
-            self.doc.input_events = events
+        carries = tuple(info.get("carries", ())) if info else ()
+        if (events, carries) != (self.doc.input_events, self.doc.input_rails):
+            self.doc.input_events, self.doc.input_rails = events, carries
             self.refresh_chain()
         if info is None:
             self.view.set_wheel({})

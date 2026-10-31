@@ -23,8 +23,9 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
 6. **Typed ports:** Signal (time series), Features (windowed), Events (markers/commands).
    **Node roles:** Source, Processor, Probe, Sink. A node's first input and output
    are its main ports (the chain); a processor's further ports each name a rail it
-   reads or writes (`docs/RAILS.md`). Signal ports may name their space (sensor,
-   component, source).
+   reads or writes, and a source's further outputs each name a rail its input
+   carries (an EEGLAB file's ICs; `docs/RAILS.md`). Signal ports may name their
+   space (sensor, component, source).
 7. **Fit/transform contract** for every processor: `fit(calibration, params) -> model`,
    `transform(block, model, state, params) -> block, state, events` (events may be
    empty; full manifest in `docs/DESIGN.md` §3.3). A node that learns from labelled

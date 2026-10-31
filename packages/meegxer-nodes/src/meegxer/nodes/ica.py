@@ -242,6 +242,12 @@ class ICAClean(Processor):
         count = f"{len(drop)}" + (f" ({removed})" if drop else "")
         return {"components": str(proba.shape[0]), "removed": count}
 
+    @staticmethod
+    def classify(x: np.ndarray, info: SignalInfo, weights: np.ndarray) -> np.ndarray:
+        """ICLabel probabilities for a decomposition made elsewhere (an EEGLAB
+        file's, ``meegxer.core.eeglab_ica``; reached through the registry)."""
+        return iclabel(x, info, weights)
+
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:

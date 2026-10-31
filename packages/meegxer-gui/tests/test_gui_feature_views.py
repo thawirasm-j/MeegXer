@@ -535,3 +535,55 @@ def test_an_xdf_inputs_notes_reach_the_log(
         assert win.logbox.toPlainText().count("Input: XDF") == 1
     finally:
         win.close()
+
+
+def test_an_eeglab_files_ics_from_the_input(
+    qapp: QApplication,
+    daemon: tuple[str, subprocess.Popen[bytes]],
+    tmp_path: Path,
+) -> None:
+    """M10.6: a .set carrying EEGLAB's decomposition and ICLabel classes: the
+    input starts the ICs rail (a tap on it shows the components with their
+    classes, the head plot maps them back from the file's mixing)."""
+    from meegxer.core.eeglab_ica import Decomposition, write_decomposition
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    data = Path(__file__).resolve().parents[3] / "tests" / "data"
+    rec, ref = np.load(data / "m6_ica.npz"), np.load(data / "m6_ref_ica.npz")
+    labels = [str(s) for s in rec["labels"]]
+    raw = mne.io.RawArray(rec["data"].astype(np.float64),
+                          mne.create_info(labels, float(rec["sfreq"]), "eeg"),
+                          verbose="error")  # fmt: skip
+    raw.set_montage(mne.channels.make_dig_montage(
+        dict(zip(labels, rec["positions"], strict=True)), coord_frame="head"),
+        verbose="error")  # fmt: skip
+    path = tmp_path / "rec.set"
+    raw.export(path, fmt="eeglab", verbose="error")
+    w = ref["icaweights"]
+    dec = Decomposition(tuple(labels), w, np.linalg.pinv(w), ref["probabilities"])
+    write_decomposition(path, dec, tuple(labels))
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        assert win.doc.source is not None
+        win.doc.source.params["path"] = str(path)
+        win._describe_input()
+        assert win.doc.input_rails == ("ics",)
+        assert "start the ICs rail" in win.logbox.toPlainText()
+        win.start()
+        wait_for(qapp, lambda: win.offline_state in ("done", "error"), 120)
+        assert win.offline_state == "done", win.logbox.toPlainText()
+        win.click_tap("input:ics", False)
+        assert win._shown() == ("tap_input__ics", [])
+        win.redraw()
+        boxes = [b.text() for b in win.view.channels.picker.boxes.values()]
+        assert len(boxes) == 18 and boxes[0].startswith("IC01 · ")
+        win.show()
+        win.view._set_mode("spectrum")
+        qapp.processEvents()
+        win.redraw()
+        assert win.view.mixing is not None and win.view.mixing[0] == tuple(labels)
+    finally:
+        win.close()

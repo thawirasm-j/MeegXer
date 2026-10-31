@@ -16,9 +16,15 @@ import numpy as np
 from scipy import signal
 
 from meegxer.core.block import Block, FloatArray, SignalInfo
+from meegxer.core.eeglab_ica import (
+    Decomposition,
+    classify,
+    components_info,
+    read_decomposition,
+)
 from meegxer.core.import_review import crop_events, find_import_review, review_files
 from meegxer.core.manifest import Manifest
-from meegxer.core.node import Source
+from meegxer.core.node import RailOutput, Source
 from meegxer.core.references import credits
 from meegxer.core.samples import ensure_recording
 
@@ -47,7 +53,10 @@ IMPORT_REVIEW_PARAM: dict[str, object] = {
 
 
 def _source_manifest(
-    name: str, params: list[dict[str, object]], version: str = "0.1.0"
+    name: str,
+    params: list[dict[str, object]],
+    version: str = "0.1.0",
+    rails: list[dict[str, object]] | None = None,
 ) -> Manifest:
     return Manifest.from_dict(
         {
@@ -57,7 +66,8 @@ def _source_manifest(
             "type": "stream",
             "role": "source",
             "inputs": [],
-            "outputs": [{"name": "out", "type": "signal"}],
+            # rail outputs: what a file carries (docs/RAILS.md)
+            "outputs": [{"name": "out", "type": "signal"}, *(rails or [])],
             "params": params,
             **credits(name),
         }
@@ -628,7 +638,12 @@ class FileSource(_RawSource):
     """EDF/BDF, EEGLAB .set, BrainVision, FIF: anything ``mne.io.read_raw``
     reads; and XDF (LabRecorder) through pyxdf (``meegxer.core.xdf``): its
     signal stream with its marker streams as events. ``notes`` say what was
-    decided reading it (an assumed unit, lost samples)."""
+    decided reading it (an assumed unit, lost samples, a decomposition).
+
+    An EEGLAB ``.set`` with an ICA decomposition starts the ICs rail
+    (``ics``, ``meegxer.core.eeglab_ica``): its components' activations, with
+    the file's ICLabel classes, else ICLabel's computed when a run first reads
+    them. An ICA strip after the input rewrites the rail."""
 
     manifest: ClassVar[Manifest] = _source_manifest(
         "meegxer.core.file",
@@ -677,6 +692,7 @@ class FileSource(_RawSource):
                 "for (MeegXer's assumption; µV as the LSL input)",
             },
         ],
+        rails=[{"name": "ics", "type": "signal", "rail": "ics", "space": "component"}],
     )
 
     _COMPANIONS: ClassVar[dict[str, tuple[str, ...]]] = {
@@ -710,7 +726,76 @@ class FileSource(_RawSource):
                           f"{', '.join(map(repr, read.marker_streams)) or 'none'}",
                           *read.notes]  # fmt: skip
             return read.raw
-        return mne.io.read_raw(path, preload=True, verbose="ERROR")
+        raw = mne.io.read_raw(path, preload=True, verbose="ERROR")
+        if path.suffix.lower() == ".set":
+            self._decomposition = self._read_decomposition(path, raw.ch_names)
+        return raw
+
+    _decomposition: Decomposition | None = None
+    _classified = False  # ICLabel tried (the file's classes, or computed)
+
+    def _read_decomposition(
+        self, path: Path, channels: list[str]
+    ) -> Decomposition | None:
+        dec = read_decomposition(path)
+        if dec is None:
+            return None
+        missing = [c for c in dec.channels if c not in channels]
+        if missing:
+            gone = ", ".join(missing)
+            self.notes.append(f"EEGLAB decomposition left out: its channels "
+                              f"{gone} are not in the recording")  # fmt: skip
+            return None
+        how = (f"ICLabel classes from {dec.classified_by}" if dec.classified_by
+               else "ICLabel classes computed when a run first reads them")  # fmt: skip
+        n, m = dec.n_components, len(dec.channels)
+        self.notes.append(f"EEGLAB decomposition: {n} components on {m} "
+                          f"channels start the ICs rail; {how}")  # fmt: skip
+        self.notes.extend(dec.notes)
+        return dec
+
+    def decomposition(self) -> Decomposition | None:
+        """The file's ICA decomposition, classified (the first call may run
+        ICLabel); None when it carries none."""
+        _ = self._raw
+        dec = self._decomposition
+        if dec is None or self._classified:
+            return dec
+        self._classified = True
+        if dec.probabilities is None:
+            data, own = self._raw
+            idx = [own.ch_labels.index(c) for c in dec.channels]
+            info = self.info  # with the recording's positions, if set
+            positions = info.positions or ()
+            sub = SignalInfo(dec.channels, info.sfreq, info.stream_id,
+                             positions=tuple(positions[i] for i in idx)
+                             if positions else ())  # fmt: skip
+            dec = classify(dec, data[idx], sub)
+            self.notes.extend(n for n in dec.notes if n not in self.notes)
+        self._decomposition = dec
+        return dec
+
+    def rails(self, block: Block) -> dict[str, RailOutput]:
+        """The file's ICs over ``block`` (activations ``weights @ x``)."""
+        dec = self.decomposition()
+        if dec is None:
+            return {}
+        own = self._raw[1].ch_labels
+        idx = [own.index(c) for c in dec.channels]
+        ics = Block(dec.weights @ block.data[idx], components_info(dec, block.info),
+                    block.sample_index, block.timestamp)  # fmt: skip
+        return {"ics": ics}
+
+    def carries(self) -> list[str]:
+        """The rail outputs this file starts (``describe``): its ICs when it
+        carries a decomposition."""
+        _ = self._raw
+        return ["ics"] if self._decomposition is not None else []
+
+    def ica_model(self) -> dict[str, Any] | None:
+        """The decomposition as the ICA strip's model (``get_model``)."""
+        dec = self.decomposition()
+        return None if dec is None else dec.model()
 
 
 class BidsSource(_RawSource):

@@ -410,4 +410,6 @@ def describe(source: Source) -> dict[str, Any]:
         "events_origin": origin,
         "recording": overrides.to_dict(),
         "notes": list(getattr(source, "notes", [])),  # control API 0.2.21
+        # the rails the input starts (a file's ICs; control API 0.2.22)
+        "carries": list(getattr(source, "carries", list)()),
     }
