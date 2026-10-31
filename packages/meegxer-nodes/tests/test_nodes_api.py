@@ -115,3 +115,14 @@ def test_outputs_it_cannot_give_say_why() -> None:
     psd["nodes"].append({"id": "psd1", "node": "meegxer.nodes.psd"})
     with pytest.raises(GraphError, match="feature writer"):
         run(psd, recording(), output="psd1")
+
+
+def test_a_bids_template_on_a_raw_leaves_its_bids_writer_out() -> None:
+    """A pipeline made for a BIDS input (a template's BIDS epochs writer) run
+    on a Raw in memory: the writer cannot name subject and task, so it is
+    left out with a warning, and the epochs still come back."""
+    bids = pipeline({"id": "erp", "node": "meegxer.core.bids_epochs",
+                     "input": "ep1:epochs"})  # fmt: skip
+    with pytest.warns(UserWarning, match="erp left out: BIDS output needs subject"):
+        epochs = run(bids, recording(), output="ep1")
+    assert len(epochs) == len(ONSETS)

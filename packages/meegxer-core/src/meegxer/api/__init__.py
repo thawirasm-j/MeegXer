@@ -80,6 +80,8 @@ def run(
     graph.replace(graph.source.id, source)
     for node_id in drop_shared_sinks(graph):  # a shared session's writers
         logger.info("%s writes nowhere (shared without its file name)", node_id)
+    for node_id, why in _drop_unplaced_bids_writers(graph):
+        warnings.warn(f"{node_id} left out: {why}", stacklevel=2)
     read_from, kind = _output(graph, output)
     collector = EpochsOutput() if kind == "epochs" else RawOutput()
     if isinstance(collector, RawOutput):
@@ -99,6 +101,26 @@ def run(
     if isinstance(collector, EpochsOutput):
         return collector.epochs
     return collector.raw
+
+
+def _drop_unplaced_bids_writers(graph: Any) -> list[tuple[str, str]]:
+    """Remove the BIDS writers that cannot name where they write (a template
+    made for a BIDS input, run here on a Raw in memory or a file named
+    without subject and task); each one's id and why."""
+    from meegxer.core.bids_out import target_for
+    from meegxer.core.node import Sink
+
+    dropped = []
+    for node in list(graph.nodes):
+        if isinstance(node.impl, Sink) and node.manifest.name.startswith(
+            "meegxer.core.bids_"
+        ):
+            try:
+                target_for(graph, node.impl.params)
+            except ValueError as exc:
+                graph.remove(node.id)
+                dropped.append((node.id, str(exc)))
+    return dropped
 
 
 def _document(pipeline: str | PathLike[str] | Mapping[str, Any]) -> dict[str, Any]:
