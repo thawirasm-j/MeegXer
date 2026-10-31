@@ -112,7 +112,11 @@ output strip chooses which line it draws from.
   - `describe_source` says what the input carries (`carries`, control API
     0.2.22) and the notes how (`EEGLAB decomposition: 18 components on 19
     channels start the ICs rail; ICLabel classes from the file`); `get_model`
-    on the input gives the decomposition, for the IC head plot.
+    on the input gives the decomposition, for the IC head plot. The GUI asks as
+    soon as the input's file is chosen (the log note and the rail, before any
+    run).
+  - The chain: an ICA strip after the input ends the file's rail at its left
+    edge (a bar), and its own ICs rail goes on along the same row.
 - **Into the `.set` written (M10.6):** the *Save as .set* writer stores the
   decomposition that unmixes the data it writes, as EEGLAB keeps one
   (`icaweights`, an identity `icasphere`, `icawinv`, `icachansind`, and the

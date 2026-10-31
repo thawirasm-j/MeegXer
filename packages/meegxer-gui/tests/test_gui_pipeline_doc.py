@@ -406,7 +406,7 @@ def test_a_files_ics_rail_starts_at_the_input_and_ends_at_ica(
 ) -> None:
     """M10.6: an EEGLAB file with a decomposition starts the ICs rail at the
     Input strip (describe_source's carries); an ICA strip after it rewrites
-    it: the file's rail ends there and the ICA's starts."""
+    it: the file's rail ends there and the ICA's starts on the same row."""
     doc.set_source("meegxer.core.file")
     psd = doc.insert(len(doc.strips), "meegxer.nodes.psd")
     assert "input:ics" not in doc.rail_choices(psd)  # the file carries none
@@ -423,5 +423,7 @@ def test_a_files_ics_rail_starts_at_the_input_and_ends_at_ica(
     rails, _ = doc.rails()
     files = next(r for r in rails if r.id == "input:ics")
     assert files.ends == ica.id  # rewritten there
-    assert any(r.id == f"{ica.id}:ics" for r in rails)
+    own = next(r for r in rails if r.id == f"{ica.id}:ics")
+    assert own.follows == files.id and own.lane == files.lane  # its row goes on
+    assert doc.rail_lanes() == 1 + max(r.lane for r in rails if r.id != own.id)
     assert doc.rail_choices(psd)[:2] == [f"{ica.id}:ics", "input:ics"]  # nearest
