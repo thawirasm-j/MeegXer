@@ -7,13 +7,40 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+Nothing yet.
+
+## 0.4.0b1 (2026-10-31)
+
+The first beta of M10, research workflows: an ERP study and a resting-state
+study run end to end from the GUI and the CLI. Start one from a template with
+its sample data, run every subject on several workers with a QC report each,
+cut epochs (live too) and write them with their ERPs, and watch the ERPs
+build up live, with their SEM, on a head-plot channel picker. Milestone
+status: `docs/ROADMAP.md` → *Status*.
+
+### Upgrading from 0.3.1b4
+
+- Pipelines and settings from 0.3.1b4 load unchanged; new settings take
+  their defaults (`docs/SETTINGS.md`).
+- The Epochs strip is now version 0.2.0 (it runs live). A 0.3.1b4 session
+  with an Epochs strip recorded 0.1.0, so `meegxer run SESSION` refuses it:
+  add `--allow-version-mismatch`, or run its pipeline again. Sessions without
+  an Epochs strip run unchanged.
+- Upgrade the daemon and the GUI together (one `uv tool upgrade meegxer`
+  does): the display protocol is now 0.4 (an ERP tap's counts) and the
+  control API 0.2.20. A 0.4.0b1 GUI still reads a 0.3.1b4 daemon's frames,
+  but not the other way round.
+- The Epochs strip's times are typed in ms in the GUI; pipeline files and
+  `meegxer set` keep seconds.
+
+### What's new
+
 - **Epoch times in ms:** the Epochs strip's trial start and end and its
   baseline start and end are shown and typed in ms, 50 ms a step (pipelines
   keep seconds, as MNE takes them; `meegxer set` too). Long event labels fit:
   the ERP view's *Show*, the epoch review's label and the strip's text fields
   widen to them. The head picker's *All*, *None*, *Standard 19* and *Default*
-  sit two by two, each readable. (Fixed before release: the ms fields lost
-  their zeros, -200 ms reading -2 ms; the strip in the chain reads ms too.)
+  sit two by two, each readable; the strip in the chain reads ms too.
 - **Amplitude range setting:** amplitude plots (the signal view, the feature
   view's amplitudes over time, the ERP view, the epoch review's ERP) fit
   their y-axis centred on zero by default, -r to r with r the largest value,

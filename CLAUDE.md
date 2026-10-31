@@ -173,6 +173,10 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   with the question prompt), a manual check only the maintainer can run
   (Windows, real downloads, devices, how the GUI looks), or when a milestone
   is reached (its exit criterion met).
+- **When to tag:** betas are themed. When a set of features is merged and its
+  manual checks (`docs/TESTING.md`) pass, Claude proposes a tag (the next
+  `bN`, or the next series when a milestone's exit criterion is met) with
+  the release notes ready in a PR; the maintainer decides. Never tag unasked.
 - `docs/HANDOFF.md`: a one-time handoff note (the work routine, past decisions,
   open items). Read it, but do not edit it; it will be removed. Decisions and
   working rules go in this file and the design docs (`docs/REVIEW.md`,
