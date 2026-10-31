@@ -474,8 +474,9 @@ MNE ICA files: `uv run python tools/mne_ica_demo.py OUT` writes
 (MNE's own ICA of it: 15 components, component 1 marked excluded). An MNE ICA
 of your own recording works too. First `uv run meegxer shutdown`.
 
-5. GUI: *Input → File*, `ica_demo_raw.fif`; with *Advanced* on, the
-   input's *MNE ICA file* `ica_demo-ica.fif`. At once the log says `MNE
+5. GUI: *Input → File*; in the input's settings, *File* `ica_demo_raw.fif`
+   (the recording), then *MNE ICA file* `ica_demo-ica.fif` (the field below
+   it; both take `.fif`, and an ICA file chosen as *File* says so). At once the log says `MNE
    ICA decomposition: 15 components on 19 channels start the ICs rail; ICLabel
    classes computed when a run first reads them` and that the file marks
    component 1 for removal; the chain shows the ICs rail from the Input strip.
