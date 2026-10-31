@@ -499,10 +499,10 @@ of your own recording works too. First `uv run meegxer shutdown`.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| H1 Raw back, with the input's annotations | | |
-| H2 Epochs on the event; the ERP | | |
-| H3 the same from the file | | |
-| H4 a GUI pipeline from your own Python | | |
-| H5 an MNE ICA file starts the ICs rail (GUI) | | |
-| H6 the MNE ICA writer; `read_ica` reads it | | |
-| H7 `ica=` in Python | | |
+| H1 Raw back, with the input's annotations | passed | |
+| H2 Epochs on the event; the ERP | passed | |
+| H3 the same from the file | passed | |
+| H4 a GUI pipeline from your own Python | passed | |
+| H5 an MNE ICA file starts the ICs rail (GUI) | passed | |
+| H6 the MNE ICA writer; `read_ica` reads it | passed | |
+| H7 `ica=` in Python | passed | run by Claude (script; the maintainer ran H1–H6) |
