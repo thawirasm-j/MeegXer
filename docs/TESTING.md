@@ -526,10 +526,10 @@ restart. On your machine (Windows), in the GUI:
 
 | Item | Value / result | Notes |
 |---|---|---|
-| I1 Undo and Redo of a strip | | |
-| I2 a scrolled value undoes in one step; Ctrl+Y | | |
-| I3 Ctrl+Z in a text field undoes its text | | |
-| I4 live: a setting undone without a restart | | |
+| I1 Undo and Redo of a strip | passed | |
+| I2 a scrolled value undoes in one step; Ctrl+Y | passed | |
+| I3 Ctrl+Z in a text field undoes its text | passed | |
+| I4 live: a setting undone without a restart | passed | |
 
 ## J. Review report (review step 6a)
 
