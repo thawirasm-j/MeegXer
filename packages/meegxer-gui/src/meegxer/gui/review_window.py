@@ -89,7 +89,7 @@ from meegxer.core import settings as core_settings
 from meegxer.core.montage import MONTAGES
 from meegxer.core.review import BAD_CHANNEL
 from meegxer.gui.colors import ChannelStyle
-from meegxer.gui.signal_view import StackedWindow
+from meegxer.gui.signal_view import ChannelMenu, HeadChannelMenu, StackedWindow
 from meegxer.gui.theme import Theme
 
 REASONS = {
@@ -301,7 +301,11 @@ class CoverageBar(QWidget):
 
 class ReviewWindow(StackedWindow):
     """The stacked view plus the review tools, for one review request
-    (``offline.review`` of the daemon status)."""
+    (``offline.review`` of the daemon status). Channels are picked on a head
+    plot (``channel_picker``)."""
+
+    def make_channels(self, theme: Theme) -> ChannelMenu:
+        return HeadChannelMenu(theme)
 
     def __init__(
         self,

@@ -1060,7 +1060,7 @@ class StackedWindow(QWidget):
         self.resize(900, 700)
         lay = QVBoxLayout(self)
         bar = QHBoxLayout()
-        self.channels = ChannelMenu()
+        self.channels = self.make_channels(theme)
         bar.addWidget(self.channels)
         self.span = QComboBox()
         for seconds in (2, 5, 10, 20, 30, 60):
@@ -1089,9 +1089,16 @@ class StackedWindow(QWidget):
         self.theme = theme
         self._y_key: object = None
 
+    def make_channels(self, theme: Theme) -> ChannelMenu:
+        """The channel list (the stacked window keeps a list; review windows
+        pick on a head plot)."""
+        return ChannelMenu()
+
     def apply_theme(self, theme: Theme) -> None:
         self.theme = theme
         self.plot.apply_theme(theme)
+        if isinstance(self.channels, HeadChannelMenu):
+            self.channels.apply_theme(theme)
 
     def seconds(self) -> float:
         return float(self.span.currentData())

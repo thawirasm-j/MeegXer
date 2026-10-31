@@ -11,6 +11,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   each channel's mean over *baseline start* .. *baseline end* (seconds from
   the event, inside the epoch) is subtracted, as MNE's `baseline=(a, b)`.
   The epoch files, the ERP files and the ERP view all use it.
+- **Channels on a head plot everywhere:** the feature view, the signal
+  review window and the epoch review window's ERP now pick channels on the
+  head plot, as the signal view and the ERP view do (the ERP's channel with
+  one click). The stacked window keeps its list.
 - **Epochs live** (M10.3): the Epochs strip now runs in a live pipeline too.
   An epoch is written as soon as its last sample arrives, the same epochs a
   run over the recording writes.

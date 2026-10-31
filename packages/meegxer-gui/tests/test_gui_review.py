@@ -203,6 +203,7 @@ def test_spans_are_dragged_adjusted_and_channels_clicked(qapp: QApplication) -> 
     window.resize(900, 600)
     window.show()
     qapp.processEvents()
+    assert hasattr(window.channels, "picker")  # channels picked on a head plot
     window.plot.set_time(0.0, 10.0)
     window.shown(0.0, 10.0)
     box = window.plot.getViewBox()
@@ -506,7 +507,8 @@ def test_epochs_are_reviewed_and_the_erp_follows(
         window = win.epoch_window
         assert window is not None and win.review_window is None
         assert len(window.epochs) == 7 and window.ch_labels == ["Fz", "Cz", "Pz"]
-        assert window.channel.currentText() == "Cz"  # the ERP's default
+        assert window.channel.text() == "Channel: Cz"  # the ERP's default
+        assert window.channel.picker.single  # one channel, picked on the head
         assert window.page_indices() == [0, 1, 2, 3, 4]
         assert "7 epochs · 7 kept" in window.progress.text()
         assert sorted(window.erp_curves()) == ["go", "stop"]
