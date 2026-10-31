@@ -531,3 +531,23 @@ restart. On your machine (Windows), in the GUI:
 | I3 Ctrl+Z in a text field undoes its text | | |
 | I4 live: a setting undone without a restart | | |
 
+## J. Review report (review step 6a)
+
+Already run by Claude: a BIDS run with a blink detector and a Review strip
+(reviewer, marks, a bad channel, suggestions accepted, edited and rejected),
+its QC row and report checked and the report's *Review* section rendered.
+On your machine (Windows), with a dataset you reviewed (or the EEGBCI sample
+with a Review strip added):
+
+1. Run every subject (*Run offline* on a BIDS input, or
+   `meegxer run PIPELINE --bids DS`), reviewing when asked.
+2. Open a recording's report (`…_desc-clean_report.html`): a *Review (…)*
+   section lists the reviewer, viewed %, marks per label, bad channels and
+   suggestions answered.
+3. *QC summary* (or `qc.html`): the same columns per recording.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| J1 the report's Review section | | |
+| J2 the review columns in the QC summary | | |
+
