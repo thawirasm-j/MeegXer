@@ -49,6 +49,17 @@ The header's `arrays` list describes the payload:
 - Signal data travels as `float32` in volts. Model and state arrays keep their own
   dtype (use `float64` for filter state so block-wise processing stays exact).
 
+Limits the host checks before reading (a plugin is untrusted, rule 9). A frame
+breaking one is a protocol error, and the host stops the plugin:
+
+- `H` at most 16 MiB, `P` at most 256 MiB;
+- each descriptor names its array once (a string). Its `shape` is a list of
+  whole numbers ≥ 0, its `offset` and `nbytes` are whole numbers ≥ 0, and
+  `nbytes` is exactly the shape's element count times the dtype's size, inside
+  the payload;
+- `mxfloat` is only `nan`, `inf` or `-inf`, and `mxarray` names an array of the
+  frame.
+
 ## Trees (model and state)
 
 A model or state is a JSON value in which arrays are replaced by `{"mxarray": NAME}`,

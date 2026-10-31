@@ -1,6 +1,8 @@
+import contextlib
 import time
 
 import numpy as np
+import pytest
 
 from meegxer.core.block import Block, SignalInfo
 from meegxer.core.display import (
@@ -80,3 +82,37 @@ def test_publisher_never_blocks_and_subscriber_receives() -> None:
     assert frame is not None and frame.probe == "p"
     sub.close()
     pub.close()
+
+
+def test_malformed_frames_are_dropped_not_raised() -> None:
+    """M11.2: a frame that cannot be decoded raises DisplayError (the
+    subscriber drops and counts it), never another error that would stop the
+    GUI's display thread. 3000 seeded mutations of good frames."""
+    import json
+
+    from meegxer.core.display import DisplayError, FeatureFrame, encode_features
+
+    env = Envelope(5, 4, np.ones((2, 3)), np.zeros((2, 3)))
+    signal = encode_frame(DisplayFrame("main", 3, ("a", "b"), 250.0, env))
+    window = FeatureFrame("f", 1, (0, 100), 100.0, ("channel",),
+                          {"channel": ("a", "b")}, np.ones(2))  # fmt: skip
+    feats = encode_features(window)
+    for bad in ([b"x"], [b"p", b"[]", b""], [b"p", b"\xff", b""],
+                [b"p", json.dumps({"protocol": "nope"}).encode(), b""]):  # fmt: skip
+        with pytest.raises(DisplayError):
+            decode_frame(bad)
+    rng = np.random.default_rng(0)
+    for k in range(3000):
+        parts = [bytearray(p) for p in (signal if k % 2 else feats)]
+        part = parts[int(rng.integers(1, 3))]  # the header or the payload
+        if part:
+            at = int(rng.integers(len(part)))
+            choice = int(rng.integers(3))
+            if choice == 0:
+                part[at] = int(rng.integers(256))
+            elif choice == 1:
+                del part[at:]
+            else:
+                part[at:at] = rng.bytes(int(rng.integers(1, 6)))
+        with contextlib.suppress(DisplayError):
+            decode_frame([bytes(p) for p in parts])

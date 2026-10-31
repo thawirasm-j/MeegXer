@@ -160,11 +160,28 @@ def encode_features(frame: FeatureFrame) -> list[bytes]:
     return [frame.probe.encode(), json.dumps(header).encode(), payload]
 
 
+class DisplayError(ValueError):
+    """A display frame that cannot be decoded (dropped by the subscriber)."""
+
+
 def decode_frame(parts: Sequence[bytes]) -> DisplayFrame | FeatureFrame:
+    """A frame from its parts; raises DisplayError when it is malformed."""
+    try:
+        return _decode(parts)
+    except DisplayError:
+        raise
+    except (ValueError, TypeError, KeyError, IndexError, AttributeError,
+            RecursionError) as exc:  # fmt: skip
+        raise DisplayError(f"malformed display frame: {exc!r}") from None
+
+
+def _decode(parts: Sequence[bytes]) -> DisplayFrame | FeatureFrame:
     _, header_bytes, payload = parts
     header = json.loads(header_bytes)
+    if not isinstance(header, dict):
+        raise DisplayError("the header must be a JSON object")
     if header.get("protocol") not in _ACCEPTED:
-        raise ValueError(f"unsupported display protocol {header.get('protocol')!r}")
+        raise DisplayError(f"unsupported display protocol {header.get('protocol')!r}")
     if header.get("kind") == "features":
         values = np.frombuffer(payload, dtype="<f4").reshape(header["shape"])
         return FeatureFrame(
@@ -261,11 +278,18 @@ class DisplaySubscriber:
         for probe in probes or [""]:
             self._socket.setsockopt(zmq.SUBSCRIBE, probe.encode())
         self._socket.connect(endpoint)
+        self.malformed = 0  # frames dropped because they could not be decoded
 
     def recv(self, timeout: float = 1.0) -> DisplayFrame | FeatureFrame | None:
+        """The next frame, or None (none within ``timeout``, or one that could
+        not be decoded: dropped and counted in ``malformed``)."""
         if not self._socket.poll(int(timeout * 1000)):
             return None
-        return decode_frame(self._socket.recv_multipart())
+        try:
+            return decode_frame(self._socket.recv_multipart())
+        except DisplayError:
+            self.malformed += 1
+            return None
 
     def close(self) -> None:
         self._socket.close(linger=0)

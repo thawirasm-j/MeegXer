@@ -35,6 +35,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   It uses pynput (new dependency of `meegxer-nodes`), which needs a desktop
   session; on Linux it builds `evdev` from source. MeegXer is **not a
   medical device**: said in the README and the new About box (*?*).
+- **Plugin hardening (M11.2).** The plugin wire reader checks what a
+  plugin declares before reading it: a payload over 256 MiB, a malformed
+  array descriptor or model tree is a protocol error (the plugin is stopped),
+  never a memory blow-up or an unexplained crash. The GUI drops a display
+  frame it cannot decode instead of losing its display. Both readers are
+  fuzzed in the tests (`spec/plugin-protocol.md`, limits).
 - **Shortcuts (M11.6).** `meegxer-gui --create-shortcut` puts MeegXer in
   the Start menu and on the desktop (Windows), the application menu (Linux)
   or `~/Applications` (macOS); `--remove-shortcut` removes them. They start

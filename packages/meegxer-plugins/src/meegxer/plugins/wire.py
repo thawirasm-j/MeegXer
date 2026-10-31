@@ -21,6 +21,10 @@ DTYPES = {"float32", "float64", "int32", "int64", "uint8", "bool"}
 _ARRAY = "mxarray"
 _FLOAT = "mxfloat"
 MAX_HEADER = 16 * 1024 * 1024
+# a plugin is untrusted (rule 9): what it declares is checked before it is
+# read, and a frame is read in pieces, so memory grows only with what arrives
+MAX_PAYLOAD = 256 * 1024 * 1024
+READ_CHUNK = 1024 * 1024
 
 
 class WireError(ValueError):
@@ -84,7 +88,7 @@ def _read_exact(stream: IO[bytes], n: int) -> bytes:
     chunks = []
     remaining = n
     while remaining:
-        chunk = stream.read(remaining)
+        chunk = stream.read(min(remaining, READ_CHUNK))
         if not chunk:
             raise EOFError("stream closed mid-frame")
         chunks.append(chunk)
@@ -104,22 +108,55 @@ def read_message(stream: IO[bytes]) -> Message:
     (head_len,) = struct.unpack("<I", _read_exact(stream, 4))
     if head_len > MAX_HEADER:
         raise WireError(f"header of {head_len} bytes is too large")
-    header = json.loads(_read_exact(stream, head_len))
+    try:
+        header = json.loads(_read_exact(stream, head_len))
+    except (UnicodeDecodeError, ValueError, RecursionError) as exc:
+        raise WireError(f"header is not JSON: {exc}") from None
     if not isinstance(header, dict):
         raise WireError("header must be a JSON object")
     (payload_len,) = struct.unpack("<Q", _read_exact(stream, 8))
+    if payload_len > MAX_PAYLOAD:
+        raise WireError(f"payload of {payload_len} bytes is too large")
     payload = _read_exact(stream, payload_len)
+    descriptors = header.pop("arrays", [])
+    if not isinstance(descriptors, list):
+        raise WireError("'arrays' must be a list of array descriptors")
     arrays: dict[str, npt.NDArray[Any]] = {}
-    for desc in header.pop("arrays", []):
-        if desc["dtype"] not in DTYPES:
-            raise WireError(f"unknown dtype {desc['dtype']!r}")
-        start, stop = desc["offset"], desc["offset"] + desc["nbytes"]
-        if stop > len(payload):
-            raise WireError(f"array {desc['name']!r} runs past the payload")
-        dtype = np.dtype(desc["dtype"]).newbyteorder("<")
-        arr = np.frombuffer(payload[start:stop], dtype=dtype).reshape(desc["shape"])
-        arrays[desc["name"]] = arr.astype(arr.dtype.newbyteorder("="))
+    for desc in descriptors:
+        name, arr = _array(desc, payload)
+        if name in arrays:
+            raise WireError(f"array {name!r} is described twice")
+        arrays[name] = arr
     return Message(header, arrays)
+
+
+def _count(value: object, what: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise WireError(f"{what} must be a whole number >= 0, got {value!r}")
+    return value
+
+
+def _array(desc: object, payload: bytes) -> tuple[str, npt.NDArray[Any]]:
+    """One array of the payload, after checking its descriptor whole."""
+    if not isinstance(desc, dict):
+        raise WireError("an array descriptor must be a JSON object")
+    name, kind, shape = desc.get("name"), desc.get("dtype"), desc.get("shape")
+    if not isinstance(name, str):
+        raise WireError(f"array name must be a string, got {name!r}")
+    if not isinstance(kind, str) or kind not in DTYPES:
+        raise WireError(f"unknown dtype {kind!r}")
+    if not isinstance(shape, list):
+        raise WireError(f"array {name!r}: shape must be a list")
+    dims = [_count(n, f"array {name!r}: a dimension") for n in shape]
+    start = _count(desc.get("offset"), f"array {name!r}: offset")
+    nbytes = _count(desc.get("nbytes"), f"array {name!r}: nbytes")
+    dtype = np.dtype(kind).newbyteorder("<")
+    if math.prod(dims) * dtype.itemsize != nbytes:
+        raise WireError(f"array {name!r}: {nbytes} bytes do not hold shape {dims}")
+    if start + nbytes > len(payload):
+        raise WireError(f"array {name!r} runs past the payload")
+    arr = np.frombuffer(payload[start : start + nbytes], dtype=dtype).reshape(dims)
+    return name, arr.astype(arr.dtype.newbyteorder("="))
 
 
 def tree_to_wire(tree: object, arrays: dict[str, npt.NDArray[Any]], prefix: str) -> Any:
@@ -142,13 +179,13 @@ def tree_to_wire(tree: object, arrays: dict[str, npt.NDArray[Any]], prefix: str)
 def tree_from_wire(tree: object, arrays: Mapping[str, npt.NDArray[Any]]) -> Any:
     if isinstance(tree, dict):
         if set(tree) == {_ARRAY}:
-            try:
-                return np.array(arrays[tree[_ARRAY]])
-            except KeyError:
-                raise WireError(
-                    f"tree refers to missing array {tree[_ARRAY]!r}"
-                ) from None
+            name = tree[_ARRAY]
+            if not isinstance(name, str) or name not in arrays:
+                raise WireError(f"tree refers to missing array {name!r}")
+            return np.array(arrays[name])
         if set(tree) == {_FLOAT}:
+            if tree[_FLOAT] not in ("nan", "inf", "-inf"):
+                raise WireError(f"bad non-finite float {tree[_FLOAT]!r}")
             return float(tree[_FLOAT])
         return {k: tree_from_wire(v, arrays) for k, v in tree.items()}
     if isinstance(tree, list):

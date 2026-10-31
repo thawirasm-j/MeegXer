@@ -5,6 +5,24 @@ morning. Every default taken without asking is here, with the alternative it
 passed over. This is a one-time note: delete it once reviewed (anything worth
 keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
 
+## In short
+
+- **The BCI path is done** (your order): LDA classifier (#143), keyboard sink
+  (#145), SSVEP BCI template with an SSVEP → keypress demo (#146), plus M11.6
+  shortcuts (#147) and M11.2 plugin hardening (the last PR). A pre-existing
+  bug was found and fixed
+  on the way: live recordings had no events (#144).
+- **M11's exit criterion is half met.** The SSVEP → keypress demo runs (§N).
+  Sterile mode (M11.1) needs Docker or Podman, and the Octave tier (M11.5)
+  needs GNU Octave; neither is in this container, so I stopped there.
+- **For you:**
+  - tag `v0.4.0b3` (#142);
+  - the manual checks only your machine can do: L4, M4, M5, N4, O2 (each
+    listed below and in `docs/TESTING.md`);
+  - review the 27 defaults below.
+  - Once those checks pass, I'd propose 0.5.0b1 ("BCI") with its release
+    notes in a PR.
+
 ## Your decisions (asked before you left)
 
 | Question | Your answer |
@@ -56,7 +74,14 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
    (Windows Start menu and desktop; Linux application menu; macOS
    `~/Applications`). Run by me on Linux; Windows and macOS only with the
    system calls faked. Left for you: O2 (Windows, no console window). PR
-   (queued).
+   #147.
+8. **M11.2 plugin hardening**: the container limits and digest pinning
+   were already in place. Added: the plugin wire reader checks every size
+   and array descriptor a plugin sends before reading (payload cap 256 MiB,
+   read in 1 MiB pieces; a bad frame is a protocol error, not a memory
+   blow-up), and the GUI drops display frames it cannot decode instead of
+   losing its display thread. Fuzzed with seeded mutations (no new
+   dependency). This PR (the last one tonight).
 
 ## Defaults taken (small choices)
 
@@ -85,6 +110,9 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
 | 22 | Shortcut target | This Python with `-m meegxer.gui.app` (`pythonw.exe` on Windows: no console), so it starts the MeegXer it was made from | The `meegxer-gui` script: a console window opens behind it on Windows |
 | 23 | Windows `.lnk` | Written by PowerShell's `WScript.Shell` (built into Windows) | pywin32: a new dependency |
 | 24 | Icon | None yet (the system's default); worth designing one | A placeholder icon |
+| 25 | Doing M11.2 tonight | Only the parts that need no Docker: the decoders and their fuzzing (the limits and pinning existed) | Waiting for Sterile mode |
+| 26 | Payload cap | 256 MiB per frame (a 64 ch × 10 s float32 block is 2.5 MB; models are far smaller) | 1 GiB |
+| 27 | Fuzzing | Seeded random mutations in plain pytest (thousands per run, < 1 s) | Hypothesis: a new dev dependency |
 | 8 | References | Fisher 1936, Blankertz et al. 2011, Ledoit & Wolf 2004, scikit-learn (Pedregosa et al. 2011). DOIs checked by web search (doi.org is blocked from here) | |
 
 ## Found on the way
