@@ -45,6 +45,7 @@ class Rereference(Processor):
         ],
         description="Common average or channel re-reference.",
         live_params=["mode", "channels", "exclude", "exclude_bads"],
+        input_space="sensor",  # electrodes only (spec 0.2.22)
     )  # fmt: skip
 
     @staticmethod

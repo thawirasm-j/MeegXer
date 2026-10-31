@@ -129,6 +129,7 @@ class InterpolateBads(Processor):
         description="Spherical-spline interpolation of the channels marked bad "
         "(MNE); needs electrode positions.",
         requires_positions=True,
+        input_space="sensor",  # electrodes only (spec 0.2.22)
     )
 
     def transform(
@@ -164,6 +165,7 @@ class CSD(Processor):
         description="Surface Laplacian (current source density, MNE): sharper, "
         "reference-free topographies; output in V/m². Needs electrode positions.",
         requires_positions=True,
+        input_space="sensor",  # electrodes only (spec 0.2.22)
     )  # fmt: skip
 
     def transform(

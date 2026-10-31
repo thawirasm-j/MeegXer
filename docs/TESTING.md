@@ -484,7 +484,8 @@ of your own recording works too. First `uv run meegxer shutdown`.
    After *Start*, its tap shows IC01 to IC15 with classes, one readable row
    each in *Channels*. Add a *Power spectrum* strip and set its *Reads* to
    *ICs (Recording file)*: the log says `Power spectrum reads ICs (Recording
-   file).`; remove it again.
+   file).`; remove it again. A re-reference or the MNE ICA writer has no
+   *Reads* box: the signal is all they read (spec 0.2.22).
 6. Add an ICA strip after the input and *Output → MNE ICA file (.fif)*; in
    its *File*, *Browse…* and type `clean`: it becomes `clean-ica.fif` (MNE's
    convention). *Start*. In Python:

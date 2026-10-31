@@ -61,6 +61,7 @@ class EOGRegression(Processor):
         "(regression fitted on calibration data, MNE).",
         requires_fit=True,
         channel_types=["eeg", "eog"],  # it needs to see the EOG channels
+        input_space="sensor",  # electrodes only (spec 0.2.22)
     )  # fmt: skip
 
     def fit(self, calibration: Block, params: Params) -> State:

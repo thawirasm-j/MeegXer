@@ -7,6 +7,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Only sensible wiring of the ICs** (spec 0.2.22): strips that only make
+  sense on electrodes (re-reference, interpolation, CSD, EOG regression, ICA)
+  and the MNE ICA writer no longer offer *Reads → ICs*, and a pipeline file
+  wiring the ICs into them is refused. A spectrum, band power or a file
+  writer still reads the components.
 - **Python API** (M10.7): `from meegxer.api import run`, then
   `run(pipeline, raw)` runs a pipeline (or session) over an `mne.io.Raw` in
   memory, or a recording file, and returns the cleaned signal as
