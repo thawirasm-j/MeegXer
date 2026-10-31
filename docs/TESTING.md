@@ -555,8 +555,8 @@ BIDS writer, every subject) and `OUT/k/two_reviewers.json` (§K). First
 
 | Item | Value / result | Notes |
 |---|---|---|
-| J1 the report's Review section | | |
-| J2 the review columns in the QC summary | | |
+| J1 the report's Review section | passed | run by Claude offscreen (tools/review_demo.py data); how it looks on Windows unchecked |
+| J2 the review columns in the QC summary | passed | run by Claude offscreen; qc.html rendered |
 
 ## K. Two reviewers (review step 6b)
 
@@ -582,7 +582,7 @@ reviewers by giving a different name each run:
 
 | Item | Value / result | Notes |
 |---|---|---|
-| K1 reviewer 1, then refused as reviewer 2 | | |
-| K2 reviewer 2 blind | | |
-| K3 the resolve window: disagreements, kappa | | |
+| K1 reviewer 1, then refused as reviewer 2 | passed | run by Claude offscreen, A twice |
+| K2 reviewer 2 blind | passed | run by Claude offscreen |
+| K3 the resolve window: disagreements, kappa | passed | run by Claude offscreen; raters A, B, kappa BAD 0.65 in qc.tsv |
 
