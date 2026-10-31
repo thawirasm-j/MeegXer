@@ -11,11 +11,12 @@ recording, its marker streams become its events (``docs/RAILS.md``).
   µV, uV, millivolts, mV, volts, V) turns it into volts. A channel without
   one is taken to be in ``unit`` (µV by default, as the LSL input's), and the
   notes say so.
-- **Markers:** every stream without a sampling rate (or those named in
-  ``markers``), each marker on the signal sample nearest its timestamp (both
-  streams on one clock: pyxdf's clock synchronisation and dejittering), as
-  the LSL input places live markers. Markers outside the recording are left
-  out (the notes count them).
+- **Markers:** every stream of strings or without a sampling rate (or those
+  named in ``markers``), each marker on the signal sample nearest its
+  timestamp (both streams on one clock: pyxdf's clock synchronisation and
+  dejittering), as the LSL input places live markers. A marker more than half
+  a sample period from every sample (before or after the recording, or in a
+  gap) has no sample to go on and is left out; the notes count them.
 - **Gaps:** pyxdf dejitters each stretch of the signal between breaks
   (timestamps jumping by more than 1 s or 500 sample periods, its defaults).
   At each break (samples were lost) a ``BAD_gap`` mark spans the first sample
@@ -90,7 +91,11 @@ def _is_signal(stream: Mapping[str, Any]) -> bool:
 
 
 def _is_marker(stream: Mapping[str, Any]) -> bool:
-    return float(_first(stream["info"], "nominal_srate", "0")) == 0
+    """Markers: a stream of strings (even one stating a rate), or one without
+    a rate."""
+    info = stream["info"]
+    return (_first(info, "channel_format") == "string"
+            or float(_first(info, "nominal_srate", "0")) == 0)  # fmt: skip
 
 
 def _words(text: str) -> list[str]:
@@ -117,7 +122,8 @@ def pick_signal(streams: Sequence[Mapping[str, Any]], name: str = "") -> int:
 
 def nearest_samples(stamps: np.ndarray, at: np.ndarray, sfreq: float) -> np.ndarray:
     """The index of the signal sample nearest each timestamp in ``at``; -1 for
-    one more than half a sample period outside the recording."""
+    one more than half a sample period from it (outside the recording, or in
+    a gap)."""
     stamps = np.asarray(stamps, dtype=float)
     at = np.asarray(at, dtype=float)
     right = np.clip(np.searchsorted(stamps, at), 1, len(stamps) - 1)
@@ -125,9 +131,8 @@ def nearest_samples(stamps: np.ndarray, at: np.ndarray, sfreq: float) -> np.ndar
     nearer = np.where(at - stamps[left] <= stamps[right] - at, left, right)
     if len(stamps) == 1:
         nearer = np.zeros(len(at), dtype=int)
-    half = 0.5 / sfreq
-    outside = (at < stamps[0] - half) | (at > stamps[-1] + half)
-    return np.where(outside, -1, nearer).astype(int)
+    far = np.abs(at - stamps[nearer]) > 0.5 / sfreq * (1 + 1e-6)
+    return np.where(far, -1, nearer).astype(int)
 
 
 def gaps(stamps: np.ndarray, sfreq: float) -> list[tuple[int, float]]:
@@ -214,7 +219,8 @@ def read_xdf(
             durations.append(0.0)
             descriptions.append(label)
     if outside:
-        notes.append(f"{outside} markers outside the recording left out")
+        notes.append(f"{outside} markers left out: no recorded sample at their "
+                     "time (before or after the recording, or in a gap)")  # fmt: skip
     if onsets:
         raw.set_annotations(mne.Annotations(onsets, durations, descriptions))
     return XdfRecording(raw, _name(signal), tuple(_name(s) for s in chosen), notes)

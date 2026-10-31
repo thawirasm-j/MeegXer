@@ -371,25 +371,30 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 
 ## F. XDF input (M10.5)
 
-Needs a LabRecorder `.xdf` file with an EEG stream and a marker stream (your
-own, or one from the LSL examples).
+With the XDF example files (MIT): `git clone
+https://github.com/xdf-modules/example-files`, then `clock_resets.xdf`. It
+holds a BioSemi EEG stream (8 channels, 100 Hz, 278 s of samples, no units
+stated) and a marker stream, recorded across a clock reset: no samples for
+274 s at 128.8 s. Your own LabRecorder file works too.
 
-1. GUI: *Input → File*, choose the `.xdf`. The log says `Input: XDF: signal
-   stream '…', markers from '…'`, and, if the file states no units, that
-   they were taken to be µV. The Recording window lists its channels and the
-   markers as events.
-2. *Start* (offline): the signal view shows the EEG in µV of a sensible size
-   (not a million times off), the markers as event lines where expected.
-3. With an Epochs strip on the markers' labels: the epoch count matches the
-   markers; an ERP template run gives an ERP view.
-4. If the file has a dropout: a `BAD_gap` mark at it, and no epoch across it.
-5. CLI: `uv run meegxer run pipeline.json -i rec.xdf -o out.set` writes the
-   file with the markers as events.
+1. GUI: *Input → File*, choose `clock_resets.xdf`. The log says `Input: XDF:
+   signal stream 'BioSemi', markers from 'MyMarkerStream'`, `8 of 8 channels
+   state no unit: taken to be in uV`, `273.869 s of samples lost at 128.760 s
+   (marked BAD_gap)` and `10 markers left out` (sent while nothing was
+   recorded). The Recording window lists Ch1–Ch8 and the events: Test-1-2-3
+   38, XXX 28, Testtest 28, Marker 27, Blah 24, Test 20, BAD_gap 1.
+2. *Start* (offline): 278 s of signal (values up to about 1 µV: the file's
+   test data), the markers as event lines, a BAD_gap mark at 128.76 s.
+3. An Epochs strip on `Marker` (-200 to 800 ms): 27 epochs; the ERP view
+   shows them.
+4. No epoch spans 128.76 s (the gap).
+5. CLI: `uv run meegxer run pipeline.json -i clock_resets.xdf -o out.set`
+   writes the file with the markers as events.
 
 | Item | Value / result | Notes |
 |---|---|---|
 | F1 streams and notes in the log; channels and events listed | | |
-| F2 amplitudes in µV, events in place | | |
-| F3 epochs per marker; ERP view | | |
-| F4 dropout marked BAD_gap (if the file has one) | | |
-| F5 CLI run with -i rec.xdf | | |
+| F2 278 s of signal, events in place, BAD_gap at 128.76 s | | |
+| F3 27 epochs on Marker; ERP view | | |
+| F4 no epoch across the gap | | |
+| F5 CLI run with -i clock_resets.xdf | | |

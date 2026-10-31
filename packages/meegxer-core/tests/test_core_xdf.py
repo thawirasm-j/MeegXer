@@ -114,7 +114,17 @@ def test_a_labrecorder_file_through_the_file_input(tmp_path: Path) -> None:
         (100, "standard"), (300, "target"), (350, "press")]  # fmt: skip
     notes = describe(source)["notes"]
     assert notes[0] == "XDF: signal stream 'amp', markers from 'cues', 'responses'"
-    assert "1 markers outside the recording left out" in notes
+    assert notes[-1].startswith("1 markers left out: no recorded sample")
+
+
+def test_a_marker_stream_stating_a_rate(tmp_path: Path) -> None:
+    """Strings are markers even when the stream states a rate (as the XDF
+    example files' marker streams do)."""
+    path = tmp_path / "rated.xdf"
+    write_xdf(path, [signal(), markers("cues", [(1.0, "go")]) | {"rate": 10.0}])
+    read = read_xdf(path)
+    assert read.marker_streams == ("cues",)
+    assert list(read.raw.annotations.description) == ["go"]
 
 
 def test_streams_by_name_and_an_assumed_unit(tmp_path: Path) -> None:
@@ -143,7 +153,8 @@ def test_lost_samples_are_marked_bad(tmp_path: Path) -> None:
     at 100 Hz is 5 s, the larger): the first sample after it gets BAD_gap."""
     path = tmp_path / "gap.xdf"
     write_xdf(path, [signal(n=2000, lose=(800, 1400)),  # 6 s lost
-                     markers("cues", [(2.0, "before"), (15.0, "after")])])  # fmt: skip
+                     markers("cues", [(2.0, "before"), (11.0, "lost"),
+                                      (15.0, "after")])])  # fmt: skip
     read = read_xdf(path)
     ann = read.raw.annotations
     gap = [(o, d) for o, d, lb in zip(ann.onset, ann.duration, ann.description,
@@ -153,12 +164,35 @@ def test_lost_samples_are_marked_bad(tmp_path: Path) -> None:
     after = next(o for o, lb in zip(ann.onset, ann.description, strict=True)
                  if lb == "after")  # fmt: skip
     assert after == pytest.approx(9.0)  # 15 s on the clock: sample 900, not 1500
+    assert "lost" not in ann.description  # sent in the gap: no sample for it
+    assert any(n.startswith("1 markers left out") for n in read.notes)
 
 
 def test_nearest_sample_and_gaps() -> None:
     stamps = np.array([0.0, 0.01, 0.02, 0.03, 0.10, 0.11])
-    at = np.array([0.004, 0.006, 0.105, -0.004, -0.006, 0.114, 0.116])
-    assert list(nearest_samples(stamps, at, 100.0)) == [0, 1, 4, 0, -1, 5, -1]
+    at = np.array([0.004, 0.006, 0.105, -0.004, -0.006, 0.114, 0.116, 0.06])
+    placed = nearest_samples(stamps, at, 100.0)
+    assert list(placed) == [0, 1, 4, 0, -1, 5, -1, -1]  # 0.06: in the gap
     (after, missing), *more = gaps(stamps, 100.0)
     assert after == 4 and not more
     assert missing == pytest.approx(0.06)
+
+
+def test_the_reference_example_file() -> None:
+    """minimal.xdf from the XDF example files (xdf-modules/example-files,
+    MIT): 3 int16 channels at 10 Hz from 5.1 s, their clock 0.1 s behind
+    (offset -0.1), and a string marker stream stating a rate."""
+    path = Path(__file__).parent / "data" / "xdf" / "minimal.xdf"
+    source = FileSource({"path": str(path)})
+    assert source.info.sfreq == 10.0 and source.info.ch_labels == ("Ch1", "Ch2", "Ch3")
+    block = source.read(9)
+    assert block is not None
+    np.testing.assert_allclose(block.data[:, 0], [192e-6, 255e-6, 238e-6])
+    np.testing.assert_allclose(block.data[:, 1], [12e-6, 22e-6, 32e-6])
+    events = recording_events(source)
+    # markers at 5.2 ... 5.8 s on samples 2 ... 8 (now 5.0 ... 5.8 s); 5.9 s is
+    # after the last sample and left out
+    words = [(e.sample_index, e.label) for e in events if not e.label.startswith("<")]
+    assert words == [(2, "Hello"), (3, "World"), (4, "from"), (5, "LSL"),
+                     (6, "Hello"), (7, "World"), (8, "from")]  # fmt: skip
+    assert any(n.startswith("1 markers left out") for n in describe(source)["notes"])

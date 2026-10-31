@@ -9,8 +9,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 - **XDF input** (M10.5): the File input opens LabRecorder `.xdf` files
   (pyxdf). It takes the first EEG stream as the recording and every marker
-  stream as its events, each marker on the sample nearest its timestamp, as
-  live LSL markers are placed. Channels are read in volts from the units the
+  stream (strings, or no rate) as its events, each marker on the sample
+  nearest its timestamp, as live LSL markers are placed; a marker sent while
+  no sample was recorded (in a gap, or before or after the recording) is left
+  out and counted in the log. Checked against the official XDF example files
+  (`docs/TESTING.md` §F). Channels are read in volts from the units the
   file states; where it states none they are taken to be µV, and the log says
   so. Where samples were lost a `BAD_gap` mark spans the gap, so epochs across
   it are left out. Under Advanced: *XDF signal stream* and *XDF marker
