@@ -171,6 +171,7 @@ PARAMS: dict[str, str] = {
     "xdf_markers": "XDF marker streams",
     "xdf_unit": "XDF unit if unstated",
     "ica": "MNE ICA file",
+    "reviewers": "Reviewers",
     "baseline_end": "Baseline end",
     "import_review": "Use the review made at import",
     # the Review strip: review points, and the display it opens with
