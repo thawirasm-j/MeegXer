@@ -23,7 +23,8 @@ SFREQ = 100.0
 
 def params(**kw: float | str) -> dict[str, float | str]:
     return {"events": "", "tmin": -0.2, "tmax": 0.5, "baseline": "pre-stimulus",
-            "reject": "BAD", **kw}  # fmt: skip
+            "baseline_start": -0.2, "baseline_end": 0.0, "reject": "BAD",
+            **kw}  # fmt: skip
 
 
 def block(offset: float = 5.0) -> Block:
@@ -64,11 +65,42 @@ def test_epochs_over_a_bad_mark_or_a_boundary_label_are_left_out() -> None:
     assert [w.coords["epoch"][0] for w in loose] == ["go", "go", "BAD_muscle"]
 
 
+@pytest.mark.parametrize("span", [(-0.1, 0.0), (0.1, 0.3), (-0.2, 0.5)])
+def test_a_custom_baseline_is_mnes(span: tuple[float, float]) -> None:
+    """``baseline`` ``custom``: MNE's ``baseline=(a, b)``, the same data as
+    ``mne.Epochs`` cuts (a period after the event or the whole epoch too)."""
+    import mne
+
+    b = block()
+    onsets = [100, 300]
+    got = cut_epochs(b, [Event(k, "go") for k in onsets],
+                     params(baseline="custom", baseline_start=span[0],
+                            baseline_end=span[1]))  # fmt: skip
+    info = mne.create_info(list(b.info.ch_labels), SFREQ, "eeg")
+    raw = mne.io.RawArray(b.data, info, verbose="error")
+    events = np.array([[k, 0, 1] for k in onsets])
+    want = mne.Epochs(raw, events, tmin=-0.2, tmax=0.5, baseline=span,
+                      preload=True, verbose="error").get_data()  # fmt: skip
+    np.testing.assert_allclose(np.stack([w.data[0] for w in got]), want,
+                               rtol=1e-12, atol=1e-20)  # fmt: skip
+
+
 def test_wrong_spans_are_refused() -> None:
     with pytest.raises(ValueError, match="after tmin"):
         cut_epochs(block(), [Event(100, "go")], params(tmin=0.5, tmax=0.1))
     with pytest.raises(ValueError, match="tmin < 0"):
         cut_epochs(block(), [Event(100, "go")], params(tmin=0.0))
+    for start, end, why in ((0.1, 0.1, "after its start"),
+                            (-0.4, 0.0, "within the epoch"),
+                            (0.3, 0.7, "within the epoch"),
+                            (0.001, 0.004, "holds no sample")):  # fmt: skip
+        wrong = params(baseline="custom", baseline_start=start, baseline_end=end)
+        with pytest.raises(ValueError, match=why):
+            cut_epochs(block(), [Event(100, "go")], wrong)
+        if why != "holds no sample":  # refused before a run, or a live change
+            with pytest.raises(ValueError, match=why):
+                Epochs().for_mode(wrong, "online")
+    Epochs().for_mode(params(baseline="custom"), "online")  # -0.2 to 0: fine
 
 
 def test_the_same_epochs_whatever_the_block_sizes() -> None:
@@ -82,6 +114,7 @@ def test_the_same_epochs_whatever_the_block_sizes() -> None:
         {"tmin": -0.5, "tmax": -0.1},  # an epoch before its event
         {"tmin": 0.1, "tmax": 1.2, "baseline": "none"},
         {"reject": ""},
+        {"baseline": "custom", "baseline_start": 0.1, "baseline_end": 0.3},
     ):
         check_blockwise_equivalence(Epochs(), block(), params(**kw),
                                     rails={"events": events})  # fmt: skip

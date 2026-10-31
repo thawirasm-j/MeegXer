@@ -351,6 +351,10 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 6. The time axis reads ms (-200 … 800). Tick *SEM*: each curve gets a shaded
    band (mean ± SEM) in its colour, narrowing as epochs add up; a condition
    with a single epoch has none.
+7. Set the Epochs strip's *baseline* to `custom`, *baseline start* 0.1 and
+   *baseline end* 0.3: the live ERP starts over, and each curve now averages
+   to zero between 100 and 300 ms. An end before the start, or a period
+   outside the epoch, is refused at once with the reason (in the log).
 
 | Item | Value / result | Notes |
 |---|---|---|
@@ -360,3 +364,4 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 | E5 offline ERP view (counts as C2) | pass | |
 | E3b head picker: one channel, then the butterfly's channels | | |
 | E6 ms axis and SEM band | | |
+| E7 custom baseline (zero over 100–300 ms; refusals) | | |

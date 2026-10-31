@@ -7,6 +7,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Custom baseline:** the Epochs strip's *baseline* has a `custom` choice:
+  each channel's mean over *baseline start* .. *baseline end* (seconds from
+  the event, inside the epoch) is subtracted, as MNE's `baseline=(a, b)`.
+  The epoch files, the ERP files and the ERP view all use it.
 - **Epochs live** (M10.3): the Epochs strip now runs in a live pipeline too.
   An epoch is written as soon as its last sample arrives, the same epochs a
   run over the recording writes.
