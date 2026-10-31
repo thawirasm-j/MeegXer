@@ -368,3 +368,28 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 | E8 head picker in the feature view and both review windows | pass | |
 | E9 epoch times in ms (50 ms steps); long labels whole; picker buttons readable | passed | |
 | E10 amplitude range: zero-centred by default, data range in Settings; y = 0 line | passed | |
+
+## F. XDF input (M10.5)
+
+Needs a LabRecorder `.xdf` file with an EEG stream and a marker stream (your
+own, or one from the LSL examples).
+
+1. GUI: *Input → File*, choose the `.xdf`. The log says `Input: XDF: signal
+   stream '…', markers from '…'`, and, if the file states no units, that
+   they were taken to be µV. The Recording window lists its channels and the
+   markers as events.
+2. *Start* (offline): the signal view shows the EEG in µV of a sensible size
+   (not a million times off), the markers as event lines where expected.
+3. With an Epochs strip on the markers' labels: the epoch count matches the
+   markers; an ERP template run gives an ERP view.
+4. If the file has a dropout: a `BAD_gap` mark at it, and no epoch across it.
+5. CLI: `uv run meegxer run pipeline.json -i rec.xdf -o out.set` writes the
+   file with the markers as events.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| F1 streams and notes in the log; channels and events listed | | |
+| F2 amplitudes in µV, events in place | | |
+| F3 epochs per marker; ERP view | | |
+| F4 dropout marked BAD_gap (if the file has one) | | |
+| F5 CLI run with -i rec.xdf | | |

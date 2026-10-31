@@ -7,7 +7,17 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
-Nothing yet.
+- **XDF input** (M10.5): the File input opens LabRecorder `.xdf` files
+  (pyxdf). It takes the first EEG stream as the recording and every marker
+  stream as its events, each marker on the sample nearest its timestamp, as
+  live LSL markers are placed. Channels are read in volts from the units the
+  file states; where it states none they are taken to be µV, and the log says
+  so. Where samples were lost a `BAD_gap` mark spans the gap, so epochs across
+  it are left out. Under Advanced: *XDF signal stream* and *XDF marker
+  streams* pick other streams by name, *XDF unit if unstated* sets the
+  assumed unit. The import's notes (the streams used, an assumed unit, lost
+  samples) go to the log (control API 0.2.21: `describe_source` returns
+  `notes`).
 
 ## 0.4.0b1 (2026-10-31)
 

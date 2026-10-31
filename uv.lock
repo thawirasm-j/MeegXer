@@ -1174,6 +1174,7 @@ dependencies = [
     { name = "mne-bids" },
     { name = "numpy" },
     { name = "pylsl" },
+    { name = "pyxdf" },
     { name = "pyzmq" },
     { name = "scipy" },
 ]
@@ -1187,6 +1188,7 @@ requires-dist = [
     { name = "mne-bids", specifier = ">=0.16" },
     { name = "numpy", specifier = ">=2.1" },
     { name = "pylsl", specifier = ">=1.16" },
+    { name = "pyxdf", specifier = ">=1.17" },
     { name = "pyzmq", specifier = ">=26" },
     { name = "scipy", specifier = ">=1.14.1" },
 ]
@@ -2030,6 +2032,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a1/4b/cd049f1c742cd6005b3c2758b1568149da2f27d5e1b90ecfe662d5e52b82/python_picard-0.8.2.tar.gz", hash = "sha256:42259763f87673837dcc2772cc941139c8ee547093d1b970e95097393c628cde", size = 65272, upload-time = "2026-04-27T14:11:04.17Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/44/75/05ebe70bd6836877aaf60ac25db926041a806984d373d084d61092bc3cc0/python_picard-0.8.2-py3-none-any.whl", hash = "sha256:21d5762f40cef179596dd1eb66bbfd7518da8ae2a7ab772d864834fbe6dcd006", size = 16866, upload-time = "2026-04-27T14:11:02.688Z" },
+]
+
+[[package]]
+name = "pyxdf"
+version = "1.18.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9d/28/298505b91f5e6b9325f94e1cc25003fc3cc8dc7073506f30149dfe8bd247/pyxdf-1.18.0.tar.gz", hash = "sha256:9aa78f3c7c50020f0fa30a04f094d7966b3eefde570e488d3ddef40de5c00f31", size = 38003, upload-time = "2026-10-28T08:27:19.673Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dc/f5/3466677c07801f6a8d7e845660b17b5093fe82f07129db75b7537799d15e/pyxdf-1.18.0-py3-none-any.whl", hash = "sha256:e78ca4c45fdb7f1e0c014f3c4501b5354fe5b8f8fd8ec427cfce577b2592b551", size = 20813, upload-time = "2026-10-28T08:27:18.739Z" },
 ]
 
 [[package]]

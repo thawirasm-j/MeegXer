@@ -63,6 +63,10 @@ output strip chooses which line it draws from.
     Advanced). Each marker is placed once, at the inlet, on the signal's sample
     index from its LSL timestamp (rule 8); both inlets use clock sync and
     dejitter, and the signal's recent chunks anchor timestamps to indices.
+  - An XDF file (LabRecorder, M10.5): its marker streams, each marker on the
+    signal sample nearest its timestamp (pyxdf's clock sync and dejitter, the
+    same rule as live), and a `BAD_gap` mark where samples were lost
+    (`meegxer.core.xdf`).
 - **Who adds to it:** any strip, through the events its transform emits.
 - **Who sees what:** a strip sees the input's events and those of the strips
   upstream of it, in sample-index order (`meegxer.core.events.EventsRail`),

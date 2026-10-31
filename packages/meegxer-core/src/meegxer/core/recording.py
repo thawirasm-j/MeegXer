@@ -409,4 +409,5 @@ def describe(source: Source) -> dict[str, Any]:
         "event_labels": labels,
         "events_origin": origin,
         "recording": overrides.to_dict(),
+        "notes": list(getattr(source, "notes", [])),  # control API 0.2.21
     }
