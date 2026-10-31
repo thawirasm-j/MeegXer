@@ -408,6 +408,7 @@ class MainWindow(QMainWindow):
         """Defaults from the settings, then what was remembered on top."""
         vis = self.settings["visualization"]
         self.view.channel_rule = vis["channels"]
+        self._apply_y_range(vis["y_range"])
         self.view.maps = Maps.from_settings(vis)
         self.feature_view.maps = self.view.maps
         self.view.set_view_state({"span": vis["span"], "spectrum": vis["spectrum"]})
@@ -418,6 +419,15 @@ class MainWindow(QMainWindow):
         geometry = self.state.get("geometry")
         if isinstance(geometry, str):
             self.restoreGeometry(QByteArray.fromBase64(geometry.encode()))
+
+    def _apply_y_range(self, mode: str) -> None:
+        """visualization.y_range on every amplitude plot (the epoch review's
+        ERP too, when its window is open)."""
+        boxes = [self.view.plot.box, self.feature_view.plot.box, self.erp_view.box]
+        if self.epoch_window is not None:
+            boxes.append(self.epoch_window.erp_box)
+        for box in boxes:
+            box.set_y_range(mode)
 
     def open_settings(self) -> None:
         dialog = SettingsDialog(self.settings, self.theme, self)
@@ -454,6 +464,7 @@ class MainWindow(QMainWindow):
         vis, before = settings["visualization"], old["visualization"]
         # a new rule shows its channels at the next frame (new defaults)
         self.view.channel_rule = vis["channels"]
+        self._apply_y_range(vis["y_range"])
         view = self.state.setdefault("view", {})
         if vis["span"] != before["span"]:
             view.pop("span", None)
@@ -1450,6 +1461,7 @@ class MainWindow(QMainWindow):
                     max_samples=EPOCH_POINTS if reduce == "none" else 1000),
                 recording=current,
             )  # fmt: skip
+            epochs.erp_box.set_y_range(self.settings["visualization"]["y_range"])
             epochs.setStyleSheet(stylesheet(self.theme, self.scale))
             epochs.show()
             epochs.raise_()

@@ -13,6 +13,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   the ERP view's *Show*, the epoch review's label and the strip's text fields
   widen to them. The head picker's *All*, *None*, *Standard 19* and *Default*
   sit two by two, each readable.
+- **Amplitude range setting:** amplitude plots (the signal view, the feature
+  view's amplitudes over time, the ERP view, the epoch review's ERP) fit
+  their y-axis centred on zero by default, -r to r with r the largest value,
+  by themselves and on a double click; *Settings → Visualization → Amplitude
+  range* switches to the data range (min to max). A line marks y = 0 either
+  way. New setting: `visualization.y_range`.
 - **Custom baseline:** the Epochs strip's *baseline* has a `custom` choice:
   each channel's mean over *baseline start* .. *baseline end* (seconds from
   the event, inside the epoch) is subtracted, as MNE's `baseline=(a, b)`.

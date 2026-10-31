@@ -50,6 +50,7 @@ DEFAULTS: dict[str, Any] = {
         "span": 10,
         "time_axis": "before_now",
         "channels": "standard_19",  # shown first in the signal view
+        "y_range": "zero_centered",  # amplitude plots' fit: or "data"
         "spectrum": {
             "band": [8.0, 13.0],
             "relative": False,

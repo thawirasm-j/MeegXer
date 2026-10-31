@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from meegxer.gui.signal_view import HeadChannelMenu
+from meegxer.gui.signal_view import AmplitudeViewBox, HeadChannelMenu, zero_line
 from meegxer.gui.theme import Theme
 
 REASONS = {
@@ -165,7 +165,9 @@ class EpochReviewWindow(QWidget):
         erp_bar.addWidget(self.channel)
         erp_bar.addStretch(1)
         erp_lay.addLayout(erp_bar)
-        self.erp = pg.PlotWidget(background=theme.plot_background)
+        self.erp_box = AmplitudeViewBox()  # zero-centred or data (Settings)
+        self.erp = pg.PlotWidget(viewBox=self.erp_box,
+                                 background=theme.plot_background)  # fmt: skip
         self.erp.setMenuEnabled(False)
         self.erp.getPlotItem().getAxis("bottom").enableAutoSIPrefix(False)
         self.erp.setLabel("bottom", "time from the event", units="ms")
@@ -423,6 +425,7 @@ class EpochReviewWindow(QWidget):
         zero = pg.InfiniteLine(0.0, angle=90, pen=pg.mkPen(
             self.theme.text_muted, style=Qt.PenStyle.DashLine))  # fmt: skip
         self.erp.addItem(zero)
+        self.erp.addItem(zero_line(self.theme), ignoreBounds=True)
         curves = sorted(self.erp_curves().items())
         for k, (label, (n, times, mean)) in enumerate(curves):
             if mean.ndim != 2 or c >= mean.shape[0] or len(times) != mean.shape[1]:

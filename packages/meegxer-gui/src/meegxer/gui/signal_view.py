@@ -291,7 +291,51 @@ class HeadChannelMenu(ChannelMenu):
         self.picker.head.update()
 
 
-class TraceViewBox(pg.ViewBox):
+Y_RANGES = ("zero_centered", "data")  # visualization.y_range
+
+
+class AmplitudeViewBox(pg.ViewBox):
+    """An amplitude axis whose auto-fit (and a double click) is zero-centred,
+    [-r, r] with r the largest |value| shown, or the data's [ymin, ymax]
+    (``visualization.y_range``). ``amplitude`` False (a spectrum, stacked
+    channels) leaves pyqtgraph's own fit."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.y_range = "zero_centered"
+        self.amplitude = True
+
+    def childrenBounds(
+        self, frac: Any = None, orthoRange: Any = (None, None), items: Any = None
+    ) -> Any:
+        bounds = super().childrenBounds(frac=frac, orthoRange=orthoRange, items=items)
+        y = bounds[1]
+        if self.amplitude and self.y_range == "zero_centered" and y is not None:
+            r = max(abs(float(y[0])), abs(float(y[1])))
+            if r > 0:
+                bounds[1] = [-r, r]
+        return bounds
+
+    def set_y_range(self, mode: str) -> None:
+        if mode not in Y_RANGES:
+            raise ValueError(f"y_range must be one of {Y_RANGES}, not {mode!r}")
+        if mode != self.y_range:
+            self.y_range = mode
+            self.updateAutoRange()  # fits again only where it is auto
+
+    def mouseDoubleClickEvent(self, ev: Any) -> None:
+        self.enableAutoRange(axis=pg.ViewBox.YAxis)
+        ev.accept()
+
+
+def zero_line(theme: Theme) -> pg.InfiniteLine:
+    """The y = 0 line of an amplitude plot (it does not widen the fit)."""
+    line = pg.InfiniteLine(0.0, angle=0, pen=pg.mkPen(theme.text_muted, width=1))
+    line.setZValue(-5)
+    return line
+
+
+class TraceViewBox(AmplitudeViewBox):
     """The mouse works on Y only (time belongs to the panner): the wheel scales
     it, dragging moves it, a double click fits it again."""
 
@@ -315,10 +359,6 @@ class TraceViewBox(pg.ViewBox):
         if self.click_handler is not None and self.click_handler(ev):
             return
         super().mouseClickEvent(ev)
-
-    def mouseDoubleClickEvent(self, ev: Any) -> None:
-        self.enableAutoRange(axis=pg.ViewBox.YAxis)
-        ev.accept()
 
 
 class Panner(QWidget):
@@ -402,6 +442,8 @@ class TracePlot(pg.PlotWidget):
         self._curves: list[pg.PlotDataItem] = []
         self._regions: list[pg.LinearRegionItem] = []
         self._marks: list[pg.InfiniteLine] = []
+        self.zero = zero_line(theme)
+        self.addItem(self.zero, ignoreBounds=True)
         self.apply_theme(theme)
 
     def apply_theme(self, theme: Theme) -> None:
@@ -411,6 +453,21 @@ class TracePlot(pg.PlotWidget):
             ax = self.getPlotItem().getAxis(axis)
             ax.setPen(pg.mkPen(theme.grid))
             ax.setTextPen(pg.mkPen(theme.text_muted))
+        self.zero.setPen(pg.mkPen(theme.text_muted, width=1))
+
+    @property
+    def box(self) -> TraceViewBox:
+        box = self.getViewBox()
+        assert isinstance(box, TraceViewBox)
+        return box
+
+    def set_amplitude(self, on: bool) -> None:
+        """Amplitudes on a shared axis (the y = 0 line, the setting's fit),
+        or not (a spectrum, stacked channels)."""
+        if on != self.box.amplitude:
+            self.box.amplitude = on
+            self.box.updateAutoRange()
+        self.zero.setVisible(on)
 
     def _curve(self, i: int) -> pg.PlotDataItem:
         while len(self._curves) <= i:
@@ -949,6 +1006,7 @@ class SignalView(QWidget):
                     for lb, st in zip(main_win.labels, styles, strict=True)},
         )  # fmt: skip
         chans = self.channels.selected(main_win.labels)
+        self.plot.set_amplitude(self.mode != "spectrum")  # µV on one axis
         self.legend.setToolTip(self.delay_note)
         layers: list[tuple[FloatArray, FloatArray, QPen]] = []
         plot = self.plot.getPlotItem()
@@ -1083,6 +1141,7 @@ class StackedWindow(QWidget):
         bar.addStretch(1)
         lay.addLayout(bar)
         self.plot = TracePlot(theme)
+        self.plot.set_amplitude(False)  # channels by spacing: no shared axis
         lay.addWidget(self.plot, 1)
         self.panner = Panner()
         lay.addWidget(self.panner)
