@@ -3,6 +3,7 @@ Windows, the application menu on Linux, ~/Applications on macOS."""
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,7 +33,8 @@ def test_macos_app_bundle(tmp_path: Path) -> None:
     assert bundle == tmp_path / "Applications/MeegXer.app"
     launcher = bundle / "Contents/MacOS/MeegXer"
     assert f'exec "{sys.executable}" -m meegxer.gui.app' in launcher.read_text()
-    assert launcher.stat().st_mode & 0o111  # executable
+    if os.name == "posix":  # Windows has no execute bit (chmod: read-only only)
+        assert launcher.stat().st_mode & 0o111  # executable
     assert "<string>MeegXer</string>" in (bundle / "Contents/Info.plist").read_text()
     assert shortcut.remove_shortcuts("Darwin", tmp_path) == [bundle]
     assert not bundle.exists()
