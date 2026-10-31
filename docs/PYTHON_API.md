@@ -55,6 +55,7 @@ with the feature writer (`.tsv`) in the pipeline.
 **The run** goes as `meegxer run` goes:
 - The strips fit on the whole recording.
 - The pipeline's own writers write their files (a shared session's writers without a file name are left out).
+- A BIDS writer that cannot name where it writes is left out with a warning. This happens when a pipeline made for a BIDS input, such as the *ERP study* template, runs on a Raw in memory or on a file not named like `sub-01_task-erp_eeg.set`; `output` still returns the result.
 - A Review strip not yet reviewed stops the run (`meegxer.core.review.ReviewNeeded`).
 - What the run noted goes to the `meegxer` logger (`logging`). Saves it skipped, and models it could not reuse, are Python warnings.
 
