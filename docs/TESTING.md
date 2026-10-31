@@ -365,3 +365,4 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 | E3b head picker: one channel, then the butterfly's channels | | |
 | E6 ms axis and SEM band | | |
 | E7 custom baseline (zero over 100–300 ms; refusals) | | |
+| E8 head picker in the feature view and both review windows | | |

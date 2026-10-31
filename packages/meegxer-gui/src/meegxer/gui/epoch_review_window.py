@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from meegxer.gui.signal_view import HeadChannelMenu
 from meegxer.gui.theme import Theme
 
 REASONS = {
@@ -155,8 +156,9 @@ class EpochReviewWindow(QWidget):
         erp_lay.setContentsMargins(0, 0, 0, 0)
         erp_bar = QHBoxLayout()
         erp_bar.addWidget(QLabel("<b>ERP</b> (mean of the kept epochs) · channel"))
-        self.channel = QComboBox()
-        self.channel.currentIndexChanged.connect(lambda _: self._draw_erp())
+        self.channel = HeadChannelMenu(theme)  # one channel, picked on a head
+        self.channel.set_single(True)
+        self.channel.changed.connect(self._draw_erp)
         erp_bar.addWidget(self.channel)
         erp_bar.addStretch(1)
         erp_lay.addLayout(erp_bar)
@@ -215,11 +217,12 @@ class EpochReviewWindow(QWidget):
         if not self.times:
             self.times = [float(t) for t in reply.get("times", [])]
             self.ch_labels = [str(c) for c in reply.get("ch_labels", [])]
+            labels = tuple(self.ch_labels)
+            cz = next((c for c in labels if c.lower() == "cz"),
+                      labels[0] if labels else "")  # fmt: skip
             self.channel.blockSignals(True)
-            self.channel.addItems(self.ch_labels)
-            default = next((i for i, c in enumerate(self.ch_labels)
-                            if c.lower() == "cz"), 0)  # fmt: skip
-            self.channel.setCurrentIndex(default)
+            self.channel.set_labels(labels)
+            self.channel._set(set(labels) - {cz})
             self.channel.blockSignals(False)
         for entry in reply.get("epochs", []):
             self._data[int(entry["index"])] = np.asarray(entry["data"], dtype=float)
@@ -410,9 +413,10 @@ class EpochReviewWindow(QWidget):
     def _draw_erp(self) -> None:
         self.erp.clear()
         self.erp_legend.clear()
-        c = self.channel.currentIndex()
-        if c < 0:
+        shown = self.channel.selected(tuple(self.ch_labels))
+        if not shown:
             return
+        c = shown[0]
         zero = pg.InfiniteLine(0.0, angle=90, pen=pg.mkPen(
             self.theme.text_muted, style=Qt.PenStyle.DashLine))  # fmt: skip
         self.erp.addItem(zero)

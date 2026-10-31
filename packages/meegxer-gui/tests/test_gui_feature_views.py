@@ -77,11 +77,19 @@ def test_feature_view_draws_a_spectrum_or_values_over_time(
     view = FeatureView(load_theme("dark"))
     freqs = (1.0, 2.0, 4.0, 8.0)
     psd = np.full((1, 2, 4), 1e-12)
-    view.refresh(FeatureSeries("tap_psd1", ("channel", "frequency"),
-                               {"channel": ("Fz", "Cz"), "frequency": freqs},
-                               np.array([2.0]), psd), "PSD", 0.0, 60.0)  # fmt: skip
+    spectra = FeatureSeries("tap_psd1", ("channel", "frequency"),
+                            {"channel": ("Fz", "Cz"), "frequency": freqs},
+                            np.array([2.0]), psd)  # fmt: skip
+    view.refresh(spectra, "PSD", 0.0, 60.0)
     curves = [c for c in view.plot._curves if c.isVisible()]
     assert len(curves) == 2
+    assert set(view.channels.picker.head.points) == {"Fz", "Cz"}  # on the head
+    view.channels.picker.toggle("Cz")  # a click on the head hides Cz
+    view.refresh(spectra, "PSD", 0.0, 60.0)  # the next frame
+    assert len([c for c in view.plot._curves if c.isVisible()]) == 1
+    view.channels.picker.toggle("Cz")
+    view.refresh(spectra, "PSD", 0.0, 60.0)
+    curves = [c for c in view.plot._curves if c.isVisible()]
     x, y = curves[0].getData()
     assert list(x) == list(freqs) and y[0] == pytest.approx(-120.0)  # in dB
     assert "spectrum" in view.legend.text()

@@ -35,7 +35,7 @@ from meegxer.core.block import unit_at
 from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import ChannelStyle, channel_styles_with
 from meegxer.gui.headplot import HeadPlot, render_links
-from meegxer.gui.signal_view import ChannelMenu, Panner, TracePlot, _pen
+from meegxer.gui.signal_view import HeadChannelMenu, Panner, TracePlot, _pen
 from meegxer.gui.theme import Theme
 
 FloatArray = npt.NDArray[np.float64]
@@ -177,7 +177,7 @@ class FeatureView(QWidget):
         caption = QLabel("FEATURES")
         caption.setObjectName("title")
         bar.addWidget(caption)
-        self.channels = ChannelMenu()
+        self.channels = HeadChannelMenu(theme)  # channels on a head plot
         bar.addWidget(self.channels)
         self.show_label = QLabel("Show")
         self.show_label.setObjectName("muted")
@@ -230,6 +230,7 @@ class FeatureView(QWidget):
         self.theme = theme
         self.plot.apply_theme(theme)
         self.head.apply_theme(theme)
+        self.channels.apply_theme(theme)
 
     # -- connectivity map ---------------------------------------------------------
 

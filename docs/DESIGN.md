@@ -357,6 +357,12 @@ it never interrupts processing.
     its value (live the newest window, offline the mean over the span; both
     signs, as imaginary coherence, on the diverging map). The ICs rail opens the signal view on the components,
     coloured by ICLabel class and named "IC03 · eye 0.97" in the channel menu.
+  - **Channels on a head plot:** the signal view, the feature view, the ERP
+    view and the review windows pick channels by clicking electrodes on a head
+    (`channel_picker`); channels with no place on the scalp (EOG, ICs, aux)
+    are check boxes beside it. The ERP view's conditions and the epoch
+    review's ERP show one channel, picked with one click. The stacked window
+    keeps its list.
     The core sends the feature windows on the display stream (protocol 0.2,
     lossy) and keeps an offline run's windows for scrolling (`offline_features`).
 - **Mode comes from the Input strip:** an LSL source is always live; a file or BIDS

@@ -101,6 +101,7 @@ def test_stacked_has_own_channels_all_by_default_and_normalizes(
     stacked.refresh(view, lambda p, s: window(scale=scale), "tap", [])
     assert not stacked.channels.hidden  # all channels by default
     assert stacked.channels.labels == tuple(CHANNELS)
+    assert not hasattr(stacked.channels, "picker")  # the stacked window: a list
 
     def spreads() -> list[float]:
         curves = [c for c in stacked.plot._curves if c.isVisible()]
