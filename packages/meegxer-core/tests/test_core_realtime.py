@@ -249,3 +249,39 @@ def test_display_frames_cover_the_probe_contiguously() -> None:
     assert sum(n for _, n in bins) == 75  # 1.5 s at 50 bins/s
     subscriber.close()
     publisher.close()
+
+
+def test_a_live_writer_records_the_events_rail(tmp_path: object) -> None:
+    """A live recording keeps its markers: the writer gets the Events rail
+    (a played recording's events here) as the run goes and before it closes,
+    as a batch run's writer does."""
+    from pathlib import Path
+
+    import mne
+
+    from meegxer.core.registry import Registry
+
+    folder = Path(str(tmp_path))
+    events = folder / "events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n0.5\t0\tgo\n1.25\t0\tstop\n")
+    out = {}
+    for mode in ("live", "batch"):
+        spec = {"spec_version": "0.2.23", "nodes": [
+            {"id": "src", "node": "meegxer.core.synthetic",
+             "params": {"duration": 2.0, "n_channels": 2, "sfreq": 100.0},
+             "recording": {"events": {"file": str(events)}}},
+            {"id": "out", "node": "meegxer.core.set_writer",
+             "params": {"path": str(folder / f"{mode}.set")}},
+        ]}  # fmt: skip
+        graph = Graph.from_dict(spec, Registry.from_entry_points())
+        if mode == "live":
+            scheduler = RealtimeScheduler(graph, max_block=13)
+            scheduler.start()
+            assert scheduler.wait(10) and scheduler.status()["errors"] == []
+        else:
+            BatchScheduler().run(graph)
+        raw = mne.io.read_raw_eeglab(folder / f"{mode}.set", verbose="error")
+        out[mode] = [(round(o, 3), d) for o, d in
+                     zip(raw.annotations.onset, raw.annotations.description,
+                         strict=True)]  # fmt: skip
+    assert out["live"] == out["batch"] == [(0.5, "go"), (1.25, "stop")]

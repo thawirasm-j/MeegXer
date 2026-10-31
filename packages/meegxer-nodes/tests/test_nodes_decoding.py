@@ -336,7 +336,7 @@ def test_csp_then_lda_in_a_batch_run() -> None:
     assert after != before and stage.status(after).value == "needs-refit"
 
 
-def test_lda_calibrated_live_after_csp() -> None:
+def test_lda_calibrated_live_after_csp(tmp_path: Path) -> None:
     """Live: CSP calibrates on the first stretch, then LDA on the windows CSP
     gives after it; each window's class comes as it ends, and is what the
     same model gives on the same windows offline."""
@@ -348,6 +348,9 @@ def test_lda_calibrated_live_after_csp() -> None:
     taps = {name: FeatureProbe({"keep_windows": 0}) for name in ("csp", "lda")}
     for name, tap in taps.items():
         graph.add(tap, input=name)
+    from meegxer.core.sinks import SetSink
+
+    graph.add(SetSink({"path": str(tmp_path / "live.set")}), id="out", input="src")
     import time
 
     # the recording plays ten times faster than real time
@@ -375,3 +378,10 @@ def test_lda_calibrated_live_after_csp() -> None:
     np.testing.assert_allclose([w.data for w in again.block],
                                [w.data for w in got])  # fmt: skip
     assert len(again.events) == len(got)
+    # the live recording keeps the cues and LDA's class events
+    import mne
+
+    raw = mne.io.read_raw_eeglab(tmp_path / "live.set", verbose="error")
+    labels = list(raw.annotations.description)
+    assert labels.count("left") + labels.count("right") == 16
+    assert sum(lb.startswith("pred_") for lb in labels) == len(got)
