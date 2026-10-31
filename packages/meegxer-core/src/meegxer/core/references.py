@@ -16,6 +16,11 @@ MNE: Reference = {
     "analysis with MNE-Python. Front Neurosci 7:267.",
     "doi": "10.3389/fnins.2013.00267",
 }
+WELFORD: Reference = {
+    "citation": "Welford BP (1962). Note on a method for calculating corrected "
+    "sums of squares and products. Technometrics 4(3):419-420.",
+    "doi": "10.1080/00401706.1962.10490022",
+}
 MNE_BIDS: Reference = {
     "citation": "Appelhoff S, Sanderson M, Brooks TL, et al. (2019). MNE-BIDS: "
     "Organizing electrophysiological data into the BIDS format and facilitating "
@@ -39,7 +44,8 @@ BY_NODE: dict[str, list[Reference]] = {
     "meegxer.core.bids_features": _BIDS,
     "meegxer.core.bids_epochs": _BIDS,
     "meegxer.core.epochs_writer": [MNE],
-    "meegxer.core.erp_probe": [MNE],  # the mean of epochs, as Epochs.average
+    # the mean of epochs (as Epochs.average) and its SEM (as scipy.stats.sem)
+    "meegxer.core.erp_probe": [MNE, WELFORD],
 }
 
 AUTHORS = ["MeegXer contributors"]

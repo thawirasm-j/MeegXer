@@ -65,6 +65,7 @@ class HeadPicker(QWidget):
         self.points: dict[str, tuple[float, float]] = {}
         self.colors: dict[str, QColor] = {}
         self.hidden: set[str] = set()
+        self.single = False  # a click shows that one channel only
         self.setMouseTracking(True)
         self.setMinimumSize(260, 260)
 
@@ -97,8 +98,9 @@ class HeadPicker(QWidget):
             QToolTip.hideText()
             return
         state = "hidden" if label in self.hidden else "shown"
+        what = "click to show it" if self.single else "click to toggle"
         QToolTip.showText(event.globalPosition().toPoint(),
-                          f"{label} ({state}; click to toggle)", self)  # fmt: skip
+                          f"{label} ({state}; {what})", self)  # fmt: skip
 
     def paintEvent(self, event: QPaintEvent) -> None:
         p = QPainter(self)
@@ -135,7 +137,8 @@ class HeadPicker(QWidget):
 
 class ChannelPicker(QWidget):
     """The head picker, the channels without a place as check boxes, and
-    quick choices; ``changed`` carries the hidden channels."""
+    quick choices; ``changed`` carries the hidden channels. With ``single``
+    (``set_single``) a click shows that one channel and hides the others."""
 
     changed = Signal(object)  # set[str]
 
@@ -149,14 +152,16 @@ class ChannelPicker(QWidget):
         lay = QHBoxLayout(self)
         lay.addWidget(self.head, 1)
         side = QVBoxLayout()
-        buttons = QHBoxLayout()
+        self.buttons = QWidget()  # the quick choices (not in single mode)
+        buttons = QHBoxLayout(self.buttons)
+        buttons.setContentsMargins(0, 0, 0, 0)
         for text, slot in (("All", self.show_all), ("None", self.show_none),
                            ("Standard 19", self.show_standard),
                            ("Default", self.show_default)):  # fmt: skip
             b = QPushButton(text)
             b.clicked.connect(lambda _=False, f=slot: f())
             buttons.addWidget(b)
-        side.addLayout(buttons)
+        side.addWidget(self.buttons)
         self.unplaced = QVBoxLayout()
         side.addLayout(self.unplaced)
         side.addStretch(1)
@@ -202,12 +207,28 @@ class ChannelPicker(QWidget):
         if emit:
             self.changed.emit(set(self.hidden))
 
+    @property
+    def single(self) -> bool:
+        return self.head.single
+
+    def set_single(self, on: bool) -> None:
+        """One channel at a time (e.g. the ERP view's conditions on one
+        channel), or any number (the default)."""
+        self.head.single = on
+        self.buttons.setVisible(not on)
+
     def _box(self, label: str, on: bool) -> None:
+        if self.single:
+            self._apply(set(self.labels) - {label})  # never none shown
+            return
         hidden = set(self.hidden)
         (hidden.discard if on else hidden.add)(label)
         self._apply(hidden)
 
     def toggle(self, label: str) -> None:
+        if self.single:
+            self._apply(set(self.labels) - {label})
+            return
         hidden = set(self.hidden)
         (hidden.discard if label in hidden else hidden.add)(label)
         self._apply(hidden)

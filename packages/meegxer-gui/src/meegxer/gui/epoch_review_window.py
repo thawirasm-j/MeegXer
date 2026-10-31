@@ -162,7 +162,8 @@ class EpochReviewWindow(QWidget):
         erp_lay.addLayout(erp_bar)
         self.erp = pg.PlotWidget(background=theme.plot_background)
         self.erp.setMenuEnabled(False)
-        self.erp.setLabel("bottom", "time from the event", units="s")
+        self.erp.getPlotItem().getAxis("bottom").enableAutoSIPrefix(False)
+        self.erp.setLabel("bottom", "time from the event", units="ms")
         self.erp.setLabel("left", "µV")
         self.erp.showGrid(x=True, y=True, alpha=0.2)
         self.erp_legend = self.erp.addLegend(offset=(10, 10))
@@ -420,7 +421,7 @@ class EpochReviewWindow(QWidget):
             if mean.ndim != 2 or c >= mean.shape[0] or len(times) != mean.shape[1]:
                 continue
             self.erp.plot(
-                times,
+                times * 1e3,  # ms
                 mean[c] * 1e6,
                 pen=pg.mkPen(ERP_COLORS[k % len(ERP_COLORS)], width=2),
                 name=f"{label} (n={n})",

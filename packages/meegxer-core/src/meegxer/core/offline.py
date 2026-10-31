@@ -715,7 +715,7 @@ class OfflineJob:
             "probe": probe,
             "dims": list(erp.dims),
             "coords": {k: list(v) for k, v in erp.coords.items()},
-            "values": erp.data.tolist(),
+            "values": _nested(erp.data),  # a single epoch's SEM: NaN as null
             "counts": [tap.counts[str(c)] for c in erp.coords["condition"]],
             "unit": erp.unit,
         }

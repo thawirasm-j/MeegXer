@@ -1,12 +1,13 @@
-"""The ERP tap (M10.3): a running mean per label kept as sums and counts, so it
-matches MNE's average of those epochs however many frames are lost; it starts
-over on a reset, another epoch shape, or a change upstream."""
+"""The ERP tap (M10.3): a running mean and SEM per label (Welford's update), so
+they match MNE's average and SciPy's SEM of those epochs however many frames are
+lost; it starts over on a reset, another epoch shape, or a change upstream."""
 
 from __future__ import annotations
 
 import mne
 import numpy as np
 import pytest
+import scipy.stats
 
 from meegxer.core.block import FeatureBlock
 from meegxer.core.display import FeatureFrame, decode_frame, encode_features
@@ -24,7 +25,7 @@ def epoch(label: str, data: np.ndarray, at: int, times: tuple[float, ...] = TIME
     )  # fmt: skip
 
 
-def test_the_running_erp_is_mnes_average_of_each_label() -> None:
+def test_the_running_erp_and_sem_are_mnes_of_each_label() -> None:
     rng = np.random.default_rng(0)
     labels = ["go", "stop", "go", "go", "stop", "go"]
     data = rng.standard_normal((len(labels), len(CHANNELS), len(TIMES))) * 1e-6
@@ -34,7 +35,8 @@ def test_the_running_erp_is_mnes_average_of_each_label() -> None:
         probe.tap(epoch(label, x, 100 * k))
     erp = probe.average()
     assert erp is not None
-    assert erp.dims == ("condition", "channel", "time") and erp.unit == "V"
+    assert erp.dims == ("stat", "condition", "channel", "time") and erp.unit == "V"
+    assert erp.coords["stat"] == ("mean", "sem")
     assert erp.coords["condition"] == ("go", "stop")
     assert probe.counts == {"go": 4, "stop": 2}
     assert erp.window == (0, 500 + len(TIMES))  # first to last epoch
@@ -45,8 +47,12 @@ def test_the_running_erp_is_mnes_average_of_each_label() -> None:
     epochs = mne.EpochsArray(data, info, events, tmin=-0.2, event_id=ids,
                              verbose="error")  # fmt: skip
     for k, label in enumerate(("go", "stop")):
-        np.testing.assert_allclose(erp.data[k], epochs[label].average().data,
+        np.testing.assert_allclose(erp.data[0, k], epochs[label].average().data,
                                    rtol=1e-12, atol=1e-20)  # fmt: skip
+        # the sample SD (n - 1); MNE's standard_error divides by n
+        chosen = data[[lb == label for lb in labels]]
+        np.testing.assert_allclose(erp.data[1, k], scipy.stats.sem(chosen, axis=0),
+                                   rtol=1e-10, atol=1e-20)  # fmt: skip
 
 
 def test_it_starts_over_on_reset_another_shape_or_a_change_upstream() -> None:
@@ -60,7 +66,7 @@ def test_it_starts_over_on_reset_another_shape_or_a_change_upstream() -> None:
     probe.follow("fp-b")  # a change upstream: a mean across it would mix them
     assert probe.counts == {} and probe.changed
     erp = probe.average()
-    assert erp is not None and erp.data.shape == (0, 3, len(TIMES))  # no epochs
+    assert erp is not None and erp.data.shape == (2, 0, 3, len(TIMES))  # no epochs
     probe.tap(epoch("go", x, 0))
     probe.reset()
     assert probe.counts == {}
@@ -95,4 +101,8 @@ def test_the_mean_stays_exact_over_many_epochs(n: int) -> None:
         probe.tap(epoch("go", np.full((3, len(TIMES)), float(k)), 10 * k))
     erp = probe.average()
     assert erp is not None
-    np.testing.assert_allclose(erp.data[0], (n - 1) / 2)
+    np.testing.assert_allclose(erp.data[0, 0], (n - 1) / 2)
+    if n == 1:  # one epoch: no spread to speak of
+        assert np.isnan(erp.data[1, 0]).all()
+    else:  # 0..n-1: sample SD sqrt(n (n + 1) / 12)
+        np.testing.assert_allclose(erp.data[1, 0], np.sqrt(n * (n + 1) / 12 / n))
