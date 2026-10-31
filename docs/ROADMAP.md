@@ -63,7 +63,7 @@ items (M10.5–M10.7, checked in §F to §H). Its open items (below) come in lat
 | M10.7 MNE Python API | Done: `meegxer.api.run(pipeline, raw)` gives the chain's end as `mne.io.Raw`, an Epochs strip's epochs as `mne.Epochs`, or a rail output (the ICs) (`docs/PYTHON_API.md`); MNE ICA `-ica.fif` files start the ICs rail (File input, `ica=`) and the *MNE ICA (.fif)* writer stores it | PR #131 – #136 |
 | M10.8 Batch workers, QC report | Done: `--jobs N` worker processes (and `general.batch_jobs` for the GUI's all-subjects run), a QC report per recording (mne.Report) and the dataset's `qc.tsv` and `qc.html` | PR #107 |
 | M10.9 Templates, sample data | Partly: ERP, resting-state and ICA cleaning templates (GUI *New…*, `meegxer new`), and the ERP CORE and EEGBCI samples, fetched per subject on first use. The SSVEP BCI template waits for M11 | PR #106, #112 |
-| M10.10 Undo for chain edits | Open (the review window has undo) | |
+| M10.10 Undo for chain edits | Done: *Undo* and *Redo* (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) for every chain and setting edit, quick changes of one setting as one step; live, settings undo without a restart (`meegxer.gui.history`) | this PR |
 | M10.11 Manual review (added) | Steps 1–5 of `docs/REVIEW.md` Design v2 done: Review strip, Reject segments, review display, review at import, review points, detectors, suggestions with verdicts, epoch review, rejected epochs on the Events rail. Step 6 (a second reviewer, a review report) open | PR #81 – #100 |
 
 Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
@@ -71,7 +71,7 @@ Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
 (now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
 reference.
 
-**Next:** the open M10 items: undo (M10.10), review step 6 (M10.11).
+**Next:** the open M10 item: review step 6 (M10.11).
 
 ### M9: Fix and harden (0.3.0bN)
 

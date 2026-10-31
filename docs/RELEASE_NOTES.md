@@ -7,6 +7,18 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+## Next (not released yet)
+
+- **Undo and redo** (M10.10): *↶ Undo* and *↷ Redo* in the top bar, or Ctrl+Z
+  and Ctrl+Shift+Z (or Ctrl+Y). They undo any change to the chain (a strip
+  added, moved or removed, *Reads*, the channels a strip processes, the
+  recording's settings) and any setting. Several quick changes of one
+  setting, such as a value scrolled or stepped, undo in one step. The log
+  says what was undone. Running live, undoing a setting sends it to the
+  pipeline without a restart; undoing a change to the chain restarts it, as
+  the change did. *Open…* and *New…* start a new history (a text field keeps
+  its own Ctrl+Z while it has the focus).
+
 ## 0.4.0b2 (2026-10-31): Interop: XDF, EEGLAB and MNE
 
 MeegXer now reads and writes what the other EEG tools use:

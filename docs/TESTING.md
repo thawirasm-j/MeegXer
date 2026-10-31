@@ -506,3 +506,28 @@ of your own recording works too. First `uv run meegxer shutdown`.
 | H5 an MNE ICA file starts the ICs rail (GUI) | passed | |
 | H6 the MNE ICA writer; `read_ica` reads it | passed | |
 | H7 `ica=` in Python | passed | run by Claude (script; the maintainer ran H1–H6) |
+
+## I. Undo and redo (M10.10)
+
+Already run by Claude, offscreen through the real window
+(`test_gui_undo.py` and a driven window): Undo and Redo of an added strip, three quick
+steps of a value as one undo, the shortcuts, *Open…* starting a new history,
+and a live run where an undone setting reaches the pipeline without a
+restart. On your machine (Windows), in the GUI:
+
+1. Add a strip, then *↶ Undo*: it goes; *↷ Redo*: it is back. The log says
+   `Undo: added …` and `Redo: added …`.
+2. Click the high-pass's *Low cut-off* and scroll it a few steps; Ctrl+Z
+   once: it is back to its first value. Ctrl+Y (or Ctrl+Shift+Z) redoes it.
+3. Type in a text field (e.g. an Epochs strip's events) and press Ctrl+Z
+   while it has the focus: the text's own undo, not the chain's.
+4. *Start* live, change the high-pass, Ctrl+Z: the pipeline keeps running
+   (no "Restarting" in the log) with the old value.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| I1 Undo and Redo of a strip | | |
+| I2 a scrolled value undoes in one step; Ctrl+Y | | |
+| I3 Ctrl+Z in a text field undoes its text | | |
+| I4 live: a setting undone without a restart | | |
+
