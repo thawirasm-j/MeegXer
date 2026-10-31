@@ -403,8 +403,8 @@ with the old code; after the shutdown the GUI starts a new one.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| F1 streams and notes in the log; channels and events listed | partial | No `10 markers left out` |
+| F1 streams and notes in the log; channels and events listed | passed | |
 | F2 278 s of signal, events in place, BAD_gap at 128.76 s | passed | |
 | F3 27 epochs on Marker; ERP view | passed | |
-| F4 no epoch across the gap (`xdf_check.py check`) | how? | |
-| F5 CLI run of `xdf_epochs.json`; out.set holds 166 events | no pipeline.json | |
+| F4 no epoch across the gap | passed | |
+| F5 CLI run with -i clock_resets.xdf | passed | |
