@@ -165,6 +165,27 @@ CHEN_FBCCA: Reference = {
     "brain-computer interface. J Neural Eng 12(4):046008.",
     "doi": "10.1088/1741-2560/12/4/046008",
 }
+FISHER: Reference = {
+    "citation": "Fisher RA (1936). The use of multiple measurements in taxonomic "
+    "problems. Ann Eugen 7(2):179-188.",
+    "doi": "10.1111/j.1469-1809.1936.tb02137.x",
+}
+BLANKERTZ_LDA: Reference = {
+    "citation": "Blankertz B, Lemm S, Treder M, Haufe S, Müller KR (2011). "
+    "Single-trial analysis and classification of ERP components - a tutorial. "
+    "NeuroImage 56(2):814-825.",
+    "doi": "10.1016/j.neuroimage.2010.06.048",
+}
+LEDOIT_WOLF: Reference = {
+    "citation": "Ledoit O, Wolf M (2004). A well-conditioned estimator for "
+    "large-dimensional covariance matrices. J Multivar Anal 88(2):365-411.",
+    "doi": "10.1016/S0047-259X(03)00096-4",
+}
+SKLEARN: Reference = {
+    "citation": "Pedregosa F, Varoquaux G, Gramfort A, et al. (2011). "
+    "Scikit-learn: machine learning in Python. J Mach Learn Res 12:2825-2830.",
+    "url": "https://jmlr.org/papers/v12/pedregosa11a.html",
+}
 RAMOSER: Reference = {
     "citation": "Ramoser H, Müller-Gerking J, Pfurtscheller G (2000). Optimal "
     "spatial filtering of single trial EEG during imagined hand movement. IEEE "
@@ -217,6 +238,7 @@ BY_NODE: dict[str, list[Reference]] = {
     "meegxer.nodes.morlet": [TALLON_BAUDRY, MNE, SCIPY],
     "meegxer.nodes.ssvep_cca": [LIN_CCA, CHEN_FBCCA, SCIPY],
     "meegxer.nodes.csp": [RAMOSER, KOLES, MNE],
+    "meegxer.nodes.lda": [FISHER, BLANKERTZ_LDA, LEDOIT_WOLF, SKLEARN],
     "meegxer.nodes.connectivity": [MNE_CONNECTIVITY, MNE, IMCOH, PLV, WPLI],
     "meegxer.nodes.complexity": [ANTROPY, PERMUTATION_ENTROPY, SAMPLE_ENTROPY,
                                  HJORTH, LEMPEL_ZIV],
@@ -254,6 +276,7 @@ CATEGORIES = {
     "meegxer.nodes.morlet": "time-frequency",
     "meegxer.nodes.ssvep_cca": "decoding",
     "meegxer.nodes.csp": "decoding",
+    "meegxer.nodes.lda": "decoding",
 }
 
 

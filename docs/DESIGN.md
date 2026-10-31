@@ -569,7 +569,12 @@ sync, device sources beyond LSL, Rust core, CLAP native plugins, full installers
 - **Online calibration UX:** one-shot calibration at session start for v1; periodic
   refits later.
 - **Feature outputs in v1:** Features → Sink (view, export, LSL feature stream) only;
-  Features → Processor (e.g. classifiers) later.
+  Features → Processor (e.g. classifiers) later. Built in 0.5 (M11.3, spec 0.2.23):
+  an analysis processor's main input may be Features (the LDA strip reads CSP).
+  Its fit and transform take the windows that ended in a stretch of their
+  producer's input (`Windows`), so the windows keep counting that input's
+  samples and nothing in the schedulers runs at a second rate; plugins still
+  take Signal input.
 - **wICA:** dropped from v1 (non-standard method); may return as a plugin.
 - **Latency target:** < 150 ms end-to-end for monitoring; closed-loop BCI target set
   when that roadmap item starts.

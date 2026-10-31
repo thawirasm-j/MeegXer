@@ -71,7 +71,12 @@ output strip chooses which line it draws from.
 - **Who sees what:** a strip sees the input's events and those of the strips
   upstream of it, in sample-index order (`meegxer.core.events.EventsRail`),
   except the labels a strip between takes over (rule 6; a processor's
-  `takes_over(params)`). File writers and the offline views see the same.
+  `takes_over(params)`). An output (a file writer, an action sink) sees
+  every strip's events to its left, as the rail is drawn, even one that hangs
+  off the signal: the LDA strip's class events reach a writer reading the
+  signal (M11.3). A processor sees its ancestors' only, because its input
+  fingerprint names them (rule 7). The offline views see what a writer at the
+  chain's end would see.
 - **Across a rate change** (a Resample strip): the rail counts the input's
   samples; a strip at another rate sees, and adds, events at its own rate,
   mapped by the exact ratio of the rates to the nearest sample (rule 8). A
@@ -312,7 +317,8 @@ Still to come: sources declaring extra outputs, custom scripts, the Octave SDK.
    Python SDK (done; scripts, sources and the Octave SDK follow).
 4. ICs rail: from ICA, with ICLabel classes, read as a main input (done, 4a);
    from EEGLAB files at the Input strip, rewritten by ICA (4b).
-5. LDA classifier reading a feature rail and adding events.
+5. LDA classifier reading a feature rail and adding events (done, M11.3: its main
+   input is the feature strip, chosen under *Reads*, spec 0.2.23).
 6. Sources rail: inverse on a template head (cached ahead for Sterile mode).
 7. Event outputs: keyboard sink, events writer, epoching.
 8. An events strip (e.g. "LSL markers") for an external event source: it adds to

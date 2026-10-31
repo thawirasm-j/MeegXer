@@ -395,6 +395,54 @@ class FeatureBlock:
         return unit_at(self.unit, self.unit_dim, self.units, index or {})
 
 
+def feature_names(window: FeatureBlock) -> tuple[str, ...]:
+    """A name per value of ``window`` (its data flattened in C order): the
+    coordinates of each dimension joined by ``·`` (``CSP1``, ``Fz·10``), or the
+    position along a dimension without coordinates."""
+    axes = [
+        tuple(str(c) for c in window.coords[d]) if d in window.coords
+        else tuple(str(i) for i in range(n))
+        for d, n in zip(window.dims, window.data.shape, strict=True)
+    ]  # fmt: skip
+    return tuple("·".join(parts) for parts in itertools.product(*axes))
+
+
+@dataclass(frozen=True, slots=True)
+class Windows:
+    """Feature windows as the input of a processor that takes Features (an LDA
+    classifier reading a feature strip, spec 0.2.23): the windows that ended in
+    the input samples ``[sample_index, stop_index)`` of their producer, counted
+    at ``sfreq``. The stretch is explicit so that a stretch without windows
+    still counts (live calibration collects seconds of input)."""
+
+    windows: tuple[FeatureBlock, ...]
+    sfreq: float
+    sample_index: int
+    stop_index: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "windows", tuple(self.windows))
+        _check_index("sample_index", self.sample_index)
+        if self.stop_index < self.sample_index:
+            raise ValueError("stop_index must be >= sample_index")
+
+    @property
+    def n_samples(self) -> int:
+        return self.stop_index - self.sample_index
+
+
+def concat_windows(pieces: Sequence[Windows]) -> Windows:
+    """Consecutive stretches of windows as one."""
+    if not pieces:
+        raise ValueError("no windows to join")
+    return Windows(
+        tuple(w for p in pieces for w in p.windows),
+        pieces[0].sfreq,
+        pieces[0].sample_index,
+        pieces[-1].stop_index,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Event:
     """A marker or command at an absolute sample index."""

@@ -431,3 +431,27 @@ def test_a_files_ics_rail_starts_at_the_input_and_ends_at_ica(
     reref = doc.insert(len(doc.strips), "meegxer.nodes.rereference")
     writer = doc.insert(len(doc.strips), "meegxer.core.ica_writer")
     assert doc.rail_choices(reref) == [] and doc.rail_choices(writer) == []
+
+
+def test_a_classifier_reads_a_feature_strip(doc: PipelineDoc) -> None:
+    """Spec 0.2.23: the LDA strip takes Features: it reads the nearest feature
+    strip (CSP), or another one under *Reads*, and starts its own rail."""
+    csp = doc.insert(len(doc.strips), "meegxer.nodes.csp")
+    bp = doc.insert(len(doc.strips), "meegxer.nodes.band_power")
+    lda = doc.insert(len(doc.strips), "meegxer.nodes.lda")
+    assert doc.input_of(lda) == bp.id
+    assert doc.input_choices(lda) == [bp.id, csp.id]
+    labels = [doc.choice_label(c) for c in doc.input_choices(lda)]
+    assert labels == ["Band power", "CSP"]
+    doc.set_input(lda.id, csp.id)
+    rails, missing = doc.rails()
+    by_id = {r.id: r for r in rails}
+    assert by_id[csp.id].readers == [lda.id] and by_id[lda.id].label == "LDA"
+    assert missing[lda.id] == "Events"  # it learns from labelled trials
+    doc.input_events = 40  # the recording has its cues
+    rails, missing = doc.rails()
+    events = next(r for r in rails if r.id == "events")
+    assert lda.id in events.readers and lda.id in events.writers  # pred_ events
+    assert lda.id not in missing
+    graph = Graph.from_dict(doc.to_pipeline(), Registry.from_entry_points())
+    assert graph[lda.id].input == csp.id

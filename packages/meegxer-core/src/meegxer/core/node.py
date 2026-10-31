@@ -15,7 +15,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Literal, NamedTuple
 
-from meegxer.core.block import Block, Event, EventBlock, FeatureBlock, SignalInfo
+from meegxer.core.block import (
+    Block,
+    Event,
+    EventBlock,
+    FeatureBlock,
+    SignalInfo,
+    Windows,
+)
 from meegxer.core.manifest import Manifest, ParamValue
 from meegxer.core.serialization import State
 
@@ -72,6 +79,12 @@ class Processor(ABC):
       fits, ``fit_rails(calibration, params, rails)``; ``rails`` maps each extra
       input's name to its data over the same samples (``RailInput``). Extra output
       ports are written through ``TransformResult.rails``.
+    - Features input (spec 0.2.23): a processor whose main input is Features (a
+      classifier reading a feature strip) implements
+      ``fit_features(windows, events, params)`` and
+      ``transform_features(windows, model, state, params)``; ``windows`` holds
+      the feature windows that ended in a stretch of their producer's input
+      (``Windows``), and ``events`` (with ``fit_events``) the events inside it.
     - ``transform(block, model, state, params) -> (block, state, events)``: process
       one block. ``state`` is ``None`` on the first block of a stream (and after a
       parameter change or refit); the processor initialises it then. Model and state
@@ -112,6 +125,18 @@ class Processor(ABC):
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult: ...
+
+    def fit_features(
+        self, windows: Windows, events: Sequence[Event], params: Params
+    ) -> State:
+        """Fit on feature windows (a Features main input, spec 0.2.23)."""
+        raise NotImplementedError(f"{self.manifest.name} takes Signal input")
+
+    def transform_features(
+        self, windows: Windows, model: State, state: State | None, params: Params
+    ) -> TransformResult:
+        """Transform feature windows (a Features main input, spec 0.2.23)."""
+        raise NotImplementedError(f"{self.manifest.name} takes Signal input")
 
     def transform_rails(
         self,

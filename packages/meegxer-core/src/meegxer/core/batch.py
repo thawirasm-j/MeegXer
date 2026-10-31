@@ -25,6 +25,7 @@ from meegxer.core.block import (
     Event,
     EventBlock,
     FeatureBlock,
+    Windows,
     contiguous_runs,
 )
 from meegxer.core.cache import Cache, CachedOutput
@@ -210,6 +211,9 @@ class BatchScheduler:
         # what extra output ports wrote: (node id, port) -> blocks or windows
         self._written: dict[tuple[str, str], list[Block | FeatureBlock]] = {}
         self._buffers: dict[tuple[str, str], RailBuffer] = {}  # joined, for readers
+        # the input stretch of each node and its rate (a source: its output), for
+        # the windows of a feature strip as a processor's input (spec 0.2.23)
+        self._spans: dict[str, tuple[int, int, float]] = {}
 
     def run(self, graph: Graph, *, keep: Iterable[str] = ()) -> BatchResult:
         result = BatchResult()
@@ -232,6 +236,7 @@ class BatchScheduler:
         self._graph = graph
         self._written = {}
         self._buffers = {}
+        self._spans = {}
         sinks = [n for n in graph.nodes if isinstance(n.impl, Sink)]
         for node in sinks:
             assert isinstance(node.impl, Sink)
@@ -243,6 +248,10 @@ class BatchScheduler:
             if node.role is NodeRole.SOURCE:
                 assert isinstance(node.impl, Source)
                 streams[node.id] = list(self._read_source(node.impl))
+                read = [b for b in streams[node.id] if isinstance(b, Block)]
+                if read:
+                    self._spans[node.id] = (read[0].sample_index, read[-1].stop_index,
+                                            node.impl.info.sfreq)  # fmt: skip
                 result.fingerprints[node.id] = source_fingerprint(node.impl)
                 result.computed.append(node.id)
                 if node.manifest.rail_outputs:  # what the file carries (ICs)
@@ -315,10 +324,15 @@ class BatchScheduler:
             port: result.fingerprints[producer]
             for port, (producer, _) in sources.items() if producer
         })  # fmt: skip
+        if stage.takes_features:  # a classifier reading a feature strip
+            return self._run_on_features(node, stage, input_fp, upstream, result)
         signal_in = [b for b in upstream if isinstance(b, Block)]
         if len(signal_in) != len(upstream):
-            raise GraphError(f"{node.id}: processors take Signal input in v1")
+            raise GraphError(f"{node.id}: takes Signal input, not {node.input!r}'s")
         rate = signal_in[0].info.sfreq if signal_in else None  # after a resampler
+        if signal_in and rate is not None:
+            self._spans[node.id] = (signal_in[0].sample_index,
+                                    signal_in[-1].stop_index, rate)  # fmt: skip
         if isinstance(stage.processor, ReviewStrip):  # its marks are its output
             marks = self._review_marks(node, stage, input_fp, signal_in, rate or 0.0)
             input_fp = labelled_input(input_fp, marks)
@@ -407,6 +421,46 @@ class BatchScheduler:
             if len(runs) == 1:  # a cut stream is not cached (one block each)
                 self.cache.put(output_fp, CachedOutput(runs[0], tuple(events)))
         return out
+
+    def _run_on_features(
+        self,
+        node: GraphNode,
+        stage: Stage,
+        input_fp: str,
+        upstream: Stream,
+        result: BatchResult,
+    ) -> Stream:
+        """A processor taking Features (spec 0.2.23): fitted, when it needs it,
+        on the windows of its input strip and the events it sees, then run on
+        them all. Its windows count the samples of that strip's input."""
+        assert self._graph is not None and node.input_node is not None
+        span = self._spans.get(node.input_node)
+        windows = tuple(b for b in upstream if isinstance(b, FeatureBlock))
+        if len(windows) != len(upstream):
+            raise GraphError(f"{node.id}: takes Features input, not {node.input!r}'s")
+        if span is None:
+            raise GraphError(f"{node.id}: {node.input!r} produced no windows")
+        start, stop, rate = span
+        self._spans[node.id] = span
+        stretch = Windows(windows, rate, start, stop)
+        if stage.status(input_fp) is not StageStatus.READY:
+            calibration = stretch
+            if self.calibration_seconds is not None:
+                end = min(stop, start + round(self.calibration_seconds * rate))
+                calibration = Windows(
+                    tuple(w for w in windows if w.window[1] <= end), rate, start, end
+                )
+            trials = self._rail.visible_to(self._graph, node.id, sfreq=rate)
+            stage.fit(calibration, input_fp, trials)
+            result.fitted.append(node.id)
+        result.fingerprints[node.id] = stage.output_fingerprint(input_fp)
+        stage.state = None  # a batch run always starts the stream from scratch
+        transformed = stage.transform(stretch, input_fp)
+        self._keep_rails(node.id, transformed)
+        result.events[node.id] = tuple(transformed.events)
+        self._rail.add(transformed.events, node.id, rate)
+        result.computed.append(node.id)
+        return list(_non_empty(transformed.block))
 
     def _review_marks(
         self,
