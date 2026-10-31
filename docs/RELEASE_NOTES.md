@@ -35,6 +35,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   It uses pynput (new dependency of `meegxer-nodes`), which needs a desktop
   session; on Linux it builds `evdev` from source. MeegXer is **not a
   medical device**: said in the README and the new About box (*?*).
+- **Shortcuts (M11.6).** `meegxer-gui --create-shortcut` puts MeegXer in
+  the Start menu and on the desktop (Windows), the application menu (Linux)
+  or `~/Applications` (macOS); `--remove-shortcut` removes them. They start
+  the MeegXer the command came from, without a console window on Windows.
 - **SSVEP BCI template (M10.9, M11's demo).** *New…* → *SSVEP BCI (keys)*
   (`meegxer new ssvep_bci OUT.json`): live from an LSL amplifier, SSVEP
   detection (filter-bank CCA, targets at 8, 10, 12 and 15 Hz) with

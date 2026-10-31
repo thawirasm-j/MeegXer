@@ -33,7 +33,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--start", action="store_true", help="start (or run offline) right away"
     )
+    parser.add_argument(
+        "--create-shortcut",
+        action="store_true",
+        help="add MeegXer to the Start menu and desktop (Windows), the "
+        "application menu (Linux) or ~/Applications (macOS), then exit",
+    )
+    parser.add_argument(
+        "--remove-shortcut",
+        action="store_true",
+        help="remove those shortcuts, then exit",
+    )
     args = parser.parse_args(argv)
+    if args.create_shortcut or args.remove_shortcut:
+        from meegxer.gui.shortcut import create_shortcuts, remove_shortcuts
+
+        if args.create_shortcut:
+            for path in create_shortcuts():
+                print(f"meegxer-gui: shortcut {path}")
+        else:
+            gone = remove_shortcuts()
+            print("meegxer-gui: removed " + (", ".join(map(str, gone)) or "nothing"))
+        return 0
 
     settings = core_settings.load_settings()
     connect = args.connect or settings["general"]["daemon"]
