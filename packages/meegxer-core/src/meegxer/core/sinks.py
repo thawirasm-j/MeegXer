@@ -150,10 +150,16 @@ def write_raw(path: Path, fmt: Literal["eeglab", "edf"], data: np.ndarray,
     path.parent.mkdir(parents=True, exist_ok=True)
     mne.export.export_raw(path, raw, fmt=fmt, overwrite=overwrite, verbose="ERROR")
     if fmt == "eeglab":
-        with path.open("r+b") as fh:
-            if fh.read(10) == b"MATLAB 5.0":  # v5 MAT-file (not HDF5 v7.3)
-                fh.seek(0)
-                fh.write(SetSink.MAT_HEADER)
+        stamp_mat_header(path)
+
+
+def stamp_mat_header(path: Path) -> None:
+    """Replace a v5 MAT-file's header text (it carries the platform and the
+    time of writing) with ``SetSink.MAT_HEADER``: the same data, the same file."""
+    with path.open("r+b") as fh:
+        if fh.read(10) == b"MATLAB 5.0":  # v5 MAT-file (not HDF5 v7.3)
+            fh.seek(0)
+            fh.write(SetSink.MAT_HEADER)
 
 
 def read_spool(path: Path) -> tuple[dict[str, Any], np.ndarray]:
@@ -382,6 +388,41 @@ class SetSink(_RawFileSink):
     # of writing; replaced so the same data gives the same file (sessions,
     # acceptance test 4). Readers ignore this text.
     MAT_HEADER = b"MATLAB 5.0 MAT-file, written by MeegXer".ljust(116, b" ")
+
+    def __init__(self, params: Mapping[str, object] | None = None) -> None:
+        super().__init__(params)
+        self._graph: Any = None
+        self._node_id = ""
+
+    def bind(self, graph: Any, node_id: str) -> None:
+        self._graph, self._node_id = graph, node_id
+
+    def close(self) -> None:
+        """The recording, then the ICA decomposition that unmixes it (the ICs
+        rail's writer before this strip: the input's file, or an ICA strip,
+        less the components it removed), as EEGLAB keeps one (M10.6)."""
+        if self._spool is None:
+            return
+        labels = tuple(self._header["ch_labels"])
+        super().close()
+        if self._graph is None:
+            return
+        from meegxer.core.eeglab_ica import decomposition_for, write_decomposition
+
+        dec, why = decomposition_for(self._graph, self._node_id)
+        if dec is None:
+            if why:
+                self.skipped.append(why)  # the log shows it (GUI and CLI)
+            return
+        try:
+            write_decomposition(self.path, dec, labels)
+        except ValueError as exc:  # e.g. a channel it unmixes was dropped
+            self.skipped.append(f"ICA decomposition not stored: {exc}")
+            return
+        stamp_mat_header(self.path)
+        classes = "" if dec.probabilities is None else ", with its ICLabel classes"
+        self.notes.append(f"stored the ICA decomposition ({dec.n_components} "
+                          f"components{classes})")  # fmt: skip
 
 
 class EdfSink(_RawFileSink):

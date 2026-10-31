@@ -12,6 +12,9 @@ the ICs rail with it (an ICA strip after the input rewrites the rail).
   (``EEG.etc.ic_classification.ICLabel``, read with SciPy), else computed by
   the ICA strip's ICLabel (``meegxer.nodes.ica``, reached through the node
   registry: the core imports no node package), when a run first reads them.
+- **Writing:** the ``.set`` writer stores the decomposition that unmixes the
+  data it writes (``decomposition_for``, ``write_decomposition``): the ICs
+  rail's writer before it, less the components that strip removed.
 """
 
 from __future__ import annotations
@@ -202,3 +205,51 @@ def write_decomposition(
     else:  # saved as top-level fields (eeglabio, EEGLAB's flat files)
         mat.update(fields)
     savemat(str(path), mat, oned_as="row")
+
+
+# strips whose output is a spatial transform of their input: a decomposition
+# fitted before one no longer unmixes the data after it
+SPATIAL = frozenset({"meegxer.nodes.rereference", "meegxer.nodes.interpolate_bads",
+                     "meegxer.nodes.csd", "meegxer.nodes.eog_regression"})  # fmt: skip
+
+
+def decomposition_for(graph: Any, node_id: str) -> tuple[Decomposition | None, str]:
+    """The decomposition a ``.set`` writer at ``node_id`` stores with its data:
+    the ICs rail's nearest writer before it (the input's file, or an ICA
+    strip), less the components that strip removed from the data (as
+    EEGLAB's ``pop_subcomp``). None, and why, when there is none to store."""
+    from meegxer.core.node import Source
+    from meegxer.core.stage import Stage
+
+    nodes = list(graph.nodes)
+    here = [n.id for n in nodes].index(node_id)
+    if ":" in str(graph[node_id].input or ""):
+        return None, ""  # it writes a rail, not the signal
+    producer = next((n for n in reversed(nodes[:here])
+                     if any(p.rail == "ics" for p in n.manifest.rail_outputs)),
+                    None)  # fmt: skip
+    if producer is None:
+        return None, ""
+    between = nodes[[n.id for n in nodes].index(producer.id) + 1 : here]
+    spatial = [n.id for n in between if n.manifest.name in SPATIAL]
+    if spatial:
+        return None, (f"ICA decomposition not stored: {', '.join(spatial)} "
+                      "transforms the channels after it")  # fmt: skip
+    impl = producer.impl
+    if isinstance(impl, Source):
+        found = getattr(impl, "decomposition", lambda: None)()
+        return (found, "") if isinstance(found, Decomposition) else (None, "")
+    if not isinstance(impl, Stage) or impl.model is None:
+        return None, ""
+    describe = getattr(impl.processor, "decomposition", None)
+    if describe is None:
+        return None, ""
+    d = describe(impl.model.data, impl.params)
+    keep = [k for k in range(len(d["weights"])) if k not in set(d["removed"])]
+    weights = np.asarray(d["weights"])[keep]
+    proba = d.get("probabilities")
+    return Decomposition(
+        tuple(d["channels"]), weights, np.asarray(d["winv"])[:, keep],
+        None if proba is None else np.asarray(proba)[keep],
+        "ICLabel (computed by MeegXer)",
+    ), ""  # fmt: skip

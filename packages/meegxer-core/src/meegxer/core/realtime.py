@@ -367,6 +367,9 @@ class RealtimeScheduler:
             else PacedSource(source_node.impl, self.clock)
         )  # fmt: skip
         self.metrics.started_at = self.clock()
+        for node in self.graph.nodes:
+            if isinstance(node.impl, Sink):
+                node.impl.bind(self.graph, node.id)
         try:
             missing = self.graph.missing_positions(source.info)  # LSL: once open
             if missing:

@@ -13,7 +13,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   computed by MeegXer when the file has none), map them on the head, or give
   them to a spectrum or band-power strip. An ICA strip after the input makes
   its own: the chain draws the file's rail ending there. The log says what the
-  file carries.
+  file carries. *Save as .set* stores the decomposition with the data, as
+  EEGLAB does: the file's, or the ICA strip's without the components it
+  removed (as `pop_subcomp`), with the ICLabel classes, so EEGLAB and MNE
+  open the cleaned file with its ICA. After a re-reference (or another strip
+  that mixes the channels) it is left out, and the log says why.
 - **XDF input** (M10.5): the File input opens LabRecorder `.xdf` files
   (pyxdf). It takes the first EEG stream as the recording and every marker
   stream (strings, or no rate) as its events, each marker on the sample
