@@ -133,6 +133,28 @@ output strip chooses which line it draws from.
   - Live and offline alike (writers are bound to the graph in both
     schedulers). A crashed run's recording (`meegxer recover`) is written from
     its spool alone, without the decomposition.
+- **MNE ICA files (M10.7b):** the File input's `ica` (an `-ica.fif` of the
+  recording; `meegxer.api.run(..., ica=)` takes the ICA object too) starts
+  the ICs rail instead of a `.set`'s own (`meegxer.core.mne_ica`).
+  - The decomposition is measured with MNE's own `ICA.get_sources` on a probe
+    recording (a zero column, then one unit column per channel), so the
+    ICA's projectors (an average reference), pre-whitener and PCA mean are
+    MNE's: `get_sources(x) = W x + b`. MeegXer's weights take µV, as
+    EEGLAB's, so the rail carries MNE's sources read as µV: `W / 1e6` and
+    `b / 1e6` (`Decomposition.offset`).
+  - ICLabel classes are computed: an MNE ICA keeps none (`labels_` names a
+    class, without its probabilities). Components the file marks `exclude`
+    stay on the rail (the data is not cleaned), and the notes say so.
+  - The *MNE ICA (.fif)* writer (`meegxer.core.ica_writer`, `…-ica.fif`)
+    stores the decomposition of the signal it reads, chosen as the `.set`
+    writer's: every component, with those an ICA strip removed marked
+    `exclude` (MNE keeps them all), and ICLabel's classes as `labels_` (as
+    mne-icalabel's `label_components` sets them). It goes into MNE through
+    MNE's own EEGLAB import (`read_ica_eeglab` on a small `.set` holding it),
+    then `ICA.save`; `get_sources` on volts then gives EEGLAB's activations
+    in µV. With no decomposition before it, it writes nothing and says why.
+  - Sessions resolve `ica` as a path; a shared session leaves it out (`""`:
+    an ICA belongs to its recording).
   - An ICA strip after the input rewrites the rail: later readers get ICA's
     (the nearest writer, rule 7). The chain draws the file's rail ending at
     the ICA strip, with a bar, and ICA's starting there.

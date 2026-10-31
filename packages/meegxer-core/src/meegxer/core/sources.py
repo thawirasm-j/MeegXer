@@ -643,7 +643,8 @@ class FileSource(_RawSource):
     An EEGLAB ``.set`` with an ICA decomposition starts the ICs rail
     (``ics``, ``meegxer.core.eeglab_ica``): its components' activations, with
     the file's ICLabel classes, else ICLabel's computed when a run first reads
-    them. An ICA strip after the input rewrites the rail."""
+    them. An MNE ICA file given as ``ica`` (``meegxer.core.mne_ica``) starts
+    it instead. An ICA strip after the input rewrites the rail."""
 
     manifest: ClassVar[Manifest] = _source_manifest(
         "meegxer.core.file",
@@ -691,6 +692,16 @@ class FileSource(_RawSource):
                 "description": "XDF: the unit of channels the file states none "
                 "for (MeegXer's assumption; µV as the LSL input)",
             },
+            {
+                "name": "ica",
+                "type": "string",
+                "default": "",
+                "advanced": True,
+                "path": "file",
+                "extensions": [".fif", ".gz"],
+                "description": "An MNE ICA file of this recording (-ica.fif): "
+                "its components start the ICs rail (instead of a .set's own)",
+            },
         ],
         rails=[{"name": "ics", "type": "signal", "rail": "ics", "space": "component"}],
     )
@@ -710,9 +721,24 @@ class FileSource(_RawSource):
         path = self._path()
         companions = self._COMPANIONS.get(path.suffix.lower(), ())
         extra = [path.with_suffix(ext) for ext in companions]
-        return [path, *[p for p in extra if p.is_file()]]
+        ica = self._ica_path()
+        return [path, *[p for p in extra if p.is_file()], *([ica] if ica else [])]
+
+    def _ica_path(self) -> Path | None:
+        """The MNE ICA file given (``ica``), if any."""
+        if not str(self.params.get("ica", "")):
+            return None
+        path = Path(str(self.params["ica"]))
+        if not path.is_file():
+            raise FileNotFoundError(f"ICA file not found: {path}")
+        return path
 
     def _load(self) -> mne.io.BaseRaw:
+        raw = self._read_recording()
+        self._decomposition = self._find_decomposition(raw.ch_names)
+        return raw
+
+    def _read_recording(self) -> mne.io.BaseRaw:
         import mne
 
         path = self._path()
@@ -726,10 +752,38 @@ class FileSource(_RawSource):
                           f"{', '.join(map(repr, read.marker_streams)) or 'none'}",
                           *read.notes]  # fmt: skip
             return read.raw
-        raw = mne.io.read_raw(path, preload=True, verbose="ERROR")
-        if path.suffix.lower() == ".set":
-            self._decomposition = self._read_decomposition(path, raw.ch_names)
-        return raw
+        return mne.io.read_raw(path, preload=True, verbose="ERROR")
+
+    # an mne.preprocessing.ICA given in memory (meegxer.api.run's ``ica``)
+    mne_ica: Any = None
+
+    def _find_decomposition(self, channels: list[str]) -> Decomposition | None:
+        """The ICs rail's decomposition: an MNE ICA given (in memory, or the
+        ``ica`` file), else a ``.set``'s own."""
+        from meegxer.core.mne_ica import from_mne, read_mne_ica
+
+        if self.mne_ica is not None:
+            return self._adopt(from_mne(self.mne_ica), channels, "MNE ICA")
+        ica = self._ica_path()
+        if ica is not None:
+            return self._adopt(read_mne_ica(ica), channels, "MNE ICA")
+        path = str(self.params["path"])
+        if path and Path(path).suffix.lower() == ".set":
+            return self._read_decomposition(Path(path), channels)
+        return None
+
+    def content_id(self) -> str:
+        """The recording's files (with the ``ica`` file), and an MNE ICA given
+        in memory."""
+        base = super().content_id()
+        if self.mne_ica is None:
+            return base
+        _ = self._raw
+        dec = self._decomposition
+        digest = hashlib.sha256(base.encode())
+        if dec is not None:
+            digest.update(np.ascontiguousarray(dec.weights).tobytes())
+        return digest.hexdigest()
 
     _decomposition: Decomposition | None = None
     _classified = False  # ICLabel tried (the file's classes, or computed)
@@ -738,18 +792,23 @@ class FileSource(_RawSource):
         self, path: Path, channels: list[str]
     ) -> Decomposition | None:
         dec = read_decomposition(path)
-        if dec is None:
-            return None
+        return None if dec is None else self._adopt(dec, channels, "EEGLAB")
+
+    def _adopt(
+        self, dec: Decomposition, channels: list[str], what: str
+    ) -> Decomposition | None:
+        """``dec`` as the input's decomposition when the recording has its
+        channels, with the notes saying where it comes from."""
         missing = [c for c in dec.channels if c not in channels]
         if missing:
             gone = ", ".join(missing)
-            self.notes.append(f"EEGLAB decomposition left out: its channels "
+            self.notes.append(f"{what} decomposition left out: its channels "
                               f"{gone} are not in the recording")  # fmt: skip
             return None
         how = (f"ICLabel classes from {dec.classified_by}" if dec.classified_by
                else "ICLabel classes computed when a run first reads them")  # fmt: skip
         n, m = dec.n_components, len(dec.channels)
-        self.notes.append(f"EEGLAB decomposition: {n} components on {m} "
+        self.notes.append(f"{what} decomposition: {n} components on {m} "
                           f"channels start the ICs rail; {how}")  # fmt: skip
         self.notes.extend(dec.notes)
         return dec
@@ -776,13 +835,13 @@ class FileSource(_RawSource):
         return dec
 
     def rails(self, block: Block) -> dict[str, RailOutput]:
-        """The file's ICs over ``block`` (activations ``weights @ x``)."""
+        """The file's ICs over ``block`` (``Decomposition.activations``)."""
         dec = self.decomposition()
         if dec is None:
             return {}
         own = self._raw[1].ch_labels
         idx = [own.index(c) for c in dec.channels]
-        ics = Block(dec.weights @ block.data[idx], components_info(dec, block.info),
+        ics = Block(dec.activations(block.data[idx]), components_info(dec, block.info),
                     block.sample_index, block.timestamp)  # fmt: skip
         return {"ics": ics}
 

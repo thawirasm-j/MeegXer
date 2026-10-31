@@ -11,6 +11,7 @@ TITLES = {
     "meegxer.core.bids": "BIDS recording",
     "meegxer.core.lsl_out": "LSL output",
     "meegxer.core.set_writer": "EEGLAB file (.set)",
+    "meegxer.core.ica_writer": "MNE ICA file (.fif)",
     "meegxer.core.edf_writer": "EDF file",
     "meegxer.core.feature_tsv": "Features table",
     "meegxer.core.feature_probe": "Features tap",

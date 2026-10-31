@@ -44,6 +44,7 @@ dependencies = [
 "meegxer.core.feature_probe" = "meegxer.core.probes:FeatureProbe"
 "meegxer.core.erp_probe" = "meegxer.core.probes:ErpProbe"
 "meegxer.core.set_writer" = "meegxer.core.sinks:SetSink"
+"meegxer.core.ica_writer" = "meegxer.core.mne_ica:IcaWriter"
 "meegxer.core.edf_writer" = "meegxer.core.sinks:EdfSink"
 "meegxer.core.feature_tsv" = "meegxer.core.sinks:FeatureTsvSink"
 "meegxer.core.bids_writer" = "meegxer.core.bids_out:BidsWriter"

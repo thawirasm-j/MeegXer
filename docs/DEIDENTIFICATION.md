@@ -9,6 +9,7 @@ your consent forms, IRB/ethics approval and the law that applies (HIPAA, GDPR).
 | Output | Identifying data | What to do |
 |---|---|---|
 | EDF / BDF (`edf_writer`) | None from the input: patient and recording fields are written as `X`, the start date as EDF's default (1985-01-01). | Nothing. (The recording date is not kept either.) |
+| MNE ICA `-ica.fif` (`ica_writer`) | None from the input: the decomposition's matrices, its channels' names, positions and rate, the components marked excluded and ICLabel's classes. | Nothing. |
 | EEGLAB `.set` (`set_writer`) | None from the input: no subject information or recording date; the MAT-file header names MeegXer only. An ICA decomposition, when one unmixes the data, holds only its matrices and ICLabel classes. | Nothing. |
 | BIDS derivatives | `sub-`/`ses-` labels and the raw dataset's sidecar fields and credits (`dataset_description.json`), as in the raw dataset. | Share derivatives of a raw dataset that is already de-identified. |
 | Feature tables (`.tsv`) | None. | Nothing. |

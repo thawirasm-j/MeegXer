@@ -111,7 +111,7 @@ its models), so an edited model without an updated hash is reported, not used. L
 
 ### Paths
 
-Paths in `pipeline` parameters named `path` or `root`, in a source's `recording`
+Paths in `pipeline` parameters named `path`, `root` or `ica`, in a source's `recording`
 (montage and events files), and in `inputs`/`outputs` are relative to the session
 file's folder unless absolute. MeegXer writes paths inside that folder as relative
 paths, so a session folder can be moved or zipped as a whole.
@@ -126,6 +126,7 @@ copy that names no file or folder:
 | Field | Becomes |
 |---|---|
 | The source's `path` / `root` | `<input>.ext` / `<input-root>` |
+| The File input's `ica` (an MNE ICA file) | `""` (none: it belongs to its recording) |
 | A writer's `path` | `<output-N>.ext` (the same file keeps the same N) |
 | A BIDS writer's `root` | `""` (its default: the raw dataset's `derivatives/meegxer`) |
 | `recording.montage` (a file), `recording.events.file` | `<montage>.ext`, `<events>.ext` |

@@ -37,7 +37,12 @@ ICA_NODE = "meegxer.nodes.ica"
 class Decomposition:
     """An ICA decomposition on ``channels``: ``weights`` (components x
     channels) unmixes, ``winv`` mixes; ``probabilities`` (components x
-    ``CLASSES``) are ICLabel's, None until classified."""
+    ``CLASSES``) are ICLabel's, None until classified. Activations are
+    ``weights @ x`` (x in volts; EEGLAB's weights, which take µV, give its
+    activations in volts), plus ``offset`` per component where the
+    decomposition centres the data first (MNE's ``pca_mean_``).
+    ``excluded``: components marked for removal (MNE's ``ica.exclude``, or
+    those an ICA strip removed)."""
 
     channels: tuple[str, ...]
     weights: FloatArray
@@ -45,6 +50,15 @@ class Decomposition:
     probabilities: FloatArray | None = None
     classified_by: str = ""  # "the file" or "ICLabel (computed by MeegXer)"
     notes: tuple[str, ...] = field(default=())
+    offset: FloatArray | None = None
+    excluded: tuple[int, ...] = ()
+
+    def activations(self, x: FloatArray) -> FloatArray:
+        """The components of ``x`` (the decomposition's channels, volts)."""
+        out: FloatArray = self.weights @ x
+        if self.offset is not None:
+            out = out + self.offset[:, None]
+        return out
 
     @property
     def n_components(self) -> int:
@@ -213,11 +227,15 @@ SPATIAL = frozenset({"meegxer.nodes.rereference", "meegxer.nodes.interpolate_bad
                      "meegxer.nodes.csd", "meegxer.nodes.eog_regression"})  # fmt: skip
 
 
-def decomposition_for(graph: Any, node_id: str) -> tuple[Decomposition | None, str]:
-    """The decomposition a ``.set`` writer at ``node_id`` stores with its data:
-    the ICs rail's nearest writer before it (the input's file, or an ICA
-    strip), less the components that strip removed from the data (as
-    EEGLAB's ``pop_subcomp``). None, and why, when there is none to store."""
+def decomposition_for(
+    graph: Any, node_id: str, drop_removed: bool = True
+) -> tuple[Decomposition | None, str]:
+    """The decomposition a writer at ``node_id`` stores with its data: the ICs
+    rail's nearest writer before it (the input's file, or an ICA strip). The
+    components that strip removed from the data are left out (``.set``, as
+    EEGLAB's ``pop_subcomp``), or with ``drop_removed`` False kept and marked
+    ``excluded`` (MNE's convention). None, and why, when there is none to
+    store."""
     from meegxer.core.node import Source
     from meegxer.core.stage import Stage
 
@@ -245,11 +263,14 @@ def decomposition_for(graph: Any, node_id: str) -> tuple[Decomposition | None, s
     if describe is None:
         return None, ""
     d = describe(impl.model.data, impl.params)
-    keep = [k for k in range(len(d["weights"])) if k not in set(d["removed"])]
+    removed = sorted(int(k) for k in d["removed"])
+    n = len(d["weights"])
+    keep = [k for k in range(n) if k not in removed] if drop_removed else list(range(n))
     weights = np.asarray(d["weights"])[keep]
     proba = d.get("probabilities")
     return Decomposition(
         tuple(d["channels"]), weights, np.asarray(d["winv"])[:, keep],
         None if proba is None else np.asarray(proba)[keep],
         "ICLabel (computed by MeegXer)",
+        excluded=() if drop_removed else tuple(removed),
     ), ""  # fmt: skip
