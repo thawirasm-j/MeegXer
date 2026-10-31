@@ -127,6 +127,16 @@ meegxer run pipeline.json --bids ds --task rest              # a BIDS dataset
 meegxer run pipeline.json --bids ds --jobs 4                # 4 at once, QC in ds/derivatives/meegxer/qc.html
 ```
 
+From Python, the same pipeline gives MNE objects back
+([docs/PYTHON_API.md](docs/PYTHON_API.md)):
+
+```python
+from meegxer.api import run
+
+clean = run("pipeline.json", raw)  # mne.io.Raw in, mne.io.Raw out
+epochs = run("erp.json", raw, output="ep1")  # an Epochs strip's mne.Epochs
+```
+
 More in [Development](#development) below and in `spec/` (pipeline, session,
 control API and plugin formats).
 

@@ -126,16 +126,25 @@ def file_events(header: dict[str, Any], n_samples: int) -> list[tuple[int, int, 
     return out
 
 
-def write_raw(path: Path, fmt: Literal["eeglab", "edf"], data: np.ndarray,
-              header: dict[str, Any], overwrite: bool) -> None:  # fmt: skip
-    """Write channels x samples ``data`` (volts) as ``fmt``, with the labels, rate
-    and bad channels from a spool ``header``, its events (the input's and the
-    strips', ``file_events``), and a ``boundary`` event at each cut a Reject
-    segments strip made (``boundaries``: ``[position in data, samples cut]``)."""
+def make_raw(
+    data: np.ndarray,
+    header: dict[str, Any],
+    ch_types: Any = "eeg",
+    positions: Mapping[str, Sequence[float]] | None = None,
+) -> Any:
+    """Channels x samples ``data`` (volts) as an ``mne.io.RawArray``, with the
+    labels, rate and bad channels from a spool ``header``, its events (the
+    input's and the strips', ``file_events``), and a ``boundary`` event at each
+    cut a Reject segments strip made (``boundaries``: ``[position in data,
+    samples cut]``); with the channels' ``positions`` (metres, head
+    coordinates) where given."""
     import mne
 
-    info = mne.create_info(list(header["ch_labels"]), header["sfreq"], ch_types="eeg")
+    info = mne.create_info(list(header["ch_labels"]), header["sfreq"], ch_types)
     info["bads"] = list(header["bads"])
+    if positions:
+        montage = mne.channels.make_dig_montage(dict(positions), coord_frame="head")
+        info.set_montage(montage, on_missing="ignore", verbose="error")
     raw = mne.io.RawArray(data, info, verbose="ERROR")
     sfreq = float(header["sfreq"])
     cuts = [pos for pos, _ in header.get("boundaries", []) if 0 < pos < data.shape[1]]
@@ -147,6 +156,15 @@ def write_raw(path: Path, fmt: Literal["eeglab", "edf"], data: np.ndarray,
         raw.set_annotations(
             mne.Annotations(onsets, durations, [label for _, _, label in marks])
         )
+    return raw
+
+
+def write_raw(path: Path, fmt: Literal["eeglab", "edf"], data: np.ndarray,
+              header: dict[str, Any], overwrite: bool) -> None:  # fmt: skip
+    """Write ``data`` and a spool ``header`` (``make_raw``) as ``fmt``."""
+    import mne
+
+    raw = make_raw(data, header)
     path.parent.mkdir(parents=True, exist_ok=True)
     mne.export.export_raw(path, raw, fmt=fmt, overwrite=overwrite, verbose="ERROR")
     if fmt == "eeglab":

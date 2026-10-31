@@ -67,4 +67,5 @@ requires = ["uv_build>=0.13.0,<0.14"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "meegxer.core"
+# meegxer.api: the Python API for MNE users (M10.7), beside the core
+module-name = ["meegxer.core", "meegxer.api"]

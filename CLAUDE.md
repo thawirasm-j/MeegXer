@@ -64,7 +64,7 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
 
 | Package | Contents |
 |---|---|
-| `meegxer-core` | engine, graph, schedulers, plugin spec, I/O, control API (no GUI) |
+| `meegxer-core` | engine, graph, schedulers, plugin spec, I/O, control API (no GUI); the Python API `meegxer.api` |
 | `meegxer-nodes` | built-in nodes: filters, re-ref, ICA/ICLabel, features, action sinks |
 | `meegxer-plugins` | plugin runtime (container runner) + Python/Octave SDKs, EEGLAB ASR plugin |
 | `meegxer-gui` | PySide6 + pyqtgraph client |
@@ -103,6 +103,9 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   `uv run mypy --platform win32`), `uv run lint-imports`.
 - `python tools/smoke_deps.py --python 3.14`: planned third-party deps install/import.
 - `uv run meegxer nodes`; `uv run meegxer run pipeline.json -i rec.set -o out.set`.
+- Python API (`docs/PYTHON_API.md`): `from meegxer.api import run`;
+  `run(pipeline, raw)` -> `mne.io.Raw`, `run(..., output="ep1")` -> `mne.Epochs`
+  (the batch scheduler, rule 4).
 - Sessions (`spec/session.md`): `meegxer run … --session out.meegxer.json`,
   `meegxer run out.meegxer.json`, `meegxer session check FILE`,
   `meegxer session save FILE` (from the daemon, with calibrated models),
