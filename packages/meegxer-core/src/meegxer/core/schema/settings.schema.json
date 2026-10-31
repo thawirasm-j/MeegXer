@@ -93,6 +93,10 @@
           "description": "Channels the signal view shows first: standard_19 (the 19 of the 10-20 system when a recording has more than 19 EEG channels, else every EEG channel) or all_eeg. Other types (EOG, ECG, ...) start hidden either way.",
           "enum": ["standard_19", "all_eeg"]
         },
+        "y_range": {
+          "description": "How amplitude plots on a shared axis (the signal view, the feature view's amplitudes over time, the ERP view, the epoch review's ERP) fit their y-axis, automatically and on a double click: zero_centered ([-r, r], r the largest |value|) or data ([ymin, ymax]). A y = 0 line is drawn either way.",
+          "enum": ["zero_centered", "data"]
+        },
         "spectrum": {
           "type": "object",
           "additionalProperties": false,

@@ -367,3 +367,4 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 | E7 custom baseline (zero over 100–300 ms; refusals) | pass | |
 | E8 head picker in the feature view and both review windows | pass | |
 | E9 epoch times in ms (50 ms steps); long labels whole; picker buttons readable | | |
+| E10 amplitude range: zero-centred by default, data range in Settings; y = 0 line | | |

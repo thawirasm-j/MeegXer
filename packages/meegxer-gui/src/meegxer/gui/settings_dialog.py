@@ -514,10 +514,22 @@ class SettingsDialog(QDialog):
             "Channels shown first",
             self._combo(
                 "visualization.channels",
-                {"standard_19": "Standard 19 (10-20) above 19 EEG channels",
-                 "all_eeg": "All EEG channels"},
+                {
+                    "standard_19": "Standard 19 (10-20) above 19 EEG channels",
+                    "all_eeg": "All EEG channels",
+                },
                 "Which channels the signal view shows when a recording opens; "
                 "Channels (or the head) shows and hides the others",
+            ),
+        )
+        form.addRow(
+            "Amplitude range",
+            self._combo(
+                "visualization.y_range",
+                {"zero_centered": "Centred on zero (-r to r)",
+                 "data": "Data range (min to max)"},
+                "How amplitude plots fit their y-axis, by themselves and on a "
+                "double click; a line marks zero either way",
             ),
         )  # fmt: skip
 

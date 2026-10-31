@@ -420,9 +420,12 @@ class FeatureView(QWidget):
             plot.setLabel("bottom", "frequency", units="Hz")
             what = "newest window" if self.panner.live else "mean over the span"
             self.legend.setText(f"{name}: spectrum ({what}, {count})")
+            self.plot.set_amplitude(False)
             self.plot.draw(layers)
             self.plot.fit_x()
         else:
+            # an amplitude over time (volts): the setting's fit and y = 0
+            self.plot.set_amplitude(_slice_unit(series, chosen) == "V")
             for c in chans:
                 st = styles[c]
                 layers.append((series.t, data[:, c, 0],

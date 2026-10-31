@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from meegxer.gui.epoch_review_window import ERP_COLORS
-from meegxer.gui.signal_view import HeadChannelMenu
+from meegxer.gui.signal_view import AmplitudeViewBox, HeadChannelMenu, zero_line
 from meegxer.gui.theme import Theme
 
 ALL = "All conditions"
@@ -107,7 +107,8 @@ class ErpView(QWidget):
         self.legend.setObjectName("muted")
         bar.addWidget(self.legend)
         lay.addLayout(bar)
-        self.plot = pg.PlotWidget()
+        self.box = AmplitudeViewBox()  # zero-centred or data range (Settings)
+        self.plot = pg.PlotWidget(viewBox=self.box)
         self.plot.setMenuEnabled(False)
         self.plot.getPlotItem().hideButtons()
         self.plot.showGrid(x=True, y=True, alpha=0.25)
@@ -220,6 +221,7 @@ class ErpView(QWidget):
         zero = pg.InfiniteLine(0.0, angle=90, pen=pg.mkPen(
             self.theme.text_muted, style=Qt.PenStyle.DashLine))  # fmt: skip
         self.plot.addItem(zero)
+        self.plot.addItem(zero_line(self.theme), ignoreBounds=True)
         for k, line in enumerate(self.curves()):
             color = QColor(ERP_COLORS[k % len(ERP_COLORS)])
             if self.sem.isChecked() and line.sem is not None:
