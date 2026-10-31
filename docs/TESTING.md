@@ -350,7 +350,7 @@ osf.io, EEGBCI from physionet.org). Use an empty sample folder:
 
 | Item | Value / result | Notes |
 |---|---|---|
-| E2 live ERP view, counts growing | | |
-| E3 butterfly and channel choice | | |
-| E4 reset, and a change upstream | | |
-| E5 offline ERP view (counts as C2) | | |
+| E2 live ERP view, counts growing | pass | |
+| E3 butterfly and channel choice | pass | |
+| E4 reset, and a change upstream | pass | |
+| E5 offline ERP view (counts as C2) | pass | |
