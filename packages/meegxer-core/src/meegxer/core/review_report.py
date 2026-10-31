@@ -78,6 +78,11 @@ def review_section(
         row[f"{key}_bad_channels"] = ",".join(review.bads)
     if verdicts := _verdicts(review.marks):
         row[f"{key}_verdicts"] = verdicts
+    if review.raters:  # resolved from two reviewers (step 6b)
+        from meegxer.core.two_reviewers import agreement_text
+
+        row[f"{key}_raters"] = ", ".join(r or "?" for r in review.raters)
+        row[f"{key}_kappa"] = agreement_text(review.agreement or {})
     if review.crop is not None:
         start, stop = review.crop
         row[f"{key}_crop_s"] = f"{start:g} to {'end' if stop is None else f'{stop:g}'}"
@@ -146,7 +151,9 @@ def section_html(section: ReviewSection) -> str:
     names = {"reviewer": "Reviewer", "reviewed": "Reviewed (UTC)",
              "viewed_percent": "Viewed (% of the recording)", "marks": "Marks",
              "bad_channels": "Bad channels", "verdicts": "Suggestions answered",
-             "crop_s": "Kept (s)", "epochs": "Epochs"}  # fmt: skip
+             "crop_s": "Kept (s)", "epochs": "Epochs",
+             "raters": "Reviewers (resolved by the reviewer above)",
+             "kappa": "Agreement (Cohen's kappa, 1 s windows)"}  # fmt: skip
     rows = "".join(
         f"<tr><th>{html.escape(names.get(k.split('_', 1)[1], k))}</th>"
         f"<td>{html.escape(str(v))}</td></tr>"

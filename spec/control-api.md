@@ -1,4 +1,4 @@
-# MeegXer control API (0.2.22, unstable)
+# MeegXer control API (0.2.23, unstable)
 
 JSON-RPC 2.0 over a ZeroMQ REQ/REP socket (CLAUDE.md rule 3). The daemon binds
 `tcp://127.0.0.1:5555` by default. Every request is one JSON object; every reply is
@@ -104,7 +104,7 @@ remote GUI).
   `stopping` while a stopped run finishes its strip), where `state` is `running`,
   `review` (0.2.8: the run waits at a review strip for `submit_review` or
   `cancel_review`; `review` is then `{node, file, reason, marks, labels,
-  duration_s, reject, viewed, bads, display}`: `reason` `not reviewed` or `input changed`, `marks` those made on
+  duration_s, reject, viewed, bads, display}`: `reason` `not reviewed` or `input changed` (0.2.23, a strip with two reviewers: `reviewer 1 of 2` or `reviewer 2 of 2`, each blind to the other's marks, then `resolve`: `marks` the marks both made alike, `points` every other mark as a suggestion whose `origin` names its reviewer, `decision` `verify`; and `note`, here their agreement in words), `marks` those made on
   another input, to confirm, `labels` the strip's and the input's event types,
   `reject` (0.2.9; 0.2.11: the labels the window's Reject key gives, cut by a
   Reject segments strip downstream), `viewed` (0.2.9) the

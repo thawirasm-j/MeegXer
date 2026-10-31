@@ -551,3 +551,27 @@ with a Review strip added):
 | J1 the report's Review section | | |
 | J2 the review columns in the QC summary | | |
 
+## K. Two reviewers (review step 6b)
+
+Already run by Claude, offscreen through the real window: a Review strip with
+*Reviewers* 2; reviewer A marked (header "Reviewer 1 of 2"); a second run as A
+stopped with "needs a second reviewer"; reviewer B marked blind (header
+"Reviewer 2 of 2", none of A's marks shown); the resolve window offered only
+the two marks they disagreed on, named by reviewer, with Cohen's kappa in its
+heading; Y and N saved the resolved marks with both raters and the kappa. On
+your machine (Windows), with any recording:
+
+1. Add a Review strip, set *Reviewers* to 2, *Run offline*; give one name
+   (e.g. A) and mark a few spans; save.
+2. *Run offline* again as A: the log says it needs a second reviewer.
+3. *Run offline* as B: A's marks are not shown; mark some spans (some like
+   A's, some not); save. The resolve window opens: its heading gives the
+   kappa; the suggestions list each mark only one of you made, with *From*
+   naming the reviewer. Answer each (Y, N or E); save.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| K1 reviewer 1, then refused as reviewer 2 | | |
+| K2 reviewer 2 blind | | |
+| K3 the resolve window: disagreements, kappa | | |
+

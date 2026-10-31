@@ -173,6 +173,10 @@ class Review:
     reviewer: str = ""  # who reviewed (asked once per run)
     bads: tuple[str, ...] = ()  # channels the reviewer marked bad
     crop: tuple[float, float | None] | None = None  # kept span (s; review at import)
+    # resolved from two reviewers (step 6b): who they were, and their agreement
+    # (Cohen's kappa per label; None where undefined)
+    raters: tuple[str, ...] = ()
+    agreement: dict[str, float | None] | None = None
 
 
 Span = tuple[float, float]
@@ -225,6 +229,7 @@ class ReviewRequest:
     epochs: tuple[EpochVerdict, ...] = ()
     windows: tuple[FeatureBlock, ...] = dataclasses.field(default=(), compare=False,
                                                           repr=False)  # fmt: skip
+    note: str = ""  # said with the request (two reviewers: their agreement)
 
     def to_wire(self) -> dict[str, Any]:
         return {
@@ -236,7 +241,7 @@ class ReviewRequest:
             "reject": list(self.reject), "viewed": [list(v) for v in self.viewed],
             "bads": list(self.bads), "display": dict(self.display),
             "points": [m.to_wire() for m in self.points],
-            "decision": self.decision,
+            "decision": self.decision, "note": self.note,
         }  # fmt: skip
 
 
@@ -293,6 +298,12 @@ class ReviewStrip(Processor):
                  "description": "free: suggestions open as marks to keep, edit "
                                 "or delete; verify: yes or no for each "
                                 "suggestion, no other marks"},
+                {"name": "reviewers", "type": "int", "default": 1, "min": 1,
+                 "max": 2,
+                 "description": "Reviewers per recording: with 2, each marks "
+                                "it without seeing the other's marks, then "
+                                "one person resolves where they differ "
+                                "(docs/REVIEW.md, step 6b)"},
                 {"name": "reject", "type": "string", "default": "BAD",
                  "description": "Comma-separated labels the Reject key gives "
                                 "a span (a Reject segments strip after this "
@@ -558,12 +569,17 @@ def load_review(path: Path) -> Review | None:
         meta = json.loads(_sidecar(path).read_text(encoding="utf-8")).get("MeegXer", {})
     viewed = merge_spans(meta.get("viewed", []))
     crop = meta.get("crop")
+    agreement = meta.get("agreement")
     return Review(marks, str(meta.get("upstream", "")), str(meta.get("reviewed", "")),
                   viewed, str(meta.get("reviewer", "")),
                   tuple(str(b) for b in meta.get("bads", [])),
                   None if crop is None else (float(crop[0]),
                                              None if crop[1] is None
-                                             else float(crop[1])))  # fmt: skip
+                                             else float(crop[1])),
+                  tuple(str(r) for r in meta.get("raters", [])),
+                  None if agreement is None else {
+                      str(k): None if v is None else float(v)
+                      for k, v in agreement.items()})  # fmt: skip
 
 
 def save_review(path: Path, review: Review, node_id: str) -> None:
@@ -604,6 +620,9 @@ def save_review(path: Path, review: Review, node_id: str) -> None:
     }  # fmt: skip
     if review.crop is not None:  # the span kept, in s from the raw file's start
         meta["MeegXer"]["crop"] = list(review.crop)
+    if review.raters:  # resolved from two reviewers (step 6b)
+        meta["MeegXer"]["raters"] = list(review.raters)
+        meta["MeegXer"]["agreement"] = review.agreement or {}
     if points:  # the suggestion each row answers (docs/REVIEW.md, step 4b)
         meta.update({
             "channel": {"Description": "Channel a bad_channel suggestion names"},

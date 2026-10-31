@@ -96,6 +96,16 @@ REASONS = {
     "not reviewed": "This recording has not been reviewed at this strip yet.",
     "input changed": "Something before this strip changed since the review: "
     "check the marks below and confirm them, or change them.",
+    "reviewer 1 of 2": "Reviewer 1 of 2: mark the recording on your own; the "
+    "second reviewer will not see your marks.",
+    "reviewer 2 of 2": "Reviewer 2 of 2: mark the recording on your own; the "
+    "first reviewer's marks are hidden from you.",
+    "reviewer 1 of 2 (input changed)": "Reviewer 1 of 2: something before this "
+    "strip changed since your review: confirm your marks, or change them.",
+    "reviewer 2 of 2 (input changed)": "Reviewer 2 of 2: something before this "
+    "strip changed since your review: confirm your marks, or change them.",
+    "resolve": "Resolve: the marks both reviewers made alike are kept; decide "
+    "each mark only one of them made (yes, no or edit).",
 }
 FULL = 0.995  # viewed fraction counted as the whole recording
 SENSITIVITIES = (1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 70, 100, 150, 200)  # µV/mm
@@ -366,8 +376,10 @@ class ReviewWindow(StackedWindow):
                           "channels and crop are saved with it, and every "
                           "pipeline reading it uses them.")  # fmt: skip
         else:
+            note = str(request.get("note") or "")
             head = QLabel(f"<b>{REASONS.get(str(request.get('reason')), '')}</b> "
-                          "The run waits here; the traces are the taps before "
+                          + (f"{note}. " if note else "")
+                          + "The run waits here; the traces are the taps before "
                           "this strip (choose Main and aux in the main "
                           "window).")  # fmt: skip
         head.setWordWrap(True)

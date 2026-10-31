@@ -67,7 +67,7 @@ exclude = ["packages/meegxer-gui/tests/conftest\\.py$"]
 module = ["mne", "mne.*", "mne_bids", "mne_bids.*", "mne_icalabel", "mne_icalabel.*",
           "mne_connectivity", "mne_connectivity.*", "antropy", "antropy.*",
           "specparam", "specparam.*", "pylsl", "pylsl.*", "pyqtgraph", "pyqtgraph.*",
-          "pyxdf", "pyxdf.*"]
+          "pyxdf", "pyxdf.*", "sklearn", "sklearn.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

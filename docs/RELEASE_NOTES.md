@@ -7,6 +7,15 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Two reviewers** (review step 6b): a Review strip's *Reviewers* set to 2
+  has each recording reviewed twice, blind: reviewer 1 marks it, then
+  reviewer 2 (another person; the run says so if the same name comes back)
+  marks it without seeing the first's marks. Then the resolve: the marks both
+  made alike are kept, and every mark only one of them made is a suggestion,
+  named by its reviewer, to accept, edit or reject. The resolve window shows
+  their agreement (Cohen's kappa per label, 1 s windows), and the review
+  report lists both reviewers and the kappa. Each reviewer's own marks are
+  kept in a sidecar of their own (control API 0.2.23).
 - **Review report** (review step 6a): each recording's QC report has a
   section for each review of it (at import, and each Review or Review epochs
   strip): who reviewed and when, how much of the recording they viewed, the

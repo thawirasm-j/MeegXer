@@ -30,6 +30,7 @@ dependencies = [
     "pylsl>=1.16",
     "pyxdf>=1.17",
     "pyzmq>=26",
+    "scikit-learn>=1.5",
     "scipy>=1.14.1",
 ]
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 
@@ -416,50 +417,25 @@ class BatchScheduler:
         rate: float,
     ) -> tuple[Event, ...]:
         """The marks of a review strip: its sidecar's when made on this input,
-        else a review asked for (docs/REVIEW.md), saved to the sidecar."""
+        else a review asked for (docs/REVIEW.md), saved to the sidecar; with
+        two reviewers, each one's blind review, then the resolve (step 6b)."""
         assert self._graph is not None and isinstance(stage.processor, ReviewStrip)
         try:
             path = review_path(self._graph, node.id, stage.params)
         except ValueError as exc:
             raise GraphError(str(exc)) from exc
         saved = load_review(path)
-        marks: tuple[Mark, ...]
         labels = signal_in[0].info.ch_labels if signal_in else ()
         if saved is not None and saved.upstream == input_fp:
-            marks, review = saved.marks, saved
+            review = saved
+        elif int(stage.params.get("reviewers", 1)) == 2:
+            review = self._two_reviews(node, stage, input_fp, signal_in, rate, path)
         else:
-            pairs = self._rail.visible_with_origins(self._graph, node.id,
-                                                    sfreq=rate or None)  # fmt: skip
-            seen = [e for e, _ in pairs]
-            suggestions = review_points(pairs, stage.params, rate) if rate else ()
-            decision = str(stage.params["decision"])
-            request = ReviewRequest(
-                node.id, path, input_fp,
-                "input changed" if saved is not None else "not reviewed",
-                saved.marks if saved is not None else (),
-                offered_labels(stage.params, [e.label for e in seen]),
-                sum(b.n_samples for b in signal_in) / rate if rate else 0.0,
-                reject_words(stage.params),
-                saved.viewed if saved is not None else (),
-                saved.bads if saved is not None else (),
-                display_presets(stage.params),
-                suggestions, decision=decision,
-            )  # fmt: skip
-            if self.review is None:
-                raise ReviewNeeded(request)
-            answer = self.review(request)
-            if not isinstance(answer, ReviewAnswer):  # just the marks
-                answer = ReviewAnswer(tuple(m for m in answer if isinstance(m, Mark)))
-            unknown = sorted(set(answer.bads) - set(labels))
-            if unknown:
-                raise GraphError(f"{node.id}: no channels {unknown} to mark bad")
-            try:
-                marks, bads = settle(suggestions, answer, decision)
-            except VerdictsMissing as exc:
-                raise GraphError(f"{node.id}: {exc}") from exc
-            review = Review(marks, input_fp, now_iso(), merge_spans(answer.viewed),
-                            self.reviewer, bads)  # fmt: skip
+            review = self._one_review(node, stage, input_fp, signal_in, rate, path,
+                                      saved, "not reviewed" if saved is None
+                                      else "input changed")  # fmt: skip
             save_review(path, review, node.id)
+        marks = review.marks
         events = marks_to_events(marks, rate)
         stage.processor.marks = events
         stage.processor.bads = tuple(b for b in review.bads if b in labels)
@@ -467,6 +443,124 @@ class BatchScheduler:
                                   "reviewed": review.reviewed,
                                   "upstream": review.upstream}  # fmt: skip
         return events
+
+    def _ask(self, request: ReviewRequest, labels: Sequence[str]) -> ReviewAnswer:
+        if self.review is None:
+            raise ReviewNeeded(request)
+        answer = self.review(request)
+        if not isinstance(answer, ReviewAnswer):  # just the marks
+            answer = ReviewAnswer(tuple(m for m in answer if isinstance(m, Mark)))
+        unknown = sorted(set(answer.bads) - set(labels))
+        if unknown:
+            raise GraphError(f"{request.node_id}: no channels {unknown} to mark bad")
+        return answer
+
+    def _one_review(
+        self,
+        node: GraphNode,
+        stage: Stage,
+        input_fp: str,
+        signal_in: Sequence[Block],
+        rate: float,
+        path: Path,
+        saved: Review | None,
+        reason: str,
+    ) -> Review:
+        """One person's review of the recording at the strip (``saved``: their
+        earlier one, on another input, to confirm or change)."""
+        assert self._graph is not None
+        pairs = self._rail.visible_with_origins(self._graph, node.id,
+                                                sfreq=rate or None)  # fmt: skip
+        seen = [e for e, _ in pairs]
+        suggestions = review_points(pairs, stage.params, rate) if rate else ()
+        decision = str(stage.params["decision"])
+        request = ReviewRequest(
+            node.id, path, input_fp, reason,
+            saved.marks if saved is not None else (),
+            offered_labels(stage.params, [e.label for e in seen]),
+            sum(b.n_samples for b in signal_in) / rate if rate else 0.0,
+            reject_words(stage.params),
+            saved.viewed if saved is not None else (),
+            saved.bads if saved is not None else (),
+            display_presets(stage.params),
+            suggestions, decision=decision,
+        )  # fmt: skip
+        labels = signal_in[0].info.ch_labels if signal_in else ()
+        answer = self._ask(request, labels)
+        try:
+            marks, bads = settle(suggestions, answer, decision)
+        except VerdictsMissing as exc:
+            raise GraphError(f"{node.id}: {exc}") from exc
+        return Review(marks, input_fp, now_iso(), merge_spans(answer.viewed),
+                      self.reviewer, bads)  # fmt: skip
+
+    def _two_reviews(
+        self,
+        node: GraphNode,
+        stage: Stage,
+        input_fp: str,
+        signal_in: Sequence[Block],
+        rate: float,
+        path: Path,
+    ) -> Review:
+        """Two reviewers, each blind to the other's marks, then the resolve
+        (docs/REVIEW.md step 6b): the marks both made alike go on; the rest
+        are suggestions to decide, in verify mode."""
+        from meegxer.core.two_reviewers import (
+            agreement,
+            agreement_text,
+            disagreements,
+            rater_path,
+            same,
+        )
+
+        reviews: list[Review] = []
+        for k in (1, 2):
+            rpath = rater_path(path, k)
+            own = load_review(rpath)
+            if own is not None and own.upstream == input_fp:
+                reviews.append(own)
+                continue
+            if k == 2 and self.reviewer and reviews[0].reviewer == self.reviewer:
+                raise GraphError(
+                    f"{node.id}: needs a second reviewer: {self.reviewer} reviewed "
+                    "as reviewer 1; run it again as another reviewer"
+                )
+            reason = f"reviewer {k} of 2" + (" (input changed)" if own else "")
+            # blind: only this reviewer's own earlier marks are shown, if any
+            review = self._one_review(node, stage, input_fp, signal_in, rate,
+                                      rpath, own, reason)  # fmt: skip
+            save_review(rpath, review, node.id)
+            reviews.append(review)
+        first, second = reviews
+        duration = sum(b.n_samples for b in signal_in) / rate if rate else 0.0
+        kappa = agreement(first, second, duration)
+        agreed, points, both = disagreements(first, second)
+        raters = (first.reviewer, second.reviewer)
+        if points:
+            note = ("Cohen's kappa per label (1 s windows): " + agreement_text(kappa)
+                    if kappa else "")  # fmt: skip
+            request = ReviewRequest(
+                node.id, path, input_fp, "resolve", agreed,
+                offered_labels(stage.params, [m.label for m in agreed]),
+                duration, reject_words(stage.params), (), both,
+                display_presets(stage.params), points, decision="verify", note=note,
+            )  # fmt: skip
+            labels = signal_in[0].info.ch_labels if signal_in else ()
+            answer = self._ask(request, labels)
+            try:
+                marks, bads = settle(points, answer, "verify")
+            except VerdictsMissing as exc:
+                raise GraphError(f"{node.id}: {exc}") from exc
+            # the agreed marks stay (verify mode: the answer may hold them too)
+            marks = (*marks, *(a for a in agreed if not any(same(a, m) for m in marks)))
+            viewed = merge_spans(answer.viewed)
+        else:  # they agreed on everything: nothing to resolve
+            marks, bads, viewed = agreed, both, ()
+        review = Review(tuple(marks), input_fp, now_iso(), viewed, self.reviewer,
+                        tuple(bads), raters=raters, agreement=kappa)  # fmt: skip
+        save_review(path, review, node.id)
+        return review
 
     def _epoch_verdicts(
         self,
