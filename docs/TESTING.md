@@ -393,8 +393,8 @@ stated) and a marker stream, recorded across a clock reset: no samples for
 
 | Item | Value / result | Notes |
 |---|---|---|
-| F1 streams and notes in the log; channels and events listed | | |
-| F2 278 s of signal, events in place, BAD_gap at 128.76 s | | |
-| F3 27 epochs on Marker; ERP view | | |
-| F4 no epoch across the gap | | |
-| F5 CLI run with -i clock_resets.xdf | | |
+| F1 streams and notes in the log; channels and events listed | partial | No `10 markers left out` |
+| F2 278 s of signal, events in place, BAD_gap at 128.76 s | passed | |
+| F3 27 epochs on Marker; ERP view | passed | |
+| F4 no epoch across the gap | how? | |
+| F5 CLI run with -i clock_resets.xdf | no pipeline.json | |
