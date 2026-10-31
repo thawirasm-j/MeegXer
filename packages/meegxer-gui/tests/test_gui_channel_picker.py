@@ -106,3 +106,44 @@ def test_the_signal_view_shows_the_19_first(qapp: QApplication) -> None:
     view.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qapp.processEvents()
+
+
+def test_listed_channels_keep_their_height_when_the_channels_change(
+    qapp: QApplication,
+) -> None:
+    """§H5: the *Channels* menu kept the size it measured for a head of
+    electrodes, so a decomposition's 15 components (listed, having no place)
+    were squeezed over each other. It measures again when the channels
+    change; past MAX_LIST_ROWS the list scrolls."""
+    from PySide6.QtCore import QPoint
+
+    from meegxer.gui.channel_picker import MAX_LIST_ROWS
+    from meegxer.gui.signal_view import HeadChannelMenu
+
+    menu = HeadChannelMenu(load_theme("dark"))
+    eeg = ("Fz", "Cz", "Pz", "Oz", "C3", "C4")
+    wheel = {c: (0.1 * i, 0.1) for i, c in enumerate(eeg)}
+
+    def shown(labels: tuple[str, ...], **kw: object) -> list[int]:
+        menu.set_labels(labels, **kw)  # type: ignore[arg-type]
+        menu.menu().popup(QPoint(0, 0))
+        qapp.processEvents()
+        heights = [b.height() for b in menu.picker.boxes.values()]
+        menu.menu().hide()
+        qapp.processEvents()
+        return heights
+
+    shown(eeg, wheel=wheel)  # measured with no list
+    ics = tuple(f"IC{i:02d}" for i in range(1, 16))
+    heights = shown(ics, notes={c: f"{c} · brain 0.90" for c in ics})
+    hint = next(iter(menu.picker.boxes.values())).sizeHint().height()
+    assert heights == [hint] * 15  # each row at its own height
+    assert not menu.picker.list_area.verticalScrollBar().isVisible()
+    many = tuple(f"IC{i:02d}" for i in range(1, 65))
+    assert shown(many) == [hint] * 64
+    rows = MAX_LIST_ROWS * (hint + menu.picker.unplaced.spacing())
+    assert menu.picker.list_area.height() == rows  # then it scrolls
+    shown(eeg, wheel=wheel)
+    assert not menu.picker.list_area.isVisible()  # a head again: no list
+    menu.deleteLater()
+    qapp.processEvents()

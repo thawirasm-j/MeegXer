@@ -430,7 +430,8 @@ classes) and `OUT/ica_demo_unclassified.set` (without the classes). An EEGLAB
 5. Writing: `ica_demo.set`, an ICA strip, then *Output → Save as .set*
    `OUT/clean.set`; *Start*. Open `clean.set` in EEGLAB if you have it
    (*Tools → Inspect/label components*: N components with their classes, N =
-   18 less the components the ICA strip removed, as its inspector lists them),
+   18 less the components the ICA strip removed: the eye and muscle
+   components at or above its removal threshold, 0.9),
    or `uv run python -c "import mne; print(mne.preprocessing.read_ica_eeglab(r'OUT/clean.set'))"`
    (`N ICA components`). Add a re-reference strip before the writer and run
    again: the log says `ICA decomposition not stored: … transforms the
@@ -480,12 +481,17 @@ of your own recording works too. First `uv run meegxer shutdown`.
    ICA decomposition: 15 components on 19 channels start the ICs rail; ICLabel
    classes computed when a run first reads them` and that the file marks
    component 1 for removal; the chain shows the ICs rail from the Input strip.
-   After *Start*, its tap shows IC01 to IC15 with classes.
-6. Add *Output → MNE ICA file (.fif)* `OUT/clean-ica.fif` after an ICA strip;
-   *Start*. In Python: `mne.preprocessing.read_ica(r"OUT/clean-ica.fif")`
-   shows the ICA strip's components with the removed ones marked for
-   exclusion (`ica.exclude`, as its inspector lists them) and `ica.labels_`
-   ICLabel's classes. Without an ICA strip (and no ICA on the input) the log
+   After *Start*, its tap shows IC01 to IC15 with classes, one readable row
+   each in *Channels*. Add a *Power spectrum* strip and set its *Reads* to
+   *ICs (Recording file)*: the log says `Power spectrum reads ICs (Recording
+   file).`; remove it again.
+6. Add an ICA strip after the input and *Output → MNE ICA file (.fif)*; in
+   its *File*, *Browse…* and type `clean`: it becomes `clean-ica.fif` (MNE's
+   convention). *Start*. In Python:
+   `mne.preprocessing.read_ica(r"OUT/clean-ica.fif")` shows the ICA strip's
+   18 components with the removed ones marked for exclusion (`ica.exclude`:
+   those `ica.labels_` names eye blink or muscle artifact at or above the
+   strip's removal threshold, 0.9) and ICLabel's classes in `ica.labels_`. Without an ICA strip (and no ICA on the input) the log
    says `no ICA decomposition before it`.
 7. Python: `run(PIPELINE, raw, ica=r"OUT/ica_demo-ica.fif",
    output="input:ics")` returns the 15 components as an `mne.io.Raw`.

@@ -257,6 +257,13 @@ def choice_label(name: str, value: Any) -> str:
 
 # Parameters kept in seconds (as MNE takes them) but shown and edited in ms,
 # 50 ms a step: (node, parameter) -> step in ms
+# file names a writer insists on (MNE's conventions): the save dialog completes
+# a name typed without it (clean, clean.fif -> clean-ica.fif)
+SAVE_ENDINGS: dict[tuple[str, str], str] = {
+    ("meegxer.core.ica_writer", "path"): "-ica.fif",
+    ("meegxer.core.epochs_writer", "path"): "-epo.fif",
+}
+
 SHOWN_IN_MS: dict[tuple[str, str], float] = {
     ("meegxer.nodes.epochs", "tmin"): 50.0,
     ("meegxer.nodes.epochs", "tmax"): 50.0,

@@ -881,12 +881,13 @@ class MainWindow(QMainWindow):
         )
 
     def change_input(self, strip_id: str, source: str) -> None:
-        """Which rail (feature strip) a strip reads; "" for the nearest one."""
+        """What a strip reads: a feature rail (its strip), a rail output
+        (``ica1:ics``, ``input:ics``), or "" (the nearest, or the signal)."""
         strip = self.doc.get(strip_id)
         if strip.input == source:
             return
         self.doc.set_input(strip_id, source)
-        what = self.doc.rail_name(self.doc.get(source)) if source else "the nearest"
+        what = self.doc.choice_label(source) if source else "the nearest"
         self._structure_changed(f"{self._name(strip_id)} reads {what}.")
 
     def change_channel_types(self, strip_id: str, types: list[str]) -> None:

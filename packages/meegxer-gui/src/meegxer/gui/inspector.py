@@ -34,7 +34,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from meegxer.gui.labels import SHOWN_IN_MS, choice_label, param_label, unit_label
+from meegxer.gui.labels import (
+    SAVE_ENDINGS,
+    SHOWN_IN_MS,
+    choice_label,
+    param_label,
+    unit_label,
+)
 from meegxer.gui.names import title
 from meegxer.gui.pipeline_doc import MAX_STRIP_PARAMS, PipelineDoc, StripNode
 from meegxer.gui.theme import DEFAULT_GROUPS, Theme
@@ -78,9 +84,11 @@ class PathEdit(QWidget):
 
     finished = Signal()
 
-    def __init__(self, value: str, kind: str, extensions: list[str]) -> None:
+    def __init__(
+        self, value: str, kind: str, extensions: list[str], ending: str = ""
+    ) -> None:
         super().__init__()
-        self.kind, self.extensions = kind, extensions
+        self.kind, self.extensions, self.ending = kind, extensions, ending
         self.line = QLineEdit(value)
         self.button = QPushButton("Browse…")
         self.button.setToolTip({"file": "Choose a file", "folder": "Choose a folder",
@@ -103,6 +111,26 @@ class PathEdit(QWidget):
         return str(current if self.kind == "folder" or current.is_dir()
                    else current.parent)  # fmt: skip
 
+    def complete(self, name: str) -> str:
+        """A name to save as, with the extension the writer takes, or the
+        ending it insists on (``ending``: clean, clean.fif -> clean-ica.fif;
+        another extension it takes, such as .set, is kept)."""
+        suffix = Path(name).suffix.lower()
+        if self.ending:
+            tail = Path(self.ending).suffix.lower()  # .fif
+            if name.lower().endswith(self.ending.lower()):
+                return name
+            if (
+                suffix
+                and suffix != tail
+                and suffix in {e.lower() for e in self.extensions}
+            ):
+                return name
+            return (name[: -len(tail)] if suffix == tail else name) + self.ending
+        if self.extensions and suffix not in {e.lower() for e in self.extensions}:
+            return name + self.extensions[0]
+        return name
+
     def _filter(self) -> str:
         if not self.extensions:
             return "All files (*)"
@@ -116,13 +144,8 @@ class PathEdit(QWidget):
         elif self.kind == "save":
             chosen, _ = QFileDialog.getSaveFileName(self, "Save as", self._start(),
                                                     self._filter())  # fmt: skip
-            if (
-                chosen
-                and self.extensions
-                and Path(chosen).suffix.lower()
-                not in {e.lower() for e in self.extensions}
-            ):
-                chosen += self.extensions[0]
+            if chosen:
+                chosen = self.complete(chosen)
         else:
             chosen, _ = QFileDialog.getOpenFileName(
                 self, "Choose a file", self._start(), self._filter()
@@ -163,11 +186,12 @@ def param_step(spec: dict[str, Any], value: Any) -> float:
 
 
 def _editor(
-    spec: dict[str, Any], value: Any, ms_step: float | None = None
+    spec: dict[str, Any], value: Any, ms_step: float | None = None, ending: str = ""
 ) -> tuple[QWidget, Any]:
     """A control for one parameter and the signal that reports a final value.
     With ``ms_step`` a parameter in seconds is shown and edited in ms (the
-    field keeps its ``scale``; ``_value`` turns it back into seconds)."""
+    field keeps its ``scale``; ``_value`` turns it back into seconds). With
+    ``ending`` a file to save is named with it (``-ica.fif``)."""
     kind = spec["type"]
     if kind == "float" and ms_step and spec.get("unit") == "s":
         ms = _Number()
@@ -193,7 +217,8 @@ def _editor(
         combo.setCurrentIndex(max(0, combo.findData(value)))
         return combo, combo.currentIndexChanged
     if kind == "string" and spec.get("path"):
-        edit = PathEdit(str(value), spec["path"], list(spec.get("extensions") or []))
+        edit = PathEdit(str(value), spec["path"], list(spec.get("extensions") or []),
+                        ending)  # fmt: skip
         return edit, edit.finished
     if kind == "string":
         line = QLineEdit(str(value))
@@ -446,8 +471,10 @@ class Inspector(QScrollArea):
         switches: list[QWidget] = []
         for spec in specs:
             name = spec["name"]
+            key = (strip.node, name)
             editor, changed = _editor(spec, strip.params.get(name, spec["default"]),
-                                      SHOWN_IN_MS.get((strip.node, name)))  # fmt: skip
+                                      SHOWN_IN_MS.get(key),
+                                      SAVE_ENDINGS.get(key, ""))  # fmt: skip
             changed.connect(
                 lambda *_, n=name, w=editor: self.param_changed.emit(
                     strip.id, n, _value(w)

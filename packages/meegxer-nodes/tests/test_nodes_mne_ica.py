@@ -90,7 +90,7 @@ def test_an_mne_ica_file_starts_the_ics_rail(
     assert notes[0] == ("MNE ICA decomposition: 8 components on 19 channels "
                         "start the ICs rail; ICLabel classes computed when a run "
                         "first reads them")  # fmt: skip
-    assert "the file marks components 3 for removal" in notes[1]
+    assert "the file marks component 3 for removal" in notes[1]
 
 
 def test_the_api_takes_an_ica_object_or_file(
