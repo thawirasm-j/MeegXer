@@ -1176,6 +1176,7 @@ dependencies = [
     { name = "pylsl" },
     { name = "pyxdf" },
     { name = "pyzmq" },
+    { name = "scikit-learn" },
     { name = "scipy" },
 ]
 
@@ -1190,6 +1191,7 @@ requires-dist = [
     { name = "pylsl", specifier = ">=1.16" },
     { name = "pyxdf", specifier = ">=1.17" },
     { name = "pyzmq", specifier = ">=26" },
+    { name = "scikit-learn", specifier = ">=1.5" },
     { name = "scipy", specifier = ">=1.14.1" },
 ]
 

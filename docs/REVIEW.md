@@ -130,7 +130,7 @@ Who reviews, and what helps them:
 6. **A review report and a second reviewer**, in two PRs (decisions below):
    - 6a. the review report, in each recording's QC report. *Built*.
    - 6b. a second reviewer: blind, then compare and resolve, with Cohen's
-     kappa in the report.
+     kappa in the report. *Built* (see *Built: step 6b* below).
 
 ### Step 4b: decisions (2026-10-30; built)
 
@@ -535,3 +535,29 @@ marks to the Events rail while recording) come after it.
 Automated rejection needs no new machinery. A strip or a custom script emits
 events labelled `BAD_…` (amplitude, flatline, …); later strips choose which
 labels they honour, by a keyword parameter.
+
+## Built: step 6b (two reviewers)
+
+- **The Review strip's `reviewers`** (1 or 2). With 2, a recording is reviewed
+  in up to three passes (`meegxer.core.two_reviewers`):
+  1. **Reviewer 1** marks it; their marks go to a sidecar of their own beside
+     the strip's, `…_desc-<strip>rater1_events.tsv`.
+  2. **Reviewer 2** marks it without seeing reviewer 1's marks (the request
+     carries none of them), in `…rater2_events.tsv`. A run by the person who
+     was reviewer 1 stops here: "needs a second reviewer"; another person
+     runs it again (each run asks the reviewer's name once).
+  3. **Resolve** (in the second reviewer's run, by whoever answers it): the
+     marks both made alike (the same label, onset and duration within 50 ms)
+     are kept; every other mark, and each bad channel only one of them
+     marked, is a suggestion whose origin names its reviewer
+     (`reviewer 1 (A)`), decided in verify mode (yes, no or edit). When they
+     agree on everything there is nothing to resolve.
+  The resolved marks are the strip's own sidecar and go on, as with one
+  reviewer; its JSON records the `raters` and their `agreement`.
+- **Agreement:** Cohen's kappa per label over 1-second windows (each marked or
+  not by each reviewer), from scikit-learn's `cohen_kappa_score`; `n/a` where
+  it is undefined (both marked every window alike). The resolve window says
+  it in its heading, and the review report adds `raters` and `kappa`.
+- **After an upstream change** each reviewer is asked again in turn, shown
+  only their own earlier marks to confirm or change, then the resolve.
+
