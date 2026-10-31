@@ -175,6 +175,7 @@ class Daemon:
             "calibrate": self.calibrate,
             "clear_calibration": self.clear_calibration,
             "set_pass_uncalibrated": self.set_pass_uncalibrated,
+            "arm": self.arm,
             "set_strip_params": self.set_strip_params,
             "describe_source": self.describe_source,
             "import_review_open": self.import_review_open,
@@ -411,6 +412,18 @@ class Daemon:
             raise KeyError(f"no node {node!r}")
         scheduler = self._scheduler or RealtimeScheduler(self._graph)
         scheduler.set_pass_uncalibrated(node, bool(enabled))
+        return self.status()
+
+    def arm(self, node: str, on: bool = True) -> dict[str, Any]:
+        """Arm (or disarm) an action sink for the running live run (rule 9:
+        only by hand; the run's end disarms it)."""
+        if self._graph is None:
+            raise RuntimeError("no pipeline loaded")
+        if node not in self._graph:
+            raise KeyError(f"no node {node!r}")
+        if self._scheduler is None:
+            raise RuntimeError("start the live run first: arming lasts one run")
+        self._scheduler.arm(node, bool(on))
         return self.status()
 
     def set_strip_params(self, node: str, params: list[str]) -> dict[str, Any]:

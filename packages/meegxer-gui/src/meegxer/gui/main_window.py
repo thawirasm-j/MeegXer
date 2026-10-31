@@ -120,6 +120,24 @@ def resolve_theme(name: str) -> Theme:
         return load_theme("dark")
 
 
+NOT_A_MEDICAL_DEVICE = (
+    "MeegXer is research software. It is not a medical device: it is not meant "
+    "to diagnose, treat or monitor any condition, and its outputs (including "
+    "key presses from the keyboard strip) must not be relied on for safety."
+)
+
+
+def about_text() -> str:
+    """The About box: version, licence and the medical-device statement."""
+    from meegxer.gui import __version__
+
+    return (
+        f"<b>MeegXer</b> {__version__}<br>A user-friendly mixer for EEG "
+        "processing.<br>Licence: GPL-3.0.<br><br>"
+        f"<b>Not a medical device.</b> {NOT_A_MEDICAL_DEVICE}"
+    )
+
+
 class MainWindow(QMainWindow):
     def __init__(
         self,
@@ -251,6 +269,7 @@ class MainWindow(QMainWindow):
         self.inspector.pass_uncalibrated_changed.connect(self.change_passthrough)
         self.inspector.clear_calibration.connect(self.clear_calibration)
         self.inspector.calibrate.connect(self.calibrate)
+        self.inspector.arm.connect(self.arm)
         bottom.addWidget(self.inspector)
         self.logbox = QPlainTextEdit()
         self.logbox.setReadOnly(True)
@@ -368,6 +387,10 @@ class MainWindow(QMainWindow):
         settings_btn.setToolTip("Settings (Ctrl+,)")
         settings_btn.clicked.connect(self.open_settings)
         lay.addWidget(settings_btn)
+        about_btn = QPushButton("?")
+        about_btn.setToolTip("About MeegXer")
+        about_btn.clicked.connect(self.show_about)
+        lay.addWidget(about_btn)
         return bar
 
     # -- helpers ----------------------------------------------------------------------
@@ -452,6 +475,9 @@ class MainWindow(QMainWindow):
             boxes.append(self.epoch_window.erp_box)
         for box in boxes:
             box.set_y_range(mode)
+
+    def show_about(self) -> None:
+        QMessageBox.about(self, "About MeegXer", about_text())
 
     def open_settings(self) -> None:
         dialog = SettingsDialog(self.settings, self.theme, self)
@@ -934,6 +960,16 @@ class MainWindow(QMainWindow):
             f"{'on' if enabled else 'off'}."
         )
 
+    def arm(self, strip_id: str, on: bool) -> None:
+        """Arm an action sink for this run, or disarm it (rule 9: by hand)."""
+        if on and not self.running:
+            self.log("Start the live run before arming.")
+            return
+        if self.call("arm", node=strip_id, on=on) is None:  # e.g. no keyboard
+            return  # the failure is in the log
+        self.log(f"{self._name(strip_id)}: {'ARMED' if on else 'disarmed'}.")
+        self.refresh_chain()
+
     def calibrate(self, strip_id: str, seconds: float) -> None:
         if not self.running:
             self.log("Start the pipeline before calibrating.")
@@ -1409,6 +1445,8 @@ class MainWindow(QMainWindow):
                     )
                 else:
                     s = "stopped"
+            elif n.get("armed"):  # an action sink acting (rule 9): shown in red
+                s = "armed"
             elif n.get("role") != "processor":
                 s = "ready"
             elif n.get("pass_uncalibrated") and s != "ready":

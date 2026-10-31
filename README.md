@@ -13,6 +13,10 @@ BIDS datasets, with the same nodes either way. Tap the chain anywhere to see the
 signal, its spectrum and head plot, the features a strip computes, or the ICA
 components with their ICLabel classes.
 
+> **Not a medical device.** MeegXer is research software. It is not meant to
+> diagnose, treat or monitor any condition, and its outputs (including key
+> presses from the keyboard strip) must not be relied on for safety.
+
 ## Install
 
 MeegXer is on PyPI as `meegxer`. The [uv](https://docs.astral.sh/uv/) tool installs

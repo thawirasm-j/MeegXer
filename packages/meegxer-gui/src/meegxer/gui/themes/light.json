@@ -16,6 +16,7 @@
     "calibrating": "#1f6fd1",
     "needs-refit": "#c97a00",
     "bypassed": "#8a4fd8",
+    "armed": "#d93a3a",
     "stopped": "#b5b8bf",
     "error": "#d93a3a"
   },

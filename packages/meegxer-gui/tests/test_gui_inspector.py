@@ -274,3 +274,33 @@ def test_a_writer_with_a_naming_convention_gets_its_ending(
         assert seen[-1] == (writer.id, "path", str(tmp_path / expected)), node
         dispose(qapp, ins)
         doc.remove(writer.id)
+
+
+def test_the_keyboard_is_armed_by_hand(qapp: QApplication, doc: PipelineDoc) -> None:
+    """Rule 9: an action sink's card says whether it is armed, and arms only a
+    running live pipeline."""
+    from PySide6.QtWidgets import QPushButton
+
+    strip = doc.insert(len(doc.strips), "meegxer.nodes.keyboard")
+    ins = Inspector()
+    asked: list[tuple[str, bool]] = []
+    ins.arm.connect(lambda sid, on: asked.append((sid, on)))
+
+    def button(running: bool, status: dict[str, Any]) -> QPushButton:
+        ins.show_strip(doc, strip, advanced=False, running=running, node_status=status)
+        qapp.processEvents()
+        return next(b for b in ins.findChildren(QPushButton)
+                    if b.text() in ("Arm", "Disarm"))  # fmt: skip
+
+    doc.input_mode = "live"
+    assert not button(False, {}).isEnabled()  # not running: nothing to arm
+    arm = button(True, {"armed": False})
+    assert arm.isEnabled()
+    arm.click()
+    assert asked == [(strip.id, True)]
+    disarm = button(True, {"armed": True, "pressed": 3, "dropped": 1})
+    assert any("ARMED" in lb.text() and "pressed 3" in lb.text()
+               for lb in ins.findChildren(QLabel))  # fmt: skip
+    disarm.click()
+    assert asked[-1] == (strip.id, False)
+    dispose(qapp, ins)

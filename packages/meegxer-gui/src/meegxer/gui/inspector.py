@@ -312,6 +312,7 @@ class Inspector(QScrollArea):
     pass_uncalibrated_changed = Signal(str, bool)
     clear_calibration = Signal(str)
     calibrate = Signal(str, float)
+    arm = Signal(str, bool)  # an action sink: armed by hand (rule 9)
 
     def __init__(self) -> None:
         super().__init__()
@@ -405,6 +406,8 @@ class Inspector(QScrollArea):
                 "reused while the input and the strips before it stay the same.",
             )
             lay.addWidget(card)
+        if manifest.get("category") == "actions":
+            lay.addWidget(self._arming(strip, node_status, running, doc.mode))
         if manifest.get("authors") or manifest.get("references"):
             lay.addWidget(self._credits(manifest))
         if advanced and is_processor:
@@ -593,6 +596,38 @@ class Inspector(QScrollArea):
             lambda on: self.pass_uncalibrated_changed.emit(strip.id, on)
         )
         lay.addWidget(passthrough)
+        return card
+
+    def _arming(
+        self, strip: StripNode, node_status: dict[str, Any], running: bool, mode: str
+    ) -> QWidget:
+        """An action sink's switch (rule 9): off until armed by hand, for this
+        run only; Esc, this switch or Stop disarm it."""
+        armed = bool(node_status.get("armed"))
+        card, lay = _card(
+            "Armed",
+            "It acts (presses keys) only while armed: by hand, for this live run. "
+            "Esc, this switch or Stop disarm it. MeegXer is not a medical device.",
+        )
+        state = QLabel(
+            f"<b>ARMED</b>: pressed {node_status.get('pressed', 0)}, dropped "
+            f"{node_status.get('dropped', 0)} (over the rate)"
+            if armed
+            else "Disarmed"
+        )
+        if armed and self.theme is not None:
+            state.setStyleSheet(f"color: {self.theme.status_color('armed')};")
+        lay.addWidget(state)
+        switch = QPushButton("Disarm" if armed else "Arm")
+        switch.setObjectName("" if armed else "primary")
+        switch.setEnabled(armed or (running and mode == "live"))
+        switch.setToolTip(
+            "Stop acting" if armed
+            else "Act on its events until disarmed" if running and mode == "live"
+            else "Start the live run to arm it (batch runs never act)"
+        )  # fmt: skip
+        switch.clicked.connect(lambda: self.arm.emit(strip.id, not armed))
+        lay.addWidget(switch)
         return card
 
     def _credits(self, manifest: dict[str, Any]) -> QWidget:

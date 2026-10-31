@@ -1,7 +1,7 @@
 """Command-line interface: headless runs, batch jobs, Pi deployment."""
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -607,7 +607,12 @@ def status(
     for node in result.get("nodes", []):
         timing = node.get("timing") or {}
         mean = f"{timing['mean_ms']:.3f} ms" if timing else "-"
-        typer.echo(f"  {node['id']:16} {node['status']:13} {mean}")
+        action = ""
+        if "armed" in node:  # an action sink (the keyboard)
+            action = (f"  {'ARMED' if node['armed'] else 'disarmed'}"
+                      f"  pressed {node.get('pressed', 0)}"
+                      f"  dropped {node.get('dropped', 0)}")  # fmt: skip
+        typer.echo(f"  {node['id']:16} {node['status']:13} {mean}{action}")
     for err in result.get("errors", []):
         typer.echo(f"error: {err}", err=True)
 
@@ -666,6 +671,27 @@ def passthrough(
     """Per node: pass data through unprocessed while it has no valid model."""
     _call(control, "set_pass_uncalibrated", node=node, enabled=enabled)
     typer.echo(f"{node}: pass through while uncalibrated = {enabled}")
+
+
+@app.command()
+def arm(
+    node: str,
+    on: Annotated[
+        bool, typer.Option("--on/--off", help="Arm (default) or disarm it.")
+    ] = True,
+    control: ControlOpt = _DEFAULT_CONTROL,
+) -> None:
+    """Arm an action sink (e.g. the keyboard) for the running live run: it acts
+    on its events until --off, Esc, or the run's end. MeegXer is not a medical
+    device."""
+    result = _call(control, "arm", node=node, on=on)
+    assert isinstance(result, dict)
+    nodes: list[dict[str, Any]] = result.get("nodes", [])
+    state = next((n for n in nodes if n.get("id") == node), {})
+    if state.get("armed"):
+        typer.echo(f"{node}: ARMED (Esc, `meegxer arm {node} --off` or stop disarms)")
+    else:
+        typer.echo(f"{node}: disarmed")
 
 
 @app.command()

@@ -277,6 +277,7 @@ CATEGORIES = {
     "meegxer.nodes.ssvep_cca": "decoding",
     "meegxer.nodes.csp": "decoding",
     "meegxer.nodes.lda": "decoding",
+    "meegxer.nodes.keyboard": "actions",
 }
 
 

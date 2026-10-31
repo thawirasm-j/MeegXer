@@ -50,6 +50,7 @@ TITLES = {
     "meegxer.nodes.ssvep_cca": "SSVEP detection",
     "meegxer.nodes.csp": "Common spatial patterns (CSP)",
     "meegxer.nodes.lda": "Linear discriminant analysis (LDA)",
+    "meegxer.nodes.keyboard": "Keyboard (key presses)",
     "meegxer.core.lsl_features_out": "LSL features output",
     "eeglab.asr": "ASR cleaning (EEGLAB)",
 }

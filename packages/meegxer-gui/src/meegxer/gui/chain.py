@@ -183,10 +183,14 @@ class StripWidget(QFrame):
         if not problem and strip.channel_types and strip.channel_types != ["eeg"]:
             types = "+".join(t.upper() for t in strip.channel_types)
             note = f"{note} · {types}" if note else types
+        if status == "armed":  # an action sink acting: plain to see (rule 9)
+            note = "ARMED · Esc disarms"
         if note:
             chip = QLabel(note)
             chip.setWordWrap(True)  # a problem is read in full, on two lines if need be
-            colour = theme.incompatible_border if problem else theme.text_muted
+            colour = (theme.incompatible_border if problem
+                      else theme.status_color("armed") if status == "armed"
+                      else theme.text_muted)  # fmt: skip
             chip.setStyleSheet(f"color: {colour}; font-size: 8pt; font-weight: 600;")
             lay.addWidget(chip)
         lay.addSpacing(4)

@@ -31,6 +31,7 @@ dependencies = [
     "mne-connectivity>=0.7",
     "antropy>=0.1.9",
     "specparam>=2.0.0rc7",
+    "pynput>=1.7",
 ]
 
 [project.entry-points."meegxer.nodes"]
@@ -62,6 +63,7 @@ dependencies = [
 "meegxer.nodes.ssvep_cca" = "meegxer.nodes.ssvep:SSVEPCCA"
 "meegxer.nodes.csp" = "meegxer.nodes.decoding:CSP"
 "meegxer.nodes.lda" = "meegxer.nodes.decoding:LDA"
+"meegxer.nodes.keyboard" = "meegxer.nodes.actions:KeyboardSink"
 
 [project.urls]
 Homepage = "https://github.com/thawirasm-j/MeegXer"

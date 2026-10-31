@@ -36,7 +36,15 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
    untrimmed copy of the Events rail and hands each writer what it sees,
    every 2 s while running (so a crash recovery keeps most of it) and in
    full before closing. Default taken: **2 s** between header rewrites (the
-   spool header is rewritten whole, with an fsync). This PR.
+   spool header is rewritten whole, with an fsync). PR (queued after #143).
+5. **M11.4 keyboard sink**, as you decided: off until armed by hand for one
+   live run (*Arm* in its card, or `meegxer arm NODE`); a fixed map of event
+   label → key (`pred_left=left, pred_right=right`); at most 2 keys/s; Esc,
+   *Disarm* and *Stop* disarm it; never armed in a batch run, nor from a
+   pipeline or session; pynput. "Not a medical device" in the README and a
+   new About box (*?*, top right). §M run by me on a virtual X display
+   (Xvfb) with real pynput. Left for you: M4 (keys landing in another app on
+   Windows) and M5 (how the About box looks). PR (queued).
 
 ## Defaults taken (small choices)
 
@@ -49,6 +57,14 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
 | 5 | Who sees LDA's events | **An output strip (sink) sees every event on the rail to its left**, as the chain draws it, so a `.set` writer after LDA records `pred_` events. A **processor still sees only its ancestors'** events: its fingerprint names them, so a changed event marks it for a refit (rule 7) | Every strip sees everything to its left: would break rule 7 (a CSP after LDA could fit on predicted events without its fingerprint knowing) |
 | 6 | Plugins with a Features input | Refused with a clear message (built-in only for now) | Extending the plugin protocol: a bigger change, not needed for M11 |
 | 7 | The demo data | `tools/lda_demo.py`: synthetic motor imagery (mu ERD over the hemisphere opposite the hand), so §L needs no download | The EEGBCI sample: real, but needs the download (left to you as L4) |
+| 9 | How the keyboard gets events | A new core `ActionSink` base: the live scheduler hands it each new event it sees (the rail to its left) right after each block; file writers keep the 2 s cadence | Giving it the writers' 2 s batches: too slow for a BCI |
+| 10 | A played recording's own cues | Not acted on (they all reach the rail at the start, ahead of time); only events strips emit live, and live LSL markers, are | Acting on them when their sample is reached: more code, and pressing keys for cue markers is not the use |
+| 11 | Arming | Control API `arm` (0.2.24) and CLI `meegxer arm NODE [--off]`; refused unless a live run is running; the run's end disarms | `meegxer start --arm NODE`: arming before data flows |
+| 12 | Rate limit | A minimum gap of 1/rate between presses (default 2/s → 0.5 s); extra events dropped and counted (`dropped` in the status and the card) | A 1 s sliding window: wrong below 1 key/s |
+| 13 | Keys it may press | One letter or digit, or a named key (arrows, space, enter, tab, backspace, home, end, page up/down, F1–F12); no modifiers (Ctrl, Alt, Win) | Any key: a mapped Ctrl or Win could do real harm |
+| 14 | Armed state on screen | The strip turns red with "ARMED · Esc disarms"; the card shows pressed/dropped | A modal warning on arming |
+| 15 | About box | A *?* button beside ⚙ (there was no About box) | A menu bar |
+| 16 | pynput's install | It builds `evdev` from source on Linux (needs a C compiler and kernel headers; fine on CI and here; may matter on a Pi). Left out of `tools/smoke_deps.py`, because importing it needs a desktop session | |
 | 8 | References | Fisher 1936, Blankertz et al. 2011, Ledoit & Wolf 2004, scikit-learn (Pedregosa et al. 2011). DOIs checked by web search (doi.org is blocked from here) | |
 
 ## Found on the way
@@ -63,3 +79,4 @@ keeping moves into `docs/ROADMAP.md`, `docs/DESIGN.md` or `CLAUDE.md`).
 - Tag `v0.4.0b3` (#142 is merged).
 - L4: the LDA strip on real motor-imagery data (EEGBCI sample, *Classes*
   `T1, T2`).
+- M4/M5: the keyboard on Windows (keys landing in Notepad), the About box.
