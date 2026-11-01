@@ -687,7 +687,7 @@ system calls faked, so they need a real machine:
 |---|---|---|
 | O1 Linux menu entry starts MeegXer | passed | run by Claude |
 | O2 Windows Start menu and desktop, no console | passed | |
-| O3 remove | passed (Linux) | Windows to check |
+| O3 remove | passed (Linux) | passed on Windows |
 
 ## P. BIDS input picks from the dataset
 
@@ -711,7 +711,7 @@ subject*, 01 and 02, and *Task* lists *Any task* and rest. Subject 01 with
 | P1 folder first; greyed until chosen | passed | run by Claude offscreen |
 | P2 lists narrowed by the other picks | passed | run by Claude offscreen (and test) |
 | P3 typing in Advanced mode | passed | run by Claude offscreen |
-| P4 on your datasets (sessions, several tasks) | | |
+| P4 on your datasets (sessions, several tasks) | passed | |
 
 ## Q. Classes from the events; true classes on the view
 
@@ -732,7 +732,7 @@ first 60 s, in the colours of the two probability lines.
 | Q1 classes picked from the events | passed | run by Claude offscreen (and test) |
 | Q2 typing in Advanced mode | passed | test |
 | Q3 true-class bands on LDA's and CSP's views | passed | run by Claude offscreen (screenshot) |
-| Q4 on the EEGBCI data | | |
+| Q4 on the EEGBCI data | passed | CSP prediction swapped between T1/T2* |
 
 ## R. A chosen recording is shown at once
 
@@ -752,7 +752,7 @@ chain.
 |---|---|---|
 | R1 signal and events shown at once | passed | run by Claude offscreen (and test) |
 | R2 Run offline afterwards | passed | run by Claude offscreen (and test) |
-| R3 on your recordings, a large one too (how long it takes) | | |
+| R3 on your recordings, a large one too (how long it takes) | passed | take time related to the length as expected*, may display a prompt "loading" etc. |
 
 ## S. Epoch files as the input
 
@@ -778,4 +778,4 @@ chain.
 | S1 ERP shown at once (`-epo.fif`, epoched `.set`) | passed | run by Claude offscreen (and tests) |
 | S2 epochs and labels in the log; labels in the class pickers | passed | run by Claude offscreen (and test) |
 | S3 the epochs written back without an Epochs strip | passed | test (`-epo.fif` round trip) |
-| S4 on your epochs files (EEGLAB, MNE) | | |
+| S4 on your epochs files (EEGLAB, MNE) | passed | |
