@@ -784,25 +784,29 @@ chain.
 ## T. The window fits a laptop screen
 
 Already run by Claude, offscreen through the real window, at 1024 × 700,
-1280 × 720, 1366 × 768 and 1920 × 1080, running live. The window took each
-size (its minimum width is 932 pixels); the signal view had 245, 258, 291
-and 504 pixels; the status line started with "● running" and ended in "…"
-where it did not fit.
+1280 × 720, 1366 × 768 and 1920 × 1080, running live, with the normal text
+size and with text 40 % larger (as Windows draws it wider): the window took
+each size (its minimum width is 660 pixels, 853 with the larger text). With
+the larger text at 1024 pixels, *Friendly*/*Advanced* folded into the »
+button; the status line started with "● running" and ended in "…".
 
-1. On your laptop (or a window made small), start MeegXer: the whole top bar
-   is on screen, with nothing cut off at the right.
+1. On your laptop (Windows), start MeegXer: the top bar is on screen,
+   nothing cut off at the right. If the window is narrow, the » at the
+   toolbar's end holds the buttons that did not fit.
 2. *Save…*'s arrow lists *Save pipeline…*, *Save session…* and *Share
    session…*. ↶ and ↷ undo and redo (their tooltips say so).
 3. *Start*: the status line starts with "● running"; hover it for the whole
-   line. Make the window narrower: the line shortens at its end, the window
-   does not grow past the screen.
-4. Drag the window's bottom edge up: the signal view keeps its height while
+   line. Make the window narrower: the line shortens at its end (the state
+   stays), the window does not grow past the screen.
+4. *Settings* → *Appearance* → *Text size* 150 %: the window still fits;
+   more buttons fold into ».
+5. Drag the window's bottom edge up: the signal view keeps its height while
    the settings and log shrink.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| T1 the top bar fits, nothing cut off | passed | run by Claude offscreen (and test) |
+| T1 the top bar fits, nothing cut off; » holds the rest | passed | run by Claude offscreen (and test, text 100 and 140 %) |
 | T2 Save's arrow; ↶ ↷ | passed | test |
-| T3 the status line shortens, the window keeps its size | passed | run by Claude offscreen (and test) |
-| T4 on your laptop (Windows, its screen scaling) | | |
+| T3 the status line shortens, the state stays, the window keeps its size | passed | run by Claude offscreen (and test) |
+| T4 on your laptop (Windows, its screen scaling, text size 150 %) | | |
 

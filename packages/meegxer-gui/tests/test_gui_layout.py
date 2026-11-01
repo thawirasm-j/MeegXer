@@ -1,13 +1,15 @@
-"""The window fits a laptop screen (1024 px wide and up): the session
-commands sit on Save's arrow, the run's details shorten with "…" instead of
-widening the window, and the signal view keeps its height first."""
+"""The window fits a laptop screen (1024 px wide and up), also with wider
+text (Windows draws the same point size wider, or Text size raised): the
+file, undo and mode buttons fold into the toolbar's », the status line and
+the views' legends shorten with "…" instead of widening the window, the
+run's state is never cut, and the signal view keeps its height first."""
 
 from __future__ import annotations
 
 import subprocess
 import time
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QToolButton
 
 
 def pump(app: QApplication, seconds: float) -> None:
@@ -22,6 +24,7 @@ def test_the_window_fits_a_laptop_screen(
 ) -> None:
     from meegxer.gui.connection import DaemonLink
     from meegxer.gui.main_window import MainWindow
+    from meegxer.gui.theme import stylesheet
 
     control, _ = daemon
     win = MainWindow(DaemonLink(control))
@@ -38,19 +41,27 @@ def test_the_window_fits_a_laptop_screen(
         pump(qapp, 0.5)
         assert win.width() == 1024  # it does not grow past the screen
         line = win.status_line
-        full = line.full_text()
+        full = line.text()
         assert full.startswith("● running · processing load")  # the state first
         assert line.toolTip() == full
-        shown = line.text()
+        shown = line.shown()
         assert shown == full or shown.endswith("…")  # cut at its end
         assert shown.startswith("● running")  # the state itself whole
         win.resize(1600, 900)
         pump(qapp, 0.5)
-        assert line.text() == full
+        assert line.shown() == full
         win.resize(1024, 700)
         pump(qapp, 0.5)
         assert win.views.height() >= 200  # the view keeps its height
         assert win.inspector.width() > win.logbox.width()  # settings first
+        win.setStyleSheet(stylesheet(win.theme, 1.4))  # text 40 % wider
+        pump(qapp, 0.5)
+        assert win.minimumSizeHint().width() <= 1024
+        assert win.width() == 1024
+        fold = win.tools.findChild(QToolButton, "qt_toolbar_ext_button")
+        assert fold is not None and fold.isVisible() and fold.width() >= 24  # »
+        assert line.shown().startswith("● running")  # still whole
+        assert win.view.legend.shown().endswith("…") or win.view.legend.shown()
         win.stop()
         pump(qapp, 1.0)
     finally:

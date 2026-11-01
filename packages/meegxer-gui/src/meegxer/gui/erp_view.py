@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from meegxer.gui.elided import ElidedLabel
 from meegxer.gui.epoch_review_window import ERP_COLORS
 from meegxer.gui.signal_view import AmplitudeViewBox, HeadChannelMenu, zero_line
 from meegxer.gui.theme import Theme
@@ -103,9 +104,12 @@ class ErpView(QWidget):
         self.reset.clicked.connect(self.reset_requested.emit)
         bar.addWidget(self.reset)
         bar.addStretch(1)
-        self.legend = QLabel("")
+        self.legend = ElidedLabel()  # never sets the window's width
         self.legend.setObjectName("muted")
-        bar.addWidget(self.legend)
+        self.legend.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        bar.addWidget(self.legend, 1)
         lay.addLayout(bar)
         self.box = AmplitudeViewBox()  # zero-centred or data range (Settings)
         self.plot = pg.PlotWidget(viewBox=self.box)

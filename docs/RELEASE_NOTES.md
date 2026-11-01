@@ -7,19 +7,23 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
-- **The window fits a laptop screen.** It now opens and works from about 930
-  pixels wide (it needed about 1,400 before, more than a 1366 × 768
-  laptop has).
+- **The window fits a laptop screen**, also where text is drawn wider
+  (Windows, or *Text size* raised). It needed about 1,400 pixels before
+  (more on Windows), more than a 1366 × 768 laptop has; it now needs about
+  660 (850 with text 40 % larger).
+  - *New*, *Open*, *Save*, ↶ ↷ and *Friendly*/*Advanced* sit in a toolbar:
+    what does not fit folds into its » button. *Start*, *Stop*, the run's
+    state, *Log* and the settings always show.
   - *Save session…* and *Share session…* moved to the arrow on *Save…*,
-    as recent files are on *Open…*'s.
-  - *Undo* and *Redo* show as ↶ and ↷ (their tooltips name them).
+    as recent files are on *Open…*'s. *Undo* and *Redo* show as ↶ and ↷
+    (their tooltips name them).
   - The run's state and details are one line, the state first (● running
     · processing load … · delay … · late blocks … · display frames
-    skipped …). Where there is no room it ends in "…"; its tooltip gives
-    it whole; the state itself is never cut. It no longer widens the
-    window.
-  - The name "MeegXer" left the top bar (it is the window's title), to
-    make room for the run's state on a laptop screen.
+    skipped …). Where there is no room it ends in "…", its tooltip gives
+    it whole, and the state itself is never cut. The signal, features and
+    ERP views' legends ("Main: after Notch …") shorten the same way. None
+    of them widens the window any more.
+  - The name "MeegXer" left the top bar (it is the window's title).
   - The signal view keeps at least 200 pixels and takes most of any extra
     height. The settings take two thirds of the bottom row, the log one
     third.

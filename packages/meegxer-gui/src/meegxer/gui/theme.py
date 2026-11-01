@@ -101,6 +101,7 @@ QPushButton:hover, QToolButton:hover {{ border-color: {t.accent}; }}
 QPushButton:checked, QToolButton:checked {{ background: {t.accent}; color: {t.surface};
     border-color: {t.accent}; }}
 QPushButton:disabled, QToolButton:disabled {{ color: {t.text_muted}; }}
+QToolButton#qt_toolbar_ext_button {{ padding: 2px; }}
 QPushButton#primary {{ background: {t.accent}; color: {t.surface};
     border-color: {t.accent}; font-weight: 600; }}
 QPushButton#primary:disabled {{ background: {t.surface_alt}; color: {t.text_muted};

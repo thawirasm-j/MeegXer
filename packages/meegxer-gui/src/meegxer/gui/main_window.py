@@ -25,7 +25,6 @@ from PySide6.QtGui import (
     QDesktopServices,
     QGuiApplication,
     QKeySequence,
-    QResizeEvent,
     QShortcut,
 )
 from PySide6.QtWidgets import (
@@ -37,17 +36,18 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QInputDialog,
-    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QProgressDialog,
+    QProxyStyle,
     QPushButton,
-    QSizePolicy,
     QSplitter,
     QStackedWidget,
+    QStyle,
+    QToolBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -79,6 +79,7 @@ from meegxer.gui.chain import ChainView
 from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import wheel_positions
 from meegxer.gui.connection import DaemonLink
+from meegxer.gui.elided import ElidedLabel
 from meegxer.gui.epoch_review_window import EpochReviewWindow
 from meegxer.gui.erp_view import Erp, ErpView
 from meegxer.gui.feature_view import FeatureSeries, FeatureView
@@ -146,34 +147,16 @@ def about_text() -> str:
     )
 
 
-class ElidedLabel(QLabel):
-    """One line of text cut short with "…" where it does not fit; the whole
-    text is its tooltip. It never sets its window's minimum width."""
+class WideExtension(QProxyStyle):
+    """A toolbar's » button (its folded items) wide enough to show its arrow
+    with the theme's button padding (Qt's default is 12 px)."""
 
-    def __init__(self) -> None:
-        super().__init__("")
-        self._full = ""
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-
-    def set_full(self, text: str) -> None:
-        self._full = text
-        self.setToolTip(text)
-        self._elide()
-
-    def full_text(self) -> str:
-        return self._full
-
-    def resizeEvent(self, event: QResizeEvent) -> None:
-        super().resizeEvent(event)
-        self._elide()
-
-    def _elide(self) -> None:
-        width = max(0, self.contentsRect().width())
-        shown = self.fontMetrics().elidedText(
-            self._full, Qt.TextElideMode.ElideRight, width
-        )
-        if shown != self.text():
-            self.setText(shown)
+    def pixelMetric(
+        self, metric: QStyle.PixelMetric, option: Any = None, widget: Any = None
+    ) -> int:
+        if metric == QStyle.PixelMetric.PM_ToolBarExtensionExtent:
+            return 26
+        return super().pixelMetric(metric, option, widget)
 
 
 class MainWindow(QMainWindow):
@@ -367,10 +350,22 @@ class MainWindow(QMainWindow):
         self.qc_btn.setVisible(False)
         lay.addWidget(self.qc_btn)
         lay.addSpacing(4)
+        # files, undo and the mode: what does not fit (a laptop, Windows' wider
+        # text) folds into the » button at the toolbar's end; Start and Stop,
+        # the run's state, Log and the settings always show
+        self.tools = QToolBar()
+        self._tools_style = WideExtension()  # its » wide enough for the arrow
+        self.tools.setStyle(self._tools_style)
+        self.tools.setMovable(False)
+        self.tools.setFloatable(False)
+        self.tools.setStyleSheet(
+            "QToolBar { border: none; background: transparent; spacing: 6px; "
+            "padding: 0; }"
+        )
         new = QPushButton("New…")
         new.setToolTip("A pipeline from a template (Ctrl+N)")
         new.clicked.connect(lambda _=False: self.new_from_template())
-        lay.addWidget(new)
+        self.tools.addWidget(new)
         # Open lists the recent files on its arrow; Save the session commands
         # (they fold into the arrow so the bar fits a laptop screen)
         tool = QToolButton()
@@ -381,7 +376,7 @@ class MainWindow(QMainWindow):
         tool.clicked.connect(lambda _=False: self.open_pipeline())
         tool.setToolTip("Open a pipeline or session (Ctrl+O); the arrow lists "
                         "recent files")  # fmt: skip
-        lay.addWidget(tool)
+        self.tools.addWidget(tool)
         self.save_btn = QToolButton()
         self.save_btn.setText("Save…")
         self.save_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
@@ -393,8 +388,8 @@ class MainWindow(QMainWindow):
         save_menu.addAction("Save session…", lambda: self.save_session())
         save_menu.addAction("Share session…", self.share_session)
         self.save_btn.setMenu(save_menu)
-        lay.addWidget(self.save_btn)
-        lay.addSpacing(4)
+        self.tools.addWidget(self.save_btn)
+        self.tools.addSeparator()
         self.undo_btn = QPushButton("↶")
         self.undo_btn.setToolTip("Undo the last change to the chain or a setting "
                                  "(Ctrl+Z)")  # fmt: skip
@@ -405,8 +400,8 @@ class MainWindow(QMainWindow):
         self.redo_btn.clicked.connect(lambda _=False: self.redo())
         for b in (self.undo_btn, self.redo_btn):
             b.setEnabled(False)
-            lay.addWidget(b)
-        lay.addSpacing(6)
+            self.tools.addWidget(b)
+        self.tools.addSeparator()
         self.mode_group = QButtonGroup(self)
         for i, text in enumerate(("Friendly", "Advanced")):
             b = QPushButton(text)
@@ -414,16 +409,13 @@ class MainWindow(QMainWindow):
             b.setChecked(i == 0)
             b.clicked.connect(lambda _=False, adv=bool(i): self.set_advanced(adv))
             self.mode_group.addButton(b)
-            lay.addWidget(b)
+            self.tools.addWidget(b)
+        lay.addWidget(self.tools)
         # the state first (running, stopped, offline: …), then load, delay,
         # late blocks, skipped frames: one line, cut short at its end with "…"
         # on a narrow window (never widening it), whole in its tooltip
-        self.status_line = ElidedLabel()
+        self.status_line = ElidedLabel(keep="● running")  # the state: never cut
         self.status_line.setObjectName("meter")
-        self.status_line.ensurePolished()  # the state itself is never cut
-        self.status_line.setMinimumWidth(
-            self.status_line.fontMetrics().horizontalAdvance("● running") + 16
-        )
         lay.addWidget(self.status_line, 1)
         self.log_btn = QPushButton("Log")
         self.log_btn.setCheckable(True)
@@ -1813,7 +1805,7 @@ class MainWindow(QMainWindow):
                      if rec.get("current") and self.offline_state == "running"
                      else "")  # fmt: skip
             state = "stopping…" if self.offline_stopping else self.offline_state
-            self.status_line.set_full(f"offline: {state or 'ready'}{where}")
+            self.status_line.setText(f"offline: {state or 'ready'}{where}")
             return
         running = status.get("running")
         parts = ["● running" if running else "○ stopped"]
@@ -1836,7 +1828,7 @@ class MainWindow(QMainWindow):
             shown = sum(b.dropped for b in self.buffers.values())
             shown += sum(b.dropped for b in self.feature_buffers.values())
             parts.append(f"display frames skipped {shown}")
-        self.status_line.set_full(" · ".join(parts))
+        self.status_line.setText(" · ".join(parts))
 
     def on_frame(self, frame: DisplayFrame | FeatureFrame) -> None:
         if isinstance(frame, FeatureFrame) and "condition" in frame.dims:

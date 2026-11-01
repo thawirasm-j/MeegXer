@@ -29,13 +29,14 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QObject, QPointF
+from PySide6.QtCore import QEvent, QObject, QPointF, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from meegxer.core.block import unit_at
 from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import ChannelStyle, channel_styles_with
+from meegxer.gui.elided import ElidedLabel
 from meegxer.gui.headplot import HeadPlot, render_links
 from meegxer.gui.signal_view import HeadChannelMenu, Panner, TracePlot, _pen
 from meegxer.gui.theme import Theme
@@ -193,9 +194,12 @@ class FeatureView(QWidget):
         self.span.setCurrentIndex(SPANS.index(60))
         bar.addWidget(self.span)
         bar.addStretch(1)
-        self.legend = QLabel("")
+        self.legend = ElidedLabel()  # never sets the window's width
         self.legend.setObjectName("muted")
-        bar.addWidget(self.legend)
+        self.legend.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        bar.addWidget(self.legend, 1)
         lay.addLayout(bar)
         row = QHBoxLayout()
         self.head = HeadPlot(theme)  # connectivity map, beside the plot

@@ -52,6 +52,7 @@ from meegxer.gui.colors import (
     class_label,
     class_style,
 )
+from meegxer.gui.elided import ElidedLabel
 from meegxer.gui.headplot import (
     BANDS,
     DEFAULT_RANGE,
@@ -591,9 +592,12 @@ class SignalView(QWidget):
         self.span.setCurrentIndex(2)
         bar.addWidget(self.span)
         bar.addStretch(1)
-        self.legend = QLabel("")
+        self.legend = ElidedLabel()  # never sets the window's width
         self.legend.setObjectName("muted")
-        bar.addWidget(self.legend)
+        self.legend.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        bar.addWidget(self.legend, 1)
         stacked = QPushButton("⧉ Stacked view")
         stacked.setToolTip("Stacked traces in a separate window")
         stacked.clicked.connect(self.stacked_requested)
