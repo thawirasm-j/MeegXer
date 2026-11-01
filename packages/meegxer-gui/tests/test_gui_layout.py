@@ -43,7 +43,7 @@ def test_the_window_fits_a_laptop_screen(
         assert line.toolTip() == full
         shown = line.text()
         assert shown == full or shown.endswith("…")  # cut at its end
-        assert shown.startswith("● running") or shown == ""
+        assert shown.startswith("● running")  # the state itself whole
         win.resize(1600, 900)
         pump(qapp, 0.5)
         assert line.text() == full

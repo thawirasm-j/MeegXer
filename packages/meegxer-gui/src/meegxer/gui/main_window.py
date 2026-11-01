@@ -347,9 +347,8 @@ class MainWindow(QMainWindow):
         bar.setObjectName("panel")
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(10, 6, 10, 6)
-        brand = QLabel("<b>MeegXer</b>")
-        lay.addWidget(brand)
-        lay.addSpacing(6)
+        # (the name is the window's title: the bar keeps its room for the
+        # buttons and the run's state on a laptop screen)
         self.start_btn = QPushButton("▶  Start")
         self.start_btn.setObjectName("primary")
         self.start_btn.clicked.connect(self.start)
@@ -421,6 +420,10 @@ class MainWindow(QMainWindow):
         # on a narrow window (never widening it), whole in its tooltip
         self.status_line = ElidedLabel()
         self.status_line.setObjectName("meter")
+        self.status_line.ensurePolished()  # the state itself is never cut
+        self.status_line.setMinimumWidth(
+            self.status_line.fontMetrics().horizontalAdvance("● running") + 16
+        )
         lay.addWidget(self.status_line, 1)
         self.log_btn = QPushButton("Log")
         self.log_btn.setCheckable(True)

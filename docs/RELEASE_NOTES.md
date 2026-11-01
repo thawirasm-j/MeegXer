@@ -16,7 +16,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   - The run's state and details are one line, the state first (● running
     · processing load … · delay … · late blocks … · display frames
     skipped …). Where there is no room it ends in "…"; its tooltip gives
-    it whole. It no longer widens the window.
+    it whole; the state itself is never cut. It no longer widens the
+    window.
+  - The name "MeegXer" left the top bar (it is the window's title), to
+    make room for the run's state on a laptop screen.
   - The signal view keeps at least 200 pixels and takes most of any extra
     height. The settings take two thirds of the bottom row, the log one
     third.

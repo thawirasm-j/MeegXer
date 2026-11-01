@@ -785,7 +785,7 @@ chain.
 
 Already run by Claude, offscreen through the real window, at 1024 × 700,
 1280 × 720, 1366 × 768 and 1920 × 1080, running live. The window took each
-size (its minimum width is 931 pixels); the signal view had 245, 258, 291
+size (its minimum width is 932 pixels); the signal view had 245, 258, 291
 and 504 pixels; the status line started with "● running" and ended in "…"
 where it did not fit.
 
