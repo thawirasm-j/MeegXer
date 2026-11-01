@@ -142,6 +142,8 @@ class PipelineDoc:
         # the rails the input starts (describe_source "carries": a .set's ICs)
         self.input_rails: tuple[str, ...] = ()
         self.input_events = 0  # events the input carries (from its description)
+        # their labels, in order of first appearance (the class pickers' lists)
+        self.event_labels: list[str] = []
         # a BIDS input's dataset: its recordings (list_bids) and why there are
         # none; None until its folder has been listed
         self.bids_listing: dict[str, Any] | None = None

@@ -812,6 +812,13 @@ class MainWindow(QMainWindow):
         chain's Events rail with them (live playback carries them too)."""
         events = len(info["events"]) if info else 0
         carries = tuple(info.get("carries", ())) if info else ()
+        labels = list(dict.fromkeys(
+            e["label"] for e in (info["events"] if info else ())
+            if e["label"] != "boundary"
+        ))  # fmt: skip
+        if labels != self.doc.event_labels:
+            self.doc.event_labels = labels
+            self.refresh_chain()
         if (events, carries) != (self.doc.input_events, self.doc.input_rails):
             self.doc.input_events, self.doc.input_rails = events, carries
             self.refresh_chain()
@@ -1929,7 +1936,24 @@ class MainWindow(QMainWindow):
             series, t0, t1 = self._live_features(probe, seconds)
         else:
             series, t0, t1 = self._offline_features(probe, seconds)
+        view.truth = self._true_classes(self.view_tap)
         view.refresh(series, name, t0, t1)
+
+    def _true_classes(self, strip_id: str) -> list[tuple[float, float, str]]:
+        """A classifier's trials (CSP, LDA: its classes, from Trial start to
+        Trial end after each cue), from the input's events, offline: the
+        ground truth its view shows behind the lines."""
+        try:
+            strip = self.doc.get(strip_id.partition(":")[0])
+        except KeyError:
+            return []
+        params = strip.params
+        if "classes" not in params or self.doc.mode != "offline":
+            return []
+        classes = {c.strip() for c in str(params["classes"]).split(",") if c.strip()}
+        lo, hi = float(params.get("tmin", 0.0)), float(params.get("tmax", 0.0))
+        return [(float(e["onset"]) + lo, float(e["onset"]) + hi, str(e["label"]))
+                for e in self.view.events if e["label"] in classes]  # fmt: skip
 
     def _draw_erp(self) -> None:
         """The tapped epochs rail's running ERP: live from the display stream

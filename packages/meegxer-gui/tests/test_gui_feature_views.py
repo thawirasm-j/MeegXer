@@ -600,3 +600,21 @@ def test_an_eeglab_files_ics_from_the_input(
         assert win.view.mixing is not None and win.view.mixing[0] == tuple(labels)
     finally:
         win.close()
+
+
+def test_a_classifier_view_shows_the_true_classes(qapp: QApplication) -> None:
+    """LDA's probabilities over time, with each trial's true class as a band
+    behind them, in its class's colour."""
+    view = FeatureView(load_theme("dark"))
+    t = np.arange(1.0, 20.0, 1.0)
+    probs = np.stack([np.full(t.size, 0.3), np.full(t.size, 0.7)], axis=1)
+    series = FeatureSeries("tap_lda1", ("class",), {"class": ("left", "right")}, t,
+                           probs, unit="1")  # fmt: skip
+    view.truth = [(1.5, 4.0, "left"), (7.5, 10.0, "right"), (40.0, 42.0, "left")]
+    view.refresh(series, "LDA", 0.0, 20.0)
+    assert len(view._truth_items) == 2  # the one past the span is not drawn
+    assert "bands: true class (left, right)" in view.legend.text()
+    assert view._truth_items[0].getRegion() == (1.5, 4.0)
+    view.truth = []
+    view.refresh(series, "LDA", 0.0, 20.0)
+    assert view._truth_items == [] and "bands" not in view.legend.text()

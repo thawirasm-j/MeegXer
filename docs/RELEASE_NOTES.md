@@ -7,6 +7,16 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Classes picked from the events.** CSP's and LDA's *Classes* and the
+  Epochs strip's *Around events* are picked from the input's event labels
+  (a list of check boxes); Advanced mode can also type labels the input does
+  not have yet (live markers). A label the input lacks is marked "(not in the
+  input)".
+- **True classes on a classifier's view.** Offline, the CSP and LDA views
+  draw each trial (from *Trial start* to *Trial end* after its cue) as a band
+  behind the lines, in its class's colour: where LDA's probability follows
+  the truth is plain to see.
+
 - **BIDS input: pick from the dataset.** The *BIDS recording* input asks for
   the dataset's folder first. *Subject*, *Session*, *Task* and *Run* then
   list what the folder holds, each narrowed to the recordings that match the
