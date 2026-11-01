@@ -49,7 +49,7 @@ def test_the_window_fits_a_laptop_screen(
         assert shown.startswith("● running")  # the state itself whole
         win.resize(1600, 900)
         pump(qapp, 0.5)
-        assert line.shown() == full
+        assert line.shown() == line.text()  # whole (the load may have moved)
         win.resize(1024, 700)
         pump(qapp, 0.5)
         assert win.views.height() >= 200  # the view keeps its height
