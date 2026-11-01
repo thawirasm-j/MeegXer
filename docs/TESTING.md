@@ -616,7 +616,7 @@ nothing but the repository. Step 3 plays the recording in real time (about
 | L1 CLI run, events in the .set | passed | run by Claude; 583 `pred_left`, 374 `pred_right`; every in-trial window matched its cue (training data) |
 | L2 GUI offline: chain, *Reads*, the LDA tap | passed | run by Claude offscreen |
 | L3 live: CSP then LDA calibrated, events in the live .set | passed | run by Claude through the daemon and the CLI; both ready, p95 latency 3.6 ms; events in the live .set after the fix |
-| L4 real data | passed | |
+| L4 real data | passed | by the maintainer (EEGBCI, T1/T2) |
 
 ## M. Keyboard sink (M11.4)
 
@@ -712,3 +712,24 @@ subject*, 01 and 02, and *Task* lists *Any task* and rest. Subject 01 with
 | P2 lists narrowed by the other picks | passed | run by Claude offscreen (and test) |
 | P3 typing in Advanced mode | passed | run by Claude offscreen |
 | P4 on your datasets (sessions, several tasks) | | |
+
+## Q. Classes from the events; true classes on the view
+
+Already run by Claude, offscreen through the real window, on
+`tools/lda_demo.py`'s pipeline. LDA's *Classes* listed the recording's labels
+(left, right). After *Run offline*, LDA's view drew 10 true-class bands in the
+first 60 s, in the colours of the two probability lines.
+
+1. *Open…* your L4 pipeline (EEGBCI, `s01_mi.set`). Select *CSP*: *Classes*
+   is a list of the recording's labels (T0, T1, T2) to tick. Untick T0 if
+   ticked, tick T1 and T2. Do the same on *LDA*.
+2. *Advanced*: the same list, plus a text box where any label can be typed.
+3. *Run offline*, tap LDA: each T1 and T2 trial is a band behind the lines,
+   in the colour of its class's probability line. Tap CSP: the same bands.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| Q1 classes picked from the events | passed | run by Claude offscreen (and test) |
+| Q2 typing in Advanced mode | passed | test |
+| Q3 true-class bands on LDA's and CSP's views | passed | run by Claude offscreen (screenshot) |
+| Q4 on the EEGBCI data | | |

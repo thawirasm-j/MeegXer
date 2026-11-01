@@ -203,6 +203,10 @@ class FeatureView(QWidget):
         self.head.clicked.connect(self._seed_clicked)
         row.addWidget(self.head, 0)
         self.plot = TracePlot(theme)
+        # the true classes over time (a classifier's trials: start, stop in
+        # seconds, label), drawn as bands behind the lines; set by the window
+        self.truth: list[tuple[float, float, str]] = []
+        self._truth_items: list[pg.LinearRegionItem] = []
         row.addWidget(self.plot, 1)
         lay.addLayout(row, 1)
         self.maps = Maps()  # colour maps (Settings → Visualization)
@@ -377,6 +381,36 @@ class FeatureView(QWidget):
             out.append(ChannelStyle((c.red(), c.green(), c.blue())))
         return out
 
+    def _draw_truth(
+        self, labels: tuple[str, ...], styles: list[ChannelStyle], t0: float, t1: float
+    ) -> str:
+        """The true classes as bands behind the lines (a classifier's view): a
+        class drawn as a line (LDA's probabilities) has its line's colour.
+        Returns the legend's note."""
+        plot = self.plot.getPlotItem()
+        for item in self._truth_items:
+            plot.removeItem(item)
+        self._truth_items = []
+        shown = [(a, b, lb) for a, b, lb in self.truth if b >= t0 and a <= t1]
+        classes = list(dict.fromkeys(lb for _, _, lb in self.truth))
+        if not classes:
+            return ""
+        colours: dict[str, tuple[int, int, int]] = {}
+        for i, cls in enumerate(classes):
+            if cls in labels:
+                colours[cls] = styles[labels.index(cls)].color
+            else:
+                c = pg.intColor(i, hues=max(2, len(classes)))
+                colours[cls] = (c.red(), c.green(), c.blue())
+        for a, b, cls in shown[:500]:
+            band = pg.LinearRegionItem((a, b), movable=False,
+                                       brush=pg.mkBrush(*colours[cls], 40),
+                                       pen=pg.mkPen(None))  # fmt: skip
+            band.setZValue(-10)
+            plot.addItem(band)
+            self._truth_items.append(band)
+        return " · bands: true class (" + ", ".join(classes) + ")"
+
     def clear(self, message: str) -> None:
         self.head.setVisible(False)
         self._lines = []
@@ -436,7 +470,8 @@ class FeatureView(QWidget):
             self._value_unit = hover_unit(series, chosen)
             plot.setLabel("left", value_label(series, chosen))
             plot.setLabel("bottom", "time", units="s")
-            self.legend.setText(f"{name}: over time ({count})")
+            note = self._draw_truth(labels, styles, t0, t1)
+            self.legend.setText(f"{name}: over time ({count}){note}")
             self.plot.draw(layers)
             self.plot.set_time(t0, t1)
         if links:

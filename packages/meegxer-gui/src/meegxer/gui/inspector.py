@@ -26,8 +26,10 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QToolButton,
     QVBoxLayout,
@@ -81,6 +83,98 @@ class _Number(QDoubleSpinBox):
         text = f"{value:.{self.decimals()}f}"
         # only decimals lose their trailing zeros: 200 ms stays 200, not 2
         return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+# settings that are event labels, comma-separated (picked from the input's
+# events), and what an empty one means
+LABEL_PARAMS: dict[tuple[str, str], str] = {
+    ("meegxer.nodes.csp", "classes"): "Choose the classes",
+    ("meegxer.nodes.lda", "classes"): "Choose the classes",
+    ("meegxer.nodes.epochs", "events"): "Every event",
+}
+
+
+def split_labels(text: str) -> list[str]:
+    return [t.strip() for t in str(text).split(",") if t.strip()]
+
+
+class LabelPicker(QWidget):
+    """Event labels, comma-separated, picked from the labels the input's events
+    have (a menu of check boxes). In Advanced mode (``editable``) the text can
+    be typed too, for labels the input does not have yet (live markers, a
+    strip's events). ``finished`` reports a final value."""
+
+    finished = Signal()
+
+    def __init__(
+        self, value: str, labels: list[str], editable: bool, empty: str
+    ) -> None:
+        super().__init__()
+        self.labels, self.empty = list(labels), empty
+        self.chosen = split_labels(value)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        self.line: QLineEdit | None = None
+        self.button = QToolButton()
+        self.button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.menu = QMenu(self.button)
+        self.button.setMenu(self.menu)
+        if editable:
+            self.line = QLineEdit(", ".join(self.chosen))
+            self.line.setPlaceholderText(empty)
+            self.line.editingFinished.connect(self._typed)
+            lay.addWidget(self.line, 1)
+            self.button.setText("▾")
+        else:
+            self.button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            grow = QSizePolicy.Policy
+            self.button.setSizePolicy(grow.Expanding, grow.Fixed)
+        lay.addWidget(self.button, 0 if editable else 1)
+        self.button.setEnabled(bool(labels))
+        self.button.setToolTip(
+            "Pick from the input's event labels" if labels
+            else "The input has no events yet"
+            + ("" if editable else " (Advanced mode: type the labels)")
+        )  # fmt: skip
+        self._fill_menu()
+        self._show()
+
+    def _fill_menu(self) -> None:
+        self.menu.clear()
+        for label in [*self.labels, *(c for c in self.chosen if c not in self.labels)]:
+            action = self.menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(label in self.chosen)
+            action.toggled.connect(lambda on, lb=label: self._toggle(lb, on))
+
+    def _toggle(self, label: str, on: bool) -> None:
+        if on and label not in self.chosen:
+            self.chosen.append(label)
+        elif not on and label in self.chosen:
+            self.chosen.remove(label)
+        order = {lb: i for i, lb in enumerate(self.labels)}  # the input's order
+        self.chosen.sort(key=lambda lb: order.get(lb, len(order)))
+        self._show()
+        self.finished.emit()
+
+    def _typed(self) -> None:
+        assert self.line is not None
+        self.chosen = split_labels(self.line.text())
+        self._fill_menu()
+        self.finished.emit()
+
+    def _show(self) -> None:
+        text = ", ".join(self.chosen)
+        if self.line is not None:
+            self.line.setText(text)
+        else:
+            missing = [c for c in self.chosen if self.labels and c not in self.labels]
+            shown = text or self.empty
+            self.button.setText(shown + (" (not in the input)" if missing else ""))
+
+    def text(self) -> str:
+        return ", ".join(self.chosen)
 
 
 class PathEdit(QWidget):
@@ -298,7 +392,7 @@ def _value(widget: QWidget) -> Any:
         return widget.itemData(index) if index >= 0 else text
     if isinstance(widget, QComboBox):
         return widget.currentData()
-    if isinstance(widget, QLineEdit | PathEdit):
+    if isinstance(widget, QLineEdit | PathEdit | LabelPicker):
         return widget.text()
     if isinstance(widget, QSpinBox | QDoubleSpinBox):
         scale = widget.property("scale")  # shown in ms, kept in seconds
@@ -522,7 +616,12 @@ class Inspector(QScrollArea):
             value = strip.params.get(name, spec["default"])
             signals: list[Any]
             editor: QWidget
-            if strip.node == BIDS_SOURCE and name in BIDS_ENTITIES and self._doc:
+            if key in LABEL_PARAMS and self._doc is not None:
+                labels, empty = self._doc.event_labels, LABEL_PARAMS[key]
+                free = self._advanced_mode  # Advanced: labels may be typed too
+                picker = LabelPicker(str(value or ""), labels, free, empty)
+                editor, signals = picker, [picker.finished]
+            elif strip.node == BIDS_SOURCE and name in BIDS_ENTITIES and self._doc:
                 listing = self._doc.bids_listing or {}
                 combo = bids_combo(name, str(value or ""),
                                    self._doc.bids_choices(strip, name),

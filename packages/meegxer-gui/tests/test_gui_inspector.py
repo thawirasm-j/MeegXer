@@ -376,3 +376,45 @@ def test_a_bids_input_picks_from_its_dataset(
     doc.bids_listing = None  # the folder not listed yet: nothing to pick
     assert not combos(False)["subject"].isEnabled()
     dispose(qapp, ins)
+
+
+def test_classes_are_picked_from_the_input_events(
+    qapp: QApplication, doc: PipelineDoc
+) -> None:
+    """CSP's and LDA's classes (and the Epochs strip's events) are picked from
+    the input's event labels; typed only in Advanced mode."""
+    from meegxer.gui.inspector import LabelPicker
+
+    lda = doc.insert(len(doc.strips), "meegxer.nodes.lda")
+    lda.params["classes"] = ""
+    doc.event_labels = ["T0", "T1", "T2"]
+    ins = Inspector()
+    asked: list[Any] = []
+    ins.param_changed.connect(lambda *a: asked.append(a))
+
+    def picker(advanced: bool) -> LabelPicker:
+        ins.show_strip(doc, lda, advanced=advanced, running=False, node_status={})
+        qapp.processEvents()
+        page = ins.widget()
+        assert page is not None
+        return page.findChildren(LabelPicker)[0]
+
+    friendly = picker(False)
+    assert friendly.line is None and friendly.button.text() == "Choose the classes"
+    actions = friendly.menu.actions()
+    assert [a.text() for a in actions] == ["T0", "T1", "T2"]
+    actions[2].setChecked(True)
+    actions[1].setChecked(True)
+    assert asked[-1] == (lda.id, "classes", "T1, T2")  # in the input's order
+    lda.params["classes"] = "T1, T2"
+    typed = picker(True)
+    assert typed.line is not None and typed.line.text() == "T1, T2"
+    typed.line.setText("T1, T2, rest")
+    typed.line.editingFinished.emit()
+    assert asked[-1] == (lda.id, "classes", "T1, T2, rest")
+    lda.params["classes"] = "T1, T2, rest"
+    assert "(not in the input)" in picker(False).button.text()
+    doc.event_labels = []  # no events known: Friendly mode cannot pick
+    assert not picker(False).button.isEnabled()
+    assert picker(True).line is not None  # Advanced mode can type
+    dispose(qapp, ins)
