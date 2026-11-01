@@ -138,3 +138,36 @@ def test_a_dataset_run_stops_when_asked(tmp_path: Path, jobs: int) -> None:
     assert 1 <= len(outcomes) < 5 and [o.label for o in outcomes] == sorted(finished)
     if jobs == 1:
         assert len(outcomes) == 1
+
+
+def test_a_dataset_lists_what_a_bids_input_can_read(tmp_path: Path) -> None:
+    """list_bids: the BIDS input's choices (subject, session, task, run)."""
+    from meegxer.core.bids_out import bids_recordings
+
+    root = make_dataset(tmp_path / "ds", ("01", "02"))
+    info = mne.create_info(["Fz"], 250.0, "eeg")
+    path = mne_bids.BIDSPath(root=root, subject="02", session="b", task="oddball",
+                             run="1", datatype="eeg")  # fmt: skip
+    raw = mne.io.RawArray(np.zeros((1, 500)), info, verbose="error")
+    mne_bids.write_raw_bids(raw, path, format="EDF", allow_preload=True,
+                            verbose="error")  # fmt: skip
+    listed = bids_recordings(root)
+    assert listed["note"] == ""
+    assert listed["recordings"] == [
+        {"subject": "01", "session": "", "task": "rest", "run": ""},
+        {"subject": "02", "session": "b", "task": "oddball", "run": "1"},
+        {"subject": "02", "session": "", "task": "rest", "run": ""},
+    ]  # by file name
+    assert bids_recordings(tmp_path / "nowhere")["recordings"] == []
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert bids_recordings(empty)["note"] == "No EEG recordings in this folder"
+
+
+def test_any_task_reads_the_only_one(tmp_path: Path) -> None:
+    """An empty task (any) reads the subject's only recording."""
+    from meegxer.core.sources import BidsSource
+
+    root = make_dataset(tmp_path / "ds", ("01",))
+    source = BidsSource({"root": str(root), "subject": "01"})
+    assert source.info.ch_labels == ("Fz", "Cz", "Pz")

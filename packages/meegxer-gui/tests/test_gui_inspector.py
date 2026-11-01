@@ -2,7 +2,14 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QToolButton, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QFormLayout,
+    QLabel,
+    QToolButton,
+    QWidget,
+)
 
 from meegxer.core.control import manifest_to_dict
 from meegxer.core.registry import Registry
@@ -303,4 +310,69 @@ def test_the_keyboard_is_armed_by_hand(qapp: QApplication, doc: PipelineDoc) -> 
                for lb in ins.findChildren(QLabel))  # fmt: skip
     disarm.click()
     assert asked[-1] == (strip.id, False)
+    dispose(qapp, ins)
+
+
+def test_a_bids_input_picks_from_its_dataset(
+    qapp: QApplication, doc: PipelineDoc
+) -> None:
+    """The folder first; then subject, session, task and run from the dataset
+    (list_bids), each narrowed by the others. Friendly mode picks only from
+    the list; advanced mode may type anything."""
+    from meegxer.gui.inspector import BIDS_ANY
+
+    strip = doc.set_source("meegxer.core.bids", {"root": "/data/ds"})
+    doc.bids_listing = {"root": "/data/ds", "note": "", "recordings": [
+        {"subject": "01", "session": "", "task": "rest", "run": ""},
+        {"subject": "02", "session": "b", "task": "oddball", "run": "1"},
+        {"subject": "02", "session": "", "task": "rest", "run": ""},
+    ]}  # fmt: skip
+    ins = Inspector()
+    asked: list[Any] = []
+    ins.param_changed.connect(lambda *a: asked.append(a))
+
+    def combos(advanced: bool) -> dict[str, QComboBox]:
+        ins.show_strip(doc, strip, advanced=advanced, running=False, node_status={})
+        qapp.processEvents()
+        page = ins.widget()  # the page on show (old ones linger until deleted)
+        assert page is not None
+        boxes = [b for b in page.findChildren(QComboBox)
+                 if b.itemText(0) in BIDS_ANY.values()]  # fmt: skip
+        return {k: b for k, b in zip(("subject", "session", "task", "run"), boxes,
+                                     strict=True)}  # fmt: skip
+
+    friendly = combos(False)
+    page = ins.widget()
+    assert page is not None
+    form = next(f for f in page.findChildren(QFormLayout) if f.rowCount() > 3)
+    rows = []
+    for i in range(form.rowCount()):
+        item = form.itemAt(i, QFormLayout.ItemRole.LabelRole)
+        label = item.widget() if item is not None else None
+        rows.append(label.text() if isinstance(label, QLabel) else "")
+    assert rows[:5] == ["Dataset folder", "Subject", "Session", "Task", "Run"]
+    items = {k: [b.itemText(i) for i in range(b.count())] for k, b in friendly.items()}
+    assert items["subject"] == ["Every subject", "01", "02"]
+    assert items["task"] == ["Any task", "oddball", "rest"]
+    assert not any(b.isEditable() for b in friendly.values())
+    friendly["subject"].setCurrentIndex(1)  # a pick, as a click makes it
+    friendly["subject"].activated.emit(1)
+    assert asked[-1] == (strip.id, "subject", "01")
+    strip.params["subject"] = "01"  # the window applies it, then redraws
+    narrowed = combos(False)
+    assert [narrowed["task"].itemText(i) for i in range(narrowed["task"].count())] \
+        == ["Any task", "rest"]  # subject 01 has no oddball  # fmt: skip
+    assert not narrowed["session"].isEnabled()  # subject 01 has no sessions
+    typed = combos(True)["task"]
+    assert typed.isEditable()
+    line = typed.lineEdit()
+    assert line is not None
+    line.setText("memory")
+    line.editingFinished.emit()
+    assert asked[-1] == (strip.id, "task", "memory")
+    strip.params["task"] = "memory"
+    shown = combos(False)["task"]
+    assert shown.currentText() == "memory (not in the dataset)"
+    doc.bids_listing = None  # the folder not listed yet: nothing to pick
+    assert not combos(False)["subject"].isEnabled()
     dispose(qapp, ins)

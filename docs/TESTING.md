@@ -688,3 +688,27 @@ system calls faked, so they need a real machine:
 | O1 Linux menu entry starts MeegXer | passed | run by Claude |
 | O2 Windows Start menu and desktop, no console | | |
 | O3 remove | passed (Linux) | Windows to check |
+
+## P. BIDS input picks from the dataset
+
+Already run by Claude, offscreen through the real window, on the dataset of
+`tools/review_demo.py` (2 subjects, task `rest`). Before a folder is chosen,
+the four choices are greyed out. With the folder, *Subject* lists *Every
+subject*, 01 and 02, and *Task* lists *Any task* and rest. Subject 01 with
+*Any task* reads that recording. Advanced mode lets you type values.
+
+1. *Input* → *BIDS recording*. In its settings, *Dataset folder* comes first.
+   Pick a BIDS dataset of yours, e.g. one with sessions or several tasks.
+2. *Subject*, *Session*, *Task*, *Run* list what the dataset has. Picking a
+   subject narrows the others to that subject's recordings.
+3. *Advanced*: the same lists, and you can type a value; a value not in the
+   dataset shows as "(not in the dataset)" in Friendly mode.
+4. *Run offline* with one subject picked and *Any task* (a one-task
+   dataset): it reads that recording.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| P1 folder first; greyed until chosen | passed | run by Claude offscreen |
+| P2 lists narrowed by the other picks | passed | run by Claude offscreen (and test) |
+| P3 typing in Advanced mode | passed | run by Claude offscreen |
+| P4 on your datasets (sessions, several tasks) | | |

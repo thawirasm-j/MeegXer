@@ -89,7 +89,12 @@ from meegxer.gui.history import (
 from meegxer.gui.inspector import Inspector
 from meegxer.gui.labels import param_label
 from meegxer.gui.names import title
-from meegxer.gui.pipeline_doc import LIVE_ONLY_SOURCES, PipelineDoc, tap_id
+from meegxer.gui.pipeline_doc import (
+    BIDS_SOURCE,
+    LIVE_ONLY_SOURCES,
+    PipelineDoc,
+    tap_id,
+)
 from meegxer.gui.recording_window import RecordingWindow
 from meegxer.gui.review_window import ReviewWindow
 from meegxer.gui.settings_dialog import SettingsDialog
@@ -824,9 +829,26 @@ class MainWindow(QMainWindow):
         self.feature_view.wheel = self.view.wheel
         self.view.events = list(info["events"]) if self.doc.mode == "offline" else []
 
+    def _list_bids(self) -> None:
+        """A BIDS input's dataset, listed once per folder: its subjects,
+        sessions, tasks and runs become the input's choices."""
+        src = self.doc.source
+        if src is None or src.node != BIDS_SOURCE:
+            self.doc.bids_listing = None
+            return
+        root = str(src.params.get("root") or "")
+        if self.doc.bids_listing is not None and self.doc.bids_listing["root"] == root:
+            return
+        listing = self.call("list_bids", root=root) if root else None
+        none = {"root": root, "recordings": [], "note": "Choose the dataset's folder"}
+        self.doc.bids_listing = listing or none
+        if root and listing and listing.get("note"):
+            self.log(f"Input: {listing['note']}")
+
     def _describe_input(self) -> dict[str, Any] | None:
         """Read the input's description before a run (not for LSL, whose stream
         the run itself opens; the daemon checks it then)."""
+        self._list_bids()
         src = self.doc.source
         if src is None or src.node in LIVE_ONLY_SOURCES:
             self.use_recording_info(None)

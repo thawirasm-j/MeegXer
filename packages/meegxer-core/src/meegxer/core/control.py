@@ -178,6 +178,7 @@ class Daemon:
             "arm": self.arm,
             "set_strip_params": self.set_strip_params,
             "describe_source": self.describe_source,
+            "list_bids": self.list_bids,
             "import_review_open": self.import_review_open,
             "save_import_review": self.save_import_review,
             "list_montages": self.list_montages,
@@ -475,6 +476,15 @@ class Daemon:
             [(float(a), float(b)) for a, b in viewed or ()], str(reviewer),
         )  # fmt: skip
         return {"file": str(path)}
+
+    def list_bids(self, root: str) -> dict[str, Any]:
+        """The EEG recordings of a BIDS dataset folder, each as its
+        ``subject``, ``session``, ``task`` and ``run`` (empty where the dataset
+        does not use one), for the BIDS input's choices. ``note`` says why
+        there are none."""
+        from meegxer.core.bids_out import bids_recordings
+
+        return bids_recordings(root)
 
     def describe_source(self, node: dict[str, Any]) -> dict[str, Any]:
         """Describe the recording a source entry (with its ``recording``

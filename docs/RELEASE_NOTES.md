@@ -7,6 +7,15 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **BIDS input: pick from the dataset.** The *BIDS recording* input asks for
+  the dataset's folder first. *Subject*, *Session*, *Task* and *Run* then
+  list what the folder holds, each narrowed to the recordings that match the
+  others (*Every subject*, *Any task*, …). Friendly mode picks only from the
+  list; Advanced mode can type any value too. An empty session, task or run
+  reads the one recording that matches, so a dataset with one task needs no
+  task named. *Datatype* moved to the advanced settings. Control API 0.2.25:
+  `list_bids`.
+
 - **LDA classifier (M11.3).** A new *Linear discriminant analysis (LDA)*
   strip (Decoding & BCI) classifies the windows of a feature strip: it reads
   the nearest one (CSP, band power, …) or the one chosen under *Reads*. It
