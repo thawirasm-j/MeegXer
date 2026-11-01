@@ -224,3 +224,40 @@ def test_offline_taps_at_another_rate_show_the_same_time(
         assert asked == {"tap_in": 4000, "tap_rs": 1000}  # both 4 s in
     finally:
         win.close()
+
+
+def test_a_chosen_recording_is_shown_at_once(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]], recording: Path
+) -> None:
+    """Offline, choosing the file shows its signal and events before any run:
+    the input is read and drawn on its tap; Run offline runs the chain."""
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        win.change_param("input", "path", str(recording))
+        deadline = time.monotonic() + 30
+        while win.offline_state != "done":
+            assert time.monotonic() < deadline, "the preview did not finish"
+            pump(qapp, 0.1)
+        assert list(win.offline_probes) == ["tap_input"]
+        assert win.taps["input"] == "main"
+        main, _ = win._shown()
+        assert main is not None
+        shown = win._offline_window(main, 10.0)
+        assert shown is not None and shown.t[0] == pytest.approx(0.0, abs=0.01)
+        assert [e["label"] for e in win.view.events] == ["go", "stop", "go"]
+        assert "The recording, as read" in win.logbox.toPlainText()
+        win.start()  # the chain now runs as usual
+        pump(qapp, 0.3)
+        deadline = time.monotonic() + 30
+        while win.offline_state != "done":
+            assert time.monotonic() < deadline, "the run did not finish"
+            pump(qapp, 0.1)
+        assert "Offline run done" in win.logbox.toPlainText()
+        assert len(win.offline_probes) > 1  # the chain's taps too
+    finally:
+        win.close()

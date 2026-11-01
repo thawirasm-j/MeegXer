@@ -733,3 +733,23 @@ first 60 s, in the colours of the two probability lines.
 | Q2 typing in Advanced mode | passed | test |
 | Q3 true-class bands on LDA's and CSP's views | passed | run by Claude offscreen (screenshot) |
 | Q4 on the EEGBCI data | | |
+
+## R. A chosen recording is shown at once
+
+Already run by Claude, offscreen through the real window, with
+`tools/lda_demo.py`'s `mi.edf`. *Input* → *Recording file*; choosing the file
+showed its signal at once ("Main: Input"), with the `left` and `right` cues
+marked, and the log line "The recording, as read". *Run offline* then ran the
+chain.
+
+1. Offline, *Input* → *Recording file*, *Browse…* one of your recordings
+   (a large one too).
+2. Its signal appears without pressing *Run offline*, with its events
+   marked; the view scrolls through it.
+3. *Run offline*: the chain runs as before; its taps show their output.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| R1 signal and events shown at once | passed | run by Claude offscreen (and test) |
+| R2 Run offline afterwards | passed | run by Claude offscreen (and test) |
+| R3 on your recordings, a large one too (how long it takes) | | |
