@@ -27,7 +27,7 @@ def test_the_window_fits_a_laptop_screen(
     win = MainWindow(DaemonLink(control))
     try:
         win.show()
-        assert win.minimumSizeHint().width() <= 1024
+        assert win.minimumSizeHint().width() <= 980  # room for wider fonts
         menu = win.save_btn.menu()
         assert menu is not None
         assert [a.text().split("\t")[0] for a in menu.actions()] == [
@@ -37,15 +37,18 @@ def test_the_window_fits_a_laptop_screen(
         win.resize(1024, 700)
         pump(qapp, 0.5)
         assert win.width() == 1024  # it does not grow past the screen
-        assert win.state_label.text() == "● running"  # always whole
-        full = win.meter_details.full_text()
-        assert full.startswith("processing load")
-        assert win.meter_details.toolTip() == full
-        shown = win.meter_details.text()
-        assert shown in ("", full) or shown.endswith("…")  # "": no room at all
+        line = win.status_line
+        full = line.full_text()
+        assert full.startswith("● running · processing load")  # the state first
+        assert line.toolTip() == full
+        shown = line.text()
+        assert shown == full or shown.endswith("…")  # cut at its end
+        assert shown.startswith("● running") or shown == ""
         win.resize(1600, 900)
         pump(qapp, 0.5)
-        assert win.meter_details.text() == win.meter_details.full_text()
+        assert line.text() == full
+        win.resize(1024, 700)
+        pump(qapp, 0.5)
         assert win.views.height() >= 200  # the view keeps its height
         assert win.inspector.width() > win.logbox.width()  # settings first
         win.stop()

@@ -7,15 +7,16 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
-- **The window fits a laptop screen.** It now opens and works from 1024
+- **The window fits a laptop screen.** It now opens and works from about 930
   pixels wide (it needed about 1,400 before, more than a 1366 × 768
   laptop has).
   - *Save session…* and *Share session…* moved to the arrow on *Save…*,
     as recent files are on *Open…*'s.
   - *Undo* and *Redo* show as ↶ and ↷ (their tooltips name them).
-  - The run's details (load, delay, late blocks, skipped frames) end in
-    "…" when there is no room, and their tooltip gives them whole; the
-    state (running, stopped, offline) always shows.
+  - The run's state and details are one line, the state first (● running
+    · processing load … · delay … · late blocks … · display frames
+    skipped …). Where there is no room it ends in "…"; its tooltip gives
+    it whole. It no longer widens the window.
   - The signal view keeps at least 200 pixels and takes most of any extra
     height. The settings take two thirds of the bottom row, the log one
     third.

@@ -416,14 +416,12 @@ class MainWindow(QMainWindow):
             b.clicked.connect(lambda _=False, adv=bool(i): self.set_advanced(adv))
             self.mode_group.addButton(b)
             lay.addWidget(b)
-        self.state_label = QLabel("")
-        self.state_label.setObjectName("meter")
-        lay.addWidget(self.state_label)
-        # load, delay, late blocks, skipped frames: one line, cut short with
-        # "…" on a narrow window (never widening it), whole in its tooltip
-        self.meter_details = ElidedLabel()
-        self.meter_details.setObjectName("meter")
-        lay.addWidget(self.meter_details, 1)
+        # the state first (running, stopped, offline: …), then load, delay,
+        # late blocks, skipped frames: one line, cut short at its end with "…"
+        # on a narrow window (never widening it), whole in its tooltip
+        self.status_line = ElidedLabel()
+        self.status_line.setObjectName("meter")
+        lay.addWidget(self.status_line, 1)
         self.log_btn = QPushButton("Log")
         self.log_btn.setCheckable(True)
         self.log_btn.setToolTip("Show or hide the log")
@@ -1812,12 +1810,10 @@ class MainWindow(QMainWindow):
                      if rec.get("current") and self.offline_state == "running"
                      else "")  # fmt: skip
             state = "stopping…" if self.offline_stopping else self.offline_state
-            self.state_label.setText(f"offline: {state or 'ready'}{where}")
-            self.meter_details.set_full("")
+            self.status_line.set_full(f"offline: {state or 'ready'}{where}")
             return
         running = status.get("running")
-        self.state_label.setText("● running" if running else "○ stopped")
-        parts: list[str] = []
+        parts = ["● running" if running else "○ stopped"]
         blocks = status.get("blocks") or 0
         uptime = status.get("uptime_s") or 0
         if running and blocks and uptime:
@@ -1837,7 +1833,7 @@ class MainWindow(QMainWindow):
             shown = sum(b.dropped for b in self.buffers.values())
             shown += sum(b.dropped for b in self.feature_buffers.values())
             parts.append(f"display frames skipped {shown}")
-        self.meter_details.set_full(" · ".join(parts))
+        self.status_line.set_full(" · ".join(parts))
 
     def on_frame(self, frame: DisplayFrame | FeatureFrame) -> None:
         if isinstance(frame, FeatureFrame) and "condition" in frame.dims:
