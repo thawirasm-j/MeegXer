@@ -462,3 +462,18 @@ def test_ssvep_adds_to_events_only_with_its_detections(doc: PipelineDoc) -> None
     assert not doc.writes_events(ssvep)
     ssvep.params["detections"] = True
     assert doc.writes_events(ssvep)
+
+
+def test_the_keyboard_reads_the_events_rail(doc: PipelineDoc) -> None:
+    """An action sink acts on the Events rail (SSVEP's detections), so the
+    chain draws it reading that rail, not pulling from the signal."""
+    ssvep = doc.insert(len(doc.strips), "meegxer.nodes.ssvep_cca")
+    ssvep.params["detections"] = True
+    keys = doc.insert(len(doc.strips), "meegxer.nodes.keyboard")
+    assert not doc.reads_signal(keys)
+    rails, missing = doc.rails()
+    events = next(r for r in rails if r.id == "events")
+    assert events.producer == ssvep.id and keys.id in events.readers
+    assert keys.id not in missing
+    ssvep.params["detections"] = False  # nothing writes events: it needs some
+    assert doc.rails()[1][keys.id] == "Events"

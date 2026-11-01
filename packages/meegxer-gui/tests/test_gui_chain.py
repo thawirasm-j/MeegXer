@@ -274,3 +274,44 @@ def test_strip_width_is_fixed_or_follows_the_text(qapp: QApplication) -> None:
     finally:
         qapp.setStyleSheet("")
     qapp.processEvents()
+
+
+def test_a_strip_adding_events_and_starting_a_rail_has_two_arrows(
+    qapp: QApplication,
+) -> None:
+    """SSVEP detection (detections on) starts its own rail and adds to the
+    Events rail: the two up-arrows stand side by side, the Events one not
+    drawn over its own rail's start."""
+    from PySide6.QtGui import QFontMetrics
+
+    from meegxer.core.control import manifest_to_dict
+    from meegxer.core.registry import Registry
+    from meegxer.gui.chain import ChainView, RailBoard
+    from meegxer.gui.pipeline_doc import PipelineDoc
+    from meegxer.gui.theme import load_theme
+
+    registry = Registry.from_entry_points()
+    doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
+                       for n in registry.names()])  # fmt: skip
+    doc.set_source("meegxer.core.file")
+    doc.input_events = 24  # the recording has its cues: the input starts Events
+    ssvep = doc.insert(1, "meegxer.nodes.ssvep_cca")
+    ssvep.params["detections"] = True
+    doc.insert(2, "meegxer.nodes.keyboard")
+    view = ChainView()
+    view.resize(1400, 300)
+    view.show()
+    view.rebuild(doc, load_theme("dark"), statuses={}, taps={}, advanced=False,
+                 selected=None)  # fmt: skip
+    qapp.processEvents()
+    board = view.widget()
+    assert isinstance(board, RailBoard)
+    starts = {rail.id: x0 for rail, x0, _ in board.spans()}
+    write = board._write_x(ssvep.id)
+    assert write is not None and abs(write - starts[ssvep.id]) >= 10
+    rail = next(r for r, _, _ in board.spans() if r.id == ssvep.id)
+    name = board.label_box(rail, starts[ssvep.id], QFontMetrics(board.font_))
+    assert name.right() < write  # no arrow runs through its name
+    view.close()
+    view.deleteLater()
+    qapp.processEvents()
