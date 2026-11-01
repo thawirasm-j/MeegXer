@@ -808,7 +808,8 @@ button; the status line started with "● running" and ended in "…".
 | T1 the top bar fits, nothing cut off; » holds the rest | passed | run by Claude offscreen (and test, text 100 and 140 %) |
 | T2 Save's arrow; ↶ ↷ | passed | test |
 | T3 the status line shortens, the state stays, the window keeps its size | passed | run by Claude offscreen (and test) |
-| T4 on your laptop (Windows, its screen scaling, text size 150 %) | | |
+| T4 on your laptop (Windows, its screen scaling, text size 150 %) | found: » showed nothing | by the maintainer; fixed: » opens a menu of the folded buttons (T5) |
+| T5 » opens a menu; its items work (Advanced, the time span) | passed | run by Claude offscreen (and tests); on Windows to check |
 
 ## U. Errors in words; a clean start for each pipeline
 

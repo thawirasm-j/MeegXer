@@ -7,6 +7,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **The » button opens a menu.** Clicking the » of the top bar or the
+  signal view's header showed nothing (the maintainer's T4): Qt's toolbar
+  » expands the bar in place, which works only for a toolbar docked in a
+  main window. It now opens a menu of the buttons that did not fit: a
+  button is an item, *Friendly*/*Advanced* and the modes are checkable,
+  *Open*'s recent files, *Save*'s session commands, *Channels* and the
+  time span are submenus.
+
 - **Readable strips and settings.**
   - A strip's name, and a value too long for its line, take up to two
     lines ("Common spatial / patterns (CSP)"), the second ending in "…" only
