@@ -5,7 +5,7 @@ text, as set."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QSize, Qt
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QLabel, QSizePolicy, QWidget
 
@@ -21,6 +21,15 @@ class ElidedLabel(QLabel):
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.setText(text)
         self._keep_room()
+
+    def minimumSizeHint(self) -> QSize:
+        """Only the room it must keep: the shortened text's width would
+        otherwise become its minimum, and it could never shrink again."""
+        return QSize(self.minimumWidth(), super().minimumSizeHint().height())
+
+    def sizeHint(self) -> QSize:
+        width = self.fontMetrics().horizontalAdvance(self._full) + 12
+        return QSize(max(width, self.minimumWidth()), super().sizeHint().height())
 
     def changeEvent(self, event: QEvent) -> None:
         super().changeEvent(event)

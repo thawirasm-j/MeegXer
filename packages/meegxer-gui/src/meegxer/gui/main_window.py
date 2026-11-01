@@ -354,8 +354,11 @@ class MainWindow(QMainWindow):
         # text) folds into the » button at the toolbar's end; Start and Stop,
         # the run's state, Log and the settings always show
         self.tools = QToolBar()
-        self._tools_style = WideExtension()  # its » wide enough for the arrow
-        self.tools.setStyle(self._tools_style)
+        # its » wide enough for the arrow; owned by the toolbar, so Qt frees
+        # it after the toolbar (a style freed first crashed Python's exit)
+        extension = WideExtension()
+        extension.setParent(self.tools)
+        self.tools.setStyle(extension)
         self.tools.setMovable(False)
         self.tools.setFloatable(False)
         self.tools.setStyleSheet(
