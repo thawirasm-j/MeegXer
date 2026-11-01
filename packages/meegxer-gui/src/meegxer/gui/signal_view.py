@@ -52,6 +52,8 @@ from meegxer.gui.colors import (
     class_label,
     class_style,
 )
+from meegxer.gui.elided import ElidedLabel
+from meegxer.gui.fold import folding_bar
 from meegxer.gui.headplot import (
     BANDS,
     DEFAULT_RANGE,
@@ -573,6 +575,9 @@ class SignalView(QWidget):
         caption = QLabel("SIGNAL")
         caption.setObjectName("title")
         bar.addWidget(caption)
+        # the modes, channels, span and stacked view fold into » where the
+        # window is too narrow for them (Windows draws them wider)
+        tools = folding_bar()
         self.group = QButtonGroup(self)
         self.active = True
         for i, name in enumerate(("Overlay", "Difference", "Spectrum")):
@@ -582,22 +587,27 @@ class SignalView(QWidget):
             self.group.addButton(button)
             mode = name.lower()
             button.clicked.connect(lambda _=False, m=mode: self._set_mode(m))
-            bar.addWidget(button)
+            tools.addWidget(button)
         self.channels = HeadChannelMenu(theme)
-        bar.addWidget(self.channels)
+        tools.addWidget(self.channels)
         self.span = QComboBox()
         for seconds in (2, 5, 10, 20, 30):
             self.span.addItem(f"{seconds} s", float(seconds))
         self.span.setCurrentIndex(2)
-        bar.addWidget(self.span)
-        bar.addStretch(1)
-        self.legend = QLabel("")
-        self.legend.setObjectName("muted")
-        bar.addWidget(self.legend)
+        tools.addWidget(self.span)
         stacked = QPushButton("⧉ Stacked view")
         stacked.setToolTip("Stacked traces in a separate window")
         stacked.clicked.connect(self.stacked_requested)
-        bar.addWidget(stacked)
+        tools.addWidget(stacked)
+        bar.addWidget(tools)
+        # never sets the window's width, but always keeps room for what is
+        # shown ("Main: after …"): the buttons fold into » first
+        self.legend = ElidedLabel(keep="Main: after")
+        self.legend.setObjectName("muted")
+        self.legend.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        bar.addWidget(self.legend, 1)
         lay.addLayout(bar)
         lay.addWidget(self._spectrum_bar())
         body = QHBoxLayout()

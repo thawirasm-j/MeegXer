@@ -7,6 +7,29 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **The window fits a laptop screen**, also where text is drawn wider
+  (Windows, or *Text size* raised). It needed about 1,400 pixels before
+  (more on Windows), more than a 1366 × 768 laptop has; it now needs about
+  560 (690 with text 40 % larger, 850 with it twice as large).
+  - *New*, *Open*, *Save*, ↶ ↷ and *Friendly*/*Advanced* sit in a toolbar:
+    what does not fit folds into its » button. *Start*, *Stop*, the run's
+    state, *Log* and the settings always show.
+  - The signal view's *Overlay*, *Difference*, *Spectrum*, *Channels*,
+    time span and *Stacked view* fold the same way.
+  - *Save session…* and *Share session…* moved to the arrow on *Save…*,
+    as recent files are on *Open…*'s. *Undo* and *Redo* show as ↶ and ↷
+    (their tooltips name them).
+  - The run's state and details are one line, the state first (● running
+    · processing load … · delay … · late blocks … · display frames
+    skipped …). Where there is no room it ends in "…", its tooltip gives
+    it whole, and the state itself is never cut. The signal, features and
+    ERP views' legends ("Main: after Notch …") shorten the same way. None
+    of them widens the window any more.
+  - The name "MeegXer" left the top bar (it is the window's title).
+  - The signal view keeps at least 200 pixels and takes most of any extra
+    height. The settings take two thirds of the bottom row, the log one
+    third.
+
 - **CSP's true-class bands no longer look swapped.** CSP's lines are its
   components, not its classes. Its bands took the same two colours as the
   lines, so a component whose power drops for *left* (as motor imagery

@@ -36,7 +36,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QInputDialog,
-    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -77,9 +76,11 @@ from meegxer.gui.chain import ChainView
 from meegxer.gui.colormaps import Maps
 from meegxer.gui.colors import wheel_positions
 from meegxer.gui.connection import DaemonLink
+from meegxer.gui.elided import ElidedLabel
 from meegxer.gui.epoch_review_window import EpochReviewWindow
 from meegxer.gui.erp_view import Erp, ErpView
 from meegxer.gui.feature_view import FeatureSeries, FeatureView
+from meegxer.gui.fold import folding_bar
 from meegxer.gui.history import (
     EditHistory,
     changed_params,
@@ -282,10 +283,16 @@ class MainWindow(QMainWindow):
         self.logbox.setReadOnly(True)
         self.logbox.setMaximumBlockCount(500)
         bottom.addWidget(self.logbox)
-        bottom.setSizes([760, 520])
+        bottom.setSizes([860, 420])  # the settings first, the log beside them
+        bottom.setStretchFactor(0, 2)
+        bottom.setStretchFactor(1, 1)
         splitter.addWidget(bottom)
+        # the view first: it keeps 200 px and takes most of a window's height
+        signal_panel.setMinimumHeight(200)
+        splitter.setChildrenCollapsible(False)
         splitter.setSizes([430, 240, 200])
         splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(2, 1)
         lay.addWidget(splitter, 1)
         self.setCentralWidget(root)
         self.stacked = StackedWindow(self.theme)
@@ -309,9 +316,8 @@ class MainWindow(QMainWindow):
         bar.setObjectName("panel")
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(10, 6, 10, 6)
-        brand = QLabel("<b>MeegXer</b>")
-        lay.addWidget(brand)
-        lay.addSpacing(12)
+        # (the name is the window's title: the bar keeps its room for the
+        # buttons and the run's state on a laptop screen)
         self.start_btn = QPushButton("▶  Start")
         self.start_btn.setObjectName("primary")
         self.start_btn.clicked.connect(self.start)
@@ -329,43 +335,51 @@ class MainWindow(QMainWindow):
         self.qc_btn.clicked.connect(self.open_qc_summary)
         self.qc_btn.setVisible(False)
         lay.addWidget(self.qc_btn)
-        lay.addSpacing(8)
-        for text, slot, tip in (
-            ("New…", self.new_from_template, "A pipeline from a template (Ctrl+N)"),
-            ("Open…", self.open_pipeline, "Open a pipeline or session (Ctrl+O); "
-             "the arrow lists recent files"),
-            ("Save…", self.save_pipeline, "Save the pipeline (Ctrl+S)"),
-            ("Save session…", self.save_session, ""),
-            ("Share session…", self.share_session, ""),
-        ):  # fmt: skip
-            if text == "Open…":  # with the recent files on its arrow
-                tool = QToolButton()
-                tool.setText(text)
-                tool.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-                self.recent_menu = QMenu(tool)
-                tool.setMenu(self.recent_menu)
-                tool.clicked.connect(lambda _=False: self.open_pipeline())
-                tool.setToolTip(tip)
-                lay.addWidget(tool)
-                continue
-            b = QPushButton(text)
-            b.clicked.connect(lambda _=False, f=slot: f())
-            if tip:
-                b.setToolTip(tip)
-            lay.addWidget(b)
-        lay.addSpacing(8)
-        self.undo_btn = QPushButton("↶ Undo")
+        lay.addSpacing(4)
+        # files, undo and the mode: what does not fit (a laptop, Windows' wider
+        # text) folds into the » button at the toolbar's end; Start and Stop,
+        # the run's state, Log and the settings always show
+        self.tools = folding_bar()
+        new = QPushButton("New…")
+        new.setToolTip("A pipeline from a template (Ctrl+N)")
+        new.clicked.connect(lambda _=False: self.new_from_template())
+        self.tools.addWidget(new)
+        # Open lists the recent files on its arrow; Save the session commands
+        # (they fold into the arrow so the bar fits a laptop screen)
+        tool = QToolButton()
+        tool.setText("Open…")
+        tool.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.recent_menu = QMenu(tool)
+        tool.setMenu(self.recent_menu)
+        tool.clicked.connect(lambda _=False: self.open_pipeline())
+        tool.setToolTip("Open a pipeline or session (Ctrl+O); the arrow lists "
+                        "recent files")  # fmt: skip
+        self.tools.addWidget(tool)
+        self.save_btn = QToolButton()
+        self.save_btn.setText("Save…")
+        self.save_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.save_btn.setToolTip("Save the pipeline (Ctrl+S); the arrow saves or "
+                                 "shares a session")  # fmt: skip
+        self.save_btn.clicked.connect(lambda _=False: self.save_pipeline())
+        save_menu = QMenu(self.save_btn)
+        save_menu.addAction("Save pipeline…\tCtrl+S", self.save_pipeline)
+        save_menu.addAction("Save session…", lambda: self.save_session())
+        save_menu.addAction("Share session…", self.share_session)
+        self.save_btn.setMenu(save_menu)
+        self.tools.addWidget(self.save_btn)
+        self.tools.addSeparator()
+        self.undo_btn = QPushButton("↶")
         self.undo_btn.setToolTip("Undo the last change to the chain or a setting "
                                  "(Ctrl+Z)")  # fmt: skip
         self.undo_btn.clicked.connect(lambda _=False: self.undo())
-        self.redo_btn = QPushButton("↷ Redo")
+        self.redo_btn = QPushButton("↷")
         self.redo_btn.setToolTip("Redo the change last undone (Ctrl+Shift+Z or "
                                  "Ctrl+Y)")  # fmt: skip
         self.redo_btn.clicked.connect(lambda _=False: self.redo())
         for b in (self.undo_btn, self.redo_btn):
             b.setEnabled(False)
-            lay.addWidget(b)
-        lay.addSpacing(12)
+            self.tools.addWidget(b)
+        self.tools.addSeparator()
         self.mode_group = QButtonGroup(self)
         for i, text in enumerate(("Friendly", "Advanced")):
             b = QPushButton(text)
@@ -373,14 +387,14 @@ class MainWindow(QMainWindow):
             b.setChecked(i == 0)
             b.clicked.connect(lambda _=False, adv=bool(i): self.set_advanced(adv))
             self.mode_group.addButton(b)
-            lay.addWidget(b)
-        lay.addStretch(1)
-        self.meters: dict[str, QLabel] = {}
-        for key in ("state", "load", "latency", "overruns", "display"):
-            label = QLabel("")
-            label.setObjectName("meter")
-            self.meters[key] = label
-            lay.addWidget(label)
+            self.tools.addWidget(b)
+        lay.addWidget(self.tools)
+        # the state first (running, stopped, offline: …), then load, delay,
+        # late blocks, skipped frames: one line, cut short at its end with "…"
+        # on a narrow window (never widening it), whole in its tooltip
+        self.status_line = ElidedLabel(keep="● running")  # the state: never cut
+        self.status_line.setObjectName("meter")
+        lay.addWidget(self.status_line, 1)
         self.log_btn = QPushButton("Log")
         self.log_btn.setCheckable(True)
         self.log_btn.setToolTip("Show or hide the log")
@@ -1763,41 +1777,36 @@ class MainWindow(QMainWindow):
             self.log(saved if method == "submit_review" else "Review cancelled.")
 
     def _meters(self, status: dict[str, Any]) -> None:
-        m = self.meters
         if self.doc.mode == "offline":
             rec = self.offline_recordings
             where = (f" {rec['index']}/{rec['total']} {rec['current']}"
                      if rec.get("current") and self.offline_state == "running"
                      else "")  # fmt: skip
             state = "stopping…" if self.offline_stopping else self.offline_state
-            m["state"].setText(f"offline: {state or 'ready'}{where}")
-            for key in ("load", "latency", "overruns", "display"):
-                m[key].setText("")
+            self.status_line.setText(f"offline: {state or 'ready'}{where}")
             return
-        m["state"].setText("● running" if status.get("running") else "○ stopped")
-        if not status.get("running"):
-            for key in ("load", "latency", "overruns", "display"):
-                m[key].setText("")
-            return
+        running = status.get("running")
+        parts = ["● running" if running else "○ stopped"]
         blocks = status.get("blocks") or 0
         uptime = status.get("uptime_s") or 0
-        if blocks and uptime:
+        if running and blocks and uptime:
             busy = sum(
                 (n.get("timing") or {}).get("mean_ms", 0.0)
                 for n in status.get("nodes", [])
             )
-            m["load"].setText(
+            parts.append(
                 f"processing load {100 * busy / (1000 * uptime / blocks):.0f}%"
             )
         p95 = (status.get("latency") or {}).get("p95_ms")
-        m["latency"].setText(
-            f"delay {p95:.0f} ms (95% of blocks)" if p95 is not None else ""
-        )
-        if "overruns" in status:
-            m["overruns"].setText(f"late blocks {status['overruns']}")
-        shown = sum(b.dropped for b in self.buffers.values())
-        shown += sum(b.dropped for b in self.feature_buffers.values())
-        m["display"].setText(f"display frames skipped {shown}" if self.buffers else "")
+        if running and p95 is not None:
+            parts.append(f"delay {p95:.0f} ms (95% of blocks)")
+        if running and "overruns" in status:
+            parts.append(f"late blocks {status['overruns']}")
+        if running and self.buffers:
+            shown = sum(b.dropped for b in self.buffers.values())
+            shown += sum(b.dropped for b in self.feature_buffers.values())
+            parts.append(f"display frames skipped {shown}")
+        self.status_line.setText(" · ".join(parts))
 
     def on_frame(self, frame: DisplayFrame | FeatureFrame) -> None:
         if isinstance(frame, FeatureFrame) and "condition" in frame.dims:
