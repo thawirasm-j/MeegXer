@@ -780,3 +780,28 @@ chain.
 | S2 epochs and labels in the log; labels in the class pickers | passed | run by Claude offscreen (and test) |
 | S3 the epochs written back without an Epochs strip | passed | test (`-epo.fif` round trip) |
 | S4 on your epochs files (EEGLAB, MNE) | passed | |
+
+## T. The window fits a laptop screen
+
+Already run by Claude, offscreen through the real window, at 1024 × 700,
+1280 × 720, 1366 × 768 and 1920 × 1080, running live. The window took each
+size; the signal view had 245, 258, 291 and 504 pixels; the state showed
+whole, and the details ended in "…" where they did not fit.
+
+1. On your laptop (or a window made small), start MeegXer: the whole top bar
+   is on screen, with nothing cut off at the right.
+2. *Save…*'s arrow lists *Save pipeline…*, *Save session…* and *Share
+   session…*. ↶ and ↷ undo and redo (their tooltips say so).
+3. *Start*: "● running" shows; hover the details next to it for the whole
+   line. Make the window narrower: the details shorten, the window does not
+   grow past the screen.
+4. Drag the window's bottom edge up: the signal view keeps its height while
+   the settings and log shrink.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| T1 the top bar fits, nothing cut off | passed | run by Claude offscreen (and test) |
+| T2 Save's arrow; ↶ ↷ | passed | test |
+| T3 the details shorten, the window keeps its size | passed | run by Claude offscreen (and test) |
+| T4 on your laptop (Windows, its screen scaling) | | |
+

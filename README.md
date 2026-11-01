@@ -111,8 +111,8 @@ A first look in the GUI, about five minutes, no EEG hardware needed:
    name to see the components coloured by ICLabel class. With *BIDS recording*,
    leave *Subject* empty to run every subject into the dataset's derivatives
    (the views then show the last one).
-6. **Keep it:** *Save…* writes the chain as a pipeline file; *Save session…* also
-   keeps the fitted models (ICA) so a rerun gives the same output.
+6. **Keep it:** *Save…* writes the chain as a pipeline file; *Save session…* (on
+   *Save*'s arrow) also keeps the fitted models (ICA) so a rerun gives the same output.
 
 **Start from a template:** *New…* offers an ERP study, resting-state spectra
 and ICA cleaning, each reading a BIDS dataset into its BIDS derivatives. Tick
@@ -225,7 +225,7 @@ uv run meegxer run pipeline.json --bids ds --task rest            # every subjec
 uv run meegxer run pipeline.json --bids ds --subjects 01,02,05    # some of them
 ```
 
-In the GUI, *Save session…* saves the chain with the models fitted by the last
+In the GUI, *Save session…* (on *Save*'s arrow) saves the chain with the models fitted by the last
 offline run (or calibrated live), and *Open…* reads sessions as well as pipelines.
 
 Run live in the headless daemon and control it (see `spec/control-api.md`):

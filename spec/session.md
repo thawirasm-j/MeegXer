@@ -120,7 +120,7 @@ paths, so a session folder can be moved or zipped as a whole.
 
 A session can hold identifying names: paths with a user's folders, and file names
 that name a subject (`JaneDoe_2024-05-06.edf`). `meegxer session share IN OUT`
-(or *Share session…* in the GUI, or `meegxer session save --share-safe`) writes a
+(or *Share session…* on *Save*'s arrow in the GUI, or `meegxer session save --share-safe`) writes a
 copy that names no file or folder:
 
 | Field | Becomes |

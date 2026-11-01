@@ -22,7 +22,7 @@ your consent forms, IRB/ethics approval and the law that applies (HIPAA, GDPR).
 meegxer session share study/sub-01.meegxer.json shared.meegxer.json
 ```
 
-or *Share session…* in the GUI (`meegxer session save FILE --share-safe` from a
+or *Share session…* on *Save*'s arrow in the GUI (`meegxer session save FILE --share-safe` from a
 running daemon). The copy names no file or folder: paths become placeholders such
 as `<input>.set` and `<output-1>.edf`, keeping only the extension. It keeps what
 makes the run reproducible: the pipeline, node versions, fitted models (e.g. the ICA
