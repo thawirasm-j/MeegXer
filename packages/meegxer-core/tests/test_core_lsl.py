@@ -287,3 +287,25 @@ def test_live_run_goes_on_when_the_outlet_layout_changes() -> None:
     status = run.status()
     assert status["samples"] == 1000  # used to stop at the change
     assert any("outlet reopened with 3 channels" in e for e in status["errors"])
+
+
+def test_a_missing_stream_is_running_until_it_fails_with_the_reason() -> None:
+    """While the inlet resolves (up to its timeout) the run is under way, not
+    stopped; then it ends with the reason in its status (the GUI used to
+    report "stopped" at once, with no reason)."""
+    from meegxer.core.display import DisplayPublisher
+
+    graph = Graph()
+    name = f"meegxer-none-{uuid.uuid4().hex[:8]}"
+    graph.add(LslSource({"stream_name": name, "timeout": 1.5}), id="input")
+    graph.add(MemoryProbe(), id="tap")  # a display tap, as the GUI adds
+    publisher = DisplayPublisher("tcp://127.0.0.1:0")
+    scheduler = RealtimeScheduler(graph, display=publisher)
+    scheduler.start()
+    assert scheduler.status()["running"]  # resolving, not stopped
+    assert scheduler.wait(10)
+    status = scheduler.status()
+    assert not status["running"]
+    assert f"no LSL stream named {name!r} found" in status["errors"][-1]
+    assert len(status["errors"]) == 1  # said once (the display asked again)
+    publisher.close()

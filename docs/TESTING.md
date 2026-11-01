@@ -810,3 +810,31 @@ button; the status line started with "● running" and ended in "…".
 | T3 the status line shortens, the state stays, the window keeps its size | passed | run by Claude offscreen (and test) |
 | T4 on your laptop (Windows, its screen scaling, text size 150 %) | | |
 
+## U. Errors in words; a clean start for each pipeline
+
+Already run by Claude, offscreen through the real window: *Recording file*
+with no file (no error; the view says to choose it; *Run offline* says
+"Cannot start: choose the recording file on the Input strip"), a missing
+file ("Could not read the input: input file not found: …"), "Reading the
+recording…" while `mi.edf` loaded, the ERP template after it (no trace of
+`mi.edf` left), and LSL with no such stream ("● running" while looking, then
+"The pipeline stopped: no LSL stream named 'NoSuchAmp' found").
+
+1. Start MeegXer: the empty view says "Press Start to see the signal".
+2. Offline, *Input* → *Recording file*: no error in the log; *Run offline*
+   says what to choose.
+3. Choose a large recording: "Reading the recording…" until it shows.
+4. *New…* → a template: the last recording's signal and events are gone.
+5. Live, *Input* → *LSL stream*, a name no amplifier sends, *Start*:
+   "running" while it looks, then the log says no such stream was found.
+   *Start* again works (no "stop the running pipeline" refusal).
+
+| Item | Value / result | Notes |
+|---|---|---|
+| U1 no error before a file is chosen; what to choose | passed | run by Claude offscreen (and test) |
+| U2 errors in words | passed | run by Claude offscreen (and test) |
+| U3 "Reading the recording…" | passed | run by Claude offscreen (and test) |
+| U4 a template starts clean | passed | run by Claude offscreen (and test) |
+| U5 LSL: why it stopped; Start again | passed | run by Claude offscreen (and core test) |
+| U6 on your machine, a real amplifier switched off | | |
+

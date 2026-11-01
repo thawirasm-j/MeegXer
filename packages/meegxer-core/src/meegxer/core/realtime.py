@@ -374,8 +374,13 @@ class RealtimeScheduler:
         return result
 
     def status(self) -> dict[str, Any]:
+        """The newest snapshot, with ``running`` as of now: while the input
+        opens (an LSL stream resolves for up to its timeout) the run is
+        under way, not stopped, though no block has updated the snapshot."""
         with self._lock:
-            return dict(self._snapshot)
+            snapshot = dict(self._snapshot)
+        snapshot["running"] = self.running
+        return snapshot
 
     # -- the loop -----------------------------------------------------------------
 
@@ -446,13 +451,17 @@ class RealtimeScheduler:
                         self.metrics.errors.extend(f"{node.id}: {n}" for n in notes)
                     except Exception:
                         self.metrics.errors.append(traceback.format_exc(limit=5))
-            close = getattr(source_node.impl, "close", None)
-            if callable(close):
-                close()
-            self._maybe_flush_display(force=True)
-            self._running.clear()
-            self._update_snapshot(force=True)
-            self._finished.set()
+            try:
+                close = getattr(source_node.impl, "close", None)
+                if callable(close):
+                    close()
+                self._maybe_flush_display(force=True)
+            except Exception:
+                self.metrics.errors.append(traceback.format_exc(limit=5))
+            finally:  # the run ends whatever the cleanup met (never "running")
+                self._running.clear()
+                self._update_snapshot(force=True)
+                self._finished.set()
 
     def _report_unfinished_calibration(self, sfreq: float) -> None:
         """The input ended while a calibration was still collecting: say so
@@ -873,7 +882,16 @@ class RealtimeScheduler:
                                  info.filters)
                 )  # fmt: skip
             items.clear()
-        sfreq = self.graph.source.impl.info.sfreq  # type: ignore[union-attr]
+        # the input's rate, only when a feature window or an ERP waits: an
+        # input that never opened (an LSL stream not found) has none to give
+        waiting = any(self._pending_features.values()) or any(
+            isinstance(n.impl, ErpProbe) and n.impl.changed for n in self.graph.nodes
+        )
+        sfreq = (
+            self.graph.source.impl.info.sfreq  # type: ignore[union-attr]
+            if waiting
+            else 0.0
+        )
         for probe_id, windows in self._pending_features.items():
             for w in windows[-FEATURE_FRAMES_PER_FLUSH:]:  # lossy, like the rest
                 seq = self._seq.get(probe_id, 0)

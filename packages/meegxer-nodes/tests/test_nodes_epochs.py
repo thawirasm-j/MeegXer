@@ -274,3 +274,46 @@ def test_the_offline_store_keeps_each_epochs_label() -> None:
     reply = store.windows(0, 600, 10, "none")
     assert reply["labels"] == ["go", "stop"]
     assert reply["dims"] == ["epoch", "channel", "time"]
+
+
+def test_an_erp_tap_alone_reaches_the_display(tmp_path: Path) -> None:
+    """With no other feature tap, the ERP still reaches the display stream
+    (the flush read the input's rate only for feature windows)."""
+    import time
+
+    from meegxer.core.display import (
+        DisplayFrame,
+        DisplayPublisher,
+        DisplaySubscriber,
+        FeatureFrame,
+    )
+
+    events = tmp_path / "events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n1.0\t0\tgo\n")
+    live = graph_from([
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"duration": 2.0, "n_channels": 2, "sfreq": SFREQ},
+         "recording": {"events": {"file": str(events)}}},
+        {"id": "ep", "node": "meegxer.nodes.epochs",
+         "params": {"tmin": -0.2, "tmax": 0.5}},
+        {"id": "erp", "node": "meegxer.core.erp_probe", "input": "ep:epochs"},
+    ])  # fmt: skip
+    publisher = DisplayPublisher("tcp://127.0.0.1:*")
+    subscriber = DisplaySubscriber(publisher.endpoint, ["erp"])
+    time.sleep(0.2)
+    scheduler = RealtimeScheduler(live, max_block=13, display=publisher)
+    scheduler.start()
+    frames: list[DisplayFrame | FeatureFrame] = []
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline and (scheduler.running or not frames):
+        frame = subscriber.recv(timeout=0.5)
+        if frame is not None:
+            frames.append(frame)
+        elif not scheduler.running:
+            break
+    assert scheduler.wait(15)
+    assert scheduler.status()["errors"] == []
+    subscriber.close()
+    publisher.close()
+    assert frames and isinstance(frames[-1], FeatureFrame)
+    assert frames[-1].counts == (1,)

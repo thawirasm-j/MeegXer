@@ -644,6 +644,9 @@ class SignalView(QWidget):
         # (sensors x components, ICA's ``winv``), so the head plot maps the
         # selected components' power back on the electrodes
         self.mixing: tuple[tuple[str, ...], FloatArray] | None = None
+        # what the view says with nothing to show (the window sets the next
+        # step: press Start, choose a recording, reading…)
+        self.empty_text = "Nothing shown: click a ◇ tap in the chain"
         self.events: list[dict[str, Any]] = []
         self.names: dict[str, str] = {}  # probe -> what it shows, e.g. "after Notch"
         self.delays: dict[str, float] = {}  # live: ms behind the input tap
@@ -1016,8 +1019,8 @@ class SignalView(QWidget):
             self.plot.draw([])
             self.plot.hatch([])
             self.plot.mark([])
-            self.legend.setText("Nothing shown: click a ◇ tap in the chain")
-            self._head_message("Nothing shown: click a ◇ tap in the chain")
+            self.legend.setText(self.empty_text)
+            self._head_message(self.empty_text)
             return
         styles = self._styles(main_win.labels, main_win.classes)
         self.channels.set_labels(

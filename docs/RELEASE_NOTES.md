@@ -7,6 +7,27 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Clearer errors, a clean start for each pipeline.**
+  - Opening a pipeline or a template clears the last one's results, events
+    and state; it no longer shows the previous recording under the new
+    chain's names. If the new input names a recording, it is shown at once.
+  - Choosing *Recording file* (or a BIDS input) no longer logs an error
+    before a file is chosen. *Run offline* and *Start* say what the input
+    still needs ("choose the recording file on the Input strip", "name the
+    LSL stream …").
+  - Errors read as words: "Could not read the input: input file not found:
+    …", without Python's exception names.
+  - The empty view says the next step ("Press Start to see the signal",
+    "Press Run offline …"), and "Reading the recording…" while a chosen
+    recording loads (the maintainer's R3 note).
+  - A live run that ends says why: "The pipeline stopped: no LSL stream
+    named 'Amp' found". It was "stopped (end of input or an error)" at
+    once, while the stream was still being looked for. The daemon then
+    refused every other pipeline, saying one was still running.
+  - Core: the live scheduler's status says running while the input opens;
+    a run whose input never opened still ends (its last display flush no
+    longer asks the missing stream for its rate).
+
 - **The window fits a laptop screen**, also where text is drawn wider
   (Windows, or *Text size* raised). It needed about 1,400 pixels before
   (more on Windows), more than a 1366 × 768 laptop has; it now needs about
