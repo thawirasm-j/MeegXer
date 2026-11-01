@@ -157,6 +157,21 @@ FAILED_CALL = {
 _EXCEPTION_NAME = re.compile(r"^(?:[A-Za-z_][\w.]*\.)?[A-Z]\w*(?:Error|Exception): ")
 
 
+def input_summary(info: dict[str, Any] | None) -> str:
+    """What reading the input found, for its strip: channels, rate, length
+    ("32 ch · 250 Hz · 2:00")."""
+    if not info or not info.get("channels"):
+        return ""
+    parts = [f"{len(info['channels'])} ch", f"{float(info['sfreq']):g} Hz"]
+    seconds = info.get("duration_s")
+    if seconds:
+        minutes, secs = divmod(round(float(seconds)), 60)
+        hours, minutes = divmod(minutes, 60)
+        parts.append(f"{hours}:{minutes:02d}:{secs:02d}" if hours
+                     else f"{minutes}:{secs:02d}")  # fmt: skip
+    return " · ".join(parts)
+
+
 def plain_error(text: str) -> str:
     """An error as a person reads it: a traceback's last line, without the
     Python exception's name (``FileNotFoundError: input file not found: x``
@@ -885,8 +900,11 @@ class MainWindow(QMainWindow):
         if labels != self.doc.event_labels:
             self.doc.event_labels = labels
             self.refresh_chain()
-        if (events, carries) != (self.doc.input_events, self.doc.input_rails):
+        summary = input_summary(info)
+        if (events, carries, summary) != (self.doc.input_events, self.doc.input_rails,
+                                          self.doc.input_summary):  # fmt: skip
             self.doc.input_events, self.doc.input_rails = events, carries
+            self.doc.input_summary = summary
             self.refresh_chain()
         if info is None:
             self.view.set_wheel({})

@@ -194,8 +194,9 @@ def test_the_signal_is_grey_and_rail_ends_are_faint() -> None:
 
 def test_strip_text_fits_the_strip(qapp: QApplication) -> None:
     """No text on a strip is clipped, whatever the platform's font: a long
-    title ends in "…" (measured in its own bold font), and a row whose name
-    and value do not both fit puts the value on a line of its own."""
+    title takes two lines, the second ending in "…" if need be (measured in
+    its own bold font), and a row whose name and value do not both fit puts
+    the value on its own lines."""
     from PySide6.QtWidgets import QLabel
 
     from meegxer.core.control import manifest_to_dict
@@ -225,7 +226,9 @@ def test_strip_text_fits_the_strip(qapp: QApplication) -> None:
             for label in card.findChildren(QLabel):
                 if not label.text() or label.wordWrap():
                     continue
-                drawn = label.fontMetrics().horizontalAdvance(label.text())
+                lines = label.text().split("\n")
+                assert len(lines) <= 2, (strip.id, label.text())
+                drawn = max(label.fontMetrics().horizontalAdvance(t) for t in lines)
                 assert drawn <= label.width(), (scale, strip.id, label.text())
             card.close()
             card.deleteLater()
@@ -315,3 +318,54 @@ def test_a_strip_adding_events_and_starting_a_rail_has_two_arrows(
     view.close()
     view.deleteLater()
     qapp.processEvents()
+
+
+def test_long_text_takes_two_lines(qapp: QApplication) -> None:
+    from PySide6.QtGui import QFont, QFontMetrics
+
+    from meegxer.gui.chain import wrap_text
+
+    fm = QFontMetrics(QFont())
+    width = fm.horizontalAdvance("Common spatial") + 2
+    text = wrap_text(fm, "Common spatial patterns (CSP)", width)
+    first, second = text.split("\n")
+    assert first == "Common spatial" and second.startswith("patterns")
+    assert fm.horizontalAdvance(second) <= width
+    three = wrap_text(fm, "delta:1-4,theta:4-8,alpha:8-13,beta:13-30", width)
+    assert len(three.split("\n")) == 2 and three.endswith("…")  # the rest elided
+    assert wrap_text(fm, "Notch", width) == "Notch"
+    long_word = wrap_text(fm, "Supercalifragilistic", fm.horizontalAdvance("Super"))
+    assert long_word.endswith("…")  # a word wider than the strip is cut
+
+
+def test_the_input_card_says_what_it_needs_and_what_it_read(
+    qapp: QApplication,
+) -> None:
+    from PySide6.QtWidgets import QLabel
+
+    from meegxer.core.control import manifest_to_dict
+    from meegxer.core.registry import Registry
+    from meegxer.gui.chain import InputStrip
+    from meegxer.gui.pipeline_doc import PipelineDoc
+    from meegxer.gui.theme import load_theme
+
+    registry = Registry.from_entry_points()
+    doc = PipelineDoc([manifest_to_dict(registry.get(n).manifest)
+                       for n in registry.names()])  # fmt: skip
+    doc.set_source("meegxer.core.file")
+    theme = load_theme("dark")
+
+    def texts() -> list[str]:
+        card = InputStrip(doc, doc.strips[0], theme, status="", advanced=False,
+                          selected=False)  # fmt: skip
+        out = [lb.text() for lb in card.findChildren(QLabel)]
+        card.deleteLater()
+        return out
+
+    assert "choose the recording file on the Input strip" in texts()
+    assert "not chosen" in texts()  # File: not chosen, not "-"
+    doc.source.params["path"] = "/data/rec.edf"  # type: ignore[union-attr]
+    doc.input_summary = "32 ch · 250 Hz · 2:00"
+    shown = texts()
+    assert "32 ch · 250 Hz · 2:00" in shown
+    assert not any("choose the recording" in t for t in shown)

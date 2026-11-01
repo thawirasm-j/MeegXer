@@ -398,7 +398,7 @@ def test_a_file_parameter_shows_its_name(doc: PipelineDoc) -> None:
     source = doc.set_source("meegxer.core.file", {"path": "C:\\data\\sub-01\\rec.set"})
     assert doc.format_param(source, "path") == "rec.set"
     source.params["path"] = ""
-    assert doc.format_param(source, "path") == "-"
+    assert doc.format_param(source, "path") == "not chosen"
 
 
 def test_a_files_ics_rail_starts_at_the_input_and_ends_at_ica(
@@ -477,3 +477,23 @@ def test_the_keyboard_reads_the_events_rail(doc: PipelineDoc) -> None:
     assert keys.id not in missing
     ssvep.params["detections"] = False  # nothing writes events: it needs some
     assert doc.rails()[1][keys.id] == "Events"
+
+
+def test_empty_settings_say_what_they_mean(doc: PipelineDoc) -> None:
+    epochs = doc.insert(1, "meegxer.nodes.epochs")
+    assert doc.format_param(epochs, "events") == "every event"
+    doc.set_source("meegxer.core.bids")
+    assert doc.format_param(doc.strips[0], "subject") == "every subject"
+    assert doc.input_missing() == "choose the BIDS dataset folder on the Input strip"
+    assert doc.problems()[0] == doc.input_missing()
+    doc.strips[0].params["root"] = "/data/ds"
+    assert doc.input_missing() is None
+
+
+def test_the_input_summary() -> None:
+    from meegxer.gui.main_window import input_summary
+
+    info = {"channels": [{}] * 32, "sfreq": 250.0, "duration_s": 120.4}
+    assert input_summary(info) == "32 ch · 250 Hz · 2:00"
+    assert input_summary({**info, "duration_s": 3725}) == "32 ch · 250 Hz · 1:02:05"
+    assert input_summary(None) == ""

@@ -41,6 +41,16 @@ BIDS_SOURCE = "meegxer.core.bids"
 FILE_SOURCE = "meegxer.core.file"
 LSL_SOURCE = "meegxer.core.lsl_in"
 BIDS_ENTITIES = ("subject", "session", "task", "run")
+# what an empty setting means, on a strip ("-" said nothing)
+EMPTY_TEXT: dict[tuple[str, str], str] = {
+    ("meegxer.nodes.epochs", "events"): "every event",
+    ("meegxer.nodes.csp", "classes"): "not chosen",
+    ("meegxer.nodes.lda", "classes"): "not chosen",
+    ("meegxer.core.bids", "subject"): "every subject",
+    ("meegxer.core.bids", "session"): "any",
+    ("meegxer.core.bids", "task"): "any",
+    ("meegxer.core.bids", "run"): "any",
+}
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -144,6 +154,8 @@ class PipelineDoc:
         # the rails the input starts (describe_source "carries": a .set's ICs)
         self.input_rails: tuple[str, ...] = ()
         self.input_events = 0  # events the input carries (from its description)
+        # what reading the input found, for its strip ("32 ch · 250 Hz · 2:00")
+        self.input_summary = ""
         # their labels, in order of first appearance (the class pickers' lists)
         self.event_labels: list[str] = []
         # a BIDS input's dataset: its recordings (list_bids) and why there are
@@ -721,7 +733,10 @@ class PipelineDoc:
         elif spec["type"] == "float":
             text = f"{float(value):g}"
         elif spec["type"] == "string":
-            text = str(value) or "-"
+            # empty: what that means for this setting, not a bare dash
+            text = str(value) or EMPTY_TEXT.get((strip.node, name), "none")
+            if not value and spec.get("path"):
+                text = "not chosen"
             if spec.get("path") and value:  # the name; the inspector has the path
                 text = PurePath(str(value).replace("\\", "/")).name or text
         else:

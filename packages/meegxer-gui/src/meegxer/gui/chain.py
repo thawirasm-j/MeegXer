@@ -14,7 +14,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QEvent, QMimeData, QPoint, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import (
+    QEvent,
+    QMimeData,
+    QPoint,
+    QPointF,
+    QRectF,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import (
     QColor,
     QDrag,
@@ -100,6 +109,49 @@ class ElidedLabel(QLabel):
             self.full_text, Qt.TextElideMode.ElideRight, self.width()))  # fmt: skip
 
 
+def wrap_text(fm: QFontMetrics, text: str, width: int, lines: int = 2) -> str:
+    """``text`` on at most ``lines`` lines of ``width`` pixels, broken between
+    words (after a comma too); the last line ends in "…" if the rest does
+    not fit. A strip's name or a long value reads whole where it can."""
+    words = text.replace(",", ", ").replace(",  ", ", ").split(" ")
+    out: list[str] = []
+    line = ""
+    for i, word in enumerate(words):
+        candidate = f"{line} {word}".strip()
+        if fm.horizontalAdvance(candidate) <= width or not line:
+            line = candidate
+            continue
+        out.append(fm.elidedText(line, Qt.TextElideMode.ElideRight, width))
+        if len(out) == lines - 1:  # the last line takes the rest, elided
+            rest = " ".join(words[i:])
+            out.append(fm.elidedText(rest, Qt.TextElideMode.ElideRight, width))
+            return "\n".join(out)
+        line = word
+    out.append(fm.elidedText(line, Qt.TextElideMode.ElideRight, width))
+    return "\n".join(out[:lines])
+
+
+class WrapLabel(QLabel):
+    """Text on up to ``lines`` lines at whatever width the layout gives it,
+    broken between words, the last line ending in "…" if the rest does not
+    fit (``wrap_text``); the whole text is its tooltip's."""
+
+    def __init__(self, text: str, width: int, name: str = "", lines: int = 2) -> None:
+        super().__init__(text)
+        self.setObjectName(name)  # before measuring: "title" is bold
+        self.full_text, self.lines = text, lines
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.ensurePolished()  # wrapped now at the width it will about get, so
+        # the strip asks for the height of every line from the start
+        self.setText(wrap_text(self.fontMetrics(), text, width, lines))
+
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        shown = wrap_text(self.fontMetrics(), self.full_text, self.width(), self.lines)
+        if shown != self.text():
+            self.setText(shown)
+
+
 class StripWidget(QFrame):
     """One node: title, status LED, the parameters chosen for the strip."""
 
@@ -160,8 +212,8 @@ class StripWidget(QFrame):
         full = (
             "Input" if manifest["role"] == "source" else title(strip.node, strip.params)
         )
-        name = ElidedLabel(full)  # in its own (bold) font, at the width it gets
-        name.setObjectName("title")
+        close_room = 30 if manifest["role"] != "source" else 0  # LED, ✕, spacing
+        name = WrapLabel(full, self.strip_width - 24 - 22 - close_room, "title")
         name.setToolTip(full)
         head.addWidget(name, 1)
         if manifest["role"] != "source":
@@ -179,7 +231,8 @@ class StripWidget(QFrame):
             sub = ElidedLabel(strip.id)
             sub.setObjectName("muted")
             lay.addWidget(sub)
-        note = problem or badge(strip.node, strip.params, doc.mode)
+        missing = doc.input_missing() if manifest["role"] == "source" else None
+        note = problem or missing or badge(strip.node, strip.params, doc.mode)
         if not problem and strip.channel_types and strip.channel_types != ["eeg"]:
             types = "+".join(t.upper() for t in strip.channel_types)
             note = f"{note} · {types}" if note else types
@@ -188,11 +241,16 @@ class StripWidget(QFrame):
         if note:
             chip = QLabel(note)
             chip.setWordWrap(True)  # a problem is read in full, on two lines if need be
-            colour = (theme.incompatible_border if problem
+            colour = (theme.incompatible_border if problem or missing
                       else theme.status_color("armed") if status == "armed"
                       else theme.text_muted)  # fmt: skip
             chip.setStyleSheet(f"color: {colour}; font-size: 8pt; font-weight: 600;")
             lay.addWidget(chip)
+        if manifest["role"] == "source" and doc.input_summary and not missing:
+            summary = QLabel(doc.input_summary)  # what was read: 32 ch · 250 Hz …
+            summary.setObjectName("muted")
+            summary.setWordWrap(True)
+            lay.addWidget(summary)
         lay.addSpacing(4)
         width = self.strip_width - 24  # inside the margins (10 + 10) and border
         gap = 4  # between a name and its value
@@ -214,9 +272,9 @@ class StripWidget(QFrame):
                 row.addWidget(key, 1)
                 row.addWidget(value)
                 lay.addLayout(row)
-            else:  # the value on a line of its own, under its name
-                key, value = ElidedLabel(pretty), ElidedLabel(text)
-                key.setObjectName("muted")
+            else:  # the value under its name, each on up to two lines
+                key = WrapLabel(pretty, width - 4, "muted")
+                value = WrapLabel(text, width - 4)
                 value.setAlignment(Qt.AlignmentFlag.AlignRight)
                 lay.addWidget(key)
                 lay.addWidget(value)
@@ -780,6 +838,18 @@ class ChainView(QScrollArea):
         # appearance.strip_width: percent of 158 px, or "text" (strip_width)
         self.strip_size: int | str = 100
 
+    def _fit_height(self) -> None:
+        inner = getattr(self, "_inner", None)
+        if inner is None or not inner.strips:
+            return
+        try:  # the board's layout: the rails band, lowered strips, margins
+            board = inner.layout().minimumSize().height()
+        except RuntimeError:  # rebuilt meanwhile: its widgets are gone
+            return
+        bar = self.horizontalScrollBar().sizeHint().height()
+        need = board + bar + 2 * self.frameWidth()
+        self.setMinimumHeight(max(232 + inner.band, need))
+
     def rebuild(
         self,
         doc: PipelineDoc,
@@ -799,6 +869,10 @@ class ChainView(QScrollArea):
         lay.setContentsMargins(8, inner.band + 2, 8, 8)
         lay.setSpacing(0)
         self.setMinimumHeight(232 + inner.band)
+        self._inner = inner
+        # once laid out (names and values may take two lines): tall enough for
+        # the tallest strip, so none is cut off at the bottom
+        QTimer.singleShot(0, self._fit_height)
         tappable = {s.id for s in doc.tappable()}
         for i, strip in enumerate(doc.strips):
             status = statuses.get(strip.id, "stopped")

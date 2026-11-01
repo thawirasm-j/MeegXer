@@ -8,6 +8,7 @@ stylesheet and the plots, so a new theme needs no code. ``dark`` (default) and
 from __future__ import annotations
 
 import json
+import tempfile
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -78,6 +79,25 @@ def load_theme(name: str | Path = "dark") -> Theme:
     return Theme.from_dict(data)
 
 
+def _arrow(colour: str, up: bool) -> str:
+    """A small arrow image for spin boxes in ``colour`` (Qt draws no arrow on a
+    styled spin box without one), written once per colour; its path with
+    forward slashes, as a stylesheet's url() takes on every platform."""
+    folder = Path(tempfile.gettempdir()) / "meegxer-icons"
+    path = folder / f"arrow-{'up' if up else 'down'}-{colour.lstrip('#')}.svg"
+    if not path.is_file():
+        points = "1,7 5,3 9,7" if up else "1,3 5,7 9,3"
+        folder.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">'
+            f'<polyline points="{points}" fill="none" stroke="{colour}" '
+            'stroke-width="1.6" stroke-linecap="round" '
+            'stroke-linejoin="round"/></svg>',
+            encoding="utf-8",
+        )
+    return path.as_posix()
+
+
 def stylesheet(t: Theme, scale: float = 1.0) -> str:
     """Qt stylesheet for the whole window; ``scale`` sizes the text (Settings →
     Appearance)."""
@@ -88,6 +108,7 @@ QFrame#panel, QWidget#panel {{ background: {t.surface}; border: 1px solid {t.bor
     border-radius: 6px; }}
 QLabel {{ background: transparent; border: none; }}
 QLabel#muted {{ color: {t.text_muted}; }}
+QLabel:disabled {{ color: {t.text_muted}; }}
 QLabel#title {{ font-weight: 600; }}
 QLabel#meter {{ color: {t.text_muted}; padding: 0 6px; }}
 QFrame#card {{ background: {t.surface}; border: 1px solid {t.border};
@@ -102,12 +123,31 @@ QPushButton:checked, QToolButton:checked {{ background: {t.accent}; color: {t.su
     border-color: {t.accent}; }}
 QPushButton:disabled, QToolButton:disabled {{ color: {t.text_muted}; }}
 QToolButton#qt_toolbar_ext_button {{ padding: 2px; }}
+QPushButton:checked:disabled {{ color: {t.surface}; }}
 QPushButton#primary {{ background: {t.accent}; color: {t.surface};
     border-color: {t.accent}; font-weight: 600; }}
 QPushButton#primary:disabled {{ background: {t.surface_alt}; color: {t.text_muted};
     border-color: {t.border}; }}
 QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{ background: {t.surface_alt};
     border: 1px solid {t.border}; border-radius: 4px; padding: 2px 6px; }}
+QSpinBox, QDoubleSpinBox {{ padding-right: 20px; }}
+QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {{
+    subcontrol-origin: border; width: 18px; border-left: 1px solid {t.border};
+    background: {t.surface_alt}; }}
+QAbstractSpinBox::up-button {{ subcontrol-position: top right;
+    border-top-right-radius: 4px; }}
+QAbstractSpinBox::down-button {{ subcontrol-position: bottom right;
+    border-bottom-right-radius: 4px; }}
+QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover {{
+    background: {t.border}; }}
+QAbstractSpinBox::up-arrow {{ image: url({_arrow(t.text, True)}); width: 9px;
+    height: 9px; }}
+QAbstractSpinBox::down-arrow {{ image: url({_arrow(t.text, False)}); width: 9px;
+    height: 9px; }}
+QAbstractSpinBox::up-arrow:disabled, QAbstractSpinBox::up-arrow:off {{
+    image: url({_arrow(t.text_muted, True)}); }}
+QAbstractSpinBox::down-arrow:disabled, QAbstractSpinBox::down-arrow:off {{
+    image: url({_arrow(t.text_muted, False)}); }}
 QComboBox QAbstractItemView {{ background: {t.surface}; border: 1px solid {t.border};
     selection-background-color: {t.accent}; }}
 QMenu {{ background: {t.surface}; border: 1px solid {t.border}; }}

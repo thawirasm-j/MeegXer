@@ -7,6 +7,23 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Readable strips and settings.**
+  - A strip's name, and a value too long for its line, take up to two
+    lines ("Common spatial / patterns (CSP)"), the second ending in "…" only
+    if it still does not fit. The chain grows to fit its tallest strip, so
+    none is cut off at the bottom.
+  - Empty settings say what they mean: "every event", "every subject",
+    "any", "not chosen" (a dash before).
+  - The Input strip says what it still needs ("choose the recording file
+    on the Input strip", in the problem colour), and once read, what it
+    read: "32 ch · 250 Hz · 2:00".
+  - Number fields show their up and down arrows (they were blank in both
+    themes). The LIVE badge of an LSL input (always live) is readable.
+  - The Epochs strip's *Baseline start* and *Baseline end* are greyed out
+    unless *Baseline* is *Custom*, and say so. Choice lists are as wide as
+    their longest choice (up to 360 pixels); text fields as wide as their
+    value (up to 480), showing its start.
+
 - **Clearer errors, a clean start for each pipeline.**
   - Opening a pipeline or a template clears the last one's results, events
     and state; it no longer shows the previous recording under the new
