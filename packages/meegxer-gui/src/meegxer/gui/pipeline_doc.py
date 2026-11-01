@@ -38,6 +38,8 @@ SYNTHETIC = "meegxer.core.synthetic"
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
 SPEC_VERSION = "0.2.23"
 BIDS_SOURCE = "meegxer.core.bids"
+FILE_SOURCE = "meegxer.core.file"
+LSL_SOURCE = "meegxer.core.lsl_in"
 BIDS_ENTITIES = ("subject", "session", "task", "run")
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
@@ -222,6 +224,20 @@ class PipelineDoc:
             return "Live only"
         return None
 
+    def input_missing(self) -> str | None:
+        """What the input still needs before anything can be read (a file,
+        a dataset folder, a stream's name), in words; None when it has it."""
+        src = self.source
+        if src is None:
+            return None
+        if src.node == FILE_SOURCE and not str(src.params.get("path") or ""):
+            return "choose the recording file on the Input strip"
+        if src.node == BIDS_SOURCE and not str(src.params.get("root") or ""):
+            return "choose the BIDS dataset folder on the Input strip"
+        if src.node == LSL_SOURCE and not str(src.params.get("stream_name") or ""):
+            return "name the LSL stream on the Input strip"
+        return None
+
     def problems(self) -> list[str]:
         """Reasons the pipeline cannot start (empty when it can)."""
         issues = [
@@ -231,6 +247,8 @@ class PipelineDoc:
         ]
         if self.source is None:
             issues.insert(0, "no input")
+        elif (missing := self.input_missing()) is not None:
+            issues.insert(0, missing)
         elif (
             self.mode == "offline"
             and self.source.node == SYNTHETIC

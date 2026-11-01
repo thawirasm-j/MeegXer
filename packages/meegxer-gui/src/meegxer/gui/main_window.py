@@ -8,6 +8,7 @@ daemon serves from an offline run.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -145,6 +146,28 @@ def about_text() -> str:
     )
 
 
+# what a failed control call was doing, in words (the log's start of line)
+FAILED_CALL = {
+    "describe_source": "Could not read the input",
+    "run_offline": "Could not run offline",
+    "load_pipeline": "Could not load the pipeline",
+    "start": "Could not start",
+    "list_bids": "Could not read the BIDS dataset",
+}
+_EXCEPTION_NAME = re.compile(r"^(?:[A-Za-z_][\w.]*\.)?[A-Z]\w*(?:Error|Exception): ")
+
+
+def plain_error(text: str) -> str:
+    """An error as a person reads it: a traceback's last line, without the
+    Python exception's name (``FileNotFoundError: input file not found: x``
+    -> ``input file not found: x``)."""
+    lines = [line.strip() for line in str(text).strip().splitlines() if line.strip()]
+    last = lines[-1] if lines else str(text)
+    while _EXCEPTION_NAME.match(last):
+        last = _EXCEPTION_NAME.sub("", last, count=1)
+    return last
+
+
 class MainWindow(QMainWindow):
     def __init__(
         self,
@@ -184,6 +207,9 @@ class MainWindow(QMainWindow):
         self.offline_total = 0
         self.offline_state = ""
         self._previewing = False  # the offline run under way only shows the input
+        # another pipeline was opened since the daemon's last offline run: its
+        # results (another chain's) are not shown, until a run starts again
+        self._offline_dropped = False
         self.history = EditHistory()  # undo and redo of the chain (M10.10)
         self._restoring = False  # an undo or redo is being applied
         self.offline_stopping = False  # stop_offline asked; the strip finishes
@@ -441,7 +467,8 @@ class MainWindow(QMainWindow):
         try:
             return self.link.call(method, **params)
         except (RpcError, TimeoutError) as exc:
-            self.log(f"{method} failed: {exc}")
+            what = FAILED_CALL.get(method, f"{method} failed")
+            self.log(f"{what}: {plain_error(str(exc))}")
             return None
 
     def apply_theme(self, theme: Theme) -> None:
@@ -731,6 +758,29 @@ class MainWindow(QMainWindow):
             self.log("Restarting to apply the change (fitted models are kept).")
             self.restart()
 
+    def _fresh_document(self, preview: bool = True) -> None:
+        """Another pipeline: the last one's offline results, events and state
+        go (they were of another chain, often another recording); its input
+        is read, and shown at once when it names a recording (offline)."""
+        if self.running:
+            return
+        self._offline_dropped = True
+        self.offline_state = ""
+        self._previewing = False
+        self.offline_probes.clear()
+        self.offline_features.clear()
+        self._offline_cache.clear()
+        self._feature_cache.clear()
+        self._erp_cache.clear()
+        self.offline_recordings = {}
+        self.view_tap = None
+        self._input_notes = ()
+        self.use_recording_info(None)
+        if self._describe_input() is not None and preview:
+            self._preview_input()
+        self._meters({})
+        self.redraw()
+
     def _name(self, strip_id: str) -> str:
         """A strip's title for messages (its id when it is no longer there)."""
         try:
@@ -873,8 +923,8 @@ class MainWindow(QMainWindow):
         the run itself opens; the daemon checks it then)."""
         self._list_bids()
         src = self.doc.source
-        if src is None or src.node in LIVE_ONLY_SOURCES:
-            self.use_recording_info(None)
+        if src is None or src.node in LIVE_ONLY_SOURCES or self.doc.input_missing():
+            self.use_recording_info(None)  # nothing to read yet: no error
             return None
         info: dict[str, Any] | None = self.call(
             "describe_source", node=self.doc.source_entry()
@@ -987,6 +1037,7 @@ class MainWindow(QMainWindow):
         pipeline = {"spec_version": SPEC_VERSION, "nodes": nodes}
         if self.call("run_offline", pipeline=pipeline) is None:
             return
+        self._offline_dropped = False
         self.offline_state = "running"
         self._previewing = True
         self.offline_probes.clear()
@@ -1095,6 +1146,7 @@ class MainWindow(QMainWindow):
             pipeline = self.doc.to_pipeline(tap_keep_seconds=0.0)
             result = self.call("run_offline", pipeline=pipeline, reviewer=reviewer)
             if result is not None:
+                self._offline_dropped = False
                 self.offline_state = "running"
                 self._previewing = False
                 self.offline_probes.clear()
@@ -1174,6 +1226,7 @@ class MainWindow(QMainWindow):
         self._default_taps()
         self._structure_changed(f"Opened {path}.")
         self._mark_saved(new_history=True)
+        self._fresh_document()
 
     def new_from_template(self) -> None:
         """A pipeline from a template (``meegxer.core.templates``); with its
@@ -1236,6 +1289,7 @@ class MainWindow(QMainWindow):
         self._default_taps()
         self._structure_changed(f"New from template: {label}.")
         self._mark_saved(new_history=True)  # nothing of the user's to lose yet
+        self._fresh_document()
 
     def open_session(self, path: str) -> None:
         """Load a session: its pipeline here, its fitted models in the daemon
@@ -1268,6 +1322,7 @@ class MainWindow(QMainWindow):
         models = ", ".join(reply.get("models", [])) or "none"
         self._structure_changed(f"Opened session {path} (fitted models: {models}).")
         self._mark_saved(new_history=True)
+        self._fresh_document(preview=False)  # its models stay as loaded
 
     def offer_recovery(self) -> None:
         """Offer to save each recording a crashed run left unfinished (the file
@@ -1536,17 +1591,22 @@ class MainWindow(QMainWindow):
             elif n.get("pass_uncalibrated") and s != "ready":
                 s = "bypassed"
             statuses[n["id"]] = s
-        offline = status.get("offline")
+        offline = None if self._offline_dropped else status.get("offline")
         if self.doc.mode == "offline":  # the last offline run, not the live graph
             fitted = set((offline or {}).get("models", []))
             statuses = {s.id: "ready" for s in self.doc.strips if s.id in fitted}
-        for err in status.get("errors", [])[len(getattr(self, "_errors", [])) :]:
-            self.log(f"Engine error: {err}")
+        seen = len(getattr(self, "_errors", []))
+        new = [plain_error(e) for e in status.get("errors", [])[seen:]]
         self._errors = list(status.get("errors", []))
+        stopped = not running and self.running
+        for err in new if not stopped else []:
+            self.log(f"Error: {err}")
         if offline:
             self._offline_status(offline)
-        if not running and self.running:
-            self.log("The pipeline stopped (end of input or an error).")
+        if stopped and new:  # why it stopped, in the same line
+            self.log("The pipeline stopped: " + "; ".join(new))
+        elif stopped:
+            self.log("The pipeline stopped: the input ended.")
         changed = running != self.running or statuses != self.statuses
         self.running, self.statuses = running, statuses
         self._meters(status)
@@ -1639,7 +1699,7 @@ class MainWindow(QMainWindow):
             for note in offline.get("skipped", []):
                 self.log(f"Not saved: {note}")
         elif state == "error":
-            self.log(f"Offline run failed: {offline.get('error')}")
+            self.log(f"Offline run failed: {plain_error(str(offline.get('error')))}")
         elif state == "stopped":
             if recordings:
                 self.log(f"Offline run stopped: done {len(recordings['done'])}, "
@@ -1725,6 +1785,7 @@ class MainWindow(QMainWindow):
         pipeline = {"spec_version": SPEC_VERSION, "nodes": [raw, tap]}
         if self.call("run_offline", pipeline=pipeline) is None:
             return
+        self._offline_dropped = False
         self.offline_state = "running"
         self.offline_probes.clear()
         self._offline_cache.clear()
@@ -1783,6 +1844,8 @@ class MainWindow(QMainWindow):
                      if rec.get("current") and self.offline_state == "running"
                      else "")  # fmt: skip
             state = "stopping…" if self.offline_stopping else self.offline_state
+            if self._previewing and state == "running":
+                state = "reading the recording…"
             self.status_line.setText(f"offline: {state or 'ready'}{where}")
             return
         running = status.get("running")
@@ -1947,8 +2010,28 @@ class MainWindow(QMainWindow):
             self.stacked.refresh(self.view, self._stacked_provider(main), main, comps)
             return
         provider = self._panned_provider(self.timeline, self.view.seconds(), main)
+        self.view.empty_text = self._empty_text()
         self.view.mixing = self._mixing_for(self.view_tap)
         self.view.refresh(provider, main, comps)
+
+    def _empty_text(self) -> str:
+        """What the signal view says while it has nothing to show: the next
+        step, not just "nothing"."""
+        missing = self.doc.input_missing()
+        if self._previewing and self.offline_state == "running":
+            return "Reading the recording…"
+        if self.doc.mode == "offline":
+            if missing:
+                return f"Nothing to show yet: {missing}"
+            if self.offline_state == "running":
+                return "Running…"
+            if not self.offline_state:
+                return "Press Run offline to process the recording"
+        elif not self.running:
+            if missing:
+                return f"Nothing to show yet: {missing}, then press Start"
+            return "Press Start to see the signal"
+        return "Nothing shown: click a ◇ tap in the chain"
 
     def _mixing_for(
         self, tap: str | None

@@ -301,3 +301,60 @@ def test_an_epochs_file_opens_on_its_erp(
         assert erp.channels == ("Fz", "Cz", "Pz")
     finally:
         win.close()
+
+
+def test_errors_read_as_words() -> None:
+    from meegxer.gui.main_window import plain_error
+
+    assert plain_error("FileNotFoundError: input file not found: x.edf") == (
+        "input file not found: x.edf"
+    )
+    trace = ('Traceback (most recent call last):\n  File "lsl.py", line 163\n'
+             "TimeoutError: no LSL stream named 'Amp' found\n")  # fmt: skip
+    assert plain_error(trace) == "no LSL stream named 'Amp' found"
+    assert plain_error("RuntimeError: ValueError: bad") == "bad"
+    assert plain_error("filter: Offline only") == "filter: Offline only"
+
+
+def test_an_input_without_its_file_says_what_to_do(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]], recording: Path
+) -> None:
+    """Choosing *Recording file* reads nothing yet (no error); the view and
+    Run offline say to choose the file; a new pipeline starts clean."""
+    from meegxer.core.templates import template_pipeline
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        if win.doc.mode != "offline":
+            win.toggle_mode()
+        assert "rror" not in win.logbox.toPlainText()  # nothing read, no error
+        assert win._empty_text().endswith("choose the recording file on the "
+                                          "Input strip")  # fmt: skip
+        win.start()
+        assert (
+            win.logbox.toPlainText()
+            .splitlines()[-1]
+            .endswith("Cannot start: choose the recording file on the Input strip")
+        )
+        win.change_param("input", "path", str(recording.with_name("gone.fif")))
+        assert win.logbox.toPlainText().splitlines()[-1].endswith(
+            "Could not read the input: input file not found: "
+            f"{recording.with_name('gone.fif')}")  # fmt: skip
+        win.change_param("input", "path", str(recording))
+        assert win._empty_text() == "Reading the recording…"
+        deadline = time.monotonic() + 30
+        while win.offline_state != "done":
+            assert time.monotonic() < deadline, "the preview did not finish"
+            pump(qapp, 0.1)
+        assert win.offline_probes and win.view.events
+        win._load_template("ERP study", template_pipeline("erp"))
+        pump(qapp, 1.0)  # status polls: the preview's results stay gone
+        assert win.offline_state == "" and not win.offline_probes
+        assert win.view.events == []
+        assert "choose the BIDS dataset folder" in win._empty_text()
+    finally:
+        win.close()
