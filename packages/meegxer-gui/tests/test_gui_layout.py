@@ -47,7 +47,7 @@ def test_the_window_fits_a_laptop_screen(
         shown = line.shown()
         assert shown == full or shown.endswith("…")  # cut at its end
         assert shown.startswith("● running")  # the state itself whole
-        win.resize(1600, 900)
+        win.resize(2400, 900)  # room for it all, also with Windows' wider text
         pump(qapp, 0.5)
         assert line.shown() == line.text()  # whole (the load may have moved)
         win.resize(1024, 700)
