@@ -49,8 +49,9 @@ define it.
     an ICA). A port that names none connects to any. Hosts offer only
     matching rails.
   - 0.2.21: a source may have extra outputs, each naming a rail its input
-    carries (the File input's `ics`: an EEGLAB file's components); only
-    outputs, and still none for probes and sinks.
+    carries (the File input's `ics`: an EEGLAB file's components; its
+    `epochs`: an epochs file's epochs); only outputs, and still none for
+    probes and sinks.
   - 0.2.20: a string parameter may say it is a path: `path` is `file` (a file
     to read), `folder` or `save` (a file to write), with optional `extensions`
     (`[".set"]`) for the dialog's filter. Hosts offer a Browse button with the

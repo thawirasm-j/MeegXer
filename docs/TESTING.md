@@ -753,3 +753,29 @@ chain.
 | R1 signal and events shown at once | passed | run by Claude offscreen (and test) |
 | R2 Run offline afterwards | passed | run by Claude offscreen (and test) |
 | R3 on your recordings, a large one too (how long it takes) | | |
+
+## S. Epoch files as the input
+
+Already run by Claude, offscreen through the real window, with 120 synthetic
+P300 epochs (24 `target`, 96 `standard`, -0.2 to 0.8 s) saved as `-epo.fif`
+and as an epoched `.set`. Choosing either file opened the ERP view at once
+(`input:epochs · 120 epochs`), the target's peak at 300 ms; the Epochs rail
+started at the Input strip; the log said "Epochs file: 120 epochs of 1 s
+(standard 96, target 24), joined end to end; …". *Run offline* then ran the
+chain.
+
+1. Offline, *Input* → *Recording file*, *Browse…* an epochs file of yours:
+   an MNE `-epo.fif`, or an EEGLAB `.set` saved after epoching.
+2. The ERP view opens at once, one line per label with its count; the log
+   says how many epochs of each label were read.
+3. The chain's *Epochs* rail starts at the Input strip. Click *Input*'s
+   signal tap: the epochs, end to end, each label marked at its time 0.
+4. Add *Epochs and ERPs file* (or *Review epochs*) after the input, with no Epochs
+   strip, and *Run offline*: it writes (or shows) the file's epochs.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| S1 ERP shown at once (`-epo.fif`, epoched `.set`) | passed | run by Claude offscreen (and tests) |
+| S2 epochs and labels in the log; labels in the class pickers | passed | run by Claude offscreen (and test) |
+| S3 the epochs written back without an Epochs strip | passed | test (`-epo.fif` round trip) |
+| S4 on your epochs files (EEGLAB, MNE) | | |

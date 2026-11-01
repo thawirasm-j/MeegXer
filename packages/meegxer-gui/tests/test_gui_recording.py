@@ -261,3 +261,43 @@ def test_a_chosen_recording_is_shown_at_once(
         assert len(win.offline_probes) > 1  # the chain's taps too
     finally:
         win.close()
+
+
+def test_an_epochs_file_opens_on_its_erp(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]], tmp_path: Path
+) -> None:
+    """An epochs file (-epo.fif) starts the epochs rail at the input: the
+    preview shows its ERP per label, and its labels fill the class pickers."""
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+    from meegxer.gui.pipeline_doc import tap_id
+
+    rng = np.random.default_rng(0)
+    info = mne.create_info(["Fz", "Cz", "Pz"], 100.0, "eeg")
+    events = np.column_stack([np.arange(5) * 100, np.zeros(5, int),
+                              [1, 2, 1, 2, 1]])  # fmt: skip
+    path = tmp_path / "rec-epo.fif"
+    mne.EpochsArray(rng.standard_normal((5, 3, 61)) * 1e-6, info, events,
+                    tmin=-0.1, event_id={"target": 1, "standard": 2},
+                    verbose="error").save(path, verbose="error")  # fmt: skip
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        win.change_param("input", "path", str(path))
+        assert win.doc.input_rails == ("epochs",)
+        assert win.doc.event_labels == ["target", "standard"]
+        assert win.view_tap == "input:epochs"
+        deadline = time.monotonic() + 30
+        while win.offline_state != "done":
+            assert time.monotonic() < deadline, "the preview did not finish"
+            pump(qapp, 0.1)
+        pump(qapp, 0.3)
+        assert win.views.currentIndex() == 2  # the ERP view
+        erp = win._offline_erp(tap_id("input:epochs"))
+        assert erp is not None
+        assert dict(zip(erp.conditions, erp.counts, strict=True)) == {
+            "target": 3, "standard": 2}  # fmt: skip
+        assert erp.channels == ("Fz", "Cz", "Pz")
+    finally:
+        win.close()

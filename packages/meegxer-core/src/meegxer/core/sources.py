@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import numpy as np
 from scipy import signal
 
-from meegxer.core.block import Block, FloatArray, SignalInfo
+from meegxer.core.block import Block, FeatureBlock, FloatArray, SignalInfo
 from meegxer.core.eeglab_ica import (
     Decomposition,
     classify,
@@ -38,6 +38,9 @@ STANDARD_LABELS = (
 )  # fmt: skip
 _POSTERIOR = {"P3", "P4", "P7", "P8", "Pz", "O1", "O2", "Oz"}
 _OCCIPITAL = {"O1", "O2", "Oz"}
+
+# MNE's names for an epochs file (mne.read_epochs)
+EPOCH_ENDINGS = ("-epo.fif", "_epo.fif", "-epo.fif.gz", "_epo.fif.gz")
 
 # Paul Kellet / J.O. Smith pinking filter (-10 dB/decade).
 _PINK_B = [0.049922035, -0.095993537, 0.050612699, -0.004408786]
@@ -554,6 +557,8 @@ class _RawSource(Source):
     def _files(self) -> list[Path]:
         raise NotImplementedError
 
+    _cropped = 0  # samples the import review's crop left out at the start
+
     @cached_property
     def _raw(self) -> tuple[FloatArray, SignalInfo]:
         import mne  # lazy: only file sources need it
@@ -578,8 +583,10 @@ class _RawSource(Source):
             if review.crop is not None:
                 t0, t1 = review.crop
                 last = raw.times[-1]
+                first = raw.first_samp
                 raw.crop(tmin=min(t0, last), tmax=last if t1 is None else min(t1, last),
                          include_tmax=t1 is None)  # fmt: skip
+                self._cropped = int(raw.first_samp - first)
             events = crop_events([m.to_wire() for m in review.marks], review.crop)
             bads += [b for b in review.bads if b in raw.ch_names and b not in bads]
             self.import_reviewed = True
@@ -644,7 +651,11 @@ class FileSource(_RawSource):
     (``ics``, ``meegxer.core.eeglab_ica``): its components' activations, with
     the file's ICLabel classes, else ICLabel's computed when a run first reads
     them. An MNE ICA file given as ``ica`` (``meegxer.core.mne_ica``) starts
-    it instead. An ICA strip after the input rewrites the rail."""
+    it instead. An ICA strip after the input rewrites the rail.
+
+    An epochs file (MNE's ``-epo.fif``, an epoched EEGLAB ``.set``) is read
+    as its epochs joined end to end, each epoch's label an event at its time
+    0, and starts the epochs rail (``epochs``) with the epochs themselves."""
 
     manifest: ClassVar[Manifest] = _source_manifest(
         "meegxer.core.file",
@@ -703,7 +714,10 @@ class FileSource(_RawSource):
                 "its components start the ICs rail (instead of a .set's own)",
             },
         ],
-        rails=[{"name": "ics", "type": "signal", "rail": "ics", "space": "component"}],
+        rails=[
+            {"name": "ics", "type": "signal", "rail": "ics", "space": "component"},
+            {"name": "epochs", "type": "features", "rail": "epochs"},
+        ],
     )
 
     _COMPANIONS: ClassVar[dict[str, tuple[str, ...]]] = {
@@ -758,7 +772,43 @@ class FileSource(_RawSource):
                           f"{', '.join(map(repr, read.marker_streams)) or 'none'}",
                           *read.notes]  # fmt: skip
             return read.raw
-        return mne.io.read_raw(path, preload=True, verbose="ERROR")
+        if path.name.lower().endswith(EPOCH_ENDINGS):  # MNE's name for epochs
+            return self._joined(mne.read_epochs(path, preload=True, verbose="ERROR"))
+        try:
+            return mne.io.read_raw(path, preload=True, verbose="ERROR")
+        except TypeError as exc:  # an epoched EEGLAB .set: "number of trials"
+            if path.suffix.lower() != ".set" or "trials" not in str(exc):
+                raise
+            epochs = mne.read_epochs_eeglab(path, verbose="ERROR")
+            return self._joined(epochs)
+
+    # an epochs file read: each epoch (start, stop, label) on the joined
+    # signal, and its times (s); None for a continuous recording
+    _epochs: list[tuple[int, int, str]] | None = None
+    _epoch_times: tuple[float, ...] = ()
+
+    def _joined(self, epochs: Any) -> mne.io.BaseRaw:
+        """Epochs as one signal, end to end, each epoch's label at its time 0
+        (the Events rail); the epochs themselves start the epochs rail."""
+        import mne
+
+        data = epochs.get_data()  # epochs x channels x samples, in volts
+        n, length = data.shape[0], data.shape[2]
+        names = {code: name for name, code in epochs.event_id.items()}
+        labels = [names.get(int(code), str(int(code))) for code in epochs.events[:, 2]]
+        raw = mne.io.RawArray(np.concatenate(list(data), axis=1), epochs.info,
+                              verbose="ERROR")  # fmt: skip
+        zero = int(np.argmin(np.abs(epochs.times)))  # each epoch's time 0
+        sfreq = float(epochs.info["sfreq"])
+        onsets = [(k * length + zero) / sfreq for k in range(n)]
+        raw.set_annotations(mne.Annotations(onsets, [0.0] * n, labels))
+        self._epochs = [(k * length, (k + 1) * length, labels[k]) for k in range(n)]
+        self._epoch_times = tuple(float(t) for t in epochs.times)
+        counts = ", ".join(f"{lb} {labels.count(lb)}" for lb in dict.fromkeys(labels))
+        self.notes = [f"Epochs file: {n} epochs of {length / sfreq:g} s ({counts}), "
+                      "joined end to end; each epoch's label at its time 0; the "
+                      "epochs start the epochs rail at the Input strip"]  # fmt: skip
+        return raw
 
     # an mne.preprocessing.ICA given in memory (meegxer.api.run's ``ica``)
     mne_ica: Any = None
@@ -841,21 +891,42 @@ class FileSource(_RawSource):
         return dec
 
     def rails(self, block: Block) -> dict[str, RailOutput]:
-        """The file's ICs over ``block`` (``Decomposition.activations``)."""
+        """The file's ICs over ``block`` (``Decomposition.activations``), and
+        an epochs file's epochs that end in it (as the Epochs strip writes
+        them: one window per epoch, epoch x channel x time, in volts)."""
+        out: dict[str, RailOutput] = {}
         dec = self.decomposition()
-        if dec is None:
-            return {}
-        own = self._raw[1].ch_labels
-        idx = [own.index(c) for c in dec.channels]
-        ics = Block(dec.activations(block.data[idx]), components_info(dec, block.info),
-                    block.sample_index, block.timestamp)  # fmt: skip
-        return {"ics": ics}
+        if dec is not None:
+            own = self._raw[1].ch_labels
+            idx = [own.index(c) for c in dec.channels]
+            out["ics"] = Block(dec.activations(block.data[idx]),
+                               components_info(dec, block.info), block.sample_index,
+                               block.timestamp)  # fmt: skip
+        if self._epochs is not None:
+            data, info = self._raw
+            sfreq, cut, n = info.sfreq, self._cropped, data.shape[1]
+            kept = [
+                (lo - cut, hi - cut, label)
+                for lo, hi, label in self._epochs
+                if lo >= cut and hi - cut <= n
+            ]  # an import review's crop
+            out["epochs"] = tuple(
+                FeatureBlock(data[np.newaxis, :, lo:hi], ("epoch", "channel", "time"),
+                             (lo, hi),
+                             block.timestamp + (lo - block.sample_index) / sfreq,
+                             {"epoch": (label,), "channel": block.info.ch_labels,
+                              "time": self._epoch_times}, unit="V")
+                for lo, hi, label in kept
+                if block.sample_index < hi <= block.stop_index
+            )  # fmt: skip
+        return out
 
     def carries(self) -> list[str]:
         """The rail outputs this file starts (``describe``): its ICs when it
         carries a decomposition."""
         _ = self._raw
-        return ["ics"] if self._decomposition is not None else []
+        return ([*(["ics"] if self._decomposition is not None else []),
+                 *(["epochs"] if self._epochs is not None else [])])  # fmt: skip
 
     def ica_model(self) -> dict[str, Any] | None:
         """The decomposition as the ICA strip's model (``get_model``)."""

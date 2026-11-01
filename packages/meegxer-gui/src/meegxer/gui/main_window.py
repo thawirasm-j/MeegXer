@@ -91,6 +91,7 @@ from meegxer.gui.labels import param_label
 from meegxer.gui.names import title
 from meegxer.gui.pipeline_doc import (
     BIDS_SOURCE,
+    ERP_PROBE,
     LIVE_ONLY_SOURCES,
     PipelineDoc,
     tap_id,
@@ -950,7 +951,8 @@ class MainWindow(QMainWindow):
     def _preview_input(self) -> None:
         """Offline, a recording just chosen is read and shown at once (its
         signal and events on the input's tap), before anything is run: an
-        offline run of the input alone. Run offline then runs the chain."""
+        offline run of the input alone. Run offline then runs the chain. An
+        epochs file opens on its ERP (the epochs rail the input starts)."""
         src = self.doc.source
         if (
             src is None or self.doc.mode != "offline" or self.running
@@ -963,7 +965,12 @@ class MainWindow(QMainWindow):
         tap = {"id": probe, "node": "meegxer.core.probe", "input": src.id,
                "params": {"keep_seconds": 0.0}}  # fmt: skip
         entry = {**self.doc.source_entry(), "id": src.id}
-        pipeline = {"spec_version": SPEC_VERSION, "nodes": [entry, tap]}
+        nodes = [entry, tap]
+        epochs = f"{src.id}:epochs" if "epochs" in self.doc.input_rails else None
+        if epochs is not None:
+            nodes.append({"id": tap_id(epochs), "node": ERP_PROBE, "input": epochs,
+                          "params": {"label": epochs}})  # fmt: skip
+        pipeline = {"spec_version": SPEC_VERSION, "nodes": nodes}
         if self.call("run_offline", pipeline=pipeline) is None:
             return
         self.offline_state = "running"
@@ -974,7 +981,7 @@ class MainWindow(QMainWindow):
         self._feature_cache.clear()
         self._erp_cache.clear()
         self.offline_recordings = {}
-        self.view_tap = None
+        self.view_tap = epochs
         self.taps = {k: ("main" if k == src.id else "off") for k in self.taps}
         self.taps[src.id] = "main"
         self._transport()

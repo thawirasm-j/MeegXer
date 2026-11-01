@@ -174,9 +174,24 @@ output strip chooses which line it draws from.
 
 ## Epochs rail (built, live and offline)
 
-- **Who writes it:** the **Epochs** strip (`meegxer.nodes.epochs`, Epochs).
+- **Who writes it:** the **Epochs** strip (`meegxer.nodes.epochs`, Epochs),
+  or the File input reading an epochs file.
   It passes the signal on unchanged and writes its `epochs` output (a Features
   rail).
+- **From an epochs file:** the File input starts it at the Input strip when
+  its file holds epochs: MNE's `-epo.fif` (`mne.read_epochs`) or an epoched
+  EEGLAB `.set` (`mne.read_epochs_eeglab`; the File input's rail output
+  `epochs`, as the ICs of a `.set`).
+  - The signal is the epochs joined end to end; each epoch's label is put on
+    the Events rail at its time 0 (the event it was cut around).
+  - Each epoch is written on the rail, as the file holds it (no baseline
+    applied again), in the block that brings its last sample.
+  - A crop at import keeps only the epochs wholly inside it.
+  - `describe_source` lists `epochs` under `carries`, and the notes say so
+    (`Epochs file: 120 epochs of 0.8 s (target 24, standard 96), joined end
+    to end; …`).
+  - An Epochs strip after the input cuts the joined signal again around those
+    events (another span or baseline) and its rail takes over from there.
 - **What it carries:** one feature window per epoch.
   - `dims` are `(epoch, channel, time)`.
   - The `epoch` coordinate is the event's label; `time` is in seconds from the

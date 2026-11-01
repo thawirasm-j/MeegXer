@@ -7,11 +7,18 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Epoch files as the input.** The *Recording file* input opens MNE's
+  `-epo.fif` and epoched EEGLAB `.set` files. The epochs are joined end to
+  end as the signal, each epoch's label is an event at its time 0, and the
+  input starts the epochs rail with the epochs themselves: the ERP tap,
+  *Review epochs* and the epochs writers read them with no Epochs strip. Choosing such a
+  file opens its ERP per label at once (offline), and its labels fill the
+  class pickers.
+
 - **A chosen recording is shown at once.** Offline, choosing the input's
   file (or a BIDS subject) reads it and shows its signal, with its events
   marked, on the input's tap, before anything is run; the log says "The
-  recording, as read". *Run offline* then runs the chain as before. (Epoch
-  files as an input come next.)
+  recording, as read". *Run offline* then runs the chain as before.
 
 - A strip that starts its own rail and adds to the Events rail (SSVEP
   detection with *Detections as events*, LDA) draws the two up-arrows side
