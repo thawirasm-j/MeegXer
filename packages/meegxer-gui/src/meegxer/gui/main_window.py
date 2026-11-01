@@ -42,12 +42,9 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QProgressDialog,
-    QProxyStyle,
     QPushButton,
     QSplitter,
     QStackedWidget,
-    QStyle,
-    QToolBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -83,6 +80,7 @@ from meegxer.gui.elided import ElidedLabel
 from meegxer.gui.epoch_review_window import EpochReviewWindow
 from meegxer.gui.erp_view import Erp, ErpView
 from meegxer.gui.feature_view import FeatureSeries, FeatureView
+from meegxer.gui.fold import folding_bar
 from meegxer.gui.history import (
     EditHistory,
     changed_params,
@@ -145,18 +143,6 @@ def about_text() -> str:
         "processing.<br>Licence: GPL-3.0.<br><br>"
         f"<b>Not a medical device.</b> {NOT_A_MEDICAL_DEVICE}"
     )
-
-
-class WideExtension(QProxyStyle):
-    """A toolbar's » button (its folded items) wide enough to show its arrow
-    with the theme's button padding (Qt's default is 12 px)."""
-
-    def pixelMetric(
-        self, metric: QStyle.PixelMetric, option: Any = None, widget: Any = None
-    ) -> int:
-        if metric == QStyle.PixelMetric.PM_ToolBarExtensionExtent:
-            return 26
-        return super().pixelMetric(metric, option, widget)
 
 
 class MainWindow(QMainWindow):
@@ -353,18 +339,7 @@ class MainWindow(QMainWindow):
         # files, undo and the mode: what does not fit (a laptop, Windows' wider
         # text) folds into the » button at the toolbar's end; Start and Stop,
         # the run's state, Log and the settings always show
-        self.tools = QToolBar()
-        # its » wide enough for the arrow; owned by the toolbar, so Qt frees
-        # it after the toolbar (a style freed first crashed Python's exit)
-        extension = WideExtension()
-        extension.setParent(self.tools)
-        self.tools.setStyle(extension)
-        self.tools.setMovable(False)
-        self.tools.setFloatable(False)
-        self.tools.setStyleSheet(
-            "QToolBar { border: none; background: transparent; spacing: 6px; "
-            "padding: 0; }"
-        )
+        self.tools = folding_bar()
         new = QPushButton("New…")
         new.setToolTip("A pipeline from a template (Ctrl+N)")
         new.clicked.connect(lambda _=False: self.new_from_template())

@@ -10,10 +10,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 - **The window fits a laptop screen**, also where text is drawn wider
   (Windows, or *Text size* raised). It needed about 1,400 pixels before
   (more on Windows), more than a 1366 × 768 laptop has; it now needs about
-  660 (850 with text 40 % larger).
+  560 (690 with text 40 % larger, 850 with it twice as large).
   - *New*, *Open*, *Save*, ↶ ↷ and *Friendly*/*Advanced* sit in a toolbar:
     what does not fit folds into its » button. *Start*, *Stop*, the run's
     state, *Log* and the settings always show.
+  - The signal view's *Overlay*, *Difference*, *Spectrum*, *Channels*,
+    time span and *Stacked view* fold the same way.
   - *Save session…* and *Share session…* moved to the arrow on *Save…*,
     as recent files are on *Open…*'s. *Undo* and *Redo* show as ↶ and ↷
     (their tooltips name them).

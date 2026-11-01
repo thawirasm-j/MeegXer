@@ -53,6 +53,7 @@ from meegxer.gui.colors import (
     class_style,
 )
 from meegxer.gui.elided import ElidedLabel
+from meegxer.gui.fold import folding_bar
 from meegxer.gui.headplot import (
     BANDS,
     DEFAULT_RANGE,
@@ -574,6 +575,9 @@ class SignalView(QWidget):
         caption = QLabel("SIGNAL")
         caption.setObjectName("title")
         bar.addWidget(caption)
+        # the modes, channels, span and stacked view fold into » where the
+        # window is too narrow for them (Windows draws them wider)
+        tools = folding_bar()
         self.group = QButtonGroup(self)
         self.active = True
         for i, name in enumerate(("Overlay", "Difference", "Spectrum")):
@@ -583,25 +587,25 @@ class SignalView(QWidget):
             self.group.addButton(button)
             mode = name.lower()
             button.clicked.connect(lambda _=False, m=mode: self._set_mode(m))
-            bar.addWidget(button)
+            tools.addWidget(button)
         self.channels = HeadChannelMenu(theme)
-        bar.addWidget(self.channels)
+        tools.addWidget(self.channels)
         self.span = QComboBox()
         for seconds in (2, 5, 10, 20, 30):
             self.span.addItem(f"{seconds} s", float(seconds))
         self.span.setCurrentIndex(2)
-        bar.addWidget(self.span)
-        bar.addStretch(1)
+        tools.addWidget(self.span)
+        stacked = QPushButton("⧉ Stacked view")
+        stacked.setToolTip("Stacked traces in a separate window")
+        stacked.clicked.connect(self.stacked_requested)
+        tools.addWidget(stacked)
+        bar.addWidget(tools)
         self.legend = ElidedLabel()  # never sets the window's width
         self.legend.setObjectName("muted")
         self.legend.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         bar.addWidget(self.legend, 1)
-        stacked = QPushButton("⧉ Stacked view")
-        stacked.setToolTip("Stacked traces in a separate window")
-        stacked.clicked.connect(self.stacked_requested)
-        bar.addWidget(stacked)
         lay.addLayout(bar)
         lay.addWidget(self._spectrum_bar())
         body = QHBoxLayout()

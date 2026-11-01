@@ -786,7 +786,7 @@ chain.
 Already run by Claude, offscreen through the real window, at 1024 × 700,
 1280 × 720, 1366 × 768 and 1920 × 1080, running live, with the normal text
 size and with text 40 % larger (as Windows draws it wider): the window took
-each size (its minimum width is 660 pixels, 853 with the larger text). With
+each size (its minimum width is 563 pixels, 687 with the larger text). With
 the larger text at 1024 pixels, *Friendly*/*Advanced* folded into the »
 button; the status line started with "● running" and ended in "…".
 
