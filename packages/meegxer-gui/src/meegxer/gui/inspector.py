@@ -42,7 +42,13 @@ from meegxer.gui.labels import (
     unit_label,
 )
 from meegxer.gui.names import title
-from meegxer.gui.pipeline_doc import MAX_STRIP_PARAMS, PipelineDoc, StripNode
+from meegxer.gui.pipeline_doc import (
+    BIDS_ENTITIES,
+    BIDS_SOURCE,
+    MAX_STRIP_PARAMS,
+    PipelineDoc,
+    StripNode,
+)
 from meegxer.gui.theme import DEFAULT_GROUPS, Theme
 
 # greyed text in an empty field: what leaving it empty means
@@ -255,9 +261,41 @@ def _editor(
     return spin, spin.valueChanged
 
 
+# what an empty BIDS entity means for the BIDS input
+BIDS_ANY = {"subject": "Every subject", "session": "Any session", "task": "Any task",
+            "run": "Any run"}  # fmt: skip
+
+
+def bids_combo(
+    entity: str, value: str, choices: list[str] | None, editable: bool, note: str = ""
+) -> QComboBox:
+    """A BIDS input's subject, session, task or run, picked from the values its
+    dataset has (``choices``; None: the folder is not listed yet). Editable
+    (advanced mode): anything may be typed too."""
+    combo = QComboBox()
+    combo.addItem(BIDS_ANY[entity], "")
+    for choice in choices or []:
+        combo.addItem(choice, choice)
+    if value and combo.findData(value) < 0:  # typed, or another dataset's
+        combo.addItem(f"{value} (not in the dataset)" if choices else value, value)
+    combo.setCurrentIndex(max(0, combo.findData(value)))
+    if editable:
+        combo.setEditable(True)
+        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+    elif not choices:
+        combo.setEnabled(False)  # nothing to pick from: the folder first
+    tip = note or ("" if choices else "Choose the dataset's folder first")
+    combo.setProperty("tip", tip)
+    return combo
+
+
 def _value(widget: QWidget) -> Any:
     if isinstance(widget, QCheckBox):
         return widget.isChecked()
+    if isinstance(widget, QComboBox) and widget.isEditable():
+        text = widget.currentText().strip()
+        index = widget.findText(text)  # a listed item: its value, else as typed
+        return widget.itemData(index) if index >= 0 else text
     if isinstance(widget, QComboBox):
         return widget.currentData()
     if isinstance(widget, QLineEdit | PathEdit):
@@ -322,6 +360,7 @@ class Inspector(QScrollArea):
         self.advanced_open: bool | None = None  # None: follow the mode
         self._advanced_mode = False
         self._shown: str | None = None  # the strip on show, to keep the scroll
+        self._doc: PipelineDoc | None = None  # the document on show
         self.show_empty()
 
     def apply_theme(self, theme: Theme) -> None:
@@ -363,6 +402,7 @@ class Inspector(QScrollArea):
         # the same strip again (a value changed): stay where the user was
         keep = self.verticalScrollBar().value() if strip.id == self._shown else 0
         self._shown = strip.id
+        self._doc = doc
         manifest = doc.manifest(strip)
         page = QWidget()
         lay = QVBoxLayout(page)
@@ -374,6 +414,10 @@ class Inspector(QScrollArea):
         is_processor = manifest["role"] == "processor"
         main_specs = [p for p in manifest["params"] if not p.get("advanced")]
         main_specs.sort(key=lambda p: not p.get("primary"))  # main ones first
+        if strip.node == BIDS_SOURCE:  # the folder, then what to read in it
+            order = ["root", *BIDS_ENTITIES]
+            main_specs.sort(key=lambda p: order.index(p["name"])
+                            if p["name"] in order else len(order))  # fmt: skip
         more_specs = [p for p in manifest["params"] if p.get("advanced")]
 
         def restart_note(name: str) -> str:
@@ -475,17 +519,33 @@ class Inspector(QScrollArea):
         for spec in specs:
             name = spec["name"]
             key = (strip.node, name)
-            editor, changed = _editor(spec, strip.params.get(name, spec["default"]),
-                                      SHOWN_IN_MS.get(key),
-                                      SAVE_ENDINGS.get(key, ""))  # fmt: skip
-            changed.connect(
-                lambda *_, n=name, w=editor: self.param_changed.emit(
-                    strip.id, n, _value(w)
+            value = strip.params.get(name, spec["default"])
+            signals: list[Any]
+            editor: QWidget
+            if strip.node == BIDS_SOURCE and name in BIDS_ENTITIES and self._doc:
+                listing = self._doc.bids_listing or {}
+                combo = bids_combo(name, str(value or ""),
+                                   self._doc.bids_choices(strip, name),
+                                   self._advanced_mode,
+                                   str(listing.get("note") or ""))  # fmt: skip
+                editor, signals = combo, [combo.activated]
+                typed = combo.lineEdit() if combo.isEditable() else None
+                if typed is not None:
+                    signals.append(typed.editingFinished)
+            else:
+                editor, changed = _editor(spec, value, SHOWN_IN_MS.get(key),
+                                          SAVE_ENDINGS.get(key, ""))  # fmt: skip
+                signals = [changed]
+            for signal in signals:
+                signal.connect(
+                    lambda *_, n=name, w=editor: self.param_changed.emit(
+                        strip.id, n, _value(w)
+                    )
                 )
-            )
             tip = "\n".join(
-                t for t in (spec.get("description") or "", restart_note(name)) if t
-            )
+                t for t in (spec.get("description") or "", restart_note(name),
+                            str(editor.property("tip") or "")) if t
+            )  # fmt: skip
             editor.setToolTip(tip)
             if spec["type"] == "bool":
                 switches.append(editor)

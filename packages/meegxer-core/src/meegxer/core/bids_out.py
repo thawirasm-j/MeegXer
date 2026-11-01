@@ -661,6 +661,27 @@ def find_recordings(
     return [found[key] for key in sorted(found)]
 
 
+BIDS_ENTITIES = ("subject", "session", "task", "run")
+
+
+def bids_recordings(root: str | Path) -> dict[str, Any]:
+    """What a BIDS input can read in ``root``: its EEG recordings, each by
+    ``BIDS_ENTITIES``, and a ``note`` when there are none (no folder, not a
+    BIDS dataset, no EEG)."""
+    folder = Path(str(root)) if str(root) else None
+    if folder is None or not folder.is_dir():
+        return {"root": str(root), "recordings": [],
+                "note": "Choose the dataset's folder"}  # fmt: skip
+    try:
+        found = find_recordings(folder)
+    except Exception as exc:  # mne-bids on a folder that is not BIDS
+        return {"root": str(root), "recordings": [],
+                "note": f"Not a BIDS dataset: {exc}"}  # fmt: skip
+    recordings = [{k: r.get(k, "") for k in BIDS_ENTITIES} for r in found]
+    note = "" if recordings else "No EEG recordings in this folder"
+    return {"root": str(root), "recordings": recordings, "note": note}
+
+
 def bids_sinks(graph: Any) -> list[_BidsSink]:
     return [n.impl for n in graph.nodes if isinstance(n.impl, _BidsSink)]
 

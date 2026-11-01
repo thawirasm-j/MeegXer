@@ -37,6 +37,8 @@ SYNTHETIC = "meegxer.core.synthetic"
 # live runs until stopped (a live calibration never runs out of it)
 SOURCE_DEFAULTS: dict[str, dict[str, Any]] = {SYNTHETIC: {"duration": 0.0}}
 SPEC_VERSION = "0.2.23"
+BIDS_SOURCE = "meegxer.core.bids"
+BIDS_ENTITIES = ("subject", "session", "task", "run")
 MAX_STRIP_PARAMS = 3
 FILTER_NODES = {"meegxer.nodes.iir_filter", "meegxer.nodes.iir_filter_zerophase"}
 FILTER_UNUSED = {"highpass": {"high"}, "lowpass": {"low"}}  # edges a kind ignores
@@ -140,6 +142,24 @@ class PipelineDoc:
         # the rails the input starts (describe_source "carries": a .set's ICs)
         self.input_rails: tuple[str, ...] = ()
         self.input_events = 0  # events the input carries (from its description)
+        # a BIDS input's dataset: its recordings (list_bids) and why there are
+        # none; None until its folder has been listed
+        self.bids_listing: dict[str, Any] | None = None
+
+    def bids_choices(self, strip: StripNode, entity: str) -> list[str] | None:
+        """A BIDS input's values for ``entity`` (subject, session, task, run)
+        in its dataset, among the recordings that match the others it names;
+        None when its folder has not been listed yet."""
+        listing = self.bids_listing
+        if listing is None or listing.get("root") != strip.params.get("root"):
+            return None
+        chosen = {k: str(strip.params.get(k) or "") for k in BIDS_ENTITIES
+                  if k != entity}  # fmt: skip
+        values = {
+            r[entity] for r in listing["recordings"]
+            if r.get(entity) and all(not v or r.get(k) == v for k, v in chosen.items())
+        }  # fmt: skip
+        return sorted(values)
 
     # -- manifests ----------------------------------------------------------------
 

@@ -887,7 +887,7 @@ class BidsSource(_RawSource):
             {"name": "task", "type": "string", "default": "", "primary": True},
             {"name": "session", "type": "string", "default": ""},
             {"name": "run", "type": "string", "default": ""},
-            {"name": "datatype", "type": "string", "default": "eeg"},
+            {"name": "datatype", "type": "string", "default": "eeg", "advanced": True},
             IMPORT_REVIEW_PARAM,
         ],
     )
@@ -895,7 +895,7 @@ class BidsSource(_RawSource):
     def _bids_path(self) -> mne_bids.BIDSPath:
         import mne_bids
 
-        p = self.params
+        p = self._resolved()
         return mne_bids.BIDSPath(
             root=str(p["root"]),
             subject=str(p["subject"]) or None,
@@ -905,15 +905,38 @@ class BidsSource(_RawSource):
             datatype=str(p["datatype"]),
         )
 
+    def _resolved(self) -> dict[str, Any]:
+        """The parameters, with an empty session, task or run (any) filled in
+        when exactly one recording of the dataset matches the rest: "any
+        task" reads the dataset's only task."""
+        p = dict(self.params)
+        open_ = [k for k in ("session", "task", "run") if not str(p[k])]
+        if not open_ or not str(p["subject"]) or not Path(str(p["root"])).is_dir():
+            return p
+        from meegxer.core.bids_out import find_recordings
+
+        def only(key: str) -> list[str] | None:
+            return [str(p[key])] if str(p[key]) else None
+
+        try:
+            found = find_recordings(Path(str(p["root"])), subjects=only("subject"),
+                                    sessions=only("session"), tasks=only("task"),
+                                    runs=only("run"))  # fmt: skip
+        except Exception:  # not a BIDS dataset: the read says why
+            return p
+        if len(found) == 1:
+            p.update({k: found[0][k] for k in open_})
+        return p
+
     def _files(self) -> list[Path]:
-        ensure_recording(self.params)  # a sample dataset fetches it on first use
+        ensure_recording(self._resolved())  # a sample dataset: fetched on first use
         fpath = self._bids_path().fpath
         return [Path(fpath)]
 
     def _load(self) -> mne.io.BaseRaw:
         import mne_bids
 
-        ensure_recording(self.params)
+        ensure_recording(self._resolved())
         raw: mne.io.BaseRaw = mne_bids.read_raw_bids(self._bids_path(), verbose="ERROR")
         raw.load_data()
         return raw
