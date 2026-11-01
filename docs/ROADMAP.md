@@ -43,14 +43,16 @@ methods paper. Milestones and their state also live in `docs/WORKPLAN.md`
 
 One PR per item, as before. Items keep their IDs (M9.1 …) in commits and PRs.
 
-## Status (2026-10-31, 0.4.0b3)
+## Status (2026-11-01, 0.5.0b1)
 
 M9 is done (0.3.0b1 to 0.3.1b3). M10's exit criterion is met in 0.4.0b1: an
 ERP and a resting-state study run end to end from the GUI and the CLI (the
 maintainer's checks, `docs/TESTING.md` §C to §E). 0.4.0b2 adds the interop
 items (M10.5–M10.7, checked in §F to §H) and 0.4.0b3 undo and the end of the
-review track (M10.10, M10.11, §I to §K): M10 is done, but for the SSVEP BCI
-template (M10.9), which comes with M11's BCI work.
+review track (M10.10, M10.11, §I to §K): M10 is done. 0.5.0b1 ("BCI") adds
+M11's BCI work (LDA, the keyboard sink, the SSVEP BCI template: M10.9), the
+inputs (BIDS folders, epoch files, a recording shown at once) and the UX
+review's fixes (§L to §V).
 
 | Item | State | Where |
 |---|---|---|
@@ -76,7 +78,7 @@ Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
 (now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
 reference.
 
-**Next:** M11's SSVEP → keypress half of the exit criterion is met (`tools/ssvep_demo.py`, `docs/TESTING.md` §N); its other half, Sterile mode (M11.1), needs Docker or Podman, then plugin hardening (M11.2), the Octave script tier (M11.5) and shortcut creation (M11.6).
+**Next:** M11's SSVEP → keypress half of the exit criterion is met (`tools/ssvep_demo.py`, `docs/TESTING.md` §N); its other half, Sterile mode (M11.1), needs Docker or Podman, then the Octave script tier (M11.5). Plugin hardening (M11.2) and shortcut creation (M11.6) are done.
 
 ### M9: Fix and harden (0.3.0bN)
 
