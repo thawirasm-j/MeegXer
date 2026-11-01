@@ -7,121 +7,40 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
-- **The » button opens a menu.** Clicking the » of the top bar or the
-  signal view's header showed nothing (the maintainer's T4): Qt's toolbar
-  » expands the bar in place, which works only for a toolbar docked in a
-  main window. It now opens a menu of the buttons that did not fit: a
-  button is an item, *Friendly*/*Advanced* and the modes are checkable,
-  *Open*'s recent files, *Save*'s session commands, *Channels* and the
-  time span are submenus.
+## 0.5.0b1 (2026-11-01): BCI
 
-- **Readable strips and settings.**
-  - A strip's name, and a value too long for its line, take up to two
-    lines ("Common spatial / patterns (CSP)"), the second ending in "…" only
-    if it still does not fit. The chain grows to fit its tallest strip, so
-    none is cut off at the bottom.
-  - Empty settings say what they mean: "every event", "every subject",
-    "any", "not chosen" (a dash before).
-  - The Input strip says what it still needs ("choose the recording file
-    on the Input strip", in the problem colour), and once read, what it
-    read: "32 ch · 250 Hz · 2:00".
-  - Number fields show their up and down arrows (they were blank in both
-    themes). The LIVE badge of an LSL input (always live) is readable.
-  - The Epochs strip's *Baseline start* and *Baseline end* are greyed out
-    unless *Baseline* is *Custom*, and say so. Choice lists are as wide as
-    their longest choice (up to 360 pixels); text fields as wide as their
-    value (up to 480), showing its start.
+A brain-computer interface from end to end: classify with LDA after CSP or
+any feature strip, detect SSVEP targets, and press keys from the events,
+safely (armed by hand, rate-limited, Esc to stop); a live SSVEP template to
+try it. With it, the inputs grew (BIDS folders picked from, epoch files, a
+recording shown as soon as it is chosen) and the UX review's fixes: the
+window fits a laptop screen, errors read as words, strips and settings read
+without guessing. The LDA strip, the keyboard, the SSVEP template, plugin
+hardening and the shortcuts were already in the 0.4.0b3 packages (tagged
+after them) and are first described here. M11's SSVEP → keypress half of
+its exit criterion is met; Sterile mode (M11.1) is next.
 
-- **Clearer errors, a clean start for each pipeline.**
-  - Opening a pipeline or a template clears the last one's results, events
-    and state; it no longer shows the previous recording under the new
-    chain's names. If the new input names a recording, it is shown at once.
-  - Choosing *Recording file* (or a BIDS input) no longer logs an error
-    before a file is chosen. *Run offline* and *Start* say what the input
-    still needs ("choose the recording file on the Input strip", "name the
-    LSL stream …").
-  - Errors read as words: "Could not read the input: input file not found:
-    …", without Python's exception names.
-  - The empty view says the next step ("Press Start to see the signal",
-    "Press Run offline …"), and "Reading the recording…" while a chosen
-    recording loads (the maintainer's R3 note).
-  - A live run that ends says why: "The pipeline stopped: no LSL stream
-    named 'Amp' found". It was "stopped (end of input or an error)" at
-    once, while the stream was still being looked for. The daemon then
-    refused every other pipeline, saying one was still running.
-  - Core: the live scheduler's status says running while the input opens;
-    a run whose input never opened still ends (its last display flush no
-    longer asks the missing stream for its rate).
+Checked in `docs/TESTING.md`: §L to §T by the maintainer (on Windows, with
+the EEGBCI and their own data) and by Claude through the real window
+(offscreen); U6 (an amplifier switched off) and V5 (strip text with Windows'
+fonts) are the maintainer's, still to check.
 
-- **The window fits a laptop screen**, also where text is drawn wider
-  (Windows, or *Text size* raised). It needed about 1,400 pixels before
-  (more on Windows), more than a 1366 × 768 laptop has; it now needs about
-  560 (690 with text 40 % larger, 850 with it twice as large).
-  - *New*, *Open*, *Save*, ↶ ↷ and *Friendly*/*Advanced* sit in a toolbar:
-    what does not fit folds into its » button. *Start*, *Stop*, the run's
-    state, *Log* and the settings always show.
-  - The signal view's *Overlay*, *Difference*, *Spectrum*, *Channels*,
-    time span and *Stacked view* fold the same way.
-  - *Save session…* and *Share session…* moved to the arrow on *Save…*,
-    as recent files are on *Open…*'s. *Undo* and *Redo* show as ↶ and ↷
-    (their tooltips name them).
-  - The run's state and details are one line, the state first (● running
-    · processing load … · delay … · late blocks … · display frames
-    skipped …). Where there is no room it ends in "…", its tooltip gives
-    it whole, and the state itself is never cut. The signal, features and
-    ERP views' legends ("Main: after Notch …") shorten the same way. None
-    of them widens the window any more.
-  - The name "MeegXer" left the top bar (it is the window's title).
-  - The signal view keeps at least 200 pixels and takes most of any extra
-    height. The settings take two thirds of the bottom row, the log one
-    third.
+### Upgrading from 0.4.0b3
 
-- **CSP's true-class bands no longer look swapped.** CSP's lines are its
-  components, not its classes. Its bands took the same two colours as the
-  lines, so a component whose power drops for *left* (as motor imagery
-  does) looked like the *right* line. They are now neutral tints, each
-  named at its top. LDA's bands keep its classes' colours, since LDA's
-  lines are the classes.
+- Pipelines, sessions and settings from 0.4.0b3 load unchanged; node
+  versions are unchanged.
+- Control API 0.2.25 (`list_bids`): the GUI and the daemon come from the
+  same release; after upgrading, stop an old daemon first (`meegxer
+  shutdown`).
+- A live run's status now says `running` while its input opens (an LSL
+  stream is looked for up to its *timeout*), then `stopped` with the reason
+  in its `errors`; scripts polling `meegxer status` see that.
+- The GUI's top bar: *Save session…* and *Share session…* are on the arrow
+  of *Save…*; *Undo*/*Redo* are ↶ ↷; buttons that do not fit are in its ».
+- No new dependencies since 0.4.0b3 (from 0.4.0b2: scikit-learn in
+  `meegxer-core`, pynput in `meegxer-nodes`).
 
-- **Epoch files as the input.** The *Recording file* input opens MNE's
-  `-epo.fif` and epoched EEGLAB `.set` files. The epochs are joined end to
-  end as the signal, each epoch's label is an event at its time 0, and the
-  input starts the epochs rail with the epochs themselves: the ERP tap,
-  *Review epochs* and the epochs writers read them with no Epochs strip. Choosing such a
-  file opens its ERP per label at once (offline), and its labels fill the
-  class pickers.
-
-- **A chosen recording is shown at once.** Offline, choosing the input's
-  file (or a BIDS subject) reads it and shows its signal, with its events
-  marked, on the input's tap, before anything is run; the log says "The
-  recording, as read". *Run offline* then runs the chain as before.
-
-- A strip that starts its own rail and adds to the Events rail (SSVEP
-  detection with *Detections as events*, LDA) draws the two up-arrows side
-  by side, its rail's name left of both; the Events arrow no longer runs
-  over its own rail's start and name.
-- The keyboard strip is drawn reading the Events rail (SSVEP's or LDA's
-  detections, the events it acts on), not pulling from the signal; without
-  anything writing events before it, it is marked as needing them.
-
-- **Classes picked from the events.** CSP's and LDA's *Classes* and the
-  Epochs strip's *Around events* are picked from the input's event labels
-  (a list of check boxes); Advanced mode can also type labels the input does
-  not have yet (live markers). A label the input lacks is marked "(not in the
-  input)".
-- **True classes on a classifier's view.** Offline, the CSP and LDA views
-  draw each trial (from *Trial start* to *Trial end* after its cue) as a band
-  behind the lines, in its class's colour: where LDA's probability follows
-  the truth is plain to see.
-
-- **BIDS input: pick from the dataset.** The *BIDS recording* input asks for
-  the dataset's folder first. *Subject*, *Session*, *Task* and *Run* then
-  list what the folder holds, each narrowed to the recordings that match the
-  others (*Every subject*, *Any task*, …). Friendly mode picks only from the
-  list; Advanced mode can type any value too. An empty session, task or run
-  reads the one recording that matches, so a dataset with one task needs no
-  task named. *Datatype* moved to the advanced settings. Control API 0.2.25:
-  `list_bids`.
+### What's new: BCI
 
 - **LDA classifier (M11.3).** A new *Linear discriminant analysis (LDA)*
   strip (Decoding & BCI) classifies the windows of a feature strip: it reads
@@ -151,16 +70,6 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   It uses pynput (new dependency of `meegxer-nodes`), which needs a desktop
   session; on Linux it builds `evdev` from source. MeegXer is **not a
   medical device**: said in the README and the new About box (*?*).
-- **Plugin hardening (M11.2).** The plugin wire reader checks what a
-  plugin declares before reading it: a payload over 256 MiB, a malformed
-  array descriptor or model tree is a protocol error (the plugin is stopped),
-  never a memory blow-up or an unexplained crash. The GUI drops a display
-  frame it cannot decode instead of losing its display. Both readers are
-  fuzzed in the tests (`spec/plugin-protocol.md`, limits).
-- **Shortcuts (M11.6).** `meegxer-gui --create-shortcut` puts MeegXer in
-  the Start menu and on the desktop (Windows), the application menu (Linux)
-  or `~/Applications` (macOS); `--remove-shortcut` removes them. They start
-  the MeegXer the command came from, without a console window on Windows.
 - **SSVEP BCI template (M10.9, M11's demo).** *New…* → *SSVEP BCI (keys)*
   (`meegxer new ssvep_bci OUT.json`): live from an LSL amplifier, SSVEP
   detection (filter-bank CCA, targets at 8, 10, 12 and 15 Hz) with
@@ -172,13 +81,140 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   score* and the prefix are MeegXer's settings, live. Node version 0.2.0.
 - Feature view: values without a unit (SSVEP scores) are no longer drawn in
   dB.
-- Control API 0.2.24: `arm`, and `armed`/`pressed`/`dropped` in an action
-  sink's status. Live runs hand action sinks each new event as it reaches
-  the rail.
+- **Classes picked from the events.** CSP's and LDA's *Classes* and the
+  Epochs strip's *Around events* are picked from the input's event labels
+  (a list of check boxes); Advanced mode can also type labels the input does
+  not have yet (live markers). A label the input lacks is marked "(not in the
+  input)".
+- **True classes on a classifier's view.** Offline, the CSP and LDA views
+  draw each trial (from *Trial start* to *Trial end* after its cue) as a band
+  behind the lines, in its class's colour: where LDA's probability follows
+  the truth is plain to see.
+- **CSP's true-class bands no longer look swapped.** CSP's lines are its
+  components, not its classes. Its bands took the same two colours as the
+  lines, so a component whose power drops for *left* (as motor imagery
+  does) looked like the *right* line. They are now neutral tints, each
+  named at its top. LDA's bands keep its classes' colours, since LDA's
+  lines are the classes.
+- A strip that starts its own rail and adds to the Events rail (SSVEP
+  detection with *Detections as events*, LDA) draws the two up-arrows side
+  by side, its rail's name left of both; the Events arrow no longer runs
+  over its own rail's start and name.
+- The keyboard strip is drawn reading the Events rail (SSVEP's or LDA's
+  detections, the events it acts on), not pulling from the signal; without
+  anything writing events before it, it is marked as needing them.
 - **Fixed: live recordings lost their events.** A live run's file writers
   never got the Events rail: the `.set` or EDF of a live run had no markers,
   cues or detector marks. They now get it every 2 s while the run goes (so a
   crash recovery keeps most of it), and in full before the file is closed.
+
+### What's new: inputs
+
+- **BIDS input: pick from the dataset.** The *BIDS recording* input asks for
+  the dataset's folder first. *Subject*, *Session*, *Task* and *Run* then
+  list what the folder holds, each narrowed to the recordings that match the
+  others (*Every subject*, *Any task*, …). Friendly mode picks only from the
+  list; Advanced mode can type any value too. An empty session, task or run
+  reads the one recording that matches, so a dataset with one task needs no
+  task named. *Datatype* moved to the advanced settings. Control API 0.2.25:
+  `list_bids`.
+
+- **A chosen recording is shown at once.** Offline, choosing the input's
+  file (or a BIDS subject) reads it and shows its signal, with its events
+  marked, on the input's tap, before anything is run; the log says "The
+  recording, as read". *Run offline* then runs the chain as before.
+
+- **Epoch files as the input.** The *Recording file* input opens MNE's
+  `-epo.fif` and epoched EEGLAB `.set` files. The epochs are joined end to
+  end as the signal, each epoch's label is an event at its time 0, and the
+  input starts the epochs rail with the epochs themselves: the ERP tap,
+  *Review epochs* and the epochs writers read them with no Epochs strip.
+  Choosing such a file opens its ERP per label at once (offline), and its
+  labels fill the class pickers.
+
+### What's new: easier to use (the UX review)
+
+- **The window fits a laptop screen**, also where text is drawn wider
+  (Windows, or *Text size* raised). It needed about 1,400 pixels before
+  (more on Windows), more than a 1366 × 768 laptop has; it now needs about
+  560 (690 with text 40 % larger, 850 with it twice as large).
+  - *New*, *Open*, *Save*, ↶ ↷ and *Friendly*/*Advanced* sit in a toolbar:
+    what does not fit folds into its » button. *Start*, *Stop*, the run's
+    state, *Log* and the settings always show.
+  - The signal view's *Overlay*, *Difference*, *Spectrum*, *Channels*,
+    time span and *Stacked view* fold the same way.
+  - *Save session…* and *Share session…* moved to the arrow on *Save…*,
+    as recent files are on *Open…*'s. *Undo* and *Redo* show as ↶ and ↷
+    (their tooltips name them).
+  - The run's state and details are one line, the state first (● running
+    · processing load … · delay … · late blocks … · display frames
+    skipped …). Where there is no room it ends in "…", its tooltip gives
+    it whole, and the state itself is never cut. The signal, features and
+    ERP views' legends ("Main: after Notch …") shorten the same way. None
+    of them widens the window any more.
+  - The name "MeegXer" left the top bar (it is the window's title).
+  - The signal view keeps at least 200 pixels and takes most of any extra
+    height. The settings take two thirds of the bottom row, the log one
+    third.
+  - The » opens a menu of what did not fit: a button is an item,
+    *Friendly*/*Advanced* and the modes are checkable, *Open*'s recent
+    files, *Save*'s session commands, *Channels* and the time span are
+    submenus. (Qt's own » expands the bar in place, which showed nothing
+    here: the maintainer's T4.)
+
+- **Clearer errors, a clean start for each pipeline.**
+  - Opening a pipeline or a template clears the last one's results, events
+    and state; it no longer shows the previous recording under the new
+    chain's names. If the new input names a recording, it is shown at once.
+  - Choosing *Recording file* (or a BIDS input) no longer logs an error
+    before a file is chosen. *Run offline* and *Start* say what the input
+    still needs ("choose the recording file on the Input strip", "name the
+    LSL stream …").
+  - Errors read as words: "Could not read the input: input file not found:
+    …", without Python's exception names.
+  - The empty view says the next step ("Press Start to see the signal",
+    "Press Run offline …"), and "Reading the recording…" while a chosen
+    recording loads (the maintainer's R3 note).
+  - A live run that ends says why: "The pipeline stopped: no LSL stream
+    named 'Amp' found". It was "stopped (end of input or an error)" at
+    once, while the stream was still being looked for. The daemon then
+    refused every other pipeline, saying one was still running.
+  - Core: the live scheduler's status says running while the input opens;
+    a run whose input never opened still ends (its last display flush no
+    longer asks the missing stream for its rate).
+
+- **Readable strips and settings.**
+  - A strip's name, and a value too long for its line, take up to two
+    lines ("Common spatial / patterns (CSP)"), the second ending in "…" only
+    if it still does not fit. The chain grows to fit its tallest strip, so
+    none is cut off at the bottom.
+  - Empty settings say what they mean: "every event", "every subject",
+    "any", "not chosen" (a dash before).
+  - The Input strip says what it still needs ("choose the recording file
+    on the Input strip", in the problem colour), and once read, what it
+    read: "32 ch · 250 Hz · 2:00".
+  - Number fields show their up and down arrows (they were blank in both
+    themes). The LIVE badge of an LSL input (always live) is readable.
+  - The Epochs strip's *Baseline start* and *Baseline end* are greyed out
+    unless *Baseline* is *Custom*, and say so. Choice lists are as wide as
+    their longest choice (up to 360 pixels); text fields as wide as their
+    value (up to 480), showing its start.
+
+### Also
+
+- **Plugin hardening (M11.2).** The plugin wire reader checks what a
+  plugin declares before reading it: a payload over 256 MiB, a malformed
+  array descriptor or model tree is a protocol error (the plugin is stopped),
+  never a memory blow-up or an unexplained crash. The GUI drops a display
+  frame it cannot decode instead of losing its display. Both readers are
+  fuzzed in the tests (`spec/plugin-protocol.md`, limits).
+- **Shortcuts (M11.6).** `meegxer-gui --create-shortcut` puts MeegXer in
+  the Start menu and on the desktop (Windows), the application menu (Linux)
+  or `~/Applications` (macOS); `--remove-shortcut` removes them. They start
+  the MeegXer the command came from, without a console window on Windows.
+- Control API 0.2.24: `arm`, and `armed`/`pressed`/`dropped` in an action
+  sink's status. Live runs hand action sinks each new event as it reaches
+  the rail.
 - Spec 0.2.23: a processor's main input may be Features (built-in nodes;
   plugins still take Signal input).
 
