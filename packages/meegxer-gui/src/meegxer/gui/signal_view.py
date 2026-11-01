@@ -600,7 +600,9 @@ class SignalView(QWidget):
         stacked.clicked.connect(self.stacked_requested)
         tools.addWidget(stacked)
         bar.addWidget(tools)
-        self.legend = ElidedLabel()  # never sets the window's width
+        # never sets the window's width, but always keeps room for what is
+        # shown ("Main: after …"): the buttons fold into » first
+        self.legend = ElidedLabel(keep="Main: after")
         self.legend.setObjectName("muted")
         self.legend.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter

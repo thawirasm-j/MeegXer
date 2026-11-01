@@ -61,7 +61,8 @@ def test_the_window_fits_a_laptop_screen(
         fold = win.tools.findChild(QToolButton, "qt_toolbar_ext_button")
         assert fold is not None and fold.isVisible() and fold.width() >= 24  # »
         assert line.shown().startswith("● running")  # still whole
-        assert win.view.legend.shown().endswith("…") or win.view.legend.shown()
+        legend = win.view.legend.shown()  # what is shown: always some of it
+        assert legend.startswith("Main: after") or legend.startswith("Main: a")
         win.stop()
         pump(qapp, 1.0)
     finally:
