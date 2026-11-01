@@ -616,7 +616,7 @@ nothing but the repository. Step 3 plays the recording in real time (about
 | L1 CLI run, events in the .set | passed | run by Claude; 583 `pred_left`, 374 `pred_right`; every in-trial window matched its cue (training data) |
 | L2 GUI offline: chain, *Reads*, the LDA tap | passed | run by Claude offscreen |
 | L3 live: CSP then LDA calibrated, events in the live .set | passed | run by Claude through the daemon and the CLI; both ready, p95 latency 3.6 ms; events in the live .set after the fix |
-| L4 real data | | |
+| L4 real data | passed | |
 
 ## M. Keyboard sink (M11.4)
 
@@ -641,8 +641,8 @@ stopped them. On your machine (Windows), where the keys really land:
 | M1 nothing pressed until armed | passed | run by Claude (Xvfb, daemon + CLI): 0 presses in 5 s disarmed; arming before *Run* refused |
 | M2 presses at most 2/s once armed | passed | run by Claude (Xvfb): 14 presses in 10 s, left and right, never closer than 0.5 s; the rest counted as dropped |
 | M3 Esc, *Disarm*, *Stop* disarm | passed | run by Claude (Xvfb): 0 presses after each; the GUI's *Arm* turns the strip red, *Stop* clears it (offscreen) |
-| M4 on Windows: keys land in another app | | |
-| M5 About box statement | | |
+| M4 on Windows: keys land in another app | passed | |
+| M5 About box statement | passed | |
 
 ## N. SSVEP → keypress demo (M10.9, M11's exit criterion)
 
@@ -669,7 +669,7 @@ On your machine:
 | N1 detections offline | passed | run by Claude; 156/156 in-look windows correct |
 | N2 live keys follow the targets | passed | run by Claude (Xvfb); 74 presses in 60 s; 67/67 in-look detections |
 | N3 the template (New…) | passed | run by Claude (CLI `meegxer new ssvep_bci`; the dialog hides the sample) |
-| N4 on Windows, keys in another app | | |
+| N4 on Windows, keys in another app | passed | |
 
 ## O. Shortcuts (M11.6)
 
@@ -686,5 +686,5 @@ system calls faked, so they need a real machine:
 | Item | Value / result | Notes |
 |---|---|---|
 | O1 Linux menu entry starts MeegXer | passed | run by Claude |
-| O2 Windows Start menu and desktop, no console | | |
+| O2 Windows Start menu and desktop, no console | passed | |
 | O3 remove | passed (Linux) | Windows to check |
