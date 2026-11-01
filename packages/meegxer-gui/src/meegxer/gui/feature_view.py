@@ -30,6 +30,7 @@ import numpy as np
 import numpy.typing as npt
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, QObject, QPointF
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from meegxer.core.block import unit_at
@@ -207,6 +208,7 @@ class FeatureView(QWidget):
         # seconds, label), drawn as bands behind the lines; set by the window
         self.truth: list[tuple[float, float, str]] = []
         self._truth_items: list[pg.LinearRegionItem] = []
+        self._truth_names: list[pg.InfiniteLine] = []  # a band's class, at its top
         row.addWidget(self.plot, 1)
         lay.addLayout(row, 1)
         self.maps = Maps()  # colour maps (Settings → Visualization)
@@ -384,32 +386,49 @@ class FeatureView(QWidget):
     def _draw_truth(
         self, labels: tuple[str, ...], styles: list[ChannelStyle], t0: float, t1: float
     ) -> str:
-        """The true classes as bands behind the lines (a classifier's view): a
-        class drawn as a line (LDA's probabilities) has its line's colour.
-        Returns the legend's note."""
+        """The true classes as bands behind the lines (a classifier's view).
+        Where the lines are the classes (LDA's probabilities), a band has its
+        class's line colour. Where they are not (CSP's components), the bands
+        are neutral tints with the class named at their top: a colour shared
+        with a line would read as that line's class. Returns the legend's
+        note."""
         plot = self.plot.getPlotItem()
-        for item in self._truth_items:
+        for item in [*self._truth_items, *self._truth_names]:
             plot.removeItem(item)
-        self._truth_items = []
+        self._truth_items, self._truth_names = [], []
         shown = [(a, b, lb) for a, b, lb in self.truth if b >= t0 and a <= t1]
         classes = list(dict.fromkeys(lb for _, _, lb in self.truth))
         if not classes:
             return ""
-        colours: dict[str, tuple[int, int, int]] = {}
+        coloured = all(cls in labels for cls in classes)
+        muted = QColor(self.theme.text_muted)
+        brushes = {}
         for i, cls in enumerate(classes):
-            if cls in labels:
-                colours[cls] = styles[labels.index(cls)].color
-            else:
-                c = pg.intColor(i, hues=max(2, len(classes)))
-                colours[cls] = (c.red(), c.green(), c.blue())
+            if coloured:
+                brushes[cls] = pg.mkBrush(*styles[labels.index(cls)].color, 40)
+            else:  # one neutral colour, a strength per class
+                alpha = 22 + 26 * (i % 3)
+                brushes[cls] = pg.mkBrush(
+                    muted.red(), muted.green(), muted.blue(), alpha
+                )
+        named = {"position": 0.95, "color": self.theme.text_muted}
         for a, b, cls in shown[:500]:
-            band = pg.LinearRegionItem((a, b), movable=False,
-                                       brush=pg.mkBrush(*colours[cls], 40),
-                                       pen=pg.mkPen(None))  # fmt: skip
+            band = pg.LinearRegionItem(
+                (a, b), movable=False, brush=brushes[cls], pen=pg.mkPen(None)
+            )
             band.setZValue(-10)
             plot.addItem(band)
             self._truth_items.append(band)
-        return " · bands: true class (" + ", ".join(classes) + ")"
+            if not coloured:
+                name = pg.InfiniteLine(
+                    a, angle=90, movable=False, pen=pg.mkPen(None), label=cls,
+                    labelOpts=named,
+                )  # fmt: skip
+                plot.addItem(name)
+                self._truth_names.append(name)
+        if coloured:
+            return " · bands: true class (" + ", ".join(classes) + ")"
+        return " · bands: true class, named at the top (" + ", ".join(classes) + ")"
 
     def clear(self, message: str) -> None:
         self.head.setVisible(False)

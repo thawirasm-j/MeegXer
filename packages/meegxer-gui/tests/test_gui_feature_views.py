@@ -9,7 +9,7 @@ import mne
 import numpy as np
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPointF, Qt
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QColor, QMouseEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
 from meegxer.core.control import manifest_to_dict
@@ -618,3 +618,26 @@ def test_a_classifier_view_shows_the_true_classes(qapp: QApplication) -> None:
     view.truth = []
     view.refresh(series, "LDA", 0.0, 20.0)
     assert view._truth_items == [] and "bands" not in view.legend.text()
+
+
+def test_csp_components_get_neutral_named_bands(qapp: QApplication) -> None:
+    """CSP's lines are components, not classes: a class-coloured band would
+    look like a component's own class (Q4: "CSP swapped T1/T2"), so the bands
+    are neutral tints, each named at its top."""
+    view = FeatureView(load_theme("dark"))
+    t = np.arange(1.0, 20.0, 1.0)
+    series = FeatureSeries("tap_csp1", ("component",), {"component": ("CSP1", "CSP2")},
+                           t, np.zeros((t.size, 2)), unit="log(V^2)")  # fmt: skip
+    view.truth = [(1.5, 4.0, "T1"), (7.5, 10.0, "T2")]
+    view.refresh(series, "CSP", 0.0, 20.0)
+    assert "named at the top (T1, T2)" in view.legend.text()
+    assert [n.label.format for n in view._truth_names] == ["T1", "T2"]
+
+    def rgb(c: QColor) -> tuple[int, int, int]:
+        return c.red(), c.green(), c.blue()
+
+    tints = {rgb(b.brush.color()) for b in view._truth_items}
+    assert tints == {rgb(QColor(load_theme("dark").text_muted))}  # neutral
+    assert len({b.brush.color().alpha() for b in view._truth_items}) == 2
+    view.refresh(series, "CSP", 0.0, 3.0)  # T2 off the span: no band, no name
+    assert [n.label.format for n in view._truth_names] == ["T1"]

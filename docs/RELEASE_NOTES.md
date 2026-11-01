@@ -7,6 +7,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **CSP's true-class bands no longer look swapped.** CSP's lines are its
+  components, not its classes. Its bands took the same two colours as the
+  lines, so a component whose power drops for *left* (as motor imagery
+  does) looked like the *right* line. They are now neutral tints, each
+  named at its top. LDA's bands keep its classes' colours, since LDA's
+  lines are the classes.
+
 - **Epoch files as the input.** The *Recording file* input opens MNE's
   `-epo.fif` and epoched EEGLAB `.set` files. The epochs are joined end to
   end as the signal, each epoch's label is an event at its time 0, and the

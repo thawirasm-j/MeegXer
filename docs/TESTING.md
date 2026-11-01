@@ -733,6 +733,7 @@ first 60 s, in the colours of the two probability lines.
 | Q2 typing in Advanced mode | passed | test |
 | Q3 true-class bands on LDA's and CSP's views | passed | run by Claude offscreen (screenshot) |
 | Q4 on the EEGBCI data | passed | CSP prediction swapped between T1/T2* |
+| Q5 CSP's bands: neutral, named at the top (Q4's note) | passed | run by Claude offscreen (lda_demo; screenshot) and test |
 
 ## R. A chosen recording is shown at once
 
