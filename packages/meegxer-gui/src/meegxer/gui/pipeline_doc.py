@@ -553,7 +553,7 @@ class PipelineDoc:
             rail.lane = lane[rail.id]
         labelled = [
             s.id for s in self.strips[1:]
-            if self.manifest(s).get("fit_events")
+            if self.manifest(s).get("fit_events") or self.acts(s)
             or any(p.get("rail") == "events" for p in self.manifest(s)["inputs"][1:])
         ]  # fmt: skip
         source = self.source
@@ -631,8 +631,16 @@ class PipelineDoc:
         (or from a rail); the signal passes over them."""
         return self.group(strip) in ("features", "output")
 
+    def acts(self, strip: StripNode) -> bool:
+        """An action sink (the keyboard): it acts on the Events rail (SSVEP's
+        or LDA's detections), not on the signal it is placed after."""
+        return self.manifest(strip).get("category") == "actions"
+
     def reads_signal(self, strip: StripNode) -> bool:
-        """Its main input is the signal line (not a rail output such as ICs)."""
+        """Its main input is the signal line (not a rail output such as ICs,
+        nor an action sink, which reads the Events rail)."""
+        if self.acts(strip):
+            return False
         inputs = self.manifest(strip)["inputs"]
         upstream = self.input_of(strip) or ""
         return bool(inputs) and inputs[0]["type"] == "signal" and ":" not in upstream

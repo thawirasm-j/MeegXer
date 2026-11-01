@@ -550,9 +550,14 @@ class RailBoard(QWidget):
         return out
 
     def _write_x(self, strip_id: str) -> float | None:
-        """Where a strip adding to a rail (the Events rail) pushes up into it."""
+        """Where a strip adding to a rail (the Events rail) pushes up into it:
+        left of the rails it starts itself (an SSVEP strip's own rail), so the
+        two arrows stand side by side instead of one over the other."""
         rect = self._rect(strip_id)
-        return None if rect is None else rect.right() - PORT
+        if rect is None:
+            return None
+        own = sum(r.producer == strip_id for r in self.rails)
+        return rect.right() - PORT - 14 * own
 
     def _vertical(self, painter: QPainter, x: float, y0: float, y1: float,
                   crossings: list[tuple[float, float]]) -> None:  # fmt: skip
@@ -690,7 +695,17 @@ class RailBoard(QWidget):
     def label_box(self, rail: Rail, x0: float, fm: QFontMetrics) -> QRectF:
         widths = [getattr(w, "strip_width", 0) for w in self.strips.values()]
         room = max(widths, default=STRIP_WIDTH) - 2 * PORT - 30  # as wide as a strip
-        return QRectF(x0 - 8 - room, self.lane_y(rail.lane) - fm.height() / 2, room,
+        # it ends left of every arrow its producer pushes up (its other rails,
+        # its events), so no line runs through the name
+        rect = self._rect(rail.producer)
+        lines = [x0]
+        if rect is not None:
+            own = sum(r.producer == rail.producer for r in self.rails)
+            lines += [rect.right() - PORT - 14 * k for k in range(own)]
+            if any(rail.producer in r.writers for r in self.rails):
+                lines.append(rect.right() - PORT - 14 * own)
+        right = min(lines) - 8
+        return QRectF(right - room, self.lane_y(rail.lane) - fm.height() / 2, room,
                       fm.height())  # fmt: skip
 
     def tap_at(self, point: QPointF) -> Rail | None:

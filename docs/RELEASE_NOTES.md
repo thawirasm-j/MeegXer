@@ -7,6 +7,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- A strip that starts its own rail and adds to the Events rail (SSVEP
+  detection with *Detections as events*, LDA) draws the two up-arrows side
+  by side, its rail's name left of both; the Events arrow no longer runs
+  over its own rail's start and name.
+- The keyboard strip is drawn reading the Events rail (SSVEP's or LDA's
+  detections, the events it acts on), not pulling from the signal; without
+  anything writing events before it, it is marked as needing them.
+
 - **Classes picked from the events.** CSP's and LDA's *Classes* and the
   Epochs strip's *Around events* are picked from the input's event labels
   (a list of check boxes); Advanced mode can also type labels the input does
