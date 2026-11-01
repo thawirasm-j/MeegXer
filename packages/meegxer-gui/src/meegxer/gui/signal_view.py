@@ -591,6 +591,7 @@ class SignalView(QWidget):
         self.channels = HeadChannelMenu(theme)
         tools.addWidget(self.channels)
         self.span = QComboBox()
+        self.span.setToolTip("Time span shown")
         for seconds in (2, 5, 10, 20, 30):
             self.span.addItem(f"{seconds} s", float(seconds))
         self.span.setCurrentIndex(2)

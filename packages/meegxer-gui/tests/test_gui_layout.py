@@ -9,7 +9,9 @@ from __future__ import annotations
 import subprocess
 import time
 
-from PySide6.QtWidgets import QApplication, QToolButton
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QMenu, QToolButton
 
 
 def pump(app: QApplication, seconds: float) -> None:
@@ -60,6 +62,19 @@ def test_the_window_fits_a_laptop_screen(
         assert win.width() == 1024
         fold = win.tools.findChild(QToolButton, "qt_toolbar_ext_button")
         assert fold is not None and fold.isVisible() and fold.width() >= 24  # »
+        # clicking » shows the folded buttons as a menu, and they work (Qt's
+        # own in-place expansion showed nothing in this layout: T4)
+        QTest.mouseClick(fold, Qt.MouseButton.LeftButton)
+        pump(qapp, 0.3)
+        menus = [w for w in qapp.topLevelWidgets()
+                 if isinstance(w, QMenu) and w.isVisible()]  # fmt: skip
+        assert len(menus) == 1
+        items = {a.text(): a for a in menus[0].actions()}
+        assert "Advanced" in items and items["Friendly"].isChecked()
+        items["Advanced"].trigger()
+        menus[0].close()
+        pump(qapp, 0.2)
+        assert win.advanced
         assert line.shown().startswith("● running")  # still whole
         legend = win.view.legend.shown()  # what is shown: always some of it
         assert legend.startswith("Main: after") or legend.startswith("Main: a")

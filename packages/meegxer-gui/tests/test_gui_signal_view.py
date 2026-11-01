@@ -10,7 +10,7 @@ import mne
 import numpy as np
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF
-from PySide6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QMenu, QToolBar, QWidget
 
 from meegxer.gui.signal_view import (
     Panner,
@@ -389,3 +389,29 @@ def test_the_live_time_axis_can_count_from_the_stream_start(
     panner.show_span(12.0, 17.0)
     assert panner.where.text() == "12.0 – 17.0 s"  # noqa: RUF001
     panner.deleteLater()
+
+
+def test_the_folded_header_s_menu_works(qapp: QApplication) -> None:
+    """The signal view's »: the time span as a submenu (choosing sets it),
+    Stacked view as an item."""
+    from meegxer.gui.fold import overflow_of
+    from meegxer.gui.signal_view import SignalView
+    from meegxer.gui.theme import load_theme
+
+    view = SignalView(load_theme("dark"))
+    view.resize(260, 300)  # too narrow: everything folds
+    view.show()
+    qapp.processEvents()
+    bars = [b for b in view.findChildren(QToolBar)]
+    overflow = overflow_of(bars[0])
+    assert overflow is not None
+    menu = overflow.build()
+    items = {a.text(): a for a in menu.actions()}
+    assert {"Difference", "Spectrum", "⧉ Stacked view"} <= set(items)
+    span = items["Time span shown"].menu()
+    assert isinstance(span, QMenu)
+    next(a for a in span.actions() if a.text() == "30 s").trigger()
+    assert view.seconds() == 30.0
+    items["Spectrum"].trigger()
+    assert view.mode == "spectrum"
+    view.close()

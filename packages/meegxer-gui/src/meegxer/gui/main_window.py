@@ -390,7 +390,7 @@ class MainWindow(QMainWindow):
         tool = QToolButton()
         tool.setText("Open…")
         tool.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        self.recent_menu = QMenu(tool)
+        self.recent_menu = QMenu("Recent files", tool)
         tool.setMenu(self.recent_menu)
         tool.clicked.connect(lambda _=False: self.open_pipeline())
         tool.setToolTip("Open a pipeline or session (Ctrl+O); the arrow lists "
@@ -402,7 +402,7 @@ class MainWindow(QMainWindow):
         self.save_btn.setToolTip("Save the pipeline (Ctrl+S); the arrow saves or "
                                  "shares a session")  # fmt: skip
         self.save_btn.clicked.connect(lambda _=False: self.save_pipeline())
-        save_menu = QMenu(self.save_btn)
+        save_menu = QMenu("Save or share a session", self.save_btn)
         save_menu.addAction("Save pipeline…\tCtrl+S", self.save_pipeline)
         save_menu.addAction("Save session…", lambda: self.save_session())
         save_menu.addAction("Share session…", self.share_session)
