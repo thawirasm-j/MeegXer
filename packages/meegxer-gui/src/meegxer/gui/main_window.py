@@ -181,6 +181,7 @@ class MainWindow(QMainWindow):
         self.offline_sfreq = 0.0
         self.offline_total = 0
         self.offline_state = ""
+        self._previewing = False  # the offline run under way only shows the input
         self.history = EditHistory()  # undo and redo of the chain (M10.10)
         self._restoring = False  # an undo or redo is being applied
         self.offline_stopping = False  # stop_offline asked; the strip finishes
@@ -942,9 +943,41 @@ class MainWindow(QMainWindow):
                     f"{self._name(strip_id)}: {param_label(name)} changed, restarting."
                 )
                 self.restart()
-        elif self.doc.role(strip) == "source":  # a new file: what it carries now
-            self._describe_input()
+        elif self.doc.role(strip) == "source" and self._describe_input() is not None:
+            self._preview_input()  # a new file: what it carries, and its signal
         self.refresh_chain()
+
+    def _preview_input(self) -> None:
+        """Offline, a recording just chosen is read and shown at once (its
+        signal and events on the input's tap), before anything is run: an
+        offline run of the input alone. Run offline then runs the chain."""
+        src = self.doc.source
+        if (
+            src is None or self.doc.mode != "offline" or self.running
+            or self.offline_state in ("running", "review")
+            or src.node in LIVE_ONLY_SOURCES
+            or (src.node == BIDS_SOURCE and not src.params.get("subject"))
+        ):  # fmt: skip
+            return
+        probe = tap_id(src.id)
+        tap = {"id": probe, "node": "meegxer.core.probe", "input": src.id,
+               "params": {"keep_seconds": 0.0}}  # fmt: skip
+        entry = {**self.doc.source_entry(), "id": src.id}
+        pipeline = {"spec_version": SPEC_VERSION, "nodes": [entry, tap]}
+        if self.call("run_offline", pipeline=pipeline) is None:
+            return
+        self.offline_state = "running"
+        self._previewing = True
+        self.offline_probes.clear()
+        self.offline_features.clear()
+        self._offline_cache.clear()
+        self._feature_cache.clear()
+        self._erp_cache.clear()
+        self.offline_recordings = {}
+        self.view_tap = None
+        self.taps = {k: ("main" if k == src.id else "off") for k in self.taps}
+        self.taps[src.id] = "main"
+        self._transport()
 
     def change_strip_params(self, strip_id: str, names: list[str]) -> None:
         self.doc.get(strip_id).strip_params = names
@@ -1042,6 +1075,7 @@ class MainWindow(QMainWindow):
             result = self.call("run_offline", pipeline=pipeline, reviewer=reviewer)
             if result is not None:
                 self.offline_state = "running"
+                self._previewing = False
                 self.offline_probes.clear()
                 self.offline_features.clear()
                 self._offline_cache.clear()
@@ -1566,7 +1600,11 @@ class MainWindow(QMainWindow):
             reply = self.call("offline_events")
             if reply is not None:
                 self.view.events = list(reply["events"])
-        if state == "done":
+        previewed = self._previewing
+        self._previewing = previewed and state == "running"
+        if state == "done" and previewed:
+            self.log("The recording, as read (Run offline runs the chain).")
+        elif state == "done":
             self.log(f"Offline run done in {offline.get('elapsed_s', 0):.1f} s.")
             if recordings:
                 done, skipped = recordings["done"], recordings["skipped"]

@@ -7,6 +7,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **A chosen recording is shown at once.** Offline, choosing the input's
+  file (or a BIDS subject) reads it and shows its signal, with its events
+  marked, on the input's tap, before anything is run; the log says "The
+  recording, as read". *Run offline* then runs the chain as before. (Epoch
+  files as an input come next.)
+
 - A strip that starts its own rail and adds to the Events rail (SSVEP
   detection with *Detections as events*, LDA) draws the two up-arrows side
   by side, its rail's name left of both; the Events arrow no longer runs
