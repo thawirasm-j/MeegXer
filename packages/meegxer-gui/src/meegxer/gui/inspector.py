@@ -87,11 +87,25 @@ class _Number(QDoubleSpinBox):
 
 # settings that are event labels, comma-separated (picked from the input's
 # events), and what an empty one means
+# a setting used only when another has a value (the Epochs strip's custom
+# baseline): greyed out otherwise, saying which value turns it on
+USED_WHEN: dict[tuple[str, str], tuple[str, str]] = {
+    ("meegxer.nodes.epochs", "baseline_start"): ("baseline", "custom"),
+    ("meegxer.nodes.epochs", "baseline_end"): ("baseline", "custom"),
+}
+
 LABEL_PARAMS: dict[tuple[str, str], str] = {
     ("meegxer.nodes.csp", "classes"): "Choose the classes",
     ("meegxer.nodes.lda", "classes"): "Choose the classes",
     ("meegxer.nodes.epochs", "events"): "Every event",
 }
+
+
+def specs_all(doc: Any, strip: StripNode) -> list[dict[str, Any]]:
+    """Every parameter of the strip's node (friendly and advanced)."""
+    if doc is not None:
+        return list(doc.manifest(strip)["params"])
+    return []
 
 
 def split_labels(text: str) -> list[str]:
@@ -190,6 +204,8 @@ class PathEdit(QWidget):
         super().__init__()
         self.kind, self.extensions, self.ending = kind, extensions, ending
         self.line = QLineEdit(value)
+        room = self.line.fontMetrics().horizontalAdvance(value) + 24  # whole path
+        self.line.setMinimumWidth(min(max(220, room), 480))
         self.button = QPushButton("Browse…")
         self.button.setToolTip({"file": "Choose a file", "folder": "Choose a folder",
                                 "save": "Choose where to save"}[kind])  # fmt: skip
@@ -326,6 +342,7 @@ def _editor(
         # stimulus/compatible/target_left, comma-separated)
         room = line.fontMetrics().horizontalAdvance(str(value)) + 24
         line.setMinimumWidth(min(max(line.sizeHint().width(), room, 220), 480))
+        line.setCursorPosition(0)  # a long value shows its start
         return line, line.editingFinished
     spin: QSpinBox | QDoubleSpinBox
     if kind == "int":
@@ -649,15 +666,30 @@ class Inspector(QScrollArea):
             if spec["type"] == "bool":
                 switches.append(editor)
                 continue
-            if spec["type"] == "string":
-                editor.setMinimumWidth(260)
+            if spec["type"] == "string":  # at least 260, or what it holds
+                editor.setMinimumWidth(max(260, editor.minimumWidth()))
                 hint = PLACEHOLDERS.get((strip.node, name))
                 if hint and isinstance(editor, QLineEdit):
                     editor.setPlaceholderText(hint)
+            elif spec["type"] == "enum":  # its longest choice whole, up to 360
+                editor.setMinimumWidth(180)  # the layout gives it its size hint,
+                editor.setMaximumWidth(360)  # measured once styled
             else:
                 editor.setFixedWidth(180)
             label = QLabel(param_label(name, spec))
             label.setToolTip(tip)
+            if key in USED_WHEN:
+                other, needed = USED_WHEN[key]
+                other_spec = next(p for p in specs_all(self._doc, strip)
+                                  if p["name"] == other)  # fmt: skip
+                used = strip.params.get(other, other_spec["default"]) == needed
+                why = (f"Used only when {param_label(other, other_spec)} is "
+                       f"{choice_label(other, needed)}")  # fmt: skip
+                editor.setEnabled(used)
+                label.setEnabled(used)
+                if not used:
+                    editor.setToolTip(f"{why}\n{tip}" if tip else why)
+                    label.setToolTip(why)
             form.addRow(label, editor)
         if form.rowCount():
             lay.addLayout(form)

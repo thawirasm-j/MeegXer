@@ -838,3 +838,32 @@ recording…" while `mi.edf` loaded, the ERP template after it (no trace of
 | U5 LSL: why it stopped; Start again | passed | run by Claude offscreen (and core test) |
 | U6 on your machine, a real amplifier switched off | | |
 
+## V. Readable strips and settings
+
+Already run by Claude, offscreen through the real window, on the ERP,
+resting-state and SSVEP templates and `mi.edf`: two-line names ("FIR filter
+/ (zero-phase)", "Keyboard (key / presses)"), wrapped values ("Average of all
+/ channels"), no strip cut off at the bottom, "every subject" and "any" on a
+BIDS input without a folder (with "choose the BIDS dataset folder on the
+Input strip" in red), "7 ch · 160 Hz · 4:00" on the Input strip once
+`mi.edf` was read, arrows on every number field, and the custom baseline
+fields greyed out until *Baseline* was *Custom*.
+
+1. *New…* → each template: every strip's name is whole or on two lines;
+   nothing is cut off at a strip's bottom (also with *Settings* →
+   *Appearance* → *Text size* raised).
+2. A BIDS or file input with nothing chosen says what to choose, in red;
+   after choosing a file it shows channels, rate and length.
+3. Any number field: its ▲ ▼ arrows show and work.
+4. The Epochs strip: *Baseline start* and *end* are grey until *Baseline*
+   is *Custom*; *Baseline*'s choice shows whole.
+5. An LSL input: LIVE is readable.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| V1 names and values on two lines; nothing cut off | passed | run by Claude offscreen (and tests, text size 100 and 160 %) |
+| V2 the input says what it needs, then what it read | passed | run by Claude offscreen (and test) |
+| V3 spin-box arrows | passed | run by Claude offscreen (and test) |
+| V4 custom baseline fields | passed | run by Claude offscreen (and test) |
+| V5 on Windows (its fonts, its scaling) | | |
+

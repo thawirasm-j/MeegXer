@@ -74,3 +74,17 @@ def test_the_erp_view_is_zero_centred(qapp: QApplication) -> None:
     view.close()
     view.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_spin_boxes_have_arrows() -> None:
+    """A styled spin box draws no arrow without an image: the theme writes
+    one per colour and the stylesheet points at it."""
+    import re
+    from pathlib import Path
+
+    from meegxer.gui.theme import load_theme, stylesheet
+
+    css = stylesheet(load_theme("dark"))
+    urls = re.findall(r"url\(([^)]+)\)", css)
+    assert len(urls) == 4 and all(Path(u).is_file() for u in urls)
+    assert "<polyline" in Path(urls[0]).read_text()

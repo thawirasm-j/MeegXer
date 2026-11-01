@@ -418,3 +418,45 @@ def test_classes_are_picked_from_the_input_events(
     assert not picker(False).button.isEnabled()
     assert picker(True).line is not None  # Advanced mode can type
     dispose(qapp, ins)
+
+
+def test_a_custom_baseline_s_span_is_used_only_for_custom(
+    qapp: QApplication, doc: PipelineDoc
+) -> None:
+    """The Epochs strip's baseline start and end are greyed out (saying why)
+    unless the baseline is custom; choice lists show their longest choice."""
+    from PySide6.QtWidgets import QDoubleSpinBox
+
+    strip = doc.insert(1, "meegxer.nodes.epochs")
+    ins = Inspector()
+    ins.resize(700, 600)
+    ins.show()
+
+    def fields() -> dict[str, QWidget]:
+        ins.show_strip(doc, strip, advanced=False, running=False, node_status={})
+        qapp.processEvents()
+        page = ins.widget()
+        assert page is not None
+        out: dict[str, QWidget] = {}
+        for form in page.findChildren(QFormLayout):
+            for row in range(form.rowCount()):
+                label = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+                field = form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+                name = label.widget() if label else None
+                editor = field.widget() if field else None
+                if isinstance(name, QLabel) and editor is not None:
+                    out[name.text()] = editor
+        return out
+
+    shown = fields()
+    for name in ("Baseline start", "Baseline end"):
+        assert isinstance(shown[name], QDoubleSpinBox)
+        assert not shown[name].isEnabled()
+        assert shown[name].toolTip().startswith("Used only when Baseline is Custom")
+    combo = shown["Baseline"]
+    assert isinstance(combo, QComboBox)
+    assert combo.width() >= min(combo.sizeHint().width(), 360)  # whole label
+    strip.params["baseline"] = "custom"
+    shown = fields()
+    assert shown["Baseline start"].isEnabled() and shown["Baseline end"].isEnabled()
+    dispose(qapp, ins)
