@@ -52,7 +52,7 @@ items (M10.5–M10.7, checked in §F to §H) and 0.4.0b3 undo and the end of the
 review track (M10.10, M10.11, §I to §K): M10 is done. 0.5.0b1 ("BCI") adds
 M11's BCI work (LDA, the keyboard sink, the SSVEP BCI template: M10.9), the
 inputs (BIDS folders, epoch files, a recording shown at once) and the UX
-review's fixes (§L to §V).
+review's fixes (§L to §V), and *Detect…* for the LSL input's streams (§W).
 
 | Item | State | Where |
 |---|---|---|

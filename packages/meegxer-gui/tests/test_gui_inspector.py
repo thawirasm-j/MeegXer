@@ -460,3 +460,70 @@ def test_a_custom_baseline_s_span_is_used_only_for_custom(
     shown = fields()
     assert shown["Baseline start"].isEnabled() and shown["Baseline end"].isEnabled()
     dispose(qapp, ins)
+
+
+def test_the_lsl_input_detects_its_streams(
+    qapp: QApplication, doc: PipelineDoc
+) -> None:
+    """Detect… next to the stream names: the signal streams for the input,
+    the marker streams for its marker stream; picking one fills the name (and
+    the type, when the strip asked for another)."""
+    from meegxer.gui.inspector import StreamEdit
+
+    strip = doc.set_source("meegxer.core.lsl_in", {"stream_type": "Other"})
+    streams = [
+        {"name": "Muse", "type": "EEG", "channels": 4, "rate": 256.0,
+         "host": "lab-pc", "kind": "signal"},
+        {"name": "PsychoPy", "type": "Markers", "channels": 1, "rate": 0.0,
+         "host": "lab-pc", "kind": "markers"},
+    ]  # fmt: skip
+    asked: list[int] = []
+
+    def finder() -> list[dict[str, Any]]:
+        asked.append(1)
+        return streams
+
+    ins = Inspector()
+    ins.find_streams = finder
+    changes: list[Any] = []
+    ins.param_changed.connect(lambda *a: changes.append(a))
+    ins.show_strip(doc, strip, advanced=True, running=False, node_status={})
+    qapp.processEvents()
+    page = ins.widget()
+    assert page is not None
+    edits = page.findChildren(StreamEdit)
+    assert len(edits) == 2
+    signal, markers = sorted(edits, key=lambda e: e.kind != "signal")
+    assert signal.button.text() == "Detect…" and signal.button.isEnabled()
+
+    menu = signal.detect()
+    assert asked == [1]
+    items = [a for a in menu.actions() if not a.isSeparator()]
+    assert [a.text() for a in items] == ["Muse · EEG · 4 ch · 256 Hz · on lab-pc"]
+    items[0].trigger()
+    assert signal.text() == "Muse"
+    # the strip asked for type "Other": the type follows the stream picked
+    assert changes == [(strip.id, "stream_type", "EEG"),
+                       (strip.id, "stream_name", "Muse")]  # fmt: skip
+    menu.close()
+
+    changes.clear()
+    menu = markers.detect()
+    items = menu.actions()
+    assert [a.text() for a in items] == [
+        "PsychoPy · Markers · 1 ch · irregular · on lab-pc"]  # fmt: skip
+    items[0].trigger()
+    assert changes == [(strip.id, "marker_stream", "PsychoPy")]
+    menu.close()
+
+    # none found, or the daemon not asked: a note in words, nothing to pick
+    streams.clear()
+    menu = signal.detect()
+    none = "No LSL streams found: is the amplifier's LSL app sending?"
+    assert [(a.text(), a.isEnabled()) for a in menu.actions()] == [(none, False)]
+    menu.close()
+    assert not StreamEdit("", "signal", None).button.isEnabled()
+    unasked = StreamEdit("", "signal", lambda: None)
+    menu = unasked.detect()
+    assert menu.actions()[0].text() == "Could not ask for the streams (see the log)"
+    menu.close()

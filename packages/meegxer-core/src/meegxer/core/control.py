@@ -179,6 +179,7 @@ class Daemon:
             "set_strip_params": self.set_strip_params,
             "describe_source": self.describe_source,
             "list_bids": self.list_bids,
+            "list_lsl": self.list_lsl,
             "import_review_open": self.import_review_open,
             "save_import_review": self.save_import_review,
             "list_montages": self.list_montages,
@@ -485,6 +486,14 @@ class Daemon:
         from meegxer.core.bids_out import bids_recordings
 
         return bids_recordings(root)
+
+    def list_lsl(self, wait: float = 1.0) -> list[dict[str, object]]:
+        """The LSL streams the daemon's machine can see, where the LSL input
+        opens them (``meegxer.core.lsl.find_streams``), for its Detect button.
+        Waits ``wait`` seconds (at most 5) for streams to answer."""
+        from meegxer.core.lsl import find_streams
+
+        return find_streams(min(float(wait), 5.0))
 
     def describe_source(self, node: dict[str, Any]) -> dict[str, Any]:
         """Describe the recording a source entry (with its ``recording``

@@ -311,3 +311,22 @@ def test_recovery_runs_in_the_background_and_reports_when_done(
     # a failed recovery keeps its spool and is offered again
     assert [r["path"] for r in client.call("unfinished_recordings")] == [
         str(second.resolve())]  # fmt: skip
+
+
+def test_list_lsl_lists_the_streams_the_daemon_sees(
+    daemon: tuple[Daemon, ControlClient],
+) -> None:
+    """The LSL input's Detect…: the daemon looks for streams on its machine."""
+    import uuid
+
+    import pylsl
+
+    _, client = daemon
+    name = f"mx-detect-{uuid.uuid4().hex[:8]}"
+    outlet = pylsl.StreamOutlet(pylsl.StreamInfo(name, "EEG", 2, 100.0, "float32"))
+    deadline = time.monotonic() + 10
+    found: list[dict[str, Any]] = []
+    while not found and time.monotonic() < deadline:
+        found = [s for s in client.call("list_lsl", wait=1.0) if s["name"] == name]
+    assert found and found[0]["kind"] == "signal" and found[0]["channels"] == 2
+    del outlet

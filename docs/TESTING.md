@@ -837,7 +837,7 @@ recording…" while `mi.edf` loaded, the ERP template after it (no trace of
 | U3 "Reading the recording…" | passed | run by Claude offscreen (and test) |
 | U4 a template starts clean | passed | run by Claude offscreen (and test) |
 | U5 LSL: why it stopped; Start again | passed | run by Claude offscreen (and core test) |
-| U6 on your machine, a real amplifier switched off | | |
+| U6 on your machine, a real amplifier switched off | passed | maintainer, a real headset over LSL |
 
 ## V. Readable strips and settings
 
@@ -866,5 +866,30 @@ fields greyed out until *Baseline* was *Custom*.
 | V2 the input says what it needs, then what it read | passed | run by Claude offscreen (and test) |
 | V3 spin-box arrows | passed | run by Claude offscreen (and test) |
 | V4 custom baseline fields | passed | run by Claude offscreen (and test) |
-| V5 on Windows (its fonts, its scaling) | | |
+| V5 on Windows (its fonts, its scaling) | passed | maintainer, Windows |
 
+## W. Detect the LSL streams
+
+Already run by Claude, offscreen through the real window with real LSL
+outlets on the same machine: *Live*, *Input* → *LSL stream*, *Detect…* with
+nothing sending ("No LSL streams found: is the amplifier's LSL app
+sending?"), then with a 4-channel EEG stream and a marker stream: *Stream
+name*'s menu listed only "FakeAmp · EEG · 4 ch · 250 Hz · on vm", *Marker
+stream*'s only "Stim · Markers · 1 ch · irregular · on vm"; picking them
+filled both names, and *Start* streamed the signal.
+
+1. Your amplifier's LSL app off (or not linked): *Live*, *Input* → *LSL
+   stream*, select the Input strip, *Detect…* next to *Stream name*: it says
+   none was found.
+2. The amplifier on and linked: *Detect…* lists it (name, type, channels,
+   rate, the computer sending it). Pick it: *Stream name* is filled.
+3. With a marker stream (PsychoPy, …): *Detect…* next to *Marker stream*
+   lists it, not the amplifier.
+4. *Start*: the signal shows.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| W1 none found, said in words | passed | run by Claude offscreen (and test) |
+| W2 a signal stream listed and picked | passed | run by Claude offscreen (and test) |
+| W3 marker streams listed apart | passed | run by Claude offscreen (and test) |
+| W4 your amplifier, on Windows | | |

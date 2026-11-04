@@ -20,16 +20,15 @@ hardening and the shortcuts were already in the 0.4.0b3 packages (tagged
 after them) and are first described here. M11's SSVEP → keypress half of
 its exit criterion is met; Sterile mode (M11.1) is next.
 
-Checked in `docs/TESTING.md`: §L to §T by the maintainer (on Windows, with
-the EEGBCI and their own data) and by Claude through the real window
-(offscreen); U6 (an amplifier switched off) and V5 (strip text with Windows'
-fonts) are the maintainer's, still to check.
+Checked in `docs/TESTING.md`: §L to §V by the maintainer (on Windows, with
+the EEGBCI and their own data, U6 and V5 with a headset over LSL) and by
+Claude through the real window (offscreen), and §W (*Detect…*) by Claude.
 
 ### Upgrading from 0.4.0b3
 
 - Pipelines, sessions and settings from 0.4.0b3 load unchanged; node
   versions are unchanged.
-- Control API 0.2.25 (`list_bids`): the GUI and the daemon come from the
+- Control API 0.2.26 (`list_bids`, `list_lsl`): the GUI and the daemon come from the
   same release; after upgrading, stop an old daemon first (`meegxer
   shutdown`).
 - A live run's status now says `running` while its input opens (an LSL
@@ -118,6 +117,13 @@ fonts) are the maintainer's, still to check.
   reads the one recording that matches, so a dataset with one task needs no
   task named. *Datatype* moved to the advanced settings. Control API 0.2.25:
   `list_bids`.
+
+- **LSL input: Detect… the streams.** *Stream name* and *Marker stream* each
+  have a *Detect…* button that lists the LSL streams the daemon's computer
+  can see (name, type, channels, rate, host): signal streams for the input,
+  marker streams (irregular rate) for its markers. Picking one fills the
+  name, so it need not be typed exactly; none found says so ("is the
+  amplifier's LSL app sending?"). Control API 0.2.26: `list_lsl`.
 
 - **A chosen recording is shown at once.** Offline, choosing the input's
   file (or a BIDS subject) reads it and shows its signal, with its events
