@@ -7,6 +7,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Sterile mode, first part (M11.1).** The Sterile worker runs every
+  built-in strip of a pipeline in one process, reached over the plugin wire
+  format, with a proxy per strip on the host; the output is the local run's,
+  bit for bit (every built-in processor checked offline). Not switchable yet:
+  the image, the *Sterilize* switch and live runs come next
+  (`docs/STERILE.md`). The plugin wire format writes large frames without
+  copying them whole.
+
 ## 0.5.0b1 (2026-11-01): BCI
 
 A brain-computer interface from end to end: classify with LDA after CSP or
