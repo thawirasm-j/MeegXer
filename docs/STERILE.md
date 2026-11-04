@@ -7,11 +7,34 @@ switch, not a package or a build. It means isolation only. Which code runs,
 and whether it is fit for patient data (HIPAA, GDPR, IRB), stays the user's
 responsibility.
 
-Status: in progress. The worker and the host proxies are done and give the
-local run's output exactly (offline, through a local worker process). Next:
-the image (`meegxer sterile build`), the *Sterilize* switch in the CLI,
-the daemon and the GUI, live runs with the delay measured, and custom
-scripts inside the worker.
+Status: in progress. Done: the worker, the host proxies and the image
+(`meegxer sterile build`); in the container, every built-in strip gives the
+local run's output exactly (offline; CI checks it on every change). Next: the
+*Sterilize* switch in the CLI, the daemon and the GUI, live runs with the
+delay measured, and custom scripts inside the worker.
+
+## The image
+
+```bash
+meegxer sterile build     # once, and again after an upgrade
+meegxer sterile check     # is it built from this MeegXer?
+```
+
+`meegxer sterile build` (Docker or Podman) builds `meegxer-sterile:VERSION`
+from the MeegXer installed here: it copies the installed `meegxer.core`,
+`meegxer.nodes` and `meegxer.plugins` into the image, whatever they are (a
+release or an edited checkout), and installs their third-party dependencies
+at the versions installed here (`python:3.X-slim`, the same Python minor
+version). It needs the network once, for the base image and the
+dependencies; a run never does. The image is labelled with a SHA-256 of the
+code it holds; a Sterile run checks the label first and refuses an image
+built from other code (after an upgrade or an edit) with what to do, and the
+worker checks it again when it starts. It holds no keyboard library (the
+keyboard is a host sink).
+
+The container runs as `docker run --rm -i --network none --read-only
+--tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --pids-limit 256
+--memory 8g`, as a non-root user, with no folder mounted.
 
 ## How it works (decided 2026-11-04)
 
