@@ -309,3 +309,31 @@ def test_a_missing_stream_is_running_until_it_fails_with_the_reason() -> None:
     assert f"no LSL stream named {name!r} found" in status["errors"][-1]
     assert len(status["errors"]) == 1  # said once (the display asked again)
     publisher.close()
+
+
+def test_find_streams_lists_signal_and_marker_streams() -> None:
+    """list_lsl (the LSL input's Detect…): each stream once, with its kind:
+    a regular rate is a signal, an irregular one markers."""
+    from meegxer.core.lsl import find_streams
+
+    signal_name, marker_name = unique("mx-find"), unique("mx-find-mk")
+    signal = pylsl.StreamOutlet(
+        pylsl.StreamInfo(signal_name, "EEG", 4, 256.0, "float32", signal_name)
+    )
+    markers = pylsl.StreamOutlet(
+        pylsl.StreamInfo(marker_name, "Markers", 1, 0.0, "string", marker_name)
+    )
+    deadline = time.monotonic() + 10
+    mine: dict[str, dict[str, object]] = {}
+    while len(mine) < 2 and time.monotonic() < deadline:
+        found = find_streams(1.0)
+        mine = {str(s["name"]): s for s in found
+                if s["name"] in (signal_name, marker_name)}  # fmt: skip
+    assert mine[signal_name] == {
+        "name": signal_name, "type": "EEG", "channels": 4, "rate": 256.0,
+        "host": mine[signal_name]["host"], "kind": "signal"}  # fmt: skip
+    assert mine[marker_name]["kind"] == "markers"
+    assert mine[marker_name]["rate"] == 0.0
+    names = [str(s["name"]).lower() for s in found]
+    assert names == sorted(names)
+    del signal, markers

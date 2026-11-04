@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import math
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,7 @@ from meegxer.gui.names import title
 from meegxer.gui.pipeline_doc import (
     BIDS_ENTITIES,
     BIDS_SOURCE,
+    LSL_SOURCE,
     MAX_STRIP_PARAMS,
     PipelineDoc,
     StripNode,
@@ -55,6 +57,16 @@ from meegxer.gui.theme import DEFAULT_GROUPS, Theme
 
 # greyed text in an empty field: what leaving it empty means
 PLACEHOLDERS = {("meegxer.core.bids", "subject"): "All subjects"}
+
+# the LSL input's stream names, with a Detect… button: the kind of stream each
+# reads (list_lsl) and the parameter that narrows it by type
+STREAM_PARAMS = {
+    (LSL_SOURCE, "stream_name"): ("signal", "stream_type"),
+    (LSL_SOURCE, "marker_stream"): ("markers", "marker_type"),
+}
+
+# finds the LSL streams (the daemon's list_lsl); None: could not ask
+StreamFinder = Callable[[], list[dict[str, Any]] | None]
 
 CHANNEL_TYPES = ("eeg", "eog", "emg", "ecg", "resp", "misc")
 CHANNEL_TYPE_NAMES = {
@@ -271,6 +283,90 @@ class PathEdit(QWidget):
             self.finished.emit()
 
 
+def stream_text(stream: dict[str, Any]) -> str:
+    """One found LSL stream, as its Detect… menu shows it:
+    ``Muse · EEG · 4 ch · 256 Hz · on lab-pc``."""
+    parts = [str(stream["name"])]
+    if stream.get("type"):
+        parts.append(str(stream["type"]))
+    parts.append(f"{stream['channels']} ch")
+    rate = float(stream.get("rate") or 0)
+    parts.append(f"{rate:g} Hz" if rate > 0 else "irregular")
+    if stream.get("host"):
+        parts.append(f"on {stream['host']}")
+    return " · ".join(parts).replace("&", "&&")
+
+
+class StreamEdit(QWidget):
+    """An LSL stream name: its text box and a Detect… button that lists the
+    streams the daemon's machine can see (``finder``) of the ``kind`` the
+    parameter reads (``signal`` or ``markers``) and fills the name of the one
+    picked (``chosen``: the stream). ``finished`` reports a typed name."""
+
+    finished = Signal()
+    chosen = Signal(dict)
+
+    def __init__(self, value: str, kind: str, finder: StreamFinder | None) -> None:
+        super().__init__()
+        self.kind, self.finder = kind, finder
+        self.line = QLineEdit(value)
+        self.line.setMinimumWidth(180)
+        self.button = QPushButton("Detect…")
+        self.button.setToolTip(
+            "List the LSL streams on the network"
+            if kind == "signal"
+            else "List the LSL marker streams on the network"
+        )
+        self.button.setEnabled(finder is not None)
+        self.menu: QMenu | None = None  # kept while it shows
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        lay.addWidget(self.line, 1)
+        lay.addWidget(self.button)
+        self.line.editingFinished.connect(self.finished)
+        self.button.clicked.connect(self.detect)
+
+    def text(self) -> str:
+        return self.line.text()
+
+    def build(self, streams: list[dict[str, Any]] | None) -> QMenu:
+        """The menu of ``streams`` of this field's kind (a note when there are
+        none, or when the daemon could not be asked)."""
+        menu = QMenu(self)
+        mine = [s for s in streams or [] if s.get("kind") == self.kind]
+        for stream in mine:
+            item = menu.addAction(stream_text(stream))
+            item.setCheckable(True)
+            item.setChecked(stream["name"] == self.line.text())
+            item.triggered.connect(lambda _=False, s=stream: self.pick(s))
+        if not mine:
+            what = "LSL streams" if self.kind == "signal" else "LSL marker streams"
+            note = (
+                "Could not ask for the streams (see the log)"
+                if streams is None
+                else f"No {what} found: is the amplifier's LSL app sending?"
+            )
+            menu.addAction(note).setEnabled(False)
+        return menu
+
+    def detect(self) -> QMenu:
+        streams = None
+        if self.finder is not None:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                streams = self.finder()
+            finally:
+                QApplication.restoreOverrideCursor()
+        self.menu = self.build(streams)
+        self.menu.popup(self.button.mapToGlobal(self.button.rect().bottomLeft()))
+        return self.menu
+
+    def pick(self, stream: dict[str, Any]) -> None:
+        self.line.setText(str(stream["name"]))
+        self.chosen.emit(stream)
+
+
 def _nice(x: float) -> float:
     """The nearest of 1, 2 or 5 times a power of ten (0.1, 0.2, 0.5, 1, 2, ...)."""
     exponent = math.floor(math.log10(x))
@@ -409,7 +505,7 @@ def _value(widget: QWidget) -> Any:
         return widget.itemData(index) if index >= 0 else text
     if isinstance(widget, QComboBox):
         return widget.currentData()
-    if isinstance(widget, QLineEdit | PathEdit | LabelPicker):
+    if isinstance(widget, QLineEdit | PathEdit | LabelPicker | StreamEdit):
         return widget.text()
     if isinstance(widget, QSpinBox | QDoubleSpinBox):
         scale = widget.property("scale")  # shown in ms, kept in seconds
@@ -472,6 +568,7 @@ class Inspector(QScrollArea):
         self._advanced_mode = False
         self._shown: str | None = None  # the strip on show, to keep the scroll
         self._doc: PipelineDoc | None = None  # the document on show
+        self.find_streams: StreamFinder | None = None  # set by the main window
         self.show_empty()
 
     def apply_theme(self, theme: Theme) -> None:
@@ -648,6 +745,13 @@ class Inspector(QScrollArea):
                 typed = combo.lineEdit() if combo.isEditable() else None
                 if typed is not None:
                     signals.append(typed.editingFinished)
+            elif key in STREAM_PARAMS:
+                kind, type_param = STREAM_PARAMS[key]
+                stream_edit = StreamEdit(str(value or ""), kind, self.find_streams)
+                stream_edit.chosen.connect(
+                    lambda s, n=name, t=type_param: self._stream_chosen(strip, n, t, s)
+                )
+                editor, signals = stream_edit, [stream_edit.finished]
             else:
                 editor, changed = _editor(spec, value, SHOWN_IN_MS.get(key),
                                           SAVE_ENDINGS.get(key, ""))  # fmt: skip
@@ -695,6 +799,17 @@ class Inspector(QScrollArea):
             lay.addLayout(form)
         if switches:
             lay.addLayout(_grid(switches))
+
+    def _stream_chosen(
+        self, strip: StripNode, name: str, type_param: str, stream: dict[str, Any]
+    ) -> None:
+        """A stream picked from Detect…: its name, and its type where the
+        strip asks for another type (so it would not be found)."""
+        wanted = str(strip.params.get(type_param) or "")
+        found = str(stream.get("type") or "")
+        if wanted and wanted != found:
+            self.param_changed.emit(strip.id, type_param, found)
+        self.param_changed.emit(strip.id, name, str(stream["name"]))
 
     def _advanced(
         self, strip: StripNode, specs: list[dict[str, Any]], restart_note: Any

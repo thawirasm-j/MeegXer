@@ -153,6 +153,7 @@ FAILED_CALL = {
     "load_pipeline": "Could not load the pipeline",
     "start": "Could not start",
     "list_bids": "Could not read the BIDS dataset",
+    "list_lsl": "Could not look for LSL streams",
 }
 _EXCEPTION_NAME = re.compile(r"^(?:[A-Za-z_][\w.]*\.)?[A-Z]\w*(?:Error|Exception): ")
 
@@ -319,6 +320,7 @@ class MainWindow(QMainWindow):
         self.inspector.clear_calibration.connect(self.clear_calibration)
         self.inspector.calibrate.connect(self.calibrate)
         self.inspector.arm.connect(self.arm)
+        self.inspector.find_streams = self.find_streams
         bottom.addWidget(self.inspector)
         self.logbox = QPlainTextEdit()
         self.logbox.setReadOnly(True)
@@ -919,6 +921,14 @@ class MainWindow(QMainWindow):
         self.view.set_wheel(wheel_positions(positions))
         self.feature_view.wheel = self.view.wheel
         self.view.events = list(info["events"]) if self.doc.mode == "offline" else []
+
+    def find_streams(self) -> list[dict[str, Any]] | None:
+        """The LSL streams the daemon's machine can see (the LSL input's
+        Detect…); None when the daemon could not be asked (the log says why)."""
+        found: list[dict[str, Any]] | None = self.call("list_lsl", wait=1.0)
+        if found is not None:
+            self.log(f"Input: {len(found)} LSL stream(s) found")
+        return found
 
     def _list_bids(self) -> None:
         """A BIDS input's dataset, listed once per folder: its subjects,

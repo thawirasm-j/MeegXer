@@ -100,6 +100,26 @@ def channel_labels(info: pylsl.StreamInfo) -> list[str]:
     return labels
 
 
+def find_streams(wait: float = 1.0) -> list[dict[str, object]]:
+    """The LSL streams this machine can see (``pylsl.resolve_streams``), for
+    the LSL input's Detect button: each stream's ``name``, ``type``,
+    ``channels``, ``rate`` (0 for an irregular one) and ``host``, and its
+    ``kind``: ``signal`` (a regular rate, which the input reads) or
+    ``markers`` (an irregular one, which its marker stream reads). The same
+    stream seen twice (one source ID) is listed once; sorted by name."""
+    seen: dict[tuple[str, str, str], dict[str, object]] = {}
+    for info in pylsl.resolve_streams(wait_time=max(0.1, float(wait))):
+        rate = float(info.nominal_srate())
+        key = (info.name(), info.source_id(), info.hostname())
+        seen[key] = {
+            "name": info.name(), "type": info.type(),
+            "channels": int(info.channel_count()), "rate": rate,
+            "host": info.hostname(), "kind": "signal" if rate > 0 else "markers",
+        }  # fmt: skip
+    return sorted(seen.values(), key=lambda s: (str(s["name"]).lower(),
+                                                str(s["host"])))  # fmt: skip
+
+
 class LslSource(Source):
     """Pulls an LSL stream, resolved by name (and optionally type)."""
 
