@@ -22,6 +22,7 @@ authors = [
 ]
 dependencies = [
     "meegxer-core",
+    "packaging>=24",
 ]
 
 [project.scripts]
@@ -32,6 +33,8 @@ plugins = "meegxer.plugins.index:node_classes"
 
 [project.entry-points."meegxer.isolation"]
 sterile = "meegxer.plugins.sterile:isolate"
+build = "meegxer.plugins.sterile_image:build_image"
+check = "meegxer.plugins.sterile_image:check_image"
 
 [project.urls]
 Homepage = "https://github.com/thawirasm-j/MeegXer"

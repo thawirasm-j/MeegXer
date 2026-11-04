@@ -2,12 +2,14 @@
 worker, and the output is the local run's, exactly (the exit criterion of M11:
 "Sterile mode gives the same output as a local run").
 
-The worker runs here as a local process (``local=True``, the development
-launcher); the container is the same program in the image built from these
-packages (``docs/STERILE.md``)."""
+The worker runs as a local process (``local=True``, the development
+launcher), or in the Sterile image when ``MEEGXER_TEST_STERILE_IMAGE`` names
+it (CI's container job builds it with ``meegxer sterile build``): the same
+program, in the container (``docs/STERILE.md``)."""
 
 from __future__ import annotations
 
+import os
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -30,6 +32,9 @@ from meegxer.plugins.sterile import SterileError, SterileProcessor, from_wire, t
 EEG = ["Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8", "T7", "C3", "Cz", "C4", "T8",
        "P7", "P3", "Pz", "P4", "P8", "O1", "O2"]  # fmt: skip
 SFREQ = 250.0
+IMAGE = os.environ.get("MEEGXER_TEST_STERILE_IMAGE", "")
+# the worker: the image under test, else a local process
+WORKER: dict[str, Any] = {"image": IMAGE} if IMAGE else {"local": True}
 
 
 @pytest.fixture(autouse=True)
@@ -201,7 +206,7 @@ def test_sterile_output_is_the_local_output(recording: Path, name: str) -> None:
     local = build(recording, PIPELINES[name])
     BatchScheduler(block_size=500).run(local)
     isolated = build(recording, PIPELINES[name])
-    with sterilize(isolated, local=True) as isolation:
+    with sterilize(isolated, **WORKER) as isolation:
         BatchScheduler(block_size=500).run(isolated)
         proxied = set(isolation.proxied)
     built_in = {node.id for node in isolated.nodes if isinstance(node.impl, Stage)
@@ -263,7 +268,7 @@ def test_a_nodes_error_is_raised_as_locally(recording: Path) -> None:
     """A node's ValueError in the worker is a ValueError on the host, with its
     words (the GUI shows them as they are)."""
     graph = build(recording, [n("lp", "iir_filter", kind="lowpass", high=40.0)])
-    with sterilize(graph, local=True):
+    with sterilize(graph, **WORKER):
         stage = graph["lp"].impl
         assert isinstance(stage, Stage) and isinstance(
             stage.processor, SterileProcessor
@@ -283,7 +288,7 @@ def test_a_killed_worker_is_restarted(recording: Path) -> None:
     local = build(recording, nodes)
     BatchScheduler(block_size=500).run(local)
     isolated = build(recording, nodes)
-    with sterilize(isolated, local=True) as isolation:
+    with sterilize(isolated, **WORKER) as isolation:
         assert isinstance(isolation, sterile.Isolation)
         worker = isolation.worker
         original = worker.call
@@ -321,7 +326,7 @@ def test_local_code_is_refused(recording: Path) -> None:
     assert isinstance(stage, Stage)
     stage.processor = cls()
     with pytest.raises(SterileError, match="without isolation"):
-        sterilize(graph, local=True)
+        sterilize(graph, **WORKER)
 
 
 def test_a_worker_of_another_version_is_refused(
@@ -331,7 +336,7 @@ def test_a_worker_of_another_version_is_refused(
     with what to do."""
     monkeypatch.setattr(sterile, "__version__", "9.9.9")
     graph = build(recording, [n("iir", "iir_filter")])
-    with sterilize(graph, local=True), pytest.raises(SterileError, match="build"):
+    with sterilize(graph, **WORKER), pytest.raises(SterileError, match="build"):
         BatchScheduler().run(graph)
 
 
@@ -344,7 +349,7 @@ def test_a_sterile_run_saves_the_same_session(recording: Path) -> None:
     local = build(recording, PIPELINES["bci"])
     BatchScheduler(block_size=500).run(local)
     isolated = build(recording, PIPELINES["bci"])
-    with sterilize(isolated, local=True):
+    with sterilize(isolated, **WORKER):
         BatchScheduler(block_size=500).run(isolated)
         session = build_session(isolated)
         stage = isolated["csp"].impl

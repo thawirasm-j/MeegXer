@@ -370,6 +370,51 @@ def _run_bids(
         raise typer.Exit(code=2)
 
 
+sterile_app = typer.Typer(
+    no_args_is_help=True, help="Sterile mode: processing isolated in a container."
+)
+app.add_typer(sterile_app, name="sterile")
+
+
+@sterile_app.command("build")
+def sterile_build(
+    tag: Annotated[
+        str | None, typer.Option(help="Image tag (default meegxer-sterile:VERSION).")
+    ] = None,
+    engine: Annotated[
+        str | None, typer.Option(help="docker or podman (default: the one found).")
+    ] = None,
+) -> None:
+    """Build the Sterile worker's image from this MeegXer (needs the network
+    once; runs never do). docs/STERILE.md."""
+    from meegxer.core.sterile import build_image
+
+    options: dict[str, Any] = {"engine": engine, "log": typer.echo}
+    if tag:
+        options["tag"] = tag
+    try:
+        built = build_image(**options)
+    except RuntimeError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"built {built}")
+
+
+@sterile_app.command("check")
+def sterile_check(
+    tag: Annotated[str | None, typer.Option(help="Image tag to check.")] = None,
+) -> None:
+    """Say whether the Sterile image is built from this MeegXer's code."""
+    from meegxer.core.sterile import check_image
+
+    try:
+        checked = check_image(**({"tag": tag} if tag else {}))
+    except RuntimeError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"ok: {checked} is up to date")
+
+
 session_app = typer.Typer(no_args_is_help=True, help="Session files (reproducibility).")
 app.add_typer(session_app, name="session")
 

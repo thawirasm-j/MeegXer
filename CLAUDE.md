@@ -136,6 +136,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   `%APPDATA%\meegxer` / `~/.config/meegxer`); read by `meegxer.core.settings`
   (flag > env var > file > default). Never written into pipelines or sessions.
   Tests get an empty config folder (root `conftest.py`, GUI `own_config` fixture).
+- Sterile mode (`docs/STERILE.md`): `meegxer sterile build` (the worker's image,
+  from the installed MeegXer), `meegxer sterile check`.
 - Plugins: `uv run meegxer-plugin check IMAGE` (conformance),
   `meegxer-plugin add IMAGE`, `meegxer-plugin list`. Custom scripts
   (`process(raw, ...)` offline, or `transform(data, state, ...)` [+ `fit(raw, ...)`]

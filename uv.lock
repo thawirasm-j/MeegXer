@@ -1257,10 +1257,14 @@ version = "0.0.0"
 source = { editable = "packages/meegxer-plugins" }
 dependencies = [
     { name = "meegxer-core" },
+    { name = "packaging" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "meegxer-core", editable = "packages/meegxer-core" }]
+requires-dist = [
+    { name = "meegxer-core", editable = "packages/meegxer-core" },
+    { name = "packaging", specifier = ">=24" },
+]
 
 [[package]]
 name = "meegxer-workspace"

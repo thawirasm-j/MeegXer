@@ -14,6 +14,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   the image, the *Sterilize* switch and live runs come next
   (`docs/STERILE.md`). The plugin wire format writes large frames without
   copying them whole.
+- **The Sterile image.** `meegxer sterile build` (Docker or Podman) builds
+  `meegxer-sterile:VERSION` from the installed MeegXer, its dependencies at
+  the installed versions; `meegxer sterile check` says whether it is up to
+  date. A Sterile run refuses an image built from other code, with what to
+  do. In the container (no network, read-only, no capabilities), every
+  built-in strip gives the local run's output exactly; CI checks it. New
+  dependency of `meegxer-plugins`: packaging.
 
 ## 0.5.0b1 (2026-11-01): BCI
 

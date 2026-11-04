@@ -80,6 +80,14 @@ jobs:
       - run: uv run --frozen pytest packages/meegxer-plugins -k sandbox
         env:
           MEEGXER_TEST_IMAGES: meegxer/example-average-reference:0.1.0,meegxer/example-octave-iir-bandpass:0.1.0,meegxer/eeglab-asr:0.1.0
+      - name: Build the Sterile image (docs/STERILE.md)
+        run: |
+          uv run --frozen meegxer sterile build --tag meegxer-sterile:ci
+          uv run --frozen meegxer sterile check --tag meegxer-sterile:ci
+      - name: Sterile output is the local output, in the container (M11's exit criterion)
+        run: uv run --frozen pytest packages/meegxer-plugins/tests/test_plugins_sterile.py
+        env:
+          MEEGXER_TEST_STERILE_IMAGE: meegxer-sterile:ci
 
   deps-smoke:
     name: Dependency smoke (${{ matrix.os }}, py${{ matrix.python }})

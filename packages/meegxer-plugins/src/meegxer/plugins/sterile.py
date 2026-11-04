@@ -23,12 +23,15 @@ feature windows keep their types. The host rebuilds only the types it knows.
 
 from __future__ import annotations
 
+import functools
+import hashlib
 import importlib
 import math
 import os
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import fields, is_dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -104,8 +107,41 @@ ERRORS: dict[str, type[Exception]] = {
 }
 
 
+# the MeegXer packages the worker runs (copied into its image, and hashed)
+CODE_PACKAGES = ("meegxer.core", "meegxer.nodes", "meegxer.plugins")
+
+
 class SterileError(RuntimeError):
     """Sterile mode cannot run this pipeline (or its worker failed)."""
+
+
+def package_dir(name: str) -> Path:
+    """Where the installed package ``name`` (``meegxer.core``) lives."""
+    return Path(next(iter(importlib.import_module(name).__path__)))
+
+
+def code_files(name: str) -> list[Path]:
+    """The files of the installed package ``name`` (no compiled caches)."""
+    root = package_dir(name)
+    return sorted(
+        p for p in root.rglob("*")
+        if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
+    )  # fmt: skip
+
+
+@functools.cache
+def code_hash() -> str:
+    """A SHA-256 over the code the worker runs (``CODE_PACKAGES``): the host
+    and its worker must agree on it, so an image built from other code (an
+    edited checkout, another version) is refused even under the same version."""
+    digest = hashlib.sha256()
+    for name in CODE_PACKAGES:
+        root = package_dir(name)
+        for path in code_files(name):
+            digest.update(f"{name}/{path.relative_to(root).as_posix()}\0".encode())
+            digest.update(path.read_bytes())
+            digest.update(b"\0")
+    return digest.hexdigest()
 
 
 # -- values on the wire ----------------------------------------------------------
@@ -214,6 +250,13 @@ class SterileWorker(PluginWorker):
             raise SterileError(
                 f"the Sterile worker is MeegXer {manifest.get('version')}, this is "
                 f"{__version__}: build its image again (meegxer sterile build)"
+            )
+        if manifest.get("code") != code_hash():
+            self.close()
+            raise SterileError(
+                "the Sterile worker runs other code than this MeegXer (an image "
+                "built before a change): build its image again (meegxer sterile "
+                "build)"
             )
         return manifest
 
@@ -330,7 +373,11 @@ def worker_launcher(image: str | None = None, *, local: bool = False) -> Launche
     if local:
         return LocalLauncher((sys.executable, "-m", "meegxer.plugins.sterile_worker"),
                              env={"PYTHONUNBUFFERED": "1"})  # fmt: skip
-    return ContainerLauncher(image or f"meegxer-sterile:{__version__}")
+    # a whole recording, its copies and an ICA fit: more memory than a plugin
+    return ContainerLauncher(image or IMAGE, memory="8g")
+
+
+IMAGE = f"meegxer-sterile:{__version__}"  # what meegxer sterile build makes
 
 
 class Isolation:
@@ -372,6 +419,10 @@ def isolate(
                 f"{node_id}: a custom script or local plugin runs as a local "
                 "process, without isolation; Sterile mode cannot run it yet"
             )
+    if not local:  # missing or stale: say so now, not after a container start
+        from meegxer.plugins.sterile_image import check_image
+
+        check_image(image or IMAGE)
     worker = SterileWorker(worker_launcher(image, local=local), timeout=timeout)
     proxied = []
     for node_id, stage in stages:
@@ -417,7 +468,8 @@ class Server:
         header = message.header
         kind = header.get("type")
         if kind == "hello":
-            manifest = {"name": WORKER_NAME, "version": __version__}
+            manifest = {"name": WORKER_NAME, "version": __version__,
+                        "code": code_hash()}  # fmt: skip
             return {"type": "hello", "manifest": manifest,
                     "sdk": f"meegxer-sterile/{__version__}"}, {}  # fmt: skip
         if kind == "load_model":
