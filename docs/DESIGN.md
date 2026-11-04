@@ -294,10 +294,15 @@ transform(block, model, state, params)        -> block_out, state, events
   First user: **CSP** (MNE), the log power of each component per window, from
   `tmin`-`tmax` trials of the named classes.
 - Plugins emit Events only; trusted host Sinks perform actions.
-- **Sterile mode** (planned): one container runs the whole processing chain (built-in
-  nodes and plugins) as a single worker over the plugin protocol, so the added
-  delay is one hop per block; the host keeps sources, LSL, file writers, device
-  sinks and the GUI. Measure the delay with the stability test before shipping.
+- **Sterile mode** (in progress, `docs/STERILE.md`): one container per run holds
+  every built-in strip of the pipeline (the Sterile worker); on the host each
+  built-in processor is a proxy that hands its calls to the worker over the plugin
+  wire format, so the schedulers and stages are unchanged and the output is the
+  local run's exactly. The added delay is one hop per strip per block (decided
+  2026-11-04, instead of the whole chain per hop). Container plugins keep their own
+  containers; the host keeps sources, LSL, file writers, device sinks, probes, the
+  review strips and the GUI. Measure the delay with the stability test before
+  shipping.
 - Base images: Octave with pinned EEGLAB; slim Python with pinned MNE. Multi-arch
   (amd64 + arm64) eventually.
 - Host and LSL run natively; only plugin workers are containerized (LSL multicast

@@ -212,6 +212,30 @@ Instead of the expected reply a plugin may answer
 | `unknown_model` | `model_id` not loaded; the host sends `load_model` and retries |
 | `plugin_error` | the plugin's own code failed on this request |
 
+## Sterile worker (internal)
+
+Sterile mode (`docs/STERILE.md`) uses the same framing for MeegXer's own
+worker, which is not a plugin: both ends are the same MeegXer version (the
+`hello` reply's `manifest` is `{"name": "meegxer.sterile_worker", "version":
+V}` and the host refuses another `V`), so this part is internal and may change
+with any release.
+
+- `call` → `return`: `impl` (`module:qualname` of a MeegXer processor class),
+  `method` (`fit`, `fit_labelled`, `fit_rails`, `fit_features`, `transform`,
+  `transform_rails`, `transform_features`, `flush`, `describe_model`) and
+  `args`, a tree; `model_id` and `model_arg` name the argument that is the
+  model, loaded once with `load_model`. Reply `{"type": "return", "value":
+  TREE}`, or `{"type": "raised", "exception": NAME, "message": TEXT}` when the
+  node raised (the host raises the same kind of error).
+- Trees keep Python's types: `{"__a": NAME}` an array of the frame (any dtype:
+  others than the wire's travel as bytes with `dtype` and `shape`), `{"__f":
+  "nan"}` a non-finite float, `{"__t": [...]}` a tuple, `{"__d": {...}}` a
+  mapping, `{"__o": TYPE, "f": {...}}` one of MeegXer's block types (`Block`,
+  `FeatureBlock`, `SignalInfo`, `Event`, `EventBlock`, `Windows`,
+  `TransformResult`). Signal data keeps its dtype (float64), not float32.
+- A frame may be up to 64 GiB: offline, a whole recording travels in one
+  `transform`.
+
 ## Conformance
 
 `meegxer-plugin check IMAGE` runs a plugin through the protocol and the processor

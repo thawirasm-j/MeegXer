@@ -26,7 +26,13 @@ from typing import Any
 import numpy.typing as npt
 
 from meegxer.core.manifest import SPEC_VERSION
-from meegxer.plugins.wire import Message, WireError, encode, read_message
+from meegxer.plugins.wire import (
+    MAX_PAYLOAD,
+    Message,
+    WireError,
+    read_message,
+    write_message,
+)
 
 UNSANDBOXED_ENV = "MEEGXER_ALLOW_UNSANDBOXED"
 
@@ -150,6 +156,8 @@ def _kill_all() -> None:
 class PluginWorker:
     """One plugin process with a synchronous request/reply API (thread-safe)."""
 
+    max_payload = MAX_PAYLOAD  # the largest reply accepted (a plugin's limit)
+
     def __init__(
         self,
         launcher: Launcher,
@@ -223,7 +231,7 @@ class PluginWorker:
         assert proc.stdout is not None
         while True:
             try:
-                self._replies.put(read_message(proc.stdout))
+                self._replies.put(read_message(proc.stdout, self.max_payload))
             except BaseException as exc:  # EOF, protocol error
                 self._replies.put(exc)
                 return
@@ -269,8 +277,7 @@ class PluginWorker:
         request_id = self._next_id
         self._next_id += 1
         try:
-            proc.stdin.write(encode({**header, "id": request_id}, arrays))
-            proc.stdin.flush()
+            write_message(proc.stdin, {**header, "id": request_id}, arrays)
         except (BrokenPipeError, OSError) as exc:
             self._kill()
             raise PluginCrashed(
@@ -298,11 +305,13 @@ class PluginWorker:
         arrays: Mapping[str, npt.NDArray[Any]] | None = None,
         *,
         models: Mapping[str, tuple[Any, Mapping[str, npt.NDArray[Any]]]] | None = None,
+        timeout: float | None = None,
     ) -> Message:
         """Send a request, restarting a dead or hung worker (with backoff).
 
         ``models`` maps model ids the request needs to their wire tree and arrays;
-        they are loaded on demand (fresh workers, ``unknown_model``).
+        they are loaded on demand (fresh workers, ``unknown_model``). ``timeout``:
+        how long this request may take (default: the worker's).
         """
         attempts = 0
         with self._lock:
@@ -312,7 +321,9 @@ class PluginWorker:
                     for model_id, (tree, model_arrays) in (models or {}).items():
                         if model_id not in self._loaded_models:
                             self._load_model(model_id, tree, model_arrays)
-                    reply = self._exchange(header, arrays or {}, self.timeout)
+                    reply = self._exchange(
+                        header, arrays or {}, timeout or self.timeout
+                    )
                     if (
                         reply.type == "error"
                         and reply.header.get("error") == "unknown_model"

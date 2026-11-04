@@ -50,38 +50,50 @@ def _to_wire_dtype(array: npt.NDArray[Any]) -> str:
     return name
 
 
-def encode(
-    header: Mapping[str, Any], arrays: Mapping[str, npt.NDArray[Any]] = {}
-) -> bytes:
-    """Build one frame."""
+def _frame_parts(
+    header: Mapping[str, Any], arrays: Mapping[str, npt.NDArray[Any]]
+) -> list[bytes | memoryview]:
+    """One frame as its pieces: magic, header, payload length, then each
+    array's bytes (not joined, so a large array is not copied again)."""
     descriptors = []
-    chunks = []
+    chunks: list[memoryview] = []
     offset = 0
     for name, array in arrays.items():
         dtype = _to_wire_dtype(np.asarray(array))
-        data = np.ascontiguousarray(
-            array, dtype=np.dtype(dtype).newbyteorder("<")
-        ).tobytes()
+        data = np.ascontiguousarray(array, dtype=np.dtype(dtype).newbyteorder("<"))
+        view = memoryview(data).cast("B") if data.size else memoryview(b"")
         descriptors.append(
             {
                 "name": name,
                 "dtype": dtype,
                 "shape": list(np.shape(array)),
                 "offset": offset,
-                "nbytes": len(data),
+                "nbytes": view.nbytes,
             }
         )
-        chunks.append(data)
-        offset += len(data)
+        chunks.append(view)
+        offset += view.nbytes
     head = json.dumps({**header, "arrays": descriptors}, allow_nan=False).encode()
-    payload = b"".join(chunks)
-    return (
-        MAGIC
-        + struct.pack("<I", len(head))
-        + head
-        + struct.pack("<Q", len(payload))
-        + payload
-    )
+    return [MAGIC + struct.pack("<I", len(head)) + head + struct.pack("<Q", offset),
+            *chunks]  # fmt: skip
+
+
+def encode(
+    header: Mapping[str, Any], arrays: Mapping[str, npt.NDArray[Any]] = {}
+) -> bytes:
+    """Build one frame."""
+    return b"".join(_frame_parts(header, arrays))
+
+
+def write_message(
+    stream: IO[bytes],
+    header: Mapping[str, Any],
+    arrays: Mapping[str, npt.NDArray[Any]] = {},
+) -> None:
+    """Write one frame piece by piece (no copy of the whole payload) and flush."""
+    for part in _frame_parts(header, arrays):
+        stream.write(part)
+    stream.flush()
 
 
 def _read_exact(stream: IO[bytes], n: int) -> bytes:
@@ -96,8 +108,9 @@ def _read_exact(stream: IO[bytes], n: int) -> bytes:
     return b"".join(chunks)
 
 
-def read_message(stream: IO[bytes]) -> Message:
-    """Read one frame; raises EOFError on a closed stream."""
+def read_message(stream: IO[bytes], max_payload: int = MAX_PAYLOAD) -> Message:
+    """Read one frame; raises EOFError on a closed stream. ``max_payload``: the
+    largest payload accepted (a plugin's: ``MAX_PAYLOAD``)."""
     magic = stream.read(4)
     if not magic:
         raise EOFError("stream closed")
@@ -115,7 +128,7 @@ def read_message(stream: IO[bytes]) -> Message:
     if not isinstance(header, dict):
         raise WireError("header must be a JSON object")
     (payload_len,) = struct.unpack("<Q", _read_exact(stream, 8))
-    if payload_len > MAX_PAYLOAD:
+    if payload_len > max_payload:
         raise WireError(f"payload of {payload_len} bytes is too large")
     payload = _read_exact(stream, payload_len)
     descriptors = header.pop("arrays", [])

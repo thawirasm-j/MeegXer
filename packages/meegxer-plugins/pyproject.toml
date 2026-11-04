@@ -30,6 +30,9 @@ meegxer-plugin = "meegxer.plugins.cli:main"
 [project.entry-points."meegxer.node_providers"]
 plugins = "meegxer.plugins.index:node_classes"
 
+[project.entry-points."meegxer.isolation"]
+sterile = "meegxer.plugins.sterile:isolate"
+
 [project.urls]
 Homepage = "https://github.com/thawirasm-j/MeegXer"
 Documentation = "https://github.com/thawirasm-j/MeegXer/blob/main/docs/DESIGN.md"
