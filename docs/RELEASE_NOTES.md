@@ -7,13 +7,45 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
-- **Sterile mode, first part (M11.1).** The Sterile worker runs every
-  built-in strip of a pipeline in one process, reached over the plugin wire
-  format, with a proxy per strip on the host; the output is the local run's,
-  bit for bit (every built-in processor checked offline). Not switchable yet:
-  the image, the *Sterilize* switch and live runs come next
-  (`docs/STERILE.md`). The plugin wire format writes large frames without
-  copying them whole.
+## 0.5.0b2 (2026-11-05): Sterile
+
+Sterile mode: switch it on and the processing runs in a container with no
+network, no capabilities and a read-only filesystem, away from the computer
+and the network, while sources, files, LSL and the GUI stay on the host.
+The output is the local run's, bit for bit. With 0.5.0b1's SSVEP → keypress
+demo, M11's exit criterion is met ("Sterile mode gives the same output as a
+local run; an SSVEP → keypress demo"). Sterile means isolation only: which
+code runs, and whether it suits patient data, stays your call.
+
+Checked in `docs/TESTING.md`: §X by the maintainer on Windows with Docker
+Desktop (the image, an offline run in the container and the same output
+without, live from a headset, the GUI rebuilding a missing image) and by
+Claude on Linux with Docker (the real window offscreen, the CLI, the daemon
+live, the container's isolation); CI runs every built-in strip in the
+container and compares.
+
+### Upgrading from 0.5.0b1
+
+- Pipelines, sessions and settings from 0.5.0b1 load unchanged; node
+  versions are unchanged. Sterile mode is off until you switch it on.
+- Sterile mode needs Docker or Podman, running, and its image: `meegxer
+  sterile build` (a few minutes, the network once), again after each
+  upgrade (a run refuses an image built from other code and says so).
+- Control API 0.2.27 (`sterile_status`, `sterile_build`, `sterile` in the
+  status): stop an old daemon first (`meegxer shutdown`).
+- New setting `general.sterile` (`docs/SETTINGS.md`); new dependency of
+  `meegxer-plugins`: packaging.
+
+### What's new
+
+- **The Sterile worker (M11.1).** One process per run holds every built-in
+  strip of the pipeline, reached over the plugin wire format, with a proxy
+  per strip on the host: the schedulers, stages, rails, calibration and
+  sessions are unchanged, the host keeps models and state (a worker that
+  dies is started again), and the output is the local run's, bit for bit
+  (every built-in processor checked). Sources, probes, sinks, the review
+  strips and container plugins stay on the host. The plugin wire format
+  writes large frames without copying them whole.
 - **The Sterile image.** `meegxer sterile build` (Docker or Podman) builds
   `meegxer-sterile:VERSION` from the installed MeegXer, its dependencies at
   the installed versions; `meegxer sterile check` says whether it is up to
@@ -27,10 +59,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   (offline, live, all-subjects BIDS runs and their workers) runs its
   built-in strips in the Sterile container. A live run's status says
   `(Sterile)`. With no image, or one built from other code, the GUI offers to
-  build it and shows the build in the log; the CLI says what to run. Live,
-  each strip costs 2–3 ms per block in the container (measured on Linux;
-  `docs/STERILE.md`). Control API 0.2.27: `sterile_status`, `sterile_build`,
-  `sterile` in the status. Custom scripts are still refused in Sterile mode.
+  build it and shows the build in the log; the CLI says what to run.
+  Docker installed but not started is said as such ("start Docker
+  Desktop"). Live, the container adds a hop per strip per block: on Windows
+  with Docker Desktop, 4 ms delay and 1 late block (the maintainer's
+  headset); on Linux 2–3 ms per strip (`docs/STERILE.md`).
+- **Not yet in Sterile mode:** custom scripts and local plugins, which run
+  as local processes, are refused with the reason; they will run inside the
+  worker.
 
 ## 0.5.0b1 (2026-11-01): BCI
 

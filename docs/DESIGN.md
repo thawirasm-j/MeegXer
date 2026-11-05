@@ -30,7 +30,7 @@ turn knobs, and see the effect live — on a streaming amp or on a recorded data
 - **Offline** = the same pipeline run on recorded files / BIDS datasets.
 - **One install:** every package ships in every install (core, built-in nodes,
   plugins, GUI, CLI). Processing runs on the local machine.
-- **Sterile mode** (planned, 0.2.1 decision): a runtime switch, not a package or a
+- **Sterile mode** (0.2.1 decision; built in 0.5.0b2, `docs/STERILE.md`): a runtime switch, not a package or a
   build. All processing (built-in nodes and plugins) runs inside a container with no
   network and read-only mounts; the host keeps only trusted I/O (sources and LSL,
   file writers, device sinks, the GUI). Turned on with a "Sterilize" button, later
