@@ -7,11 +7,12 @@ switch, not a package or a build. It means isolation only. Which code runs,
 and whether it is fit for patient data (HIPAA, GDPR, IRB), stays the user's
 responsibility.
 
-Status: in progress. Done: the worker, the host proxies, the image
+Status: in 0.5.0b2. Done: the worker, the host proxies, the image
 (`meegxer sterile build`) and the switch (the setting, `--sterile`, the GUI's
-*Sterile* button), offline and live; in the container, every built-in strip
-gives the local run's output exactly (CI checks it on every change). Next:
-custom scripts inside the worker, and the delay brought down (below).
+*Sterile* button), offline and live, checked on Linux and on Windows with
+Docker Desktop; in the container, every built-in strip gives the local run's
+output exactly (CI checks it on every change). Next: custom scripts inside
+the worker, and the delay brought down (below).
 
 ## Switching it on
 
@@ -43,10 +44,10 @@ Linux (Docker 29, `docker run -i`), 16 channels at 500 Hz in blocks of about
 block in the container against 0.1–0.2 ms locally; the run kept up with its
 input (the same samples in 25 s), with 62 of 2209 blocks late (3 %; 0
 locally). Offline the cost is the container's start (a few seconds) and one
-hop per strip per block. Bringing it down (one hop per block for a chain of
-built-in strips, a socket instead of Docker's stdin relay) is open; Docker
-Desktop on Windows adds its virtual machine, still to measure
-(`docs/TESTING.md` §X).
+hop per strip per block. On Windows with Docker Desktop (the maintainer's headset over LSL,
+`docs/TESTING.md` §X4), Sterile on: a delay of 4 ms (95 % of blocks) and 1
+late block. Bringing it down (one hop per block for a chain of built-in
+strips, a socket instead of Docker's stdin relay) is open.
 
 ## The image
 

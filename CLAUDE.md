@@ -56,7 +56,9 @@ making architectural changes. Milestones and sequencing: `docs/WORKPLAN.md`.
     keeps only trusted I/O (sources, LSL, file writers, device sinks, the GUI). It
     means isolation only: which code is trusted (auditing) is the user's
     responsibility. Every install ships every package; "sterile" never names a
-    package or a build. (Planned; needs Docker or Podman.)
+    package or a build. (Needs Docker or Podman and `meegxer sterile build`;
+    built-in strips run in one worker, `docs/STERILE.md`. Custom scripts are
+    refused until they run inside the worker.)
 11. **The plugin spec is language-neutral** (JSON Schema + protocol doc), versioned with
     semver. Python/Octave SDKs implement the spec; they do not define it.
 

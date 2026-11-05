@@ -43,7 +43,7 @@ methods paper. Milestones and their state also live in `docs/WORKPLAN.md`
 
 One PR per item, as before. Items keep their IDs (M9.1 …) in commits and PRs.
 
-## Status (2026-11-01, 0.5.0b1)
+## Status (2026-11-05, 0.5.0b2)
 
 M9 is done (0.3.0b1 to 0.3.1b3). M10's exit criterion is met in 0.4.0b1: an
 ERP and a resting-state study run end to end from the GUI and the CLI (the
@@ -53,6 +53,8 @@ review track (M10.10, M10.11, §I to §K): M10 is done. 0.5.0b1 ("BCI") adds
 M11's BCI work (LDA, the keyboard sink, the SSVEP BCI template: M10.9), the
 inputs (BIDS folders, epoch files, a recording shown at once) and the UX
 review's fixes (§L to §V), and *Detect…* for the LSL input's streams (§W).
+0.5.0b2 ("Sterile") adds Sterile mode (M11.1, checked in §X on Linux and on
+Windows): with it, M11's exit criterion is met.
 
 | Item | State | Where |
 |---|---|---|
@@ -68,7 +70,7 @@ review's fixes (§L to §V), and *Detect…* for the LSL input's streams (§W).
 | M10.9 Templates, sample data | Done: ERP, resting-state and ICA cleaning templates (GUI *New…*, `meegxer new`), and the ERP CORE and EEGBCI samples, fetched per subject on first use; the live *SSVEP BCI (keys)* template (LSL → SSVEP detection with detections as events → keyboard), with `tools/ssvep_demo.py` to try it without an amplifier | PR #106, #112, #146 |
 | M10.10 Undo for chain edits | Done: *Undo* and *Redo* (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) for every chain and setting edit, quick changes of one setting as one step; live, settings undo without a restart (`meegxer.gui.history`) | this PR |
 | M10.11 Manual review (added) | Done: steps 1–5 of `docs/REVIEW.md` Design v2 done: Review strip, Reject segments, review display, review at import, review points, detectors, suggestions with verdicts, epoch review, rejected epochs on the Events rail. Step 6 done: the review report, in the QC report (6a), and two reviewers, blind, then resolved, with Cohen's kappa (6b) | PR #81 – #100, #139, this PR |
-| M11.1 Sterile mode | In progress (`docs/STERILE.md`): the Sterile worker and a host proxy per built-in strip, over the plugin wire format (PR #162); the image, built from the installed MeegXer and labelled with its code's hash (`meegxer sterile build`, `meegxer sterile check`), in which every built-in processor gives the local run's output exactly (CI's container job) (PR #163); the switch: the `general.sterile` setting, *Sterile* in the GUI (offering to build a missing image), `--sterile` on `meegxer run` and `meegxer daemon`, `sterile=` in the Python API, offline and live, the delay measured (2–3 ms per strip per block on Linux) (this PR). Next: custom scripts inside the worker; the maintainer's checks with Docker Desktop (`docs/TESTING.md` §X) | PR #162, #163, this PR |
+| M11.1 Sterile mode | In progress (`docs/STERILE.md`): the Sterile worker and a host proxy per built-in strip, over the plugin wire format (PR #162); the image, built from the installed MeegXer and labelled with its code's hash (`meegxer sterile build`, `meegxer sterile check`), in which every built-in processor gives the local run's output exactly (CI's container job) (PR #163); the switch: the `general.sterile` setting, *Sterile* in the GUI (offering to build a missing image), `--sterile` on `meegxer run` and `meegxer daemon`, `sterile=` in the Python API, offline and live, the delay measured (2–3 ms per strip per block on Linux) (this PR). Next: custom scripts inside the worker, the live delay brought down. Checked on Windows with Docker Desktop (`docs/TESTING.md` §X) | PR #162, #163, #164 |
 | M11.2 Plugin hardening | Done: the container limits (memory 2 GB, 256 processes, optional CPUs; no network, read-only, no capabilities) and digest pinning (a plugin runs by its recorded image ID; a session refuses another) were in place. Now the plugin wire reader checks every size and descriptor before reading (256 MiB payload cap, read in pieces), and the GUI drops display frames it cannot decode; both fuzzed with seeded mutations in CI | this PR |
 | M11.3 LDA classifier | Done: the *LDA* strip reads a feature strip (CSP, band power…; *Reads*), fits shrinkage LDA (scikit-learn, Ledoit-Wolf) on the windows lying in its classes' trials, and gives each window's class probabilities and a `pred_<class>` event on the Events rail; offline and live (spec 0.2.23) | PR #143 |
 | M11.4 Keyboard sink | Done: the *Keyboard (key presses)* output presses a key for each event it maps (`pred_left=left`), only while armed by hand for one live run (the strip's *Arm*, `meegxer arm NODE`), at most *Keys per second* (2), disarmed by Esc, *Disarm* or *Stop*; never in a batch run, never from a pipeline (pynput). "Not a medical device" in the README and the new About box. Live runs now hand action sinks each new event and file writers the Events rail | PR #145 |
@@ -79,7 +81,7 @@ Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
 (now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
 reference.
 
-**Next:** M11's SSVEP → keypress half of the exit criterion is met (`tools/ssvep_demo.py`, `docs/TESTING.md` §N; tagged 0.5.0b1); its other half, Sterile mode (M11.1), is under way (`docs/STERILE.md`), then the Octave script tier (M11.5). Plugin hardening (M11.2) and shortcut creation (M11.6) are done.
+**Next:** M11's exit criterion is met (SSVEP → keypress, 0.5.0b1; Sterile output identical to local, 0.5.0b2). Left in M11: custom scripts inside the Sterile worker and the Octave script tier (M11.5); then M12 (spec freeze, validation report, ERP CORE replication).
 
 ### M9: Fix and harden (0.3.0bN)
 

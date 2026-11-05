@@ -926,8 +926,8 @@ gives the local output exactly (CI, in the container).
 
 | Item | Value / result | Notes |
 |---|---|---|
-| X1 the image on Windows | | |
-| X2 an offline run in the container | | |
-| X3 the same output without | | |
-| X4 live: delay and late blocks, Sterile and not | | |
-| X5 the GUI builds a missing image | | |
+| X1 the image on Windows | passed | maintainer, Docker Desktop (after the fixes for a stopped engine and UTF-8 output) |
+| X2 an offline run in the container | passed | maintainer, Windows |
+| X3 the same output without | passed | maintainer, Windows |
+| X4 live: delay and late blocks, Sterile and not | passed | maintainer, Windows, headset over LSL: Sterile on, delay 4 ms, 1 late block |
+| X5 the GUI builds a missing image | passed | maintainer, Windows |
