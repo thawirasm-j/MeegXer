@@ -160,9 +160,18 @@ def run(
             "dataset's qc.tsv and qc.html."
         ),
     ] = True,
+    sterile: Annotated[
+        bool | None,
+        typer.Option(
+            "--sterile/--no-sterile",
+            help="Run the processing in the Sterile container (default: the "
+            "general.sterile setting; docs/STERILE.md).",
+        ),
+    ] = None,
 ) -> None:
     """Run a pipeline or session offline over one recording, or with --bids over
     many (BIDS derivatives, one after another; done ones are skipped)."""
+    _sterile_choice(sterile)
     if bids is not None:
         if input is not None or output is not None or session is not None:
             typer.echo("error: --bids runs many recordings; it writes BIDS "
@@ -586,6 +595,27 @@ def _parse_value(text: str) -> object:
         return text
 
 
+def _sterile_choice(sterile: bool | None) -> None:
+    """``--sterile``/``--no-sterile`` over the setting, for this process and
+    the worker processes it starts; Sterile without its image is refused now,
+    with what to do."""
+    import os
+
+    from meegxer.core.sterile import ENV, check_image, enabled
+
+    if sterile is not None:
+        os.environ[ENV] = "1" if sterile else "0"
+    try:
+        on = enabled()
+        if on:
+            check_image()
+    except (RuntimeError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    if on:
+        typer.echo("Sterile mode: the processing runs in its container")
+
+
 @app.command()
 def daemon(
     pipeline: Annotated[
@@ -598,11 +628,21 @@ def daemon(
     display: Annotated[
         str, typer.Option(help="Display endpoint.")
     ] = "tcp://127.0.0.1:5556",
+    sterile: Annotated[
+        bool | None,
+        typer.Option(
+            "--sterile/--no-sterile",
+            help="Its runs' processing in the Sterile container (default: the "
+            "general.sterile setting).",
+        ),
+    ] = None,
 ) -> None:
     """Run the headless core daemon in the foreground."""
     from meegxer.core.daemon import main as daemon_main
 
     args = ["--control", control, "--display", display]
+    if sterile is not None:
+        args.append("--sterile" if sterile else "--no-sterile")
     if pipeline is not None:
         args += ["--pipeline", str(pipeline)]
     if start:

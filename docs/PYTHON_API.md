@@ -19,7 +19,7 @@ node code as the GUI's offline runs and `meegxer run`). It ships with
 and no node package (an import-linter contract): the strips come through the
 node registry.
 
-## `run(pipeline, raw, *, output=None, ica=None, block_size=None, allow_version_mismatch=False)`
+## `run(pipeline, raw, *, output=None, ica=None, block_size=None, allow_version_mismatch=False, sterile=None)`
 
 | Argument | What it takes |
 |---|---|
@@ -29,6 +29,7 @@ node registry.
 | `ica` | An `mne.preprocessing.ICA` of `raw`, or its file (`-ica.fif`): its components start the ICs rail at the input (`output="input:ics"`, or an ICA-reading strip), instead of a `.set`'s own. |
 | `block_size` | Feed the strips in blocks of this many samples (as `meegxer run --block-size`). |
 | `allow_version_mismatch` | Run a session whose node versions or plugin images differ (their models are refitted). |
+| `sterile` | Run the processing in the Sterile container (`docs/STERILE.md`). None: the `general.sterile` setting (`MEEGXER_STERILE`). |
 
 **The input.** The pipeline's input strip is replaced by `raw`.
 - An `mne.io.Raw` is read as a copy, so yours is left as it is. Its annotations are the input's events, on the Events rail. It has no review at import, since that belongs to a file.

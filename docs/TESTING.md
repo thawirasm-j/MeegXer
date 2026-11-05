@@ -893,3 +893,41 @@ filled both names, and *Start* streamed the signal.
 | W2 a signal stream listed and picked | passed | run by Claude offscreen (and test) |
 | W3 marker streams listed apart | passed | run by Claude offscreen (and test) |
 | W4 your amplifier, on Windows | | |
+
+## X. Sterile mode (Docker or Podman)
+
+Already run by Claude on Linux (Docker 29), through the real window offscreen
+and the CLI: `meegxer sterile build` (with this environment's proxy
+certificate added by hand; CI builds it unmodified) and `meegxer sterile
+check`; the *Sterile* button on, an offline run of a 4-channel recording
+through high-pass and notch: the `meegxer-sterile` container ran during it
+(`docker ps`), the log said so, the run finished; `meegxer daemon --sterile`
+live at 16 ch / 500 Hz: `"sterile": true`, the same samples as a local run,
+2–3 ms per strip per block (`docs/STERILE.md`); inside the container the
+network is unreachable and the filesystem read-only; every built-in strip
+gives the local output exactly (CI, in the container).
+
+1. Docker Desktop started on Windows (*Engine running*; before that,
+   `meegxer sterile check` says "docker is installed but not running: start
+   Docker Desktop…"). `meegxer sterile build`: it ends with
+   `built meegxer-sterile:VERSION` (a few minutes the first time);
+   `meegxer sterile check` says it is up to date.
+2. The GUI: switch *Sterile* on (top bar). New… → the resting-state template
+   with its sample data, *Run offline*: the log says `Offline run started
+   (Sterile).`; Docker Desktop shows a `meegxer-sterile` container while it
+   runs; the views look as without Sterile.
+3. Switch *Sterile* off and run it again: the same spectra.
+4. Live from your amplifier (LSL) with *Sterile* on: the status says
+   `● running (Sterile)`; note the delay and late blocks it shows, and
+   compare with *Sterile* off.
+5. Without the image (`docker image rm meegxer-sterile:VERSION`), switch
+   *Sterile* on: the GUI offers to build it; *Yes*: the build's lines in the
+   log, then "The Sterile image is built".
+
+| Item | Value / result | Notes |
+|---|---|---|
+| X1 the image on Windows | | |
+| X2 an offline run in the container | | |
+| X3 the same output without | | |
+| X4 live: delay and late blocks, Sterile and not | | |
+| X5 the GUI builds a missing image | | |

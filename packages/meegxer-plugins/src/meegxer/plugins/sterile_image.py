@@ -12,6 +12,7 @@ image and the dependencies); running it never does.
 
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import subprocess
@@ -29,6 +30,8 @@ from meegxer.core import __version__
 from meegxer.plugins.sterile import (
     CODE_PACKAGES,
     IMAGE,
+    IMAGE_ENV,
+    LOCAL_ENV,
     SterileError,
     code_files,
     code_hash,
@@ -124,6 +127,7 @@ def build_image(
         exe = find_engine(engine)
     except FileNotFoundError as exc:
         raise SterileError(f"Sterile mode needs Docker or Podman: {exc}") from None
+    ensure_running(exe)  # before copying anything: say why at once
     with tempfile.TemporaryDirectory(prefix="meegxer-sterile-") as tmp:
         folder = context(Path(tmp))
         log(f"Building {tag} from MeegXer {__version__} ({code_hash()[:12]})…")
@@ -132,6 +136,8 @@ def build_image(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",  # the engine writes UTF-8, not the code page
+            errors="replace",
         )
         assert proc.stdout is not None
         for line in proc.stdout:
@@ -141,22 +147,44 @@ def build_image(
     return tag
 
 
+def ensure_running(exe: str) -> None:
+    """Refuse, saying what to do, when the engine is installed but not running
+    (Docker Desktop not started): its server does not answer ``version``."""
+    done = subprocess.run([exe, "version", "--format", "{{.Server.Version}}"],
+                          capture_output=True, text=True, check=False,
+                          encoding="utf-8", errors="replace",
+                          timeout=60)  # fmt: skip
+    if done.returncode != 0 or not done.stdout.strip():
+        name = Path(exe).stem
+        raise SterileError(
+            f"{name} is installed but not running: start Docker Desktop (or the "
+            f"{name} service) and try again"
+        )
+
+
 def image_code(tag: str = IMAGE, engine: str | None = None) -> str | None:
     """The code hash ``tag`` was built from, or None when there is no such
-    image."""
+    image (an engine that is not running is said as such)."""
     exe = find_engine(engine)
+    ensure_running(exe)
     label = '{{index .Config.Labels "' + CODE_LABEL + '"}}'
     done = subprocess.run([exe, "image", "inspect", "--format", label, tag],
                           capture_output=True, text=True, check=False,
+                          encoding="utf-8", errors="replace",
                           timeout=60)  # fmt: skip
     if done.returncode != 0:
         return None
     return done.stdout.strip() or ""
 
 
-def check_image(tag: str = IMAGE, engine: str | None = None) -> str:
-    """Refuse at once (before a run starts) when the Sterile image is missing
-    or was built from other code, saying what to do."""
+def check_image(tag: str | None = None, engine: str | None = None) -> str:
+    """Refuse at once (before a run starts) when the Sterile image (``tag``,
+    else ``MEEGXER_STERILE_IMAGE``, else ``meegxer-sterile:VERSION``) is
+    missing or was built from other code, saying what to do. With
+    ``MEEGXER_STERILE_LOCAL=1`` (development) no image is needed."""
+    if os.environ.get(LOCAL_ENV) == "1" and tag is None:
+        return "local worker (development, no container)"
+    tag = tag or os.environ.get(IMAGE_ENV) or IMAGE
     try:
         found = image_code(tag, engine)
     except FileNotFoundError as exc:

@@ -147,6 +147,11 @@ def about_text() -> str:
 
 
 # what a failed control call was doing, in words (the log's start of line)
+STERILE_TIP = (
+    "Sterile mode: run the processing in a container with no network "
+    "and a read-only filesystem (needs Docker or Podman). Isolation "
+    "only: which code runs stays your choice."
+)
 FAILED_CALL = {
     "describe_source": "Could not read the input",
     "run_offline": "Could not run offline",
@@ -154,6 +159,8 @@ FAILED_CALL = {
     "start": "Could not start",
     "list_bids": "Could not read the BIDS dataset",
     "list_lsl": "Could not look for LSL streams",
+    "sterile_status": "Could not check Sterile mode",
+    "sterile_build": "Could not build the Sterile image",
 }
 _EXCEPTION_NAME = re.compile(r"^(?:[A-Za-z_][\w.]*\.)?[A-Z]\w*(?:Error|Exception): ")
 
@@ -256,6 +263,10 @@ class MainWindow(QMainWindow):
         self._mark_saved(new_history=True)  # what it starts with has nothing unsaved
         # recordings being recovered in the daemon, watched until written
         self._recovering: set[str] = set()
+        self._build_timer = QTimer(self)  # follows a Sterile image build
+        self._build_timer.timeout.connect(self._poll_sterile_build)
+        self._build_shown = 0
+        self._run_sterile = False  # the run being started is Sterile
         self._recovery_timer = QTimer(self)
         self._recovery_timer.timeout.connect(self._check_recoveries)
         QTimer.singleShot(0, self.offer_recovery)  # once the window is up
@@ -431,6 +442,16 @@ class MainWindow(QMainWindow):
             b.clicked.connect(lambda _=False, adv=bool(i): self.set_advanced(adv))
             self.mode_group.addButton(b)
             self.tools.addWidget(b)
+        self.tools.addSeparator()
+        # Sterile mode (docs/STERILE.md): the general.sterile setting; on the
+        # folding bar, so a narrow window moves it into » (a checkable item)
+        self.sterile_btn = QPushButton("Sterile")
+        self.sterile_btn.setObjectName("sterile")
+        self.sterile_btn.setCheckable(True)
+        self.sterile_btn.setChecked(bool(self.settings["general"].get("sterile")))
+        self.sterile_btn.setToolTip(STERILE_TIP)
+        self.sterile_btn.toggled.connect(self.set_sterile)
+        self.tools.addWidget(self.sterile_btn)
         lay.addWidget(self.tools)
         # the state first (running, stopped, offline: …), then load, delay,
         # late blocks, skipped frames: one line, cut short at its end with "…"
@@ -503,6 +524,87 @@ class MainWindow(QMainWindow):
         self.recording_window.setStyleSheet(stylesheet(theme, self.scale))
         self.theme_btn.setText("☀" if theme.dark else "☾")
         self.refresh_chain()
+
+    def set_sterile(self, on: bool) -> None:
+        """The Sterile switch: the general.sterile setting (the next run, and
+        the daemon's own runs unless it was started with --sterile or
+        --no-sterile); switched on, the image is checked at once."""
+        self.settings["general"]["sterile"] = bool(on)
+        try:
+            core_settings.save_settings(self.settings)
+        except (OSError, ValueError) as exc:
+            self.log(f"Could not save Sterile mode: {exc}")
+        self.log("Sterile mode on: the next run's processing runs in its "
+                 "container." if on else "Sterile mode off: the next run's "
+                 "processing runs on this computer.")  # fmt: skip
+        if on:
+            self.sterile_ready()
+
+    def sterile_ready(self) -> bool:
+        """Whether a run may start as the Sterile switch says. Sterile with no
+        image (or one built from other code, after an upgrade) offers to build
+        it; the run is started again once it is built."""
+        self._run_sterile = False
+        if not self.sterile_btn.isChecked():
+            return True
+        status: dict[str, Any] | None = self.call("sterile_status")
+        if status is None:
+            return False
+        if status.get("problem"):
+            self.log(f"Sterile mode: {status['problem']}")
+            return False
+        if not status.get("enabled"):
+            self.log("Sterile mode: the daemon was started with --no-sterile, so "
+                     "its runs stay on this computer")  # fmt: skip
+            return True
+        if status.get("image") == "ready" or "local worker" in str(status.get("image")):
+            self._run_sterile = True
+            return True
+        if status.get("build") == "running":
+            self.log("Sterile mode: its image is still being built (see the log)")
+            return False
+        image = str(status.get("image"))
+        if "not running" in image or "needs Docker or Podman" in image:
+            self.log(f"Sterile mode: {image}")  # a build would fail the same way
+            return False
+        answer = QMessageBox.question(
+            self,
+            "Build the Sterile image?",
+            f"{plain_error(str(status.get('image')))}.\n\nSterile mode runs the "
+            "processing in a container built from this MeegXer. Building it "
+            "takes a few minutes and needs the network once; runs never do.\n\n"
+            "Build it now?",
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.build_sterile_image()
+        return False
+
+    def build_sterile_image(self) -> None:
+        """Build the Sterile image in the daemon; its lines go to the log."""
+        if self.call("sterile_build") is None:
+            return
+        self.show_log(True)
+        self.log("Building the Sterile image…")
+        self._build_shown = 0
+        self._build_timer.start(1000)
+
+    def _poll_sterile_build(self) -> None:
+        status: dict[str, Any] | None = self.call("sterile_status")
+        if status is None:
+            self._build_timer.stop()
+            return
+        lines = list(status.get("lines") or [])
+        for line in lines[self._build_shown :]:
+            if line.strip():
+                self.log(f"  {line}")
+        self._build_shown = len(lines)
+        state = status.get("build")
+        if state == "done":
+            self._build_timer.stop()
+            self.log("The Sterile image is built: press Start to run in Sterile mode.")
+        elif state == "failed":
+            self._build_timer.stop()
+            self.log(f"Building the Sterile image failed: {status.get('error')}")
 
     def toggle_theme(self) -> None:
         """The quick switch: the same as choosing the theme in Settings."""
@@ -1162,6 +1264,8 @@ class MainWindow(QMainWindow):
         if problems:
             self.log("Cannot start: " + "; ".join(problems))
             return
+        if not self.sterile_ready():
+            return
         if not self._positions_ready(self._describe_input()):
             return
         if self.doc.mode == "offline":
@@ -1183,7 +1287,8 @@ class MainWindow(QMainWindow):
                 self._feature_cache.clear()
                 self._erp_cache.clear()
                 self.offline_recordings = {}
-                self.log("Offline run started.")
+                self.log("Offline run started" + (" (Sterile)." if self._run_sterile
+                                                  else "."))  # fmt: skip
             self._transport()
             return
         if self.call("load_pipeline", pipeline=self.doc.to_pipeline()) is None:
@@ -1193,7 +1298,7 @@ class MainWindow(QMainWindow):
         self.erp_frames.clear()
         if self.call("start") is not None:
             self.running = True
-            self.log("Started.")
+            self.log("Started (Sterile)." if self._run_sterile else "Started.")
         self.refresh_chain()
 
     def stop(self) -> None:
@@ -1878,6 +1983,8 @@ class MainWindow(QMainWindow):
             return
         running = status.get("running")
         parts = ["● running" if running else "○ stopped"]
+        if running and status.get("sterile"):  # the processing in its container
+            parts[0] += " (Sterile)"
         blocks = status.get("blocks") or 0
         uptime = status.get("uptime_s") or 0
         if running and blocks and uptime:

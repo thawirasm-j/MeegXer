@@ -378,16 +378,30 @@ def worker_launcher(image: str | None = None, *, local: bool = False) -> Launche
 
 
 IMAGE = f"meegxer-sterile:{__version__}"  # what meegxer sterile build makes
+IMAGE_ENV = "MEEGXER_STERILE_IMAGE"  # another tag (CI's meegxer-sterile:ci)
+# development and tests: the worker as a local process, without a container
+# (refused unless MEEGXER_ALLOW_UNSANDBOXED=1 too)
+LOCAL_ENV = "MEEGXER_STERILE_LOCAL"
 
 
 class Isolation:
-    """A pipeline running in Sterile mode: its worker, closed with ``close``."""
+    """A pipeline running in Sterile mode: its worker, closed with ``close``,
+    which also gives each stage its local processor back."""
 
-    def __init__(self, worker: SterileWorker, proxied: list[str]) -> None:
+    def __init__(
+        self,
+        worker: SterileWorker,
+        proxied: list[str],
+        originals: list[tuple[Stage, Processor]] | None = None,
+    ) -> None:
         self.worker = worker
         self.proxied = proxied  # the node ids that run in the worker
+        self._originals = originals or []
 
     def close(self) -> None:
+        for stage, processor in self._originals:
+            stage.processor = processor
+        self._originals = []
         self.worker.close()
 
     def __enter__(self) -> Isolation:
@@ -419,19 +433,23 @@ def isolate(
                 f"{node_id}: a custom script or local plugin runs as a local "
                 "process, without isolation; Sterile mode cannot run it yet"
             )
+    local = local or os.environ.get(LOCAL_ENV) == "1"
+    image = image or os.environ.get(IMAGE_ENV) or None
     if not local:  # missing or stale: say so now, not after a container start
         from meegxer.plugins.sterile_image import check_image
 
         check_image(image or IMAGE)
     worker = SterileWorker(worker_launcher(image, local=local), timeout=timeout)
     proxied = []
+    originals: list[tuple[Stage, Processor]] = []
     for node_id, stage in stages:
         processor = stage.processor
         if isinstance(processor, (PluginProcessor, SterileProcessor, *HOST_PROCESSORS)):
             continue
         stage.processor = SterileProcessor(processor, worker)
+        originals.append((stage, processor))
         proxied.append(node_id)
-    return Isolation(worker, proxied)
+    return Isolation(worker, proxied, originals)
 
 
 # -- the worker side (python -m meegxer.plugins.sterile_worker) -------------------

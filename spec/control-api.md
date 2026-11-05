@@ -58,6 +58,8 @@ remote GUI).
 | `set_strip_params` | `node`, `params` (up to 3 names) | the pipeline. Display only: which parameters the node's strip shows in the UI's advanced mode |
 | `list_bids` (0.2.25) | `root` | `{root, recordings, note}`: the EEG recordings of a BIDS dataset folder, each `{subject, session, task, run}` (empty where the dataset has none), for the BIDS input's choices; `note` says why there are none (no folder, not BIDS, no EEG) |
 | `list_lsl` (0.2.26) | `wait` (seconds, default 1, at most 5) | `[{name, type, channels, rate, host, kind}]`: the LSL streams the daemon's machine can see (where the LSL input opens them), sorted by name, for the LSL input's *Detect…* button. `rate` is 0 for an irregular stream; `kind` is `signal` (a regular rate: the input's stream) or `markers` (irregular: its marker stream) |
+| `sterile_status` (0.2.27) | – | `{enabled, image, problem, build, lines, error}`: Sterile mode as the daemon's next run sees it (`docs/STERILE.md`): `enabled` (its `--sterile`/`--no-sterile`, `MEEGXER_STERILE` or the `general.sterile` setting), `image` (`ready`, or why not, in words), `problem` (an unreadable `MEEGXER_STERILE`), and the image build `sterile_build` started: `build` (`idle`, `running`, `done`, `failed`), its last `lines`, its `error` |
+| `sterile_build` (0.2.27) | – | as `sterile_status`. Starts building the Sterile image in the background (`meegxer sterile build`); a build already running is not started twice |
 | `describe_source` | `node` (a source entry of a pipeline, with optional `recording`) | `{sfreq, n_samples, duration_s, stream_id, channels, events, event_labels, events_origin, recording, notes, carries}`. `channels`: per channel `{label, original, type, bad, position}` after the overrides (`original` is the label the source reports; `position` is `[x, y, z]` in metres or `null`). `events`: `{onset, duration, label}` (seconds) after renaming and dropping; `event_labels`: the event names before renaming; `events_origin`: `recording`, `file` or `none`. Opens the file or stream to read it. A BIDS input with an empty `subject` (every subject, 0.2.7) describes its first recording. `notes` (0.2.21): what reading the file decided, in words (an XDF file: its signal and marker streams, an assumed unit, lost samples); `[]` for most files. `carries` (0.2.22): the rails the input starts, e.g. `["ics"]` for an EEGLAB `.set` with a decomposition, `["epochs"]` for an epochs file (`-epo.fif`, an epoched `.set`; `docs/RAILS.md`) |
 | `list_montages` | – | names of the standard montages `recording.montage` accepts |
 | `lookup_positions` | `labels`, `montage` (standard name or montage file, incl. EEGLAB `.ced`) | `{positions: {label: [x, y, z]}, unmatched: [label]}`: positions by channel name, like EEGLAB's channel-location lookup. Matching tries the label, then case-insensitively, then without a type prefix or reference suffix (`EEG Fp1-REF` → `Fp1`), then the 10-20 name of old labels (T3 → T7). Bipolar labels do not match |
@@ -81,7 +83,7 @@ remote GUI).
 
 ```json
 {
-  "running": true, "uptime_s": 12.3, "blocks": 1180, "samples": 12300,
+  "running": true, "sterile": false, "uptime_s": 12.3, "blocks": 1180, "samples": 12300,
   "overruns": 0, "events": 0, "errors": [],
   "latency": {"mean_ms": 2.1, "p95_ms": 3.4, "max_ms": 9.8},
   "display": {"sent": 370, "dropped": 0},
@@ -93,6 +95,8 @@ remote GUI).
 }
 ```
 
+- `sterile` (0.2.27): the live run's built-in strips run in the Sterile
+  worker (`docs/STERILE.md`).
 - Node `status`: `ready`, `uncalibrated`, `calibrating`, `needs-refit` (processors), or
   `stopped` before the first start. Nodes that need calibration also report
   `pass_uncalibrated`, and, while stopped, `calibrated` (whether a model is kept).

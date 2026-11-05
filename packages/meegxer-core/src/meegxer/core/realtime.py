@@ -192,6 +192,7 @@ class RealtimeScheduler:
         display_fps: float = 30.0,
         display_bins_per_second: float = 250.0,
         clock: Clock = pylsl.local_clock,
+        sterile: bool | None = None,
     ) -> None:
         offline = [n.id for n in graph.nodes if not n.manifest.runs_online]
         if offline:
@@ -203,6 +204,10 @@ class RealtimeScheduler:
                 except ValueError as exc:
                     raise GraphError(f"{node.id}: {exc}") from exc
         self.graph = graph
+        # the processors in the Sterile worker while the run goes
+        # (docs/STERILE.md); None: the setting (meegxer.core.sterile.enabled)
+        self.sterile = sterile
+        self._isolation: Any = None
         self.max_block = max_block
         self.idle_sleep = idle_sleep
         self.clock = clock
@@ -253,6 +258,7 @@ class RealtimeScheduler:
         self._last_snapshot = 0.0
         self._snapshot: dict[str, Any] = {
             "running": False,
+            "sterile": False,
             "nodes": [
                 {"id": n.id, "node": n.manifest.name, "role": n.role.value,
                  "status": "stopped", "params": dict(n.impl.params), "timing": {}}
@@ -265,6 +271,12 @@ class RealtimeScheduler:
     def start(self) -> None:
         if self._thread is not None:
             raise RuntimeError("scheduler already started")
+        from meegxer.core.sterile import enabled, sterilize
+
+        if enabled(self.sterile):  # refused now (no image): not in the thread
+            # a live call must answer within the block budget's order: a hung
+            # worker is stopped (and restarted) after 10 s
+            self._isolation = sterilize(self.graph, timeout=10.0)
         self._running.set()
         self._thread = threading.Thread(
             target=self._run, name="meegxer-rt", daemon=True
@@ -459,6 +471,12 @@ class RealtimeScheduler:
             except Exception:
                 self.metrics.errors.append(traceback.format_exc(limit=5))
             finally:  # the run ends whatever the cleanup met (never "running")
+                if self._isolation is not None:
+                    try:
+                        self._isolation.close()  # the local processors again
+                    except Exception:
+                        self.metrics.errors.append(traceback.format_exc(limit=5))
+                    self._isolation = None
                 self._running.clear()
                 self._update_snapshot(force=True)
                 self._finished.set()
@@ -937,6 +955,7 @@ class RealtimeScheduler:
         uptime = self.clock() - m.started_at if m.started_at is not None else 0.0
         snapshot = {
             "running": self._running.is_set() and not self._finished.is_set(),
+            "sterile": self._isolation is not None,  # processing in the container
             "uptime_s": uptime,
             "blocks": m.blocks,
             "samples": m.samples,

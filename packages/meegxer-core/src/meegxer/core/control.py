@@ -131,6 +131,9 @@ class Daemon:
         registry: Registry | None = None,
         context: ZmqContext | None = None,
     ) -> None:
+        # the Sterile image build the GUI started (sterile_build)
+        self._build_lock = threading.Lock()
+        self._build: dict[str, Any] = {"build": "idle", "lines": [], "error": ""}
         self._own_registry = registry is None  # rescan_nodes rebuilds only our own
         self.registry = registry or Registry.from_entry_points()
         # its own context: the token check (ZAP) is one handler per context
@@ -180,6 +183,8 @@ class Daemon:
             "describe_source": self.describe_source,
             "list_bids": self.list_bids,
             "list_lsl": self.list_lsl,
+            "sterile_status": self.sterile_status,
+            "sterile_build": self.sterile_build,
             "import_review_open": self.import_review_open,
             "save_import_review": self.save_import_review,
             "list_montages": self.list_montages,
@@ -379,7 +384,7 @@ class Daemon:
                 entry["calibrated"] = n.impl.model is not None
                 entry["pass_uncalibrated"] = n.impl.pass_uncalibrated
             nodes.append(entry)
-        return {"running": False, "nodes": nodes}
+        return {"running": False, "sterile": False, "nodes": nodes}
 
     def set_params(self, node: str, params: dict[str, Any]) -> dict[str, Any]:
         if self._graph is None:
@@ -486,6 +491,60 @@ class Daemon:
         from meegxer.core.bids_out import bids_recordings
 
         return bids_recordings(root)
+
+    def sterile_status(self) -> dict[str, Any]:
+        """Sterile mode as the next run would see it: ``enabled`` (the flag,
+        ``MEEGXER_STERILE`` or the setting), ``image`` (``ready``, or why not:
+        missing, built from other code, no Docker), and the image build the
+        GUI started: ``build`` (``idle``, ``running``, ``done``, ``failed``)
+        with its ``lines`` so far."""
+        from meegxer.core import sterile
+
+        try:
+            on = sterile.enabled()
+        except ValueError as exc:
+            on, problem = False, str(exc)
+        else:
+            problem = ""
+        try:
+            sterile.check_image()
+            image = "ready"
+        except RuntimeError as exc:
+            image = str(exc)
+        with self._build_lock:
+            build = dict(self._build)
+            build["lines"] = list(build["lines"])
+        return {"enabled": on, "image": image, "problem": problem, **build}
+
+    def sterile_build(self) -> dict[str, Any]:
+        """Start building the Sterile image in the background (``meegxer
+        sterile build``); ``sterile_status`` reports its lines and its end.
+        A build already running is not started twice."""
+        from meegxer.core import sterile
+
+        with self._build_lock:
+            if self._build["build"] == "running":
+                return self.sterile_status()
+            self._build = {"build": "running", "lines": [], "error": ""}
+
+        def log(line: str) -> None:
+            with self._build_lock:
+                lines = self._build["lines"]
+                lines.append(line)
+                del lines[:-400]  # the last lines are enough to follow it
+
+        def build() -> None:
+            try:
+                sterile.build_image(log=log)
+                state, error = "done", ""
+            except Exception as exc:
+                state, error = "failed", str(exc)
+            with self._build_lock:
+                self._build["build"], self._build["error"] = state, error
+
+        threading.Thread(target=build, name="meegxer-sterile-build",
+                         daemon=True).start()  # fmt: skip
+        return self.sterile_status()
 
     def list_lsl(self, wait: float = 1.0) -> list[dict[str, object]]:
         """The LSL streams the daemon's machine can see, where the LSL input

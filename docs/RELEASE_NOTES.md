@@ -21,6 +21,16 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   do. In the container (no network, read-only, no capabilities), every
   built-in strip gives the local run's output exactly; CI checks it. New
   dependency of `meegxer-plugins`: packaging.
+- **Sterile mode can be switched on.** *Sterile* on the GUI's top bar (the
+  `general.sterile` setting, or `MEEGXER_STERILE`), `meegxer run --sterile`,
+  `meegxer daemon --sterile`, `meegxer.api.run(…, sterile=True)`: every run
+  (offline, live, all-subjects BIDS runs and their workers) runs its
+  built-in strips in the Sterile container. A live run's status says
+  `(Sterile)`. With no image, or one built from other code, the GUI offers to
+  build it and shows the build in the log; the CLI says what to run. Live,
+  each strip costs 2–3 ms per block in the container (measured on Linux;
+  `docs/STERILE.md`). Control API 0.2.27: `sterile_status`, `sterile_build`,
+  `sterile` in the status. Custom scripts are still refused in Sterile mode.
 
 ## 0.5.0b1 (2026-11-01): BCI
 
