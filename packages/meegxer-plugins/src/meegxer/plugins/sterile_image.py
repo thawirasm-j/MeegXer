@@ -127,6 +127,7 @@ def build_image(
         exe = find_engine(engine)
     except FileNotFoundError as exc:
         raise SterileError(f"Sterile mode needs Docker or Podman: {exc}") from None
+    ensure_running(exe)  # before copying anything: say why at once
     with tempfile.TemporaryDirectory(prefix="meegxer-sterile-") as tmp:
         folder = context(Path(tmp))
         log(f"Building {tag} from MeegXer {__version__} ({code_hash()[:12]})…")
@@ -144,10 +145,25 @@ def build_image(
     return tag
 
 
+def ensure_running(exe: str) -> None:
+    """Refuse, saying what to do, when the engine is installed but not running
+    (Docker Desktop not started): its server does not answer ``version``."""
+    done = subprocess.run([exe, "version", "--format", "{{.Server.Version}}"],
+                          capture_output=True, text=True, check=False,
+                          timeout=60)  # fmt: skip
+    if done.returncode != 0 or not done.stdout.strip():
+        name = Path(exe).stem
+        raise SterileError(
+            f"{name} is installed but not running: start Docker Desktop (or the "
+            f"{name} service) and try again"
+        )
+
+
 def image_code(tag: str = IMAGE, engine: str | None = None) -> str | None:
     """The code hash ``tag`` was built from, or None when there is no such
-    image."""
+    image (an engine that is not running is said as such)."""
     exe = find_engine(engine)
+    ensure_running(exe)
     label = '{{index .Config.Labels "' + CODE_LABEL + '"}}'
     done = subprocess.run([exe, "image", "inspect", "--format", label, tag],
                           capture_output=True, text=True, check=False,

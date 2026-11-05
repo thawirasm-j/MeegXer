@@ -561,6 +561,10 @@ class MainWindow(QMainWindow):
         if status.get("build") == "running":
             self.log("Sterile mode: its image is still being built (see the log)")
             return False
+        image = str(status.get("image"))
+        if "not running" in image or "needs Docker or Podman" in image:
+            self.log(f"Sterile mode: {image}")  # a build would fail the same way
+            return False
         answer = QMessageBox.question(
             self,
             "Build the Sterile image?",

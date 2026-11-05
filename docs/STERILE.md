@@ -55,6 +55,11 @@ meegxer sterile build     # once, and again after an upgrade
 meegxer sterile check     # is it built from this MeegXer?
 ```
 
+Docker (on Windows and macOS: Docker Desktop, started, *Engine running*) or
+Podman must be running: an engine that is installed but not started is said as
+such ("docker is installed but not running: start Docker Desktop…"), not as a
+missing image.
+
 `meegxer sterile build` (Docker or Podman) builds `meegxer-sterile:VERSION`
 from the MeegXer installed here: it copies the installed `meegxer.core`,
 `meegxer.nodes` and `meegxer.plugins` into the image, whatever they are (a

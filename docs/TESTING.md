@@ -907,7 +907,9 @@ live at 16 ch / 500 Hz: `"sterile": true`, the same samples as a local run,
 network is unreachable and the filesystem read-only; every built-in strip
 gives the local output exactly (CI, in the container).
 
-1. Docker Desktop running on Windows. `meegxer sterile build`: it ends with
+1. Docker Desktop started on Windows (*Engine running*; before that,
+   `meegxer sterile check` says "docker is installed but not running: start
+   Docker Desktop…"). `meegxer sterile build`: it ends with
    `built meegxer-sterile:VERSION` (a few minutes the first time);
    `meegxer sterile check` says it is up to date.
 2. The GUI: switch *Sterile* on (top bar). New… → the resting-state template

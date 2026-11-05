@@ -104,3 +104,30 @@ def test_the_daemon_started_local_says_so(
         assert "started with --no-sterile" in win.logbox.toPlainText()
     finally:
         win.close()
+
+
+def test_docker_not_running_is_said_not_built(
+    qapp: QApplication,
+    daemon: tuple[str, subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Docker installed but not started: the log says to start it; no build
+    is offered (it would fail the same way)."""
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    down = ("docker is installed but not running: start Docker Desktop (or the "
+            "docker service) and try again")  # fmt: skip
+    asked: list[str] = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda *a: asked.append(a[2])))  # fmt: skip
+    try:
+        win.call = lambda method, **kw: {"enabled": True, "problem": "",  # type: ignore[method-assign]
+                                         "image": down, "build": "idle"}  # fmt: skip
+        win.sterile_btn.setChecked(True)
+        assert win.sterile_ready() is False and not asked
+        assert "start Docker Desktop" in win.logbox.toPlainText()
+    finally:
+        win.close()

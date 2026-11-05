@@ -57,6 +57,12 @@ def engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         f"log = pathlib.Path({str(log)!r})\n"
         "with log.open('a') as f: f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "label = pathlib.Path(" + repr(str(tmp_path / "label.txt")) + ")\n"
+        "down = pathlib.Path(" + repr(str(tmp_path / "down")) + ")\n"
+        "if down.exists():\n"
+        "    sys.stderr.write('failed to connect to the docker API\\n')\n"
+        "    sys.exit(1)\n"
+        "if sys.argv[1] == 'version':\n"
+        "    print('29.0.0'); sys.exit(0)\n"
         "if sys.argv[1:3] == ['image', 'inspect']:\n"
         "    if not label.exists(): sys.exit(1)\n"
         "    print(label.read_text())\n"
@@ -73,7 +79,10 @@ def test_build_runs_the_engine_and_says_what_it_does(engine: Path) -> None:
     lines: list[str] = []
     tag = build_image(tag="meegxer-sterile:test", engine="docker", log=lines.append)
     assert tag == "meegxer-sterile:test"
-    call = json.loads((engine / "calls.jsonl").read_text().splitlines()[0])
+    calls = [json.loads(line) for line in
+             (engine / "calls.jsonl").read_text().splitlines()]  # fmt: skip
+    assert calls[0][0] == "version"  # the engine answers first
+    call = next(c for c in calls if c[0] == "build")
     assert call[:3] == ["build", "-t", "meegxer-sterile:test"]
     assert lines[0].startswith("Building meegxer-sterile:test from MeegXer")
     assert lines[-1] == "done"
@@ -103,3 +112,15 @@ def test_no_engine_is_said_in_words(monkeypatch: pytest.MonkeyPatch) -> None:
         sterile_image.check_image()
     with pytest.raises(SterileError, match="needs Docker or Podman"):
         sterile_image.build_image()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a fake engine as a script")
+def test_an_engine_not_running_is_said_so(engine: Path) -> None:
+    """Docker installed but Docker Desktop not started: said as that (not
+    "not built yet"), for the check and the build alike."""
+    (engine / "down").touch()
+    with pytest.raises(SterileError, match="installed but not running: start "
+                                           "Docker Desktop"):  # fmt: skip
+        check_image(tag="meegxer-sterile:test", engine="docker")
+    with pytest.raises(SterileError, match="installed but not running"):
+        build_image(tag="meegxer-sterile:test", engine="docker", log=print)
