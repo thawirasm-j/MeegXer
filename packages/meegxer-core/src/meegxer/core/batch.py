@@ -192,6 +192,7 @@ class BatchScheduler:
         review: ReviewCallback | None = None,
         reviewer: str = "",
         stop: Callable[[], bool] | None = None,
+        sterile: bool | None = None,
     ) -> None:
         if block_size is not None and block_size < 1:
             raise ValueError("block_size must be >= 1")
@@ -205,6 +206,9 @@ class BatchScheduler:
         # asked before each node: true stops the run there (RunStopped). A node
         # runs over the whole recording at once, so a sink never stops halfway
         self.stop = stop
+        # the processors in the Sterile worker (docs/STERILE.md); None: the
+        # setting (meegxer.core.sterile.enabled)
+        self.sterile = sterile
         self._events: tuple[Event, ...] = ()  # the recording's, for labelled fits
         self._rail = EventsRail()  # those plus what strips emit (docs/RAILS.md)
         self._graph: Graph | None = None
@@ -216,6 +220,12 @@ class BatchScheduler:
         self._spans: dict[str, tuple[int, int, float]] = {}
 
     def run(self, graph: Graph, *, keep: Iterable[str] = ()) -> BatchResult:
+        from meegxer.core.sterile import running
+
+        with running(graph, self.sterile):
+            return self._run(graph, keep=keep)
+
+    def _run(self, graph: Graph, *, keep: Iterable[str] = ()) -> BatchResult:
         result = BatchResult()
         keep_ids = set(keep)
         streams: dict[str, Stream] = {}

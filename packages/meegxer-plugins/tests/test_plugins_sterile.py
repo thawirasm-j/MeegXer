@@ -276,8 +276,9 @@ def test_a_nodes_error_is_raised_as_locally(recording: Path) -> None:
         bad = Block(np.zeros((1, 10)), SignalInfo(("Cz",), 50.0), 0, 0.0)  # 40 > 25 Hz
         with pytest.raises(ValueError) as raised:
             stage.processor.transform(bad, {}, None, stage.params)
+    assert not isinstance(stage.processor, SterileProcessor)  # local again
     with pytest.raises(ValueError) as local:
-        stage.processor.target.transform(bad, {}, None, stage.params)
+        stage.processor.transform(bad, {}, None, stage.params)
     assert str(raised.value) == str(local.value)
 
 

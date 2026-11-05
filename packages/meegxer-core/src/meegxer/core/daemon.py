@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import signal
 import sys
 from pathlib import Path
 
 from meegxer.core.control import DEFAULT_CONTROL, DEFAULT_DISPLAY, Daemon
+from meegxer.core.sterile import ENV
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -21,7 +23,16 @@ def main(argv: list[str] | None = None) -> int:
         "--no-warm-up", action="store_true",
         help="do not preload slow node dependencies in the background",
     )  # fmt: skip
+    sterile = parser.add_mutually_exclusive_group()
+    sterile.add_argument(
+        "--sterile", dest="sterile", action="store_const", const=True,
+        help="run the processing in the Sterile container (docs/STERILE.md)",
+    )  # fmt: skip
+    sterile.add_argument("--no-sterile", dest="sterile", action="store_const",
+                         const=False, help="run the processing locally")  # fmt: skip
     args = parser.parse_args(argv)
+    if args.sterile is not None:  # over the setting, for this daemon's runs
+        os.environ[ENV] = "1" if args.sterile else "0"  # and its workers'
 
     daemon = Daemon(args.control, args.display)
     if not args.no_warm_up:

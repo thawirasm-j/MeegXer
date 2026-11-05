@@ -12,6 +12,7 @@ image and the dependencies); running it never does.
 
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import subprocess
@@ -29,6 +30,8 @@ from meegxer.core import __version__
 from meegxer.plugins.sterile import (
     CODE_PACKAGES,
     IMAGE,
+    IMAGE_ENV,
+    LOCAL_ENV,
     SterileError,
     code_files,
     code_hash,
@@ -154,9 +157,14 @@ def image_code(tag: str = IMAGE, engine: str | None = None) -> str | None:
     return done.stdout.strip() or ""
 
 
-def check_image(tag: str = IMAGE, engine: str | None = None) -> str:
-    """Refuse at once (before a run starts) when the Sterile image is missing
-    or was built from other code, saying what to do."""
+def check_image(tag: str | None = None, engine: str | None = None) -> str:
+    """Refuse at once (before a run starts) when the Sterile image (``tag``,
+    else ``MEEGXER_STERILE_IMAGE``, else ``meegxer-sterile:VERSION``) is
+    missing or was built from other code, saying what to do. With
+    ``MEEGXER_STERILE_LOCAL=1`` (development) no image is needed."""
+    if os.environ.get(LOCAL_ENV) == "1" and tag is None:
+        return "local worker (development, no container)"
+    tag = tag or os.environ.get(IMAGE_ENV) or IMAGE
     try:
         found = image_code(tag, engine)
     except FileNotFoundError as exc:

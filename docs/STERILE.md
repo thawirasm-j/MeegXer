@@ -7,11 +7,46 @@ switch, not a package or a build. It means isolation only. Which code runs,
 and whether it is fit for patient data (HIPAA, GDPR, IRB), stays the user's
 responsibility.
 
-Status: in progress. Done: the worker, the host proxies and the image
-(`meegxer sterile build`); in the container, every built-in strip gives the
-local run's output exactly (offline; CI checks it on every change). Next: the
-*Sterilize* switch in the CLI, the daemon and the GUI, live runs with the
-delay measured, and custom scripts inside the worker.
+Status: in progress. Done: the worker, the host proxies, the image
+(`meegxer sterile build`) and the switch (the setting, `--sterile`, the GUI's
+*Sterile* button), offline and live; in the container, every built-in strip
+gives the local run's output exactly (CI checks it on every change). Next:
+custom scripts inside the worker, and the delay brought down (below).
+
+## Switching it on
+
+Sterile mode is a choice per computer, like the theme, never written into a
+pipeline or a session:
+
+- **The GUI:** *Sterile* on the top bar (the `general.sterile` setting). A
+  live run's status says `● running (Sterile)`; the log says `Offline run
+  started (Sterile).` Switched on with no image, or one built from other code
+  (after an upgrade), the GUI offers to build it, shows the build in the log,
+  and runs once you press *Start* again.
+- **The CLI:** `meegxer run … --sterile` (or `--no-sterile`); `meegxer daemon
+  --sterile`. Without the image the run is refused at once, with what to do.
+- **The setting:** `general.sterile` in `settings.json` (`docs/SETTINGS.md`),
+  or `MEEGXER_STERILE=1` / `0`. A flag wins over the variable, which wins over
+  the setting.
+- **Python:** `meegxer.api.run(…, sterile=True)`;
+  `BatchScheduler(sterile=True)`, `RealtimeScheduler(graph, sterile=True)`.
+
+Every run in Sterile mode (offline, live, an all-subjects BIDS run and its
+worker processes) runs its built-in strips in one Sterile worker, which ends
+with the run; the stages have their local processors again after it.
+
+## The delay (measured 2026-11-05)
+
+Live, each strip's call crosses the container boundary once per block. On
+Linux (Docker 29, `docker run -i`), 16 channels at 500 Hz in blocks of about
+10 ms, through band-pass, notch and re-reference: about 2–3 ms per strip per
+block in the container against 0.1–0.2 ms locally; the run kept up with its
+input (the same samples in 25 s), with 62 of 2209 blocks late (3 %; 0
+locally). Offline the cost is the container's start (a few seconds) and one
+hop per strip per block. Bringing it down (one hop per block for a chain of
+built-in strips, a socket instead of Docker's stdin relay) is open; Docker
+Desktop on Windows adds its virtual machine, still to measure
+(`docs/TESTING.md` §X).
 
 ## The image
 
@@ -77,16 +112,12 @@ A custom script or local plugin runs as a local process, without isolation:
 Sterile mode refuses it for now. It will run inside the Sterile worker
 instead (M11.1c).
 
-## Using it (from code, for now)
-
-```python
-from meegxer.core.sterile import sterilize
-
-with sterilize(graph):  # the image meegxer-sterile:VERSION
-    BatchScheduler().run(graph)
-```
+## For developers
 
 The core reaches the Sterile code only through the `meegxer.isolation`
-entry point (rule 9's import contract); `meegxer-plugins` provides it.
-For development, `sterilize(graph, local=True)` runs the worker as a local
-process (needs `MEEGXER_ALLOW_UNSANDBOXED=1`, as unsandboxed plugins do).
+entry point (rule 9's import contract; `sterile`, `build` and `check`), which
+`meegxer-plugins` provides: `meegxer.core.sterile.running(graph)` wraps a run,
+`sterilize(graph)` gives the isolation to close. `MEEGXER_STERILE_IMAGE`
+names another image tag (CI's `meegxer-sterile:ci`); `MEEGXER_STERILE_LOCAL=1`
+runs the worker as a local process with no container, for tests (it needs
+`MEEGXER_ALLOW_UNSANDBOXED=1`, as unsandboxed plugins do).

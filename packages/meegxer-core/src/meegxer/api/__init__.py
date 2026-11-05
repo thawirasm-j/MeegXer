@@ -33,6 +33,7 @@ def run(
     ica: Any = None,
     block_size: int | None = None,
     allow_version_mismatch: bool = False,
+    sterile: bool | None = None,
 ) -> Any:
     """Run ``pipeline`` over ``raw`` and return what ``output`` gives.
 
@@ -51,6 +52,9 @@ def run(
     - ``ica``: an ``mne.preprocessing.ICA`` of ``raw``, or its file
       (``-ica.fif``): its components start the ICs rail at the input
       (``"input:ics"``), instead of a ``.set``'s own.
+    - ``sterile``: run the processing in the Sterile container
+      (``docs/STERILE.md``; the image from ``meegxer sterile build``).
+      None: the ``general.sterile`` setting (``MEEGXER_STERILE``).
 
     The returned Raw has the events on the Events rail there as
     annotations (a ``boundary`` at each cut), the channels' types and
@@ -93,7 +97,7 @@ def run(
     adopt_models(loaded, offline_input_fingerprints(graph))
     for warning in loaded.warnings:
         warnings.warn(warning, stacklevel=2)
-    result = BatchScheduler(block_size=block_size).run(graph)
+    result = BatchScheduler(block_size=block_size, sterile=sterile).run(graph)
     for skipped in result.skipped:
         warnings.warn(f"skipped: {skipped}", stacklevel=2)
     for note in result.notes:

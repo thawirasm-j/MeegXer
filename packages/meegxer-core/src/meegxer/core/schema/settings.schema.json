@@ -36,6 +36,10 @@
           "description": "Recordings an all-subjects BIDS run processes at once, each in its own process (0: one per CPU; 1: one after another). MEEGXER_BATCH_JOBS overrides it.",
           "type": "integer",
           "minimum": 0
+        },
+        "sterile": {
+          "description": "Sterile mode: run the processing in a container with no network and a read-only filesystem (docs/STERILE.md; needs Docker or Podman and `meegxer sterile build`). MEEGXER_STERILE and --sterile/--no-sterile override it.",
+          "type": "boolean"
         }
       }
     },

@@ -40,6 +40,7 @@ DEFAULTS: dict[str, Any] = {
         "daemon": "tcp://127.0.0.1:5555",  # control.DEFAULT_CONTROL (a test checks)
         "confirm_quit_running": True,
         "batch_jobs": 1,  # all-subjects runs: recordings at once (0: one per CPU)
+        "sterile": False,  # processing in the Sterile container (docs/STERILE.md)
     },
     "appearance": {"theme": "dark", "scale": 100, "strip_width": 100},
     "visualization": {
