@@ -442,6 +442,16 @@ class MainWindow(QMainWindow):
             b.clicked.connect(lambda _=False, adv=bool(i): self.set_advanced(adv))
             self.mode_group.addButton(b)
             self.tools.addWidget(b)
+        self.tools.addSeparator()
+        # Sterile mode (docs/STERILE.md): the general.sterile setting; on the
+        # folding bar, so a narrow window moves it into » (a checkable item)
+        self.sterile_btn = QPushButton("Sterile")
+        self.sterile_btn.setObjectName("sterile")
+        self.sterile_btn.setCheckable(True)
+        self.sterile_btn.setChecked(bool(self.settings["general"].get("sterile")))
+        self.sterile_btn.setToolTip(STERILE_TIP)
+        self.sterile_btn.toggled.connect(self.set_sterile)
+        self.tools.addWidget(self.sterile_btn)
         lay.addWidget(self.tools)
         # the state first (running, stopped, offline: …), then load, delay,
         # late blocks, skipped frames: one line, cut short at its end with "…"
@@ -449,14 +459,6 @@ class MainWindow(QMainWindow):
         self.status_line = ElidedLabel(keep="● running")  # the state: never cut
         self.status_line.setObjectName("meter")
         lay.addWidget(self.status_line, 1)
-        # Sterile mode (docs/STERILE.md): the general.sterile setting
-        self.sterile_btn = QPushButton("Sterile")
-        self.sterile_btn.setObjectName("sterile")
-        self.sterile_btn.setCheckable(True)
-        self.sterile_btn.setChecked(bool(self.settings["general"].get("sterile")))
-        self.sterile_btn.setToolTip(STERILE_TIP)
-        self.sterile_btn.toggled.connect(self.set_sterile)
-        lay.addWidget(self.sterile_btn)
         self.log_btn = QPushButton("Log")
         self.log_btn.setCheckable(True)
         self.log_btn.setToolTip("Show or hide the log")

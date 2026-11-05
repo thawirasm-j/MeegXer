@@ -71,6 +71,8 @@ def test_the_window_fits_a_laptop_screen(
         assert len(menus) == 1
         items = {a.text(): a for a in menus[0].actions()}
         assert "Advanced" in items and items["Friendly"].isChecked()
+        # the Sterile switch folds too: a checkable item, off
+        assert items["Sterile"].isCheckable() and not items["Sterile"].isChecked()
         items["Advanced"].trigger()
         menus[0].close()
         pump(qapp, 0.2)
