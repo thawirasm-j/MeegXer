@@ -1,7 +1,10 @@
 import os
 import socket
 import subprocess
+import sys
+import time
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -36,12 +39,35 @@ def qapp():
     yield app
 
 
+def spawn_slow_daemon(control: str, display: str) -> subprocess.Popen[bytes]:
+    """The daemon of ``slow_daemon.py``: each finished offline run's first
+    window read answers after the GUI has stopped waiting."""
+    from meegxer.gui.connection import daemon_running
+
+    script = Path(__file__).with_name("slow_daemon.py")
+    proc = subprocess.Popen([sys.executable, str(script), "--control", control,
+                             "--display", display],
+                            stdout=subprocess.DEVNULL)  # fmt: skip
+    deadline = time.monotonic() + 15
+    while not daemon_running(control):
+        assert proc.poll() is None, f"the slow daemon exited ({proc.returncode})"
+        assert time.monotonic() < deadline, "the slow daemon did not answer"
+    return proc
+
+
 @pytest.fixture
-def daemon() -> Iterator[tuple[str, subprocess.Popen[bytes]]]:
+def daemon(
+    request: pytest.FixtureRequest,
+) -> Iterator[tuple[str, subprocess.Popen[bytes]]]:
+    """A daemon of its own; ``"slow"`` (indirect parametrization) for one that
+    is slow to answer once an offline run is done (``slow_daemon.py``)."""
     from meegxer.gui.connection import spawn_daemon
 
     control = free_endpoint()
-    proc = spawn_daemon(control, free_endpoint())
+    if getattr(request, "param", "normal") == "slow":
+        proc = spawn_slow_daemon(control, free_endpoint())
+    else:
+        proc = spawn_daemon(control, free_endpoint())
     yield control, proc
     proc.terminate()
     try:

@@ -3,6 +3,7 @@
 import subprocess
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import mne
 import numpy as np
@@ -11,6 +12,10 @@ from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox
 
 from meegxer.gui.colors import channel_style, wheel_positions
 from meegxer.gui.theme import load_theme
+
+if TYPE_CHECKING:
+    from meegxer.gui.main_window import MainWindow
+    from meegxer.gui.signal_view import Window
 
 
 def pump(app: QApplication, seconds: float) -> None:
@@ -93,6 +98,19 @@ def test_recording_window_edits_and_applies(
         win.close()
 
 
+def offline_window(
+    qapp: QApplication, win: MainWindow, probe: str, seconds: float
+) -> Window:
+    """The view's window once it is read: a read the daemon is too slow to
+    answer is asked again (as the view's redraws do)."""
+    deadline = time.monotonic() + 30
+    while (window := win._offline_window(probe, seconds)) is None:
+        assert time.monotonic() < deadline, win.logbox.toPlainText()
+        pump(qapp, 0.1)
+    return window
+
+
+@pytest.mark.parametrize("daemon", ["normal", "slow"], indirect=True)
 def test_offline_view_scrolls_and_marks_events(
     qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]], recording: Path
 ) -> None:
@@ -112,11 +130,11 @@ def test_offline_view_scrolls_and_marks_events(
             pump(qapp, 0.1)
         main, _ = win._shown()
         assert main is not None
-        first = win._offline_window(main, 10.0)
-        assert first is not None and first.t[0] == pytest.approx(0.0, abs=0.01)
+        first = offline_window(qapp, win, main, 10.0)
+        assert first.t[0] == pytest.approx(0.0, abs=0.01)
         win.timeline.bar.setValue(250 * 25)  # scroll to 25 s
-        later = win._offline_window(main, 10.0)
-        assert later is not None and later.t[0] == pytest.approx(25.0, abs=0.05)
+        later = offline_window(qapp, win, main, 10.0)
+        assert later.t[0] == pytest.approx(25.0, abs=0.05)
         assert [e["label"] for e in win.view.events] == ["go", "stop", "go"]
         pump(qapp, 0.3)
         visible = [m for m in win.view.plot._marks if m.isVisible()]

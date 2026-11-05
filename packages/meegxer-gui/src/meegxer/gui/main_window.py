@@ -238,7 +238,11 @@ class MainWindow(QMainWindow):
         self.offline_recordings: dict[str, Any] = {}  # an all-subjects BIDS run
         self._feature_cache: dict[str, tuple[tuple[Any, ...], FeatureSeries]] = {}
         self._erp_cache: dict[str, tuple[Any, float, Erp | None]] = {}
-        self._offline_cache: dict[str, tuple[tuple[Any, ...], Window | None]] = {}
+        # probe -> (what it was read for, the window, when a failed read is
+        # asked again: a slow daemon's timeout is not its answer for good)
+        self._offline_cache: dict[
+            str, tuple[tuple[Any, ...], Window | None, float]
+        ] = {}
         # node -> (what it was read for, when, its sensors and mixing matrix)
         self._mixing: dict[str, tuple[tuple[Any, ...], float, Any]] = {}
         app = QApplication.instance()
@@ -258,7 +262,12 @@ class MainWindow(QMainWindow):
         self._recovering: set[str] = set()
         self._recovery_timer = QTimer(self)
         self._recovery_timer.timeout.connect(self._check_recoveries)
-        QTimer.singleShot(0, self.offer_recovery)  # once the window is up
+        # once the window is up; stopped by closeEvent, so a window closed
+        # before then never calls its closed link
+        self._offer_timer = QTimer(self)
+        self._offer_timer.setSingleShot(True)
+        self._offer_timer.timeout.connect(self.offer_recovery)
+        self._offer_timer.start(0)
         link.status.connect(self.on_status)
         link.frame.connect(self.on_frame)
         link.lost.connect(
@@ -1983,13 +1992,14 @@ class MainWindow(QMainWindow):
         key = (start, n, int(info["n_filled"]), repr(display))
         slot = probe if display is None else f"{probe}#review"  # apart from the view
         cached = self._offline_cache.get(slot)
-        if cached is not None and cached[0] == key:
+        now = time.monotonic()
+        if cached is not None and cached[0] == key and now < cached[2]:
             return cached[1]
         options = {"display": display} if display else {}
         reply = self.call("offline_window", probe=probe, start=start, n_samples=n,
                           max_bins=2000, **options)  # fmt: skip
-        if reply is None:
-            self._offline_cache[slot] = (key, None)  # not asked again each redraw
+        if reply is None:  # asked again in a second, not each redraw
+            self._offline_cache[slot] = (key, None, now + 1.0)
             return None
         mins = np.array(reply["mins"], dtype=float).reshape(len(reply["ch_labels"]), -1)
         maxs = np.array(reply["maxs"], dtype=float).reshape(mins.shape)
@@ -2008,7 +2018,7 @@ class MainWindow(QMainWindow):
             tuple(info.get("ch_scores", ())),
             filters_from_wire(info.get("filters")),
         )
-        self._offline_cache[slot] = (key, win)
+        self._offline_cache[slot] = (key, win, float("inf"))
         return win
 
     def redraw(self) -> None:
@@ -2290,6 +2300,8 @@ class MainWindow(QMainWindow):
                 self.stop()
         self.save_state()
         self._render.stop()
+        self._offer_timer.stop()  # the timers call the link, closed below
+        self._recovery_timer.stop()
         self.stacked.close()
         self.recording_window.close()
         if self.owns_daemon and not self.running:

@@ -84,3 +84,21 @@ def test_killing_the_gui_does_not_interrupt_processing(
         if gui.poll() is None:
             gui.kill()
         client.close()
+
+
+def test_a_window_closed_at_once_does_not_call_its_closed_link(
+    qapp: QApplication,
+    daemon: tuple[str, subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Its timers (the recovery offer, once the window is up) stop with it: a
+    window closed before the event loop ran never calls the closed link."""
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    raised: list[BaseException] = []
+    monkeypatch.setattr(sys, "excepthook", lambda t, exc, tb: raised.append(exc))
+    win = MainWindow(DaemonLink(daemon[0]))
+    win.close()  # before any event is processed
+    pump(qapp, 0.5)
+    assert raised == []

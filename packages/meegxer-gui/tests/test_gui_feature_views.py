@@ -544,6 +544,7 @@ def test_an_xdf_inputs_notes_reach_the_log(
         win.close()
 
 
+@pytest.mark.parametrize("daemon", ["normal", "slow"], indirect=True)
 def test_an_eeglab_files_ics_from_the_input(
     qapp: QApplication,
     daemon: tuple[str, subprocess.Popen[bytes]],
@@ -590,8 +591,14 @@ def test_an_eeglab_files_ics_from_the_input(
         assert win.offline_state == "done", win.logbox.toPlainText()
         win.click_tap("input:ics", False)
         assert win._shown() == ("tap_input__ics", [])
-        win.redraw()
-        boxes = [b.text() for b in win.view.channels.picker.boxes.values()]
+        picker = win.view.channels.picker
+
+        def shown() -> bool:  # a read the daemon is too slow for is asked again
+            win.redraw()
+            return bool(picker.boxes)
+
+        wait_for(qapp, shown, 30)
+        boxes = [b.text() for b in picker.boxes.values()]
         assert len(boxes) == 18 and boxes[0].startswith("IC01 · ")
         win.show()
         win.view._set_mode("spectrum")
