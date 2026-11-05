@@ -136,6 +136,8 @@ def build_image(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",  # the engine writes UTF-8, not the code page
+            errors="replace",
         )
         assert proc.stdout is not None
         for line in proc.stdout:
@@ -150,6 +152,7 @@ def ensure_running(exe: str) -> None:
     (Docker Desktop not started): its server does not answer ``version``."""
     done = subprocess.run([exe, "version", "--format", "{{.Server.Version}}"],
                           capture_output=True, text=True, check=False,
+                          encoding="utf-8", errors="replace",
                           timeout=60)  # fmt: skip
     if done.returncode != 0 or not done.stdout.strip():
         name = Path(exe).stem
@@ -167,6 +170,7 @@ def image_code(tag: str = IMAGE, engine: str | None = None) -> str | None:
     label = '{{index .Config.Labels "' + CODE_LABEL + '"}}'
     done = subprocess.run([exe, "image", "inspect", "--format", label, tag],
                           capture_output=True, text=True, check=False,
+                          encoding="utf-8", errors="replace",
                           timeout=60)  # fmt: skip
     if done.returncode != 0:
         return None

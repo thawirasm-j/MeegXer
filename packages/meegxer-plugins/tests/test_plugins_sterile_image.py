@@ -67,7 +67,9 @@ def engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    if not label.exists(): sys.exit(1)\n"
         "    print(label.read_text())\n"
         "else:\n"
-        "    print('step 1/3'); print('done')\n"
+        "    out = sys.stdout.buffer\n"
+        "    out.write('step 1/3 \\u2501\\u2501\\n'.encode('utf-8'))  # a bar\n"
+        "    out.write(b'odd \\xff byte\\n'); out.write(b'done\\n'); out.flush()\n"
     )
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
@@ -86,6 +88,9 @@ def test_build_runs_the_engine_and_says_what_it_does(engine: Path) -> None:
     assert call[:3] == ["build", "-t", "meegxer-sterile:test"]
     assert lines[0].startswith("Building meegxer-sterile:test from MeegXer")
     assert lines[-1] == "done"
+    # the build's output is UTF-8 whatever the console's code page (Windows:
+    # cp1252), and a byte that is not is shown, never a crash
+    assert "step 1/3 \u2501\u2501" in lines and "odd \ufffd byte" in lines
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="a fake engine as a script")
