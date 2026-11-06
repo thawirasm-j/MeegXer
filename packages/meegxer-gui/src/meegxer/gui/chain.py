@@ -821,6 +821,7 @@ class ChainView(QScrollArea):
     remove_requested = Signal(str)
     insert_requested = Signal(int, str)
     script_requested = Signal(int)  # add a custom script, then insert it here
+    script_folder_requested = Signal(int)  # the same, for a script folder
     move_requested = Signal(str, int)
     tap_clicked = Signal(str, bool)
     calibrate_requested = Signal(str)
@@ -971,10 +972,18 @@ class ChainView(QScrollArea):
         menu.addSeparator()
         script = menu.addAction("✎ Add a custom script…")
         script.setToolTip(
-            "An MNE-Python script: process(raw, ...) for offline runs, or "
-            "transform(data, state, ...) for live and offline, or features(data, "
-            "...) per window (runs on your computer, unsandboxed)"
+            "An MNE-Python script: process(raw, ...) for offline runs, "
+            "transform(data, state, ...) for live and offline, features(data, "
+            "...) per window, or process_epochs(epochs, ...) after an Epochs "
+            "strip (runs on your computer, unsandboxed)"
         )
         script.triggered.connect(lambda: self.script_requested.emit(index))
+        folder = menu.addAction("✎ Add a script folder…")
+        folder.setToolTip(
+            "A script made of several files: the folder's .py file that "
+            "defines process, transform, features or process_epochs, with its "
+            "helper modules and data files"
+        )
+        folder.triggered.connect(lambda: self.script_folder_requested.emit(index))
         menu.setToolTipsVisible(True)
         return menu

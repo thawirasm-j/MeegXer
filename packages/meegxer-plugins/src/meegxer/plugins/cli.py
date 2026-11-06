@@ -45,7 +45,10 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("image", nargs="?", help="container image")
     check.add_argument("--engine", help="docker or podman")
     check.add_argument(
-        "--script", type=Path, help="a custom script (process, transform or features)"
+        "--script",
+        type=Path,
+        help="a custom script: a .py file, or a folder (its helpers and data "
+        "files with it)",
     )
     check.add_argument("--param", action="append", default=[], help="name=value")
     check.add_argument(
@@ -60,7 +63,10 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument("image", nargs="?", help="container image")
     add.add_argument("--engine")
     add.add_argument(
-        "--script", type=Path, help="a custom script (process, transform or features)"
+        "--script",
+        type=Path,
+        help="a custom script: a .py file, or a folder (its helpers and data "
+        "files with it)",
     )
     add.add_argument(
         "--accept-risk",
@@ -131,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
               f"  meegxer-plugin add --script {path}")  # fmt: skip
         return 0
     if args.command == "run":
-        if not args.script.is_file():
+        if not args.script.exists():
             parser.error(f"no such script: {args.script}")
         from meegxer.plugins.trial import try_script
 
@@ -160,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
         print(format_report(checks))
         return 0 if all(c.passed for c in checks) else 1
     if args.command == "add" and (args.script or args.local):
-        if args.script and not args.script.is_file():
+        if args.script and not args.script.exists():
             parser.error(f"no such script: {args.script}")
         if not _accepted(args):
             return 1

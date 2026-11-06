@@ -17,6 +17,15 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   it and says what came out (channels, rate, length, events, or feature
   windows).
 
+- **Script folders.** A method made of several files (helper modules,
+  trained weights, a lookup table) is added as its folder: `meegxer-plugin
+  add --script lab_method/` or *+ Add strip → ✎ Add a script folder…*. The
+  `.py` file that defines the entry function is found; helpers import as
+  usual and data files are read next to it. Sessions record one SHA-256 over
+  every file of the folder (hidden files and caches left out; at most 100 MB),
+  so a changed helper or data file is noticed; Sterile mode sends the whole
+  folder into the container.
+
 - **Epochs scripts.** A custom script with `process_epochs(epochs, ...)` works
   on the epochs an Epochs strip cut, as `mne.Epochs` (rejection, baseline,
   relabelling, your own measures that keep epochs), and the strips after it

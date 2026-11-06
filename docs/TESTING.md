@@ -988,3 +988,27 @@ epochs are the local run's.
 | Z1 `run` counts the epochs kept | | |
 | Z2 the GUI: Epochs·2 with fewer epochs | | |
 | Z3 the same in Sterile mode | | |
+
+## AA. A script folder
+
+Already run by Claude on Linux: a folder `lab_method/` (`main.py` defining
+`process`, a helper package `lib/`, `data/gain.npy` read next to `main.py`):
+`meegxer-plugin run --script lab_method/ -i rec_raw.fif` and `add --script
+lab_method/` (strip `script.lab_method`); `meegxer run` with it, with and
+without `--sterile` (Docker 29: the folder sent into the container, the
+written `.set` identical); a changed data file changes the session's
+`sha256`, so `meegxer run SESSION` refuses until it is saved again; in the
+GUI (offscreen), *+ Add strip → ✎ Add a script folder…* adds it as one strip.
+
+1. Make a folder of your own code: one `.py` with `process` (or another
+   entry), a helper module it imports, a data file it reads with
+   `Path(__file__).parent`.
+2. In the GUI: *+ Add strip → ✎ Add a script folder…*, pick the folder, run
+   offline: it runs as one strip named after the folder.
+3. *Sterile* on, run again: the same output (the folder is sent in whole).
+
+| Item | Value / result | Notes |
+|---|---|---|
+| AA1 the folder added as one strip | | |
+| AA2 it runs, helpers and data found | | |
+| AA3 the same in Sterile mode | | |

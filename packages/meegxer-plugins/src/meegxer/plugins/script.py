@@ -68,12 +68,19 @@ An epochs script defines ``process_epochs``, offline, after an Epochs strip::
 It gets the ``epochs`` rail as ``mne.Epochs`` (labelled by event) and writes the
 epochs it returns to its own ``epochs`` rail; the signal passes on unchanged.
 
+A script folder (``python -m meegxer.plugins.script FOLDER``) is a script made
+of several files: its entry file is the one top-level ``.py`` file defining an
+entry function (``entry_file``), the folder comes first on ``sys.path`` so its
+helpers import, and the strip is named after the folder. ``folder_files`` says
+which files belong to it (what sessions hash and Sterile mode sends).
+
 The runner speaks spec/plugin-protocol.md through the bundled SDK, in its own
 process, with the user's permissions (rule 9).
 """
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import inspect
 import re
@@ -105,7 +112,73 @@ class ScriptError(ValueError):
     """The script does not follow the custom-script conventions."""
 
 
+# a script folder: what is not its code or data (left out of the hash and of
+# what Sterile mode sends), and how much it may hold
+_SKIP_DIRS = {"__pycache__", "node_modules"}
+_SKIP_SUFFIXES = {".pyc", ".pyo"}
+MAX_FOLDER_BYTES = 100 * 1024 * 1024  # helpers and data files, not recordings
+MAX_FOLDER_FILES = 2000
+
+
+def folder_files(folder: Path) -> list[tuple[str, Path]]:
+    """The files of a script folder, by their path in it (``/``-separated, in
+    name order): every file but hidden ones (``.git``, ``.venv``...),
+    ``__pycache__`` and compiled Python. Refused above ``MAX_FOLDER_BYTES`` or
+    ``MAX_FOLDER_FILES``, saying so (a recording left in it, say)."""
+    found: list[tuple[str, Path]] = []
+    total = 0
+    for path in sorted(folder.rglob("*")):
+        rel = path.relative_to(folder)
+        if any(part.startswith(".") or part in _SKIP_DIRS for part in rel.parts):
+            continue
+        if not path.is_file() or path.suffix in _SKIP_SUFFIXES:
+            continue
+        total += path.stat().st_size
+        found.append((rel.as_posix(), path))
+        if total > MAX_FOLDER_BYTES or len(found) > MAX_FOLDER_FILES:
+            raise ScriptError(
+                f"{folder.name}: a script folder holds at most "
+                f"{MAX_FOLDER_BYTES // 2**20} MB in {MAX_FOLDER_FILES} files "
+                "(its code and data files); move recordings and outputs out of it"
+            )
+    return sorted(found)
+
+
+def defines_entry(path: Path) -> list[str]:
+    """The entry functions a Python file defines at its top level, read
+    without running it."""
+    try:
+        tree = ast.parse(path.read_bytes(), filename=str(path))
+    except SyntaxError as exc:
+        raise ScriptError(f"{path.name}: {exc}") from None
+    return [node.name for node in tree.body
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            and node.name in _ENTRY]  # fmt: skip
+
+
+def entry_file(path: Path) -> Path:
+    """The file a script runs: ``path`` itself, or for a script folder the one
+    top-level ``.py`` file that defines an entry function (``process``,
+    ``transform``, ``features`` or ``process_epochs``)."""
+    if not path.is_dir():
+        return path
+    found = [f for f in sorted(path.glob("*.py")) if defines_entry(f)]
+    if len(found) != 1:
+        which = " and ".join(f.name for f in found)
+        raise ScriptError(
+            f"{path.name}: a script folder needs one .py file at its top that "
+            "defines process, transform, features or process_epochs"
+            + (f" (found {which}: keep one)" if found else " (found none)")
+        )
+    return found[0]
+
+
 def load_script(path: Path) -> ModuleType:
+    """The script's module: ``path`` a file, or a script folder (its entry
+    file, with the folder first on ``sys.path`` so its helpers import)."""
+    if path.is_dir():
+        folder, path = path, entry_file(path)
+        sys.path.insert(0, str(folder))
     spec = importlib.util.spec_from_file_location(f"meegxer_script_{path.stem}", path)
     if spec is None or spec.loader is None:
         raise ScriptError(f"cannot load {path}")
@@ -586,7 +659,7 @@ def _feature_table(got: Any, n_channels: int) -> tuple[np.ndarray, list[str]]:
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if len(args) != 1:
-        print("usage: python -m meegxer.plugins.script FILE.py", file=sys.stderr)
+        print("usage: python -m meegxer.plugins.script FILE.py|FOLDER", file=sys.stderr)
         return 2
     path = Path(args[0])
     module = load_script(path)

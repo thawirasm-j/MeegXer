@@ -148,8 +148,9 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   strip, offline, or `transform(data, state, ...)` [+ `fit(raw, ...)`]
   or `features(data, ...)` per window, live and offline; porting guide
   `docs/PORTING.md`): `meegxer-plugin new NAME --kind KIND` (a template),
-  `meegxer-plugin run --script FILE -i REC [-o OUT]` (try it),
-  `meegxer-plugin check|add --script FILE` (`add` asks to accept
+  `meegxer-plugin run --script FILE|FOLDER -i REC [-o OUT]` (try it; a script
+  folder holds helpers and data files, its entry file found, hashed whole),
+  `meegxer-plugin check|add --script FILE|FOLDER` (`add` asks to accept
   the local-code notice, or `--accept-risk`, then runs the conformance suite). SDKs in
   `packages/meegxer-plugins/sdk/`; reference plugins in `packages/meegxer-plugins/plugins/`.
 - New nodes register in the `meegxer.nodes` entry-point group (see package

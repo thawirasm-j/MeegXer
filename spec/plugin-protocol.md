@@ -237,12 +237,15 @@ with any release.
   `transform`.
 - A custom script in Sterile mode runs in a container of the same image
   (`python -m meegxer.plugins.sterile_script`). Before the plugin protocol
-  starts, the host sends one frame `{"type": "script", "name": FILE.py,
-  "sha256": HEX}` with the file's bytes as the `uint8` array `source` (at most
-  64 MiB). The container checks the bytes against `sha256`, writes the file to
-  its private `/tmp` (the name without folders) and serves it as
-  `python -m meegxer.plugins.script FILE` does: the rest of the stream is the
-  plugin protocol above.
+  starts, the host sends one frame `{"type": "script", "name": NAME,
+  "folder": BOOL, "files": [{"name": PATH, "data": ARRAY, "sha256": HEX},
+  ...]}` with each file's bytes as a `uint8` array (at most 128 MiB in all):
+  one file (`NAME` is its file name), or every file of a script folder (`NAME`
+  is the folder's name, `PATH` a `/`-separated path inside it). The container
+  checks each file against its `sha256`, refuses a path that leaves the
+  folder, writes the files to its private `/tmp` and serves the file or folder
+  as `python -m meegxer.plugins.script FILE|FOLDER` does: the rest of the
+  stream is the plugin protocol above.
 
 ## Conformance
 

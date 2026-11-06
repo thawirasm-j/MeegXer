@@ -120,7 +120,9 @@ A custom script (`docs/CUSTOM_SCRIPTS.md`) runs in a container of the
 Sterile image of its own, with the same isolation, started like a plugin
 (`python -m meegxer.plugins.sterile_script`). Nothing is mounted: the host
 sends the script's code as the first frame on stdin (`spec/plugin-protocol.md`
-→ *Sterile worker*), checked by its SHA-256, and the container serves it as
+→ *Sterile worker*): the file, or every file of a script folder (its helper
+modules and data files), each checked by its SHA-256, and the container
+serves it as
 `meegxer.plugins.script` does outside Sterile mode, so the output is the
 same. The code is read when the run starts, so an edited script needs no
 image rebuild. After the run the strip is a local process again. A local

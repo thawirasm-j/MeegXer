@@ -239,6 +239,44 @@ def process_epochs(epochs, threshold: float = 100.0):
   cuts them with an Epochs strip first (`--epochs tmin=-0.5` sets its settings)
   and says how many it kept, per label; `-o kept-epo.fif` writes them.
 
+## Script folders
+
+A method that is more than one file (helper modules, a lookup table, trained
+weights, a channel template) is added as its folder:
+
+```text
+lab_method/
+├── main.py          # defines process (or transform, features, process_epochs)
+├── lib/
+│   ├── __init__.py
+│   └── filters.py   # import lib.filters, as usual
+└── data/
+    └── weights.npy  # np.load(Path(__file__).parent / "data" / "weights.npy")
+```
+
+- **The entry file** is the one `.py` file at the folder's top that defines
+  `process`, `transform`, `features` or `process_epochs` (found by reading the
+  files, not running them). Its name is yours to choose; two such files is an
+  error that names them.
+- **Helpers import as usual**: the folder comes first on the import path, so
+  `import helpers` or `from lib.filters import notch` work.
+- **Data files** are read relative to the entry file, `Path(__file__).parent`,
+  never by an absolute path (in Sterile mode the folder is somewhere else).
+- **The strip is named after the folder** (`script.lab_method`), unless the
+  entry file sets `NAME`.
+- **Everything in it is the script**: every file but hidden ones (`.git`,
+  `.venv`, `.env`, …), `__pycache__` and compiled Python, at most 100 MB in
+  2000 files. Sessions record one SHA-256 over all of them, so a changed
+  helper or data file is noticed like a changed script; Sterile mode sends
+  them all. Keep recordings and outputs out of the folder.
+
+```bash
+meegxer-plugin run --script lab_method/ -i rec.set   # try it
+meegxer-plugin add --script lab_method/              # add it
+```
+
+In the GUI: **+ Add strip → ✎ Add a script folder…**.
+
 Octave/EEGLAB scripts (`function EEG = process(EEG, ...)`) are planned next.
 
 ## Add one
@@ -277,7 +315,8 @@ With Sterile mode on (`docs/STERILE.md`), a custom script does not run on your
 computer: it runs in a container of the Sterile image, with no network, no
 capabilities and a read-only filesystem, like the built-in strips. Nothing is
 mounted: when the run starts, MeegXer sends the script's code into the
-container (checked by its SHA-256), which serves it exactly as outside Sterile
+container (the file, or every file of a script folder, each checked by its
+SHA-256), which serves it exactly as outside Sterile
 mode, so its output is the same. Editing the script needs no image rebuild;
 the next run sends the new code. The script can use the packages MeegXer
 ships (MNE, SciPy, scikit-learn, …). A local plugin that is a program of its

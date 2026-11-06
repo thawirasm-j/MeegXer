@@ -16,8 +16,11 @@ write files. The reference for every convention is `docs/CUSTOM_SCRIPTS.md`.
 | one value (or a few) per channel per analysis window (band power, entropy, a ratio) | `features` | `features(data, info, ...)` returns `{name: per-channel values}` | live and offline |
 | the epochs around events, as `mne.Epochs` (rejection, baseline, relabelling) | `epochs` | `process_epochs(epochs, ...)` returns the Epochs kept; after an Epochs strip | offline |
 
-Coming next: scripts made of several files with data files, and declared
-extra packages (`REQUIRES`).
+Code in several files (helper modules, data files such as weights or a
+lookup table): keep the folder, put the entry function in one of its `.py`
+files, and give MeegXer the folder (`--script lab_method/`; *Add a script
+folder…*). See *Script folders* in `docs/CUSTOM_SCRIPTS.md`. Coming next:
+declared extra packages (`REQUIRES`).
 
 ## 2. Five steps
 
@@ -229,6 +232,7 @@ data stay in volts.
 | In your code | In a MeegXer script |
 |---|---|
 | reading and writing files, paths | none: the input strip reads, writers after it write |
+| `sys.path` tricks, files next to the script | a script folder: helpers import as usual; read data at `Path(__file__).parent / "data" / ...` |
 | numbers you tune (cut-offs, thresholds) | settings: parameters with a default, typed, described in the docstring (`(Hz)` gives the unit) |
 | channel picks (`pick_types`, lists of names) | MeegXer gives the channel types the strip processes (EEG by default; *Advanced → Channel types*); keep the same channels in what you return |
 | plots, `print` | remove plots; `print` and logging go to MeegXer's log |

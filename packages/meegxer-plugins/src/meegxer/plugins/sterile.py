@@ -390,12 +390,14 @@ class SterileScriptLauncher:
     """A custom script in Sterile mode: a container of the Sterile image (the
     same isolation as the built-in strips) running ``python -m
     meegxer.plugins.sterile_script``, which takes the script's code from the
-    first frame on stdin (``preamble``): nothing is mounted. ``local`` runs it
-    as a local process instead (tests and development; needs
+    first frame on stdin (``preamble``): nothing is mounted. A script folder
+    is sent whole (its code and data files). ``local`` runs it as a local
+    process instead (tests and development; needs
     ``MEEGXER_ALLOW_UNSANDBOXED=1``)."""
 
-    name: str  # the script's file name
-    source: bytes  # its code, read when the run starts
+    name: str  # the script's file name, or its folder's name
+    files: tuple[tuple[str, bytes], ...]  # by path in the folder: read at start
+    folder: bool = False  # a script folder (else one file, ``name``)
     image: str = IMAGE
     local: bool = False
     memory: str = "8g"
@@ -425,15 +427,31 @@ class SterileScriptLauncher:
         return f"custom script {self.name} (Sterile, {where})"
 
     def preamble(self) -> list[tuple[dict[str, Any], dict[str, npt.NDArray[Any]]]]:
-        """The frame the worker reads before the plugin protocol: the code."""
-        header = {"type": "script", "name": self.name,
-                  "sha256": hashlib.sha256(self.source).hexdigest()}  # fmt: skip
-        return [(header, {"source": np.frombuffer(self.source, dtype=np.uint8)})]
+        """The frame the worker reads before the plugin protocol: the code
+        (each file with its SHA-256; ``sterile_script.receive``)."""
+        header = {"type": "script", "name": self.name, "folder": self.folder,
+                  "files": [{"name": name, "data": f"f{i}",
+                             "sha256": hashlib.sha256(data).hexdigest()}
+                            for i, (name, data) in enumerate(self.files)]}  # fmt: skip
+        arrays = {f"f{i}": np.frombuffer(data, dtype=np.uint8)
+                  for i, (_, data) in enumerate(self.files)}  # fmt: skip
+        return [(header, arrays)]
+
+
+def script_files(path: Path) -> tuple[tuple[str, bytes], ...]:
+    """What a script strip sends into its container: the file, or every file
+    of the script folder (``meegxer.plugins.script.folder_files``), as they
+    are on disk now."""
+    from meegxer.plugins.script import folder_files
+
+    if path.is_dir():
+        return tuple((name, file.read_bytes()) for name, file in folder_files(path))
+    return ((path.name, path.read_bytes()),)
 
 
 def script_path(processor: PluginProcessor) -> Path | None:
-    """The file a custom script strip runs (``python -m meegxer.plugins.script
-    FILE``), or None for another local plugin."""
+    """The file (or script folder) a custom script strip runs (``python -m
+    meegxer.plugins.script PATH``), or None for another local plugin."""
     command = list(type(processor).origin.get("command") or [])
     if len(command) >= 4 and command[1:3] == ["-m", "meegxer.plugins.script"]:
         return Path(command[-1])
@@ -513,12 +531,12 @@ def isolate(
         proxied.append(node_id)
     for node_id, processor, path in scripts:
         try:
-            source = path.read_bytes()  # the code as it is when the run starts
-        except OSError as exc:
+            files = script_files(path)  # the code as it is when the run starts
+        except (OSError, ValueError) as exc:
             raise SterileError(f"{node_id}: cannot read the script: {exc}") from None
         processor.close()  # a local process from before: not used again
         processor.launcher = SterileScriptLauncher(  # type: ignore[misc]
-            path.name, source, image or IMAGE, local
+            path.name, files, path.is_dir(), image or IMAGE, local
         )
 
         def back(p: PluginProcessor = processor) -> None:
