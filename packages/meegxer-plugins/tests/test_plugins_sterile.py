@@ -399,10 +399,9 @@ def test_a_custom_script_runs_in_sterile_mode(recording: Path, tmp_path: Path) -
         assert isinstance(stage, Stage)
         launcher = stage.processor.launcher  # type: ignore[attr-defined]
         assert isinstance(launcher, SterileScriptLauncher)
-        assert (
-            launcher.name == "lab_highpass.py"
-            and launcher.source == LIVE_SCRIPT.encode()
-        )
+        # the file's bytes as they are on disk (Windows writes the test's \r\n)
+        on_disk = (tmp_path / "lab_highpass.py").read_bytes()
+        assert launcher.name == "lab_highpass.py" and launcher.source == on_disk
         assert set(isolation.proxied) == {"notch", "hp"}
         BatchScheduler(block_size=500).run(isolated)
     same(outputs(isolated), outputs(local))
