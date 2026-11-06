@@ -931,3 +931,31 @@ gives the local output exactly (CI, in the container).
 | X3 the same output without | passed | maintainer, Windows |
 | X4 live: delay and late blocks, Sterile and not | passed | maintainer, Windows, headset over LSL: Sterile on, delay 4 ms, 1 late block |
 | X5 the GUI builds a missing image | passed | maintainer, Windows |
+
+## Y. A custom script in Sterile mode
+
+Already run by Claude on Linux (Docker 29): `meegxer-plugin add --script` of
+a live high-pass script, `meegxer run` with it and with `--sterile`: the
+script ran in a `meegxer-sterile` container of its own (`python -m
+meegxer.plugins.sterile_script`, network `none`) and the written `.set` is
+identical to the local run's; with an edited MeegXer, the run was refused
+until the image was rebuilt. In CI's container job the Sterile tests run a
+script strip in the image next to built-in strips, output identical.
+
+1. Pull and `uv sync --all-packages`, then `uv run meegxer sterile build`
+   (MeegXer changed, so `meegxer sterile check` says it is out of date).
+2. In the GUI, *+ Add strip → ✎ Add a custom script…*: one of yours, or the
+   example in `docs/CUSTOM_SCRIPTS.md`. Put it in a chain with a built-in
+   strip.
+3. *Sterile* on, run it (offline, or live from your headset): Docker
+   Desktop shows a `meegxer-sterile` container for the script as well as the
+   worker; the output is the same as with *Sterile* off.
+4. Edit the script (say, a default), run again with *Sterile* on: the new code
+   runs, with no image rebuild.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| Y1 the image rebuilt | | |
+| Y2 a custom script in a chain | | |
+| Y3 it runs in the container, same output | | |
+| Y4 an edited script, no rebuild | | |

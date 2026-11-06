@@ -7,6 +7,15 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Custom scripts in Sterile mode.** With Sterile mode on, a custom script
+  runs in a container of the Sterile image (no network, read-only, no
+  capabilities), like the built-in strips, with the same output. Nothing is
+  mounted: its code is sent in when the run starts (checked by its SHA-256),
+  so editing a script needs no image rebuild. A local plugin that is a
+  program of its own is still refused in Sterile mode, saying so. The local
+  code notice now says scripts can run isolated (its wording only: no need
+  to accept it again).
+
 ## 0.5.0b2 (2026-11-05): Sterile
 
 Sterile mode: switch it on and the processing runs in a container with no

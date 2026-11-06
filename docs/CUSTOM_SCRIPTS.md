@@ -224,5 +224,15 @@ stops with "not installed", and the script command a session records is never
 started from it (`packages/meegxer-plugins/tests/test_plugins_no_code_from_pipelines.py`
 checks this). To use their script, read it, then add it yourself.
 
-Sterile mode (planned) will run scripts and every other strip isolated in a
-container, away from the network and the rest of the computer.
+## In Sterile mode
+
+With Sterile mode on (`docs/STERILE.md`), a custom script does not run on your
+computer: it runs in a container of the Sterile image, with no network, no
+capabilities and a read-only filesystem, like the built-in strips. Nothing is
+mounted: when the run starts, MeegXer sends the script's code into the
+container (checked by its SHA-256), which serves it exactly as outside Sterile
+mode, so its output is the same. Editing the script needs no image rebuild;
+the next run sends the new code. The script can use the packages MeegXer
+ships (MNE, SciPy, scikit-learn, …). A local plugin that is a program of its
+own (`meegxer-plugin add --local`) cannot run in the image and is refused in
+Sterile mode.

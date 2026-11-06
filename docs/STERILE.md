@@ -7,12 +7,12 @@ switch, not a package or a build. It means isolation only. Which code runs,
 and whether it is fit for patient data (HIPAA, GDPR, IRB), stays the user's
 responsibility.
 
-Status: in 0.5.0b2. Done: the worker, the host proxies, the image
-(`meegxer sterile build`) and the switch (the setting, `--sterile`, the GUI's
-*Sterile* button), offline and live, checked on Linux and on Windows with
-Docker Desktop; in the container, every built-in strip gives the local run's
-output exactly (CI checks it on every change). Next: custom scripts inside
-the worker, and the delay brought down (below).
+Status: in 0.5.0b2: the worker, the host proxies, the image (`meegxer
+sterile build`) and the switch (the setting, `--sterile`, the GUI's *Sterile*
+button), offline and live, checked on Linux and on Windows with Docker
+Desktop; in the container, every built-in strip gives the local run's output
+exactly (CI checks it on every change). Since then: custom scripts run in
+Sterile mode too (below). Next: the delay brought down.
 
 ## Switching it on
 
@@ -114,9 +114,18 @@ The container runs as `docker run --rm -i --network none --read-only
 - Container plugins (EEGLAB ASR, Octave plugins): already in their own
   containers with no network and a read-only filesystem.
 
-A custom script or local plugin runs as a local process, without isolation:
-Sterile mode refuses it for now. It will run inside the Sterile worker
-instead (M11.1c).
+## Custom scripts
+
+A custom script (`docs/CUSTOM_SCRIPTS.md`) runs in a container of the
+Sterile image of its own, with the same isolation, started like a plugin
+(`python -m meegxer.plugins.sterile_script`). Nothing is mounted: the host
+sends the script's code as the first frame on stdin (`spec/plugin-protocol.md`
+→ *Sterile worker*), checked by its SHA-256, and the container serves it as
+`meegxer.plugins.script` does outside Sterile mode, so the output is the
+same. The code is read when the run starts, so an edited script needs no
+image rebuild. After the run the strip is a local process again. A local
+plugin that is a program of its own (`meegxer-plugin add --local`) cannot run
+in the image: Sterile mode refuses it, saying so.
 
 ## For developers
 
