@@ -25,6 +25,19 @@ def _params(items: list[str]) -> dict[str, object]:
     return params
 
 
+def _missing(script: Path) -> str:
+    """Why ``script`` cannot run here (its ``REQUIRES`` not installed, or
+    written wrong), or empty."""
+    from meegxer.plugins.requires import installed
+    from meegxer.plugins.script import ScriptError
+
+    try:
+        installed(script, also=index.declared_requires())
+    except ScriptError as exc:
+        return str(exc)
+    return ""
+
+
 def _accepted(args: argparse.Namespace) -> bool:
     """Show the local-code notice; accepted with --accept-risk or a typed yes."""
     print(LOCAL_CODE_NOTICE, file=sys.stderr)
@@ -139,6 +152,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         if not args.script.exists():
             parser.error(f"no such script: {args.script}")
+        if reason := _missing(args.script):
+            print(f"error: {reason}", file=sys.stderr)
+            return 1
         from meegxer.plugins.trial import try_script
 
         try:
@@ -152,6 +168,9 @@ def main(argv: list[str] | None = None) -> int:
         print(done.summary())
         return 0
     if args.command == "check":
+        if args.script and (reason := _missing(args.script)):
+            print(f"error: {reason}", file=sys.stderr)
+            return 1
         if args.script:
             launcher: ContainerLauncher | LocalLauncher = LocalLauncher(
                 tuple(index.script_command(args.script)), allow=True
@@ -168,6 +187,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "add" and (args.script or args.local):
         if args.script and not args.script.exists():
             parser.error(f"no such script: {args.script}")
+        if args.script and (reason := _missing(args.script)):
+            print(f"error: {reason}", file=sys.stderr)
+            return 1
         if not _accepted(args):
             return 1
         command = index.script_command(args.script) if args.script else args.local

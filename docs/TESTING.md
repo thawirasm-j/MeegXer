@@ -1012,3 +1012,28 @@ GUI (offscreen), *+ Add strip → ✎ Add a script folder…* adds it as one str
 | AA1 the folder added as one strip | | |
 | AA2 it runs, helpers and data found | | |
 | AA3 the same in Sterile mode | | |
+
+## AB. A script's extra packages (`REQUIRES`)
+
+Already run by Claude on Linux: a script with `REQUIRES = ["pyriemann"]`
+was refused by `meegxer-plugin add` while pyRiemann was not installed (the
+message names `uv tool install --prerelease allow --with pyriemann meegxer`);
+after `uv pip install pyriemann` it was added, a session recorded
+`requires: {"pyriemann": VERSION}`, and with `--sterile` the run was refused
+("the Sterile image … lacks pyriemann==VERSION … run `meegxer sterile build`
+again") until the image was built again (Docker 29), then gave the local
+run's output.
+
+1. Write a script that imports a package MeegXer does not ship (pyRiemann,
+   say) with `REQUIRES = ["pyriemann"]`, and add it in the GUI (*Add a custom
+   script…*): it is refused, naming the install command.
+2. Run that command (your MeegXer is a uv tool install), add the script again,
+   run it.
+3. *Sterile* on, run: it asks to build the image; build (*Sterile* offers
+   it, or `meegxer sterile build`), run again: the same output.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| AB1 refused, with the install command | | |
+| AB2 installed, added, runs | | |
+| AB3 Sterile: asks to build, then the same output | | |

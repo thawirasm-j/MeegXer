@@ -150,6 +150,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   `docs/PORTING.md`): `meegxer-plugin new NAME --kind KIND` (a template),
   `meegxer-plugin run --script FILE|FOLDER -i REC [-o OUT]` (try it; a script
   folder holds helpers and data files, its entry file found, hashed whole),
+  `REQUIRES = ["pkg"]` names extra packages: checked installed, recorded in
+  sessions, installed by `meegxer sterile build`;
   `meegxer-plugin check|add --script FILE|FOLDER` (`add` asks to accept
   the local-code notice, or `--accept-risk`, then runs the conformance suite). SDKs in
   `packages/meegxer-plugins/sdk/`; reference plugins in `packages/meegxer-plugins/plugins/`.

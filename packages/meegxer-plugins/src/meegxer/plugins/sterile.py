@@ -515,10 +515,19 @@ def isolate(
             scripts.append((node_id, processor, path))
     local = local or os.environ.get(LOCAL_ENV) == "1"
     image = image or os.environ.get(IMAGE_ENV) or None
+    packages: dict[str, str] = {}  # what the scripts declare (REQUIRES)
+    for node_id, _, path in scripts:
+        from meegxer.plugins.requires import installed
+        from meegxer.plugins.script import ScriptError
+
+        try:
+            packages.update(installed(path))
+        except ScriptError as exc:
+            raise SterileError(f"{node_id}: {exc}") from None
     if not local:  # missing or stale: say so now, not after a container start
         from meegxer.plugins.sterile_image import check_image
 
-        check_image(image or IMAGE)
+        check_image(image or IMAGE, requires=packages)
     worker = SterileWorker(worker_launcher(image, local=local), timeout=timeout)
     proxied = []
     undo: list[Callable[[], None]] = []

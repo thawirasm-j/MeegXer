@@ -277,6 +277,33 @@ meegxer-plugin add --script lab_method/              # add it
 
 In the GUI: **+ Add strip → ✎ Add a script folder…**.
 
+## Extra packages (`REQUIRES`)
+
+A script may import any package MeegXer ships (MNE, SciPy, NumPy,
+scikit-learn, mne-connectivity, antropy, …). For one it does not, name it at
+the top of the script (or of a folder's entry file):
+
+```python
+REQUIRES = ["pyriemann", "mne-connectivity>=0.7"]
+```
+
+- Each item is a PyPI requirement: a name, optionally with extras and a
+  version range (no URLs or paths). MeegXer reads it without running the
+  script.
+- **It must be installed in MeegXer's own Python.** `meegxer-plugin add`,
+  `check` and `run` (and *Add a custom script…*) refuse a script whose
+  packages are missing or outside their range, naming them and the command
+  that installs them: `uv tool install --prerelease allow --with pyriemann
+  meegxer` for a uv tool install (list every extra package your scripts use:
+  a new `--with` list replaces the last), or `pip install pyriemann` where
+  MeegXer runs.
+- **Sessions record the versions** used (`requires` in the node's
+  provenance); reloading with other versions warns, as for library versions.
+- **In Sterile mode** the image needs them too: `meegxer sterile build`
+  installs the added scripts' packages at the versions installed here, and a
+  run whose scripts need one the image lacks is refused, saying to build
+  again (as after updating MeegXer).
+
 Octave/EEGLAB scripts (`function EEG = process(EEG, ...)`) are planned next.
 
 ## Add one
@@ -319,6 +346,7 @@ container (the file, or every file of a script folder, each checked by its
 SHA-256), which serves it exactly as outside Sterile
 mode, so its output is the same. Editing the script needs no image rebuild;
 the next run sends the new code. The script can use the packages MeegXer
-ships (MNE, SciPy, scikit-learn, …). A local plugin that is a program of its
+ships (MNE, SciPy, scikit-learn, …) and those it declares in `REQUIRES`, which
+`meegxer sterile build` installs into the image. A local plugin that is a program of its
 own (`meegxer-plugin add --local`) cannot run in the image and is refused in
 Sterile mode.

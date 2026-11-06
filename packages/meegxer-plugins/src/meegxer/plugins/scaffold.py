@@ -17,6 +17,7 @@ CREDIT = """
 # __license__ = "BSD-3-Clause"
 # REFERENCES = [{"citation": "Author A (2024). Title. Journal 1:1.", "doi": "10.0/x"}]
 # CATEGORY = "filters"  # where the add-strip menu lists it (or your own word)
+# REQUIRES = ["pyriemann"]  # packages it imports that MeegXer does not ship
 """
 
 PROCESS = '''"""{title}: what it does, in one line (the strip's description)."""

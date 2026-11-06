@@ -83,7 +83,7 @@ Recommended file name: `NAME.meegxer.json` (plain JSON; any `.json` file with a
 |---|---|
 | `meegxer_session` | Format version, `major.minor`. Readers accept their own major version. |
 | `pipeline` | The pipeline document, unchanged. |
-| `nodes` | Per node id: manifest `node` name, `version`, and `provenance` for external plugins: `image`, `image_id` (the local image ID the host recorded at `meegxer-plugin add`), `repo_digests` (registry digests, when the engine reports them), or, for a local plugin (unsandboxed: a custom script or a local command), `command`, `unsandboxed`, `sha256` (one hash over its code files, in name order: the script file, or every file of a script folder by its path in it, hidden files and `__pycache__` left out) and `script` (the script's file name, or its folder's name). A review strip or a Review epochs strip (`docs/REVIEW.md`) also has `review`: `reviewer` (the name given when the run started), `reviewed` (when, ISO 8601 UTC) and `upstream` (the fingerprint of the input the review was made on); the marks stay in the review's sidecar. |
+| `nodes` | Per node id: manifest `node` name, `version`, and `provenance` for external plugins: `image`, `image_id` (the local image ID the host recorded at `meegxer-plugin add`), `repo_digests` (registry digests, when the engine reports them), or, for a local plugin (unsandboxed: a custom script or a local command), `command`, `unsandboxed`, `sha256` (one hash over its code files, in name order: the script file, or every file of a script folder by its path in it, hidden files and `__pycache__` left out) `script` (the script's file name, or its folder's name) and `requires` (the extra packages the script declares, `REQUIRES`, each with the version installed when the session was saved). A review strip or a Review epochs strip (`docs/REVIEW.md`) also has `review`: `reviewer` (the name given when the run started), `reviewed` (when, ISO 8601 UTC) and `upstream` (the fingerprint of the input the review was made on); the marks stay in the review's sidecar. |
 | `models` | Per node id, for nodes that need calibration: `data` (the model exactly as the node returned it), `fitted_on` (the channels it was fitted on), `fingerprint`, `content_hash`. External plugins' models use the same form: the host owns them (plugin protocol), so they are stored like any other. |
 | `inputs` | Per source node id: the files read, with hashes. |
 | `outputs` | The files the run wrote, with hashes. |
@@ -159,6 +159,7 @@ or events file is left out on loading, with a warning.
 | Model `fingerprint` | The model is kept but not used: the node needs refitting (offline runs refit it on their input, live runs wait for calibration). |
 | Input file `sha256` | Warning; refused with `--strict`. |
 | Library versions | Warning only. They are recorded because they can change results in the last bits. |
+| A custom script's `requires` versions | Warning only, as for library versions. |
 
 A model fitted on a file stays valid when the file moves: a file source is
 identified by its content (file names and bytes), not by its path. A model applied to
