@@ -959,3 +959,32 @@ script strip in the image next to built-in strips, output identical.
 | Y2 a custom script in a chain | | |
 | Y3 it runs in the container, same output | | |
 | Y4 an edited script, no rebuild | | |
+
+## Z. An epochs script (`process_epochs`)
+
+Already run by Claude on Linux: `meegxer-plugin new lab_reject --kind epochs`,
+`meegxer-plugin run --script lab_reject.py -i rec_raw.fif` ("kept 3 of 4
+epochs (go 2, stop 1)": the epoch with a 300 µV artefact dropped),
+`meegxer-plugin add --script`, then `meegxer run` with Epochs → the script →
+an epochs writer on its rail (the `-epo.fif` holds the three kept epochs, at
+their events' samples); in the GUI (offscreen) the script after an Epochs
+strip reads the *Epochs* rail and writes *Epochs·2*, its threshold shown as
+100 µV, and after *Run offline* the ERP taps count go 2, stop 2 on *Epochs*
+and go 2, stop 1 on *Epochs·2*; in Sterile mode (Docker 29, image built from this code) the kept
+epochs are the local run's.
+
+1. `uv run meegxer-plugin new lab_reject --kind epochs`, then
+   `uv run meegxer-plugin run --script lab_reject.py -i REC --epochs
+   tmin=-0.2` on a recording of yours with events (an ERP CORE sample from
+   *New…* is fine): it says how many epochs it kept, per label.
+2. In the GUI: an Epochs strip, then *+ Add strip → ✎ Add a custom script…*
+   `lab_reject.py` after it, and an ERP tap on its rail (*Epochs·2*); run
+   offline: the ERP view of *Epochs·2* has fewer epochs than *Epochs* when you
+   lower *Removal threshold*.
+3. The same with *Sterile* on (after `meegxer sterile build`): the same counts.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| Z1 `run` counts the epochs kept | | |
+| Z2 the GUI: Epochs·2 with fewer epochs | | |
+| Z3 the same in Sterile mode | | |

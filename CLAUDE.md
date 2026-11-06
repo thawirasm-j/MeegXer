@@ -144,7 +144,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   `--sterile` on `meegxer run` / `meegxer daemon`.
 - Plugins: `uv run meegxer-plugin check IMAGE` (conformance),
   `meegxer-plugin add IMAGE`, `meegxer-plugin list`. Custom scripts
-  (`process(raw, ...)` offline, or `transform(data, state, ...)` [+ `fit(raw, ...)`]
+  (`process(raw, ...)` offline, `process_epochs(epochs, ...)` after an Epochs
+  strip, offline, or `transform(data, state, ...)` [+ `fit(raw, ...)`]
   or `features(data, ...)` per window, live and offline; porting guide
   `docs/PORTING.md`): `meegxer-plugin new NAME --kind KIND` (a template),
   `meegxer-plugin run --script FILE -i REC [-o OUT]` (try it),

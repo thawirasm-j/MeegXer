@@ -408,6 +408,43 @@ def test_a_custom_script_runs_in_sterile_mode(recording: Path, tmp_path: Path) -
     assert not isinstance(stage.processor.launcher, SterileScriptLauncher)  # type: ignore[attr-defined]
 
 
+EPOCHS_SCRIPT = '''"""Keep one label's epochs, baseline-corrected."""
+
+
+def process_epochs(epochs, label: str = "left"):
+    return epochs[label].apply_baseline((None, 0), verbose="error")
+'''
+
+
+def test_an_epochs_script_runs_in_sterile_mode(recording: Path, tmp_path: Path) -> None:
+    """An epochs script reads the epochs rail the Epochs strip (in the
+    worker) writes and gives the local run's epochs."""
+    cls = script_strip(tmp_path, EPOCHS_SCRIPT)
+    registry = Registry([*Registry.from_entry_points().as_mapping().values(), cls])
+
+    def graph() -> Graph:
+        entries = [{"id": "input", "node": "meegxer.core.file",
+                    "params": {"path": str(recording)}},
+                   n("ep", "epochs", tmin=-0.2, tmax=0.8, baseline="none"),
+                   {"id": "drop", "node": cls.manifest.name, "params": {}},
+                   ftap("drop:epochs"), ftap("ep:epochs")]  # fmt: skip
+        return Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": entries},
+                               registry)  # fmt: skip
+
+    local = graph()
+    try:
+        BatchScheduler().run(local)
+    finally:
+        local["drop"].impl.processor.close()  # type: ignore[union-attr]
+    isolated = graph()
+    with sterilize(isolated, **WORKER) as isolation:
+        assert set(isolation.proxied) == {"ep", "drop"}
+        BatchScheduler().run(isolated)
+    kept = outputs(local)["ftap_drop_epochs"]["windows"]
+    assert 0 < len(kept) < len(outputs(local)["ftap_ep_epochs"]["windows"])
+    same(outputs(isolated), outputs(local))
+
+
 def test_the_script_frame_is_checked() -> None:
     """The container takes the script only as its first frame, and only when
     its bytes match their SHA-256 (a .py file, no folders in its name)."""

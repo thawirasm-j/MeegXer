@@ -41,7 +41,7 @@ node registry.
 |---|---|
 | `None` | The signal at the chain's end, as `mne.io.Raw`. |
 | a strip's id, e.g. `"bp1"` | That strip's signal, as `mne.io.Raw`. |
-| an Epochs or Review epochs strip's id, e.g. `"ep1"` | Its epochs, as `mne.Epochs` (`EpochsArray`, as the epochs writer makes them); None when no event was cut. |
+| an Epochs, Review epochs or epochs-script strip's id, e.g. `"ep1"` | Its epochs, as `mne.Epochs` (`EpochsArray`, as the epochs writer makes them); None when no event was cut. |
 | `"strip:port"`, e.g. `"ica1:ics"` or `"input:ics"` | That rail output: the ICs as `mne.io.Raw` with `misc` channels, or an epochs rail as `mne.Epochs`. |
 
 A feature strip's output (spectra, band power, …) is not returned; write it

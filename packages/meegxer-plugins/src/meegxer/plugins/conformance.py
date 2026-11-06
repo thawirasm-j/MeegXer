@@ -14,7 +14,9 @@ import numpy as np
 
 from meegxer.core.block import Block, Event, FeatureBlock, concat_blocks
 from meegxer.core.conformance import check_blockwise_equivalence
-from meegxer.core.node import output_blocks
+from meegxer.core.manifest import Manifest
+from meegxer.core.node import RailInput, output_blocks
+from meegxer.core.ports import PortType
 from meegxer.core.sources import SyntheticSource
 from meegxer.core.stage import Stage, signal_fingerprint
 from meegxer.plugins.adapter import PluginProcessor, plugin_class
@@ -36,6 +38,44 @@ def labelled_trials(block: Block, params: Mapping[str, Any]) -> tuple[Event, ...
     step = max(1, round(2.0 * block.info.sfreq))
     starts = range(block.sample_index, block.stop_index - step, step)
     return tuple(Event(s, labels[k % len(labels)]) for k, s in enumerate(starts))
+
+
+def test_epochs(block: Block) -> tuple[FeatureBlock, ...]:
+    """Epochs for a plugin that reads the epochs rail: -0.2 to 0.5 s around an
+    event every second, alternating the labels go and stop, cut from ``block``
+    as the Epochs strip cuts them (dims epoch, channel, time)."""
+    sfreq = block.info.sfreq
+    first, last = round(-0.2 * sfreq), round(0.5 * sfreq)
+    times = tuple(round(k / sfreq, 9) for k in range(first, last + 1))
+    step = max(1, round(sfreq))
+    out = []
+    for k, event in enumerate(range(block.sample_index + step, block.stop_index, step)):
+        lo, hi = event + first, event + last + 1
+        if hi > block.stop_index:
+            break
+        data = block.data[:, lo - block.sample_index : hi - block.sample_index]
+        out.append(FeatureBlock(
+            np.array(data)[np.newaxis], ("epoch", "channel", "time"), (lo, hi),
+            block.timestamp + (lo - block.sample_index) / sfreq,
+            {"epoch": (("go", "stop")[k % 2],), "channel": block.info.ch_labels,
+             "time": times}, unit="V",
+        ))  # fmt: skip
+    return tuple(out)
+
+
+def test_rails(manifest: Manifest, block: Block) -> dict[str, RailInput]:
+    """What a plugin's extra input ports read in the checks, over ``block``:
+    the block itself on a Signal rail, test epochs on the epochs rail, none on
+    another Features rail or the Events rail."""
+    rails: dict[str, RailInput] = {}
+    for port in manifest.rail_inputs:
+        if port.type is PortType.SIGNAL:
+            rails[port.name] = block
+        elif port.type is PortType.FEATURES and port.rail == "epochs":
+            rails[port.name] = test_epochs(block)
+        else:
+            rails[port.name] = ()
+    return rails
 
 
 def test_signal(
@@ -121,6 +161,7 @@ def run_conformance(
 
     fp = signal_fingerprint(block.info)
     reference = Stage(plugin_cls(), params)
+    rails = test_rails(plugin_cls.manifest, block) or None
     one_pass: list[Any] = []
     trials = labelled_trials(block, reference.params) if (
         plugin_cls.manifest.fit_events) else ()  # fmt: skip
@@ -128,7 +169,7 @@ def run_conformance(
     def transform() -> str:
         if plugin_cls.manifest.requires_fit:
             reference.fit(block, fp, trials)
-        result = reference.transform(block, fp)
+        result = reference.transform(block, fp, rails)
         out = result.block
         if plugin_cls.manifest.kind == "analysis":
             windows = list(output_blocks(out))
@@ -156,7 +197,11 @@ def run_conformance(
         if not np.all(np.isfinite(out.data)):
             raise AssertionError("output contains NaN or inf")
         one_pass.append(out)
-        return f"{out.info.n_channels} ch x {out.n_samples} samples"
+        written = "".join(
+            f", {len(output_blocks(v))} windows on {port}"
+            for port, v in result.rails.items() if not isinstance(v, Block)
+        )  # fmt: skip
+        return f"{out.info.n_channels} ch x {out.n_samples} samples{written}"
 
     def blockwise() -> str:
         if plugin_cls.manifest.availability == "offline":

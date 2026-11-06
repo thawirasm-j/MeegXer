@@ -1,14 +1,16 @@
 """Custom scripts: a plain process(raw, ...) function becomes an offline strip."""
 
+import re
 import textwrap
 from pathlib import Path
+from typing import Any
 
 import mne
 import numpy as np
 import pytest
 
 from meegxer.core.batch import BatchScheduler
-from meegxer.core.block import Block
+from meegxer.core.block import Block, FeatureBlock
 from meegxer.core.graph import Graph
 from meegxer.core.registry import Registry
 from meegxer.plugins import index
@@ -523,3 +525,122 @@ def test_a_feature_script_states_its_units(tmp_path: Path) -> None:
         stage.processor.close()
     first = next(w for w in output_blocks(out) if isinstance(w, FeatureBlock))
     assert (first.unit_dim, first.units) == ("feature", ("V^2/Hz", "V"))
+
+
+DROP_LOUD = '''
+    """Drop loud epochs, then subtract the pre-stimulus mean."""
+
+
+    def process_epochs(epochs, threshold: float = 1e-4):
+        """Peak-to-peak rejection and baseline, with MNE.
+
+        Parameters
+        ----------
+        threshold : float
+            Largest peak-to-peak (V).
+        """
+        epochs.drop_bad(reject={"eeg": threshold}, verbose="error")
+        return epochs.apply_baseline((None, 0), verbose="error")
+'''
+
+
+def epochs_run(tmp_path: Path, cls: Any, **params: object) -> list[FeatureBlock]:
+    """Synthetic recording -> Epochs strip (no baseline) [-> the script] -> a
+    tap on the nearest epochs rail; the windows it kept."""
+    from meegxer.core.manifest import SPEC_VERSION
+    from meegxer.core.probes import FeatureProbe
+
+    events = tmp_path / "events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n1.0\t0\tgo\n"
+                      "2.0\t0\tstop\n3.0\t0\tgo\n")  # fmt: skip
+    nodes: list[dict[str, Any]] = [
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"duration": 5.0, "n_channels": 3, "sfreq": 100.0},
+         "recording": {"events": {"file": str(events)}}},
+        {"id": "ep", "node": "meegxer.nodes.epochs",
+         "params": {"tmin": -0.2, "tmax": 0.5, "baseline": "none"}},
+    ]  # fmt: skip
+    entries = Registry.from_entry_points().as_mapping().values()
+    registry = Registry([*entries, *([cls] if cls else [])])
+    if cls is not None:
+        nodes.append({"id": "s", "node": cls.manifest.name, "params": params})
+    nodes.append({"id": "tap", "node": "meegxer.core.feature_probe",
+                  "input": "s:epochs" if cls else "ep:epochs",
+                  "params": {"keep_windows": 0}})  # fmt: skip
+    graph = Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": nodes}, registry)
+    try:
+        BatchScheduler(block_size=64).run(graph)
+    finally:
+        if cls is not None:
+            graph["s"].impl.processor.close()  # type: ignore[union-attr]
+    tap = graph["tap"].impl
+    assert isinstance(tap, FeatureProbe)
+    return [w for w in tap.windows if isinstance(w, FeatureBlock)]
+
+
+def test_an_epochs_script_reads_and_writes_the_epochs_rail(tmp_path: Path) -> None:
+    """``process_epochs`` gets the Epochs strip's epochs as ``mne.Epochs`` and
+    what it returns (fewer epochs, other data) goes on its own epochs rail,
+    each epoch at its samples with its label: as MNE does it directly."""
+    from meegxer.core.epochs_out import epochs_array
+
+    path = write(tmp_path, "drop_loud.py", DROP_LOUD)
+    manifest = script_manifest(load_script(path), path)
+    assert manifest["availability"] == "offline"
+    assert [p["name"] for p in manifest["params"]] == ["threshold"]
+    assert manifest["inputs"][1] == manifest["outputs"][1] == {
+        "name": "epochs", "type": "features", "rail": "epochs"}  # fmt: skip
+    cut = epochs_run(tmp_path, None)
+    peak = [float(np.ptp(w.data, axis=2).max()) for w in cut]
+    threshold = sorted(peak)[1] + 1e-12  # keeps the two quietest
+    cls = script_class(path)
+    got = epochs_run(tmp_path, cls, threshold=threshold)
+    expected = epochs_array(cut, {})
+    expected.drop_bad(reject={"eeg": threshold}, verbose="error")
+    expected.apply_baseline((None, 0), verbose="error")
+    assert len(got) == len(expected) == 2
+    kept = [w for w, p in zip(cut, peak, strict=True) if p <= threshold]
+    assert [w.window for w in got] == [w.window for w in kept]
+    assert [w.coords["epoch"] for w in got] == [w.coords["epoch"] for w in kept]
+    assert [w.timestamp for w in got] == pytest.approx([w.timestamp for w in kept])
+    assert got[0].coords["time"] == pytest.approx(cut[0].coords["time"])
+    np.testing.assert_allclose(np.concatenate([w.data for w in got]),
+                               expected.get_data(), rtol=1e-6, atol=1e-12)  # fmt: skip
+    # the conformance suite gives it test epochs to work on
+    checks = run_conformance_script(path)
+    assert all(c.passed for c in checks), checks
+    assert "windows on epochs" in next(
+        c.detail for c in checks if c.name == "transform"
+    )
+
+
+def run_conformance_script(path: Path) -> list[Any]:
+    from meegxer.plugins.conformance import run_conformance
+    from meegxer.plugins.worker import LocalLauncher
+
+    return run_conformance(LocalLauncher(tuple(index.script_command(path)), allow=True))
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("def process_epochs(epochs):\n    return epochs.get_data()\n",
+         "must return mne.Epochs, got ndarray"),
+        ("def process_epochs(epochs):\n"
+         "    return epochs.resample(50.0, verbose='error')\n",
+         "keep the sampling rate"),
+        ("def process_epochs(epochs, state=None):\n    return epochs\n",
+         "'state' needs a default|use bool"),
+    ],
+)  # fmt: skip
+def test_epochs_script_conventions_are_explained(
+    tmp_path: Path, body: str, message: str
+) -> None:
+    path = write(tmp_path, "bad_epochs.py", body)
+    try:
+        script_manifest(load_script(path), path)
+    except ScriptError as exc:  # caught when the strip is made
+        assert re.search(message, str(exc))
+        return
+    with pytest.raises(Exception, match=message):
+        epochs_run(tmp_path, script_class(path))
