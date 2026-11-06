@@ -27,6 +27,7 @@ from meegxer.core.registry import Registry
 from meegxer.core.stage import Stage
 from meegxer.core.sterile import sterilize
 from meegxer.plugins import sterile
+from meegxer.plugins.adapter import PluginProcessor
 from meegxer.plugins.sterile import SterileError, SterileProcessor, from_wire, to_wire
 
 EEG = ["Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8", "T7", "C3", "Cz", "C4", "T8",
@@ -312,22 +313,125 @@ def test_a_killed_worker_is_restarted(recording: Path) -> None:
     same(outputs(isolated), outputs(local))
 
 
-def test_local_code_is_refused(recording: Path) -> None:
-    """A custom script or local plugin would run without isolation: refused."""
+def test_a_local_program_is_refused(recording: Path) -> None:
+    """A local plugin that is a program of its own (not a custom script)
+    cannot run in the Sterile image: refused, saying so."""
     from meegxer.plugins.adapter import plugin_class
     from meegxer.plugins.worker import LocalLauncher
 
-    manifest = {"spec_version": SPEC_VERSION, "name": "lab.script", "version": "0.1.0",
+    manifest = {"spec_version": SPEC_VERSION, "name": "lab.tool", "version": "0.1.0",
                 "role": "processor", "type": "stream",
                 "inputs": [{"name": "in", "type": "signal"}],
                 "outputs": [{"name": "out", "type": "signal"}]}  # fmt: skip
-    cls = plugin_class(manifest, LocalLauncher(("python", "script.py")))
+    command = ("octave", "tool.m")
+    origin = {"command": list(command), "unsandboxed": True}
+    cls = plugin_class(manifest, LocalLauncher(command), origin=origin)
     graph = build(recording, [n("iir", "iir_filter")])
     stage = graph["iir"].impl
     assert isinstance(stage, Stage)
     stage.processor = cls()
-    with pytest.raises(SterileError, match="without isolation"):
+    with pytest.raises(SterileError, match="program of its own"):
         sterilize(graph, **WORKER)
+
+
+LIVE_SCRIPT = '''
+"""Causal high-pass (SciPy Butterworth, state carried between blocks)."""
+
+import numpy as np
+from scipy import signal
+
+
+def transform(data, state, info, cutoff: float = 1.0):
+    """High-pass.
+
+    Parameters
+    ----------
+    cutoff : float
+        Cut-off (Hz).
+    """
+    if state is None:
+        sos = signal.butter(4, cutoff, "highpass", fs=info["sfreq"], output="sos")
+        state = {"sos": sos, "zi": np.zeros((sos.shape[0], data.shape[0], 2))}
+    out, zf = signal.sosfilt(state["sos"], data, axis=-1, zi=state["zi"])
+    return out, {"sos": state["sos"], "zi": zf}
+'''
+
+
+def script_strip(tmp_path: Path, body: str) -> type[PluginProcessor]:
+    """A custom script strip as `meegxer-plugin add --script` makes it (its
+    origin names the script it runs)."""
+    from meegxer.plugins import index
+    from meegxer.plugins.adapter import plugin_class, probe_manifest
+    from meegxer.plugins.worker import LocalLauncher
+
+    path = tmp_path / "lab_highpass.py"
+    path.write_text(body)
+    command = index.script_command(path)
+    launcher = LocalLauncher(tuple(command), allow=True)
+    origin = index.origin_of({"command": command, "script": str(path)})
+    return plugin_class(probe_manifest(launcher), launcher, origin=origin)
+
+
+def test_a_custom_script_runs_in_sterile_mode(recording: Path, tmp_path: Path) -> None:
+    """A custom script strip runs in the Sterile image, its code sent in at
+    the start (nothing mounted), and gives the local run's output; after the
+    run it is a local process again. The built-in strips around it run in
+    the worker as before."""
+    from meegxer.plugins.sterile import SterileScriptLauncher
+
+    cls = script_strip(tmp_path, LIVE_SCRIPT)
+    registry = Registry([*Registry.from_entry_points().as_mapping().values(), cls])
+
+    def graph() -> Graph:
+        entries = [{"id": "input", "node": "meegxer.core.file",
+                    "params": {"path": str(recording)}},
+                   n("notch", "notch"),
+                   {"id": "hp", "node": cls.manifest.name, "params": {"cutoff": 2.0}},
+                   tap("hp")]  # fmt: skip
+        return Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": entries},
+                               registry)  # fmt: skip
+
+    local = graph()
+    BatchScheduler(block_size=500).run(local)
+    isolated = graph()
+    with sterilize(isolated, **WORKER) as isolation:
+        stage = isolated["hp"].impl
+        assert isinstance(stage, Stage)
+        launcher = stage.processor.launcher  # type: ignore[attr-defined]
+        assert isinstance(launcher, SterileScriptLauncher)
+        # the file's bytes as they are on disk (Windows writes the test's \r\n)
+        on_disk = (tmp_path / "lab_highpass.py").read_bytes()
+        assert launcher.name == "lab_highpass.py" and launcher.source == on_disk
+        assert set(isolation.proxied) == {"notch", "hp"}
+        BatchScheduler(block_size=500).run(isolated)
+    same(outputs(isolated), outputs(local))
+    assert not isinstance(stage.processor.launcher, SterileScriptLauncher)  # type: ignore[attr-defined]
+
+
+def test_the_script_frame_is_checked() -> None:
+    """The container takes the script only as its first frame, and only when
+    its bytes match their SHA-256 (a .py file, no folders in its name)."""
+    import hashlib
+    import io
+
+    from meegxer.plugins.sterile_script import receive
+    from meegxer.plugins.wire import WireError, encode
+
+    source = b"def process(raw):\n    return raw\n"
+
+    def frame(header: dict[str, Any]) -> io.BytesIO:
+        return io.BytesIO(encode(header, {"source": np.frombuffer(source, np.uint8)}))
+
+    good = {"type": "script", "name": "../../etc/x.py",
+            "sha256": hashlib.sha256(source).hexdigest()}  # fmt: skip
+    path = receive(frame(good))
+    assert path.name == "x.py" and path.read_bytes() == source  # no folders
+    with pytest.raises(WireError, match="SHA-256"):
+        receive(frame({**good, "sha256": "0" * 64}))
+    with pytest.raises(WireError, match="first frame"):
+        receive(frame({**good, "type": "hello"}))
+    with pytest.raises(WireError, match="not a Python script"):
+        receive(frame({**good, "name": "x.sh"}))
 
 
 def test_a_worker_of_another_version_is_refused(

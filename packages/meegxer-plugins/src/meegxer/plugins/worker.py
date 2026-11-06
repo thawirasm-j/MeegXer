@@ -21,7 +21,7 @@ import weakref
 from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 import numpy.typing as npt
 
@@ -142,7 +142,22 @@ class LocalLauncher:
         return f"local process {' '.join(self.argv)} (UNSANDBOXED)"
 
 
-type Launcher = ContainerLauncher | LocalLauncher
+class Launcher(Protocol):
+    """How a plugin process starts and stops (a container, a local process,
+    or a Sterile custom script). Optionally ``preamble()``: frames written to
+    the process before the protocol starts."""
+
+    @property
+    def sandboxed(self) -> bool: ...
+
+    def command(self, name: str) -> list[str]: ...
+
+    def kill(self, name: str) -> None: ...
+
+    def environment(self) -> dict[str, str] | None: ...
+
+    def describe(self) -> str: ...
+
 
 _live_workers: weakref.WeakSet[PluginWorker] = weakref.WeakSet()
 
@@ -223,6 +238,12 @@ class PluginWorker:
         self._replies = queue.Queue()
         self._loaded_models.clear()
         proc = self._proc
+        # what the process reads before the protocol (a Sterile custom
+        # script's code: nothing is mounted into its container)
+        preamble = getattr(self.launcher, "preamble", None)
+        if callable(preamble) and proc.stdin is not None:
+            for header, arrays in preamble():
+                write_message(proc.stdin, header, arrays)
         threading.Thread(target=self._read_replies, args=(proc,), daemon=True).start()
         threading.Thread(target=self._read_stderr, args=(proc,), daemon=True).start()
         _live_workers.add(self)

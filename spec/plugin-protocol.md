@@ -235,6 +235,14 @@ with any release.
   `TransformResult`). Signal data keeps its dtype (float64), not float32.
 - A frame may be up to 64 GiB: offline, a whole recording travels in one
   `transform`.
+- A custom script in Sterile mode runs in a container of the same image
+  (`python -m meegxer.plugins.sterile_script`). Before the plugin protocol
+  starts, the host sends one frame `{"type": "script", "name": FILE.py,
+  "sha256": HEX}` with the file's bytes as the `uint8` array `source` (at most
+  64 MiB). The container checks the bytes against `sha256`, writes the file to
+  its private `/tmp` (the name without folders) and serves it as
+  `python -m meegxer.plugins.script FILE` does: the rest of the stream is the
+  plugin protocol above.
 
 ## Conformance
 

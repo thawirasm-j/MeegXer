@@ -12,6 +12,6 @@ LOCAL_CODE_NOTICE = (
     "If you work with identifiable patient data, running it may break your "
     "institution's data rules (HIPAA, GDPR, IRB approval). Add only code you "
     "trust.\n\n"
-    "Sterile mode (planned) will run plugins isolated in a container, away from "
-    "the network and the rest of your computer."
+    "A custom script can run isolated instead: in Sterile mode it runs in a "
+    "container, away from the network and the rest of your computer."
 )

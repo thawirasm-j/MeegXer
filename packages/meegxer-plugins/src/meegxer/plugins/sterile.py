@@ -30,7 +30,7 @@ import math
 import os
 import sys
 from collections.abc import Callable, Mapping
-from dataclasses import fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -64,6 +64,7 @@ from meegxer.plugins.worker import (
 )
 
 WORKER_NAME = "meegxer.sterile_worker"
+SCRIPT_ENTRY = "meegxer.plugins.sterile_script"  # a custom script's container
 # the largest frame either side accepts: a whole recording travels in one
 # transform offline (both ends are MeegXer, so not a plugin's 256 MiB)
 MAX_FRAME = 64 * 1024**3
@@ -384,24 +385,80 @@ IMAGE_ENV = "MEEGXER_STERILE_IMAGE"  # another tag (CI's meegxer-sterile:ci)
 LOCAL_ENV = "MEEGXER_STERILE_LOCAL"
 
 
+@dataclass(frozen=True)
+class SterileScriptLauncher:
+    """A custom script in Sterile mode: a container of the Sterile image (the
+    same isolation as the built-in strips) running ``python -m
+    meegxer.plugins.sterile_script``, which takes the script's code from the
+    first frame on stdin (``preamble``): nothing is mounted. ``local`` runs it
+    as a local process instead (tests and development; needs
+    ``MEEGXER_ALLOW_UNSANDBOXED=1``)."""
+
+    name: str  # the script's file name
+    source: bytes  # its code, read when the run starts
+    image: str = IMAGE
+    local: bool = False
+    memory: str = "8g"
+
+    @property
+    def sandboxed(self) -> bool:
+        return not self.local
+
+    def _container(self) -> ContainerLauncher:
+        return ContainerLauncher(self.image, memory=self.memory)
+
+    def command(self, name: str) -> list[str]:
+        if self.local:
+            return LocalLauncher((sys.executable, "-m", SCRIPT_ENTRY)).command(name)
+        base = self._container().command(name)  # [..., image]
+        return [*base[:-1], "--entrypoint", "python", base[-1], "-m", SCRIPT_ENTRY]
+
+    def kill(self, name: str) -> None:
+        if not self.local:
+            self._container().kill(name)
+
+    def environment(self) -> dict[str, str] | None:
+        return None
+
+    def describe(self) -> str:
+        where = "a local process" if self.local else f"container {self.image}"
+        return f"custom script {self.name} (Sterile, {where})"
+
+    def preamble(self) -> list[tuple[dict[str, Any], dict[str, npt.NDArray[Any]]]]:
+        """The frame the worker reads before the plugin protocol: the code."""
+        header = {"type": "script", "name": self.name,
+                  "sha256": hashlib.sha256(self.source).hexdigest()}  # fmt: skip
+        return [(header, {"source": np.frombuffer(self.source, dtype=np.uint8)})]
+
+
+def script_path(processor: PluginProcessor) -> Path | None:
+    """The file a custom script strip runs (``python -m meegxer.plugins.script
+    FILE``), or None for another local plugin."""
+    command = list(type(processor).origin.get("command") or [])
+    if len(command) >= 4 and command[1:3] == ["-m", "meegxer.plugins.script"]:
+        return Path(command[-1])
+    return None
+
+
 class Isolation:
     """A pipeline running in Sterile mode: its worker, closed with ``close``,
-    which also gives each stage its local processor back."""
+    which also gives each stage its local processor back (and each custom
+    script its local process)."""
 
     def __init__(
         self,
         worker: SterileWorker,
         proxied: list[str],
-        originals: list[tuple[Stage, Processor]] | None = None,
+        undo: list[Callable[[], None]] | None = None,
     ) -> None:
         self.worker = worker
-        self.proxied = proxied  # the node ids that run in the worker
-        self._originals = originals or []
+        self.proxied = proxied  # the node ids that run in the Sterile image
+        self._undo = undo or []
 
     def close(self) -> None:
-        for stage, processor in self._originals:
-            stage.processor = processor
-        self._originals = []
+        for step in self._undo:
+            step()
+        self._undo = []
         self.worker.close()
 
     def __enter__(self) -> Isolation:
@@ -419,20 +476,25 @@ def isolate(
     timeout: float = 3600.0,
 ) -> Isolation:
     """Run ``graph``'s built-in processors in one Sterile worker (the
-    ``meegxer.isolation`` entry point; ``meegxer.core.sterile.sterilize``).
-    Refuses a pipeline with a local plugin or custom script, which would run
-    without isolation."""
+    ``meegxer.isolation`` entry point; ``meegxer.core.sterile.sterilize``),
+    and each custom script in a container of the same image, its code sent
+    in when the run starts. Refuses another local plugin (a program of its
+    own, which the image cannot run)."""
     stages = [(node.id, node.impl) for node in graph.nodes
               if isinstance(node.impl, Stage)]  # fmt: skip
+    scripts: list[tuple[str, PluginProcessor, Path]] = []
     for node_id, stage in stages:
         processor = stage.processor
         if isinstance(processor, PluginProcessor) and not isinstance(
             processor.launcher, ContainerLauncher
         ):
-            raise SterileError(
-                f"{node_id}: a custom script or local plugin runs as a local "
-                "process, without isolation; Sterile mode cannot run it yet"
-            )
+            path = script_path(processor)
+            if path is None:
+                raise SterileError(
+                    f"{node_id}: a local plugin runs as a program of its own, "
+                    "which Sterile mode cannot isolate (custom scripts can)"
+                )
+            scripts.append((node_id, processor, path))
     local = local or os.environ.get(LOCAL_ENV) == "1"
     image = image or os.environ.get(IMAGE_ENV) or None
     if not local:  # missing or stale: say so now, not after a container start
@@ -441,15 +503,31 @@ def isolate(
         check_image(image or IMAGE)
     worker = SterileWorker(worker_launcher(image, local=local), timeout=timeout)
     proxied = []
-    originals: list[tuple[Stage, Processor]] = []
+    undo: list[Callable[[], None]] = []
     for node_id, stage in stages:
         processor = stage.processor
         if isinstance(processor, (PluginProcessor, SterileProcessor, *HOST_PROCESSORS)):
             continue
         stage.processor = SterileProcessor(processor, worker)
-        originals.append((stage, processor))
+        undo.append(functools.partial(setattr, stage, "processor", processor))
         proxied.append(node_id)
-    return Isolation(worker, proxied, originals)
+    for node_id, processor, path in scripts:
+        try:
+            source = path.read_bytes()  # the code as it is when the run starts
+        except OSError as exc:
+            raise SterileError(f"{node_id}: cannot read the script: {exc}") from None
+        processor.close()  # a local process from before: not used again
+        processor.launcher = SterileScriptLauncher(  # type: ignore[misc]
+            path.name, source, image or IMAGE, local
+        )
+
+        def back(p: PluginProcessor = processor) -> None:
+            p.close()
+            del p.launcher  # the class's: the local process again
+
+        undo.append(back)
+        proxied.append(node_id)
+    return Isolation(worker, proxied, undo)
 
 
 # -- the worker side (python -m meegxer.plugins.sterile_worker) -------------------
