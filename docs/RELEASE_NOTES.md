@@ -7,6 +7,16 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Porting your code (custom scripts).** A guide, `docs/PORTING.md`: which
+  entry point fits what your code works on (a Raw, blocks, a fitted model,
+  windows), before/after recipes for each (CI runs them as written), and
+  what changes when you port. `meegxer-plugin new NAME --kind
+  process|transform|calibrated|features` writes a working, commented
+  template to paste your code into; `meegxer-plugin run --script FILE -i
+  REC [-o OUT] [--param k=v]` tries a script on a recording before adding
+  it and says what came out (channels, rate, length, events, or feature
+  windows).
+
 - **Custom scripts in Sterile mode.** With Sterile mode on, a custom script
   runs in a container of the Sterile image (no network, read-only, no
   capabilities), like the built-in strips, with the same output. Nothing is

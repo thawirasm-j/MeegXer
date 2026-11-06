@@ -10,6 +10,7 @@ from pathlib import Path
 from meegxer.core.notices import LOCAL_CODE_NOTICE
 from meegxer.plugins import index
 from meegxer.plugins.conformance import format_report, run_conformance
+from meegxer.plugins.scaffold import KINDS, new_script
 from meegxer.plugins.worker import ContainerLauncher, LocalLauncher
 
 
@@ -72,6 +73,31 @@ def main(argv: list[str] | None = None) -> int:
         help="a local command speaking the plugin protocol (unsandboxed)",
     )
 
+    new = sub.add_parser(
+        "new", help="write a custom script from a template (docs/PORTING.md)"
+    )
+    new.add_argument("name", help="the script's name, e.g. my_filter")
+    new.add_argument(
+        "--kind",
+        choices=KINDS,
+        default="process",
+        help="process: the whole recording (MNE Raw), offline; transform: block "
+        "by block, live and offline; calibrated: fit, then transform; "
+        "features: values per window",
+    )
+    new.add_argument("--folder", type=Path, default=Path(), help="where to write it")
+
+    trial = sub.add_parser(
+        "run", help="try a custom script on a recording (nothing is added)"
+    )
+    trial.add_argument("--script", type=Path, required=True)
+    trial.add_argument("-i", "--input", type=Path, required=True, help="a recording")
+    trial.add_argument(
+        "-o", "--output", type=Path, help="write the result (.set/.edf, or .tsv)"
+    )
+    trial.add_argument("--param", action="append", default=[], help="name=value")
+    trial.add_argument("--overwrite", action="store_true")
+
     listing = sub.add_parser("list", help="list installed plugins")
     listing.add_argument(
         "--json", action="store_true", help="one JSON array (name, version, ...)"
@@ -80,6 +106,30 @@ def main(argv: list[str] | None = None) -> int:
     rm.add_argument("name")
     args = parser.parse_args(argv)
 
+    if args.command == "new":
+        try:
+            path = new_script(args.name, args.kind, args.folder)
+        except (ValueError, FileExistsError) as exc:
+            parser.error(str(exc))
+        print(f"wrote {path} (a {args.kind} script): put your code where it "
+              "says, then\n"
+              f"  meegxer-plugin run --script {path} -i RECORDING\n"
+              f"  meegxer-plugin add --script {path}")  # fmt: skip
+        return 0
+    if args.command == "run":
+        if not args.script.is_file():
+            parser.error(f"no such script: {args.script}")
+        from meegxer.plugins.trial import try_script
+
+        try:
+            done = try_script(args.script, args.input, out=args.output,
+                              params=_params(args.param),
+                              overwrite=args.overwrite)  # fmt: skip
+        except Exception as exc:  # the script's own error, in its words
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(done.summary())
+        return 0
     if args.command == "check":
         if args.script:
             launcher: ContainerLauncher | LocalLauncher = LocalLauncher(

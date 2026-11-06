@@ -1,8 +1,13 @@
 # Custom scripts
 
 A custom script turns your own MNE-Python code (or code from a paper) into a
-MeegXer strip, without containers or packaging. Write an ordinary script with one
-function, `process`:
+MeegXer strip, without containers or packaging. **New to this? Start with
+`docs/PORTING.md`**: which entry point fits your code, a template to paste it
+into (`meegxer-plugin new NAME --kind process|transform|calibrated|features`),
+before/after recipes, and `meegxer-plugin run --script FILE -i REC` to try it
+on a recording. This page is the reference.
+
+Write an ordinary script with one function, `process`:
 
 ```python
 """Band-pass with MNE."""  # becomes the strip description
@@ -202,6 +207,8 @@ In the GUI: **+ Add strip → ✎ Add a custom script…**, pick the file, read 
 From the command line:
 
 ```bash
+meegxer-plugin new my_filter --kind process    # a template to start from
+meegxer-plugin run --script my_filter.py -i rec.set [-o out.set]  # try it
 meegxer-plugin check --script my_filter.py     # does it follow the conventions?
 meegxer-plugin add --script my_filter.py       # notice, then the same checks
 meegxer-plugin list
