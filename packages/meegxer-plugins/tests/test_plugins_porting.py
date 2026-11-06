@@ -47,7 +47,7 @@ def test_every_template_works_as_written(tmp_path: Path, kind: str) -> None:
 
 def test_the_guides_recipes_work_as_written(tmp_path: Path) -> None:
     recipes = re.findall(r"After:.*?```python\n(.*?)```", GUIDE.read_text(), re.S)
-    assert len(recipes) == 4  # process, transform, calibrated, features
+    assert len(recipes) == 5  # process, transform, calibrated, features, epochs
     for i, code in enumerate(recipes):
         path = tmp_path / f"recipe_{i}.py"
         path.write_text(code)
@@ -92,6 +92,23 @@ def test_run_reports_the_events_a_script_adds(tmp_path: Path, recording: Path) -
     assert done.events["peak"] == 2 and "events: " in done.summary()
 
 
+def test_run_tries_an_epochs_script_after_an_epochs_strip(
+    tmp_path: Path, recording: Path
+) -> None:
+    script = new_script("reject", "epochs", tmp_path)
+    out = tmp_path / "kept-epo.fif"
+    done = try_script(script, recording, out=out, epochs={"tmax": 0.5})
+    assert (done.kind, done.epochs_in, done.kept["go"]) == ("epochs", 2, 2)
+    assert "kept 2 of 2 epochs (go 2) x 4 channels" in done.summary()
+    written = mne.read_epochs(out, verbose="error")
+    assert len(written) == 2 and written.tmax == pytest.approx(0.5)
+    none = try_script(script, recording, params={"threshold": 1.0})  # µV
+    assert (none.epochs_in, sum(none.kept.values())) == (2, 0)
+    assert "kept 0 of 2 epochs x 4 channels" in none.summary()
+    with pytest.raises(ValueError, match=r"write epochs to \.fif or \.set"):
+        try_script(script, recording, out=tmp_path / "kept.tsv")
+
+
 def test_the_cli(
     tmp_path: Path, recording: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -103,3 +120,19 @@ def test_the_cli(
     assert main(["run", "--script", str(script), "-i", str(recording),
                  "--param", "gain=2.0"]) == 0  # fmt: skip
     assert "script.lab_filter: 4 channels" in capsys.readouterr().out
+    assert main(["new", "lab_reject", "--kind", "epochs",
+                 "--folder", str(tmp_path)]) == 0  # fmt: skip
+    capsys.readouterr()
+    assert main(["run", "--script", str(tmp_path / "lab_reject.py"),
+                 "-i", str(recording), "--epochs", "tmin=-0.1"]) == 0  # fmt: skip
+    assert "kept 2 of 2 epochs" in capsys.readouterr().out
+
+
+def test_run_tries_the_file_as_it_is_now_after_add(
+    tmp_path: Path, recording: Path
+) -> None:
+    """Trying a script again after adding it runs the file (not a clash
+    with the added copy of the same name)."""
+    script = new_script("added", "epochs", tmp_path)
+    assert main(["add", "--script", str(script), "--accept-risk"]) == 0
+    assert try_script(script, recording).kept["go"] == 2

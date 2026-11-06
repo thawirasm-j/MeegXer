@@ -14,9 +14,10 @@ write files. The reference for every convention is `docs/CUSTOM_SCRIPTS.md`.
 | blocks of samples, as a NumPy array (a causal filter, a running normalisation) | `transform` | `transform(data, state, info, ...)` returns `(data, state)` | live and offline |
 | a model learnt first, then applied (a spatial filter, a classifier, a z-score) | `calibrated` | `fit(raw, ...)` returns the model; `transform(data, state, model, ...)` | live and offline |
 | one value (or a few) per channel per analysis window (band power, entropy, a ratio) | `features` | `features(data, info, ...)` returns `{name: per-channel values}` | live and offline |
+| the epochs around events, as `mne.Epochs` (rejection, baseline, relabelling) | `epochs` | `process_epochs(epochs, ...)` returns the Epochs kept; after an Epochs strip | offline |
 
-Coming next: `mne.Epochs` (`process_epochs`), scripts made of several files
-with data files, and declared extra packages (`REQUIRES`).
+Coming next: scripts made of several files with data files, and declared
+extra packages (`REQUIRES`).
 
 ## 2. Five steps
 
@@ -30,7 +31,9 @@ meegxer-plugin add --script my_filter.py          # make it a strip
 
 `run` uses your script exactly as the strip will (offline, through the same
 runner) and says what came out: the channels, rate and length, and the events
-it added, or the feature windows. `--param low=0.5` tries another setting.
+it added, the feature windows, or how many epochs it kept. `--param low=0.5`
+tries another setting; an epochs script gets the epochs an Epochs strip cuts
+first (`--epochs tmin=-0.5` sets that strip's settings).
 `add` checks it again (the conformance suite: settings, block by block equal
 to one pass, a restart) and asks you to accept the local-code notice.
 
@@ -188,6 +191,39 @@ def features(data, info, window: float = 2.0, step: float = 0.5):
     return {"alpha_theta": alpha / theta}
 ```
 
+### A loop over epochs → `epochs`
+
+Before: you cut epochs with MNE, then clean them.
+
+```python
+events, event_id = mne.events_from_annotations(raw)
+epochs = mne.Epochs(raw, events, event_id, tmin=-0.2, tmax=0.8, preload=True)
+epochs.drop_bad(reject={"eeg": 100e-6})
+epochs.apply_baseline((None, 0))
+epochs.save("sub-01-epo.fif")
+```
+
+After: the Epochs strip cuts them (its events, `tmin`, `tmax`), your script
+does the rest, an epochs writer after it saves them.
+
+```python
+def process_epochs(epochs, threshold: float = 100.0):
+    """Peak-to-peak rejection, then the pre-stimulus baseline.
+
+    Parameters
+    ----------
+    threshold : float
+        Largest peak-to-peak amplitude kept (µV).
+    """
+    epochs.drop_bad(reject={"eeg": threshold * 1e-6}, verbose="error")  # µV -> V
+    return epochs.apply_baseline((None, 0), verbose="error")
+```
+
+Return the epochs you keep, at the same rate; their labels (`event_id`) are
+the labels the strips after it see. Settings shown to people are better in
+µV (`(µV)` in the docstring), as the built-in strips show amplitudes; the
+data stay in volts.
+
 ## 4. What changes when you port
 
 | In your code | In a MeegXer script |
@@ -200,6 +236,7 @@ def features(data, info, window: float = 2.0, step: float = 0.5):
 | units | volts, as in MNE (the GUI shows µV) |
 | random numbers | seed them (`np.random.default_rng(0)`): results must repeat |
 | events you mark | `raw.annotations.append(...)` in `process`: they become events on the Events rail |
+| `mne.Epochs(raw, events, ...)` | the Epochs strip before an `epochs` script (its events, `tmin`, `tmax`) |
 
 ## 5. When the check says no
 

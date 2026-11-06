@@ -301,7 +301,8 @@ Strips and plugins say which lines they read and write through their ports.
 Built: manifest ports, the transform and fit contract, both schedulers (live:
 wait and align, a reader's input held at most 30 s for a lagging rail), the
 conformance check, the plugin protocol and the Python SDK, and the chain view.
-Still to come: sources declaring extra outputs, custom scripts, the Octave SDK.
+Still to come: sources declaring extra outputs, custom scripts on rails other
+than epochs, the Octave SDK.
 
 - **Manifest ports name lines [rule 6].**
   - Inputs: `[{"name": "in", "type": "signal"}, {"name": "labels", "type": "events", "rail": "events"}]`.
@@ -322,8 +323,10 @@ Still to come: sources declaring extra outputs, custom scripts, the Octave SDK.
   - SDKs pass them as a dict, the way `info["events"]` works for fit now.
 - **Sources.** A source may declare extra outputs too: the file's events, an
   EEGLAB decomposition as ICs. That is how the Input strip starts rails.
-- **Custom scripts.** Extra parameters named after rails (`events`, `ics`) receive
-  those rails. Returning a dict with `rails` writes them.
+- **Custom scripts.** Built for the epochs rail: `process_epochs(epochs, ...)`
+  reads it as `mne.Epochs` and writes its own (`docs/CUSTOM_SCRIPTS.md`, Epochs
+  scripts). Still to come: extra parameters named after other rails (`events`,
+  `ics`) receive those rails, and returning a dict with `rails` writes them.
 
 ## 6. Build order (one PR each)
 

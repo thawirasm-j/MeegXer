@@ -59,6 +59,15 @@ such strip gets ``window`` (default 2 s) and ``step`` (0.5 s) settings; declare
 them in the signature to choose other defaults (``features`` then receives them
 too). ``info`` is optional, as with ``transform``.
 
+An epochs script defines ``process_epochs``, offline, after an Epochs strip::
+
+    def process_epochs(epochs, threshold: float = 100e-6):
+        epochs.drop_bad(reject={"eeg": threshold})
+        return epochs            # the epochs kept, at the same rate
+
+It gets the ``epochs`` rail as ``mne.Epochs`` (labelled by event) and writes the
+epochs it returns to its own ``epochs`` rail; the signal passes on unchanged.
+
 The runner speaks spec/plugin-protocol.md through the bundled SDK, in its own
 process, with the user's permissions (rule 9).
 """
@@ -78,7 +87,8 @@ import numpy as np
 
 from meegxer.plugins._sdk import Plugin, run
 
-_ENTRY = ("process", "transform", "features")
+_ENTRY = ("process", "transform", "features", "process_epochs")
+EPOCHS_PORT = "epochs"  # the rail an epochs script reads and writes
 # transform/features parameters that are not settings
 _RESERVED = {"state", "model", "info"}
 # the windowing settings every features script gets (seconds)
@@ -105,8 +115,9 @@ def load_script(path: Path) -> ModuleType:
     if len(found) != 1:
         raise ScriptError(
             f"{path.name} needs one function: process(raw, ...) for offline use, "
-            "transform(data, state, ...) for live and offline use, or "
-            "features(data, ...) for feature extraction"
+            "transform(data, state, ...) for live and offline use, "
+            "features(data, ...) for feature extraction, or "
+            "process_epochs(epochs, ...) for the epochs rail"
             + (f" (it has {' and '.join(found)})" if found else "")
         )
     if found[0] != "transform" and callable(getattr(module, "fit", None)):
@@ -115,7 +126,8 @@ def load_script(path: Path) -> ModuleType:
 
 
 def entry_kind(module: ModuleType) -> str:
-    """Which convention the script follows: process, transform or features."""
+    """Which convention the script follows: process, transform, features or
+    process_epochs."""
     return next(f for f in _ENTRY if callable(getattr(module, f, None)))
 
 
@@ -197,13 +209,24 @@ def _param(name: str, p: inspect.Parameter, hint: Any, text: str) -> dict[str, A
     return spec
 
 
+# an epochs script passes the signal on and rewrites the epochs rail, as the
+# Review epochs strip does (docs/RAILS.md, Epochs rail)
+_EPOCH_PORTS: dict[str, Any] = {
+    "inputs": [{"name": "in", "type": "signal"},
+               {"name": EPOCHS_PORT, "type": "features", "rail": EPOCHS_PORT}],
+    "outputs": [{"name": "out", "type": "signal"},
+                {"name": EPOCHS_PORT, "type": "features", "rail": EPOCHS_PORT}],
+}  # fmt: skip
+
+
 def script_manifest(module: ModuleType, path: Path) -> dict[str, Any]:
     """The plugin manifest of a custom script, from its signature and docstrings."""
     kind = entry_kind(module)
     live = kind == "transform"
     entry = getattr(module, kind)
     params = list(inspect.signature(entry).parameters.items())
-    first = "the recording" if kind == "process" else "the data"
+    first = {"process": "the recording",
+             "process_epochs": "the epochs"}.get(kind, "the data")  # fmt: skip
     if not params:
         raise ScriptError(f"{entry.__name__} needs {first} as its first argument")
     if live and "state" not in dict(params):
@@ -213,8 +236,9 @@ def script_manifest(module: ModuleType, path: Path) -> dict[str, Any]:
             "features gets one whole window and keeps no state; "
             "use transform(data, state) for a stream processor"
         )
+    whole = kind in ("process", "process_epochs")  # no state, model or info
     settings = [(n, p) for n, p in params[1:]
-                if not (kind != "process" and n in _RESERVED)]  # fmt: skip
+                if not (not whole and n in _RESERVED)]  # fmt: skip
     hints = typing.get_type_hints(entry)
     texts = _docstring_params(entry.__doc__ or "")
     windowing = []
@@ -234,13 +258,14 @@ def script_manifest(module: ModuleType, path: Path) -> dict[str, Any]:
         "name": str(getattr(module, "NAME", f"script.{stem}")),
         "version": str(getattr(module, "__version__", "0.1.0")),
         "type": "analysis" if kind == "features" else "stream",
-        "availability": "offline" if kind == "process" else "both",
+        "availability": "offline" if whole else "both",
         "description": summary[0].replace("\n", " ").strip()
         or f"Custom script {path.name}",
         "inputs": [{"name": "in", "type": "signal"}],
         "outputs": [
             {"name": "out", "type": "features" if kind == "features" else "signal"}
         ],
+        **(_EPOCH_PORTS if kind == "process_epochs" else {}),
         "params": [
             _param(name, p, hints.get(name), texts.get(name, ""))
             for name, p in settings
@@ -316,8 +341,9 @@ def _script_units(module: ModuleType, names: list[str]) -> dict[str, Any]:
 
 class ScriptPlugin(Plugin):
     """Wraps ``process(raw, ...)`` (the whole recording in, the same shape out),
-    ``transform(data, state, ...)`` with an optional ``fit(raw, ...)``, or
-    ``features(data, ...)`` (one value per channel and feature, per window)."""
+    ``transform(data, state, ...)`` with an optional ``fit(raw, ...)``,
+    ``features(data, ...)`` (one value per channel and feature, per window), or
+    ``process_epochs(epochs, ...)`` (the epochs rail in and out)."""
 
     manifest: ClassVar[dict[str, Any]] = {}
 
@@ -340,13 +366,35 @@ class ScriptPlugin(Plugin):
         model: dict[str, Any] | None,
         state: dict[str, Any] | None,
         params: dict[str, Any],
-    ) -> tuple[Any, ...]:
+    ) -> Any:  # a tuple, or a dict for a result that writes rails (spec 0.2.17)
         kind = entry_kind(self.module)
         if kind == "transform":
             return self._live(data, info, model, state, params)
         if kind == "features":
             return self._windows(data, info, state, params)
+        if kind == "process_epochs":
+            return self._epochs(data, info, state, params)
         return self._process(data, info, state, params)
+
+    def _epochs(
+        self,
+        data: np.ndarray,
+        info: dict[str, Any],
+        state: dict[str, Any] | None,
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """The epochs rail as ``mne.Epochs`` through ``process_epochs``; the
+        signal passes on unchanged. The epochs it returns (fewer when it drops
+        some, other data or times) go back on the rail at their own samples."""
+        windows = list((info.get("rails") or {}).get(EPOCHS_PORT) or [])
+        kept: list[dict[str, Any]] = []
+        if windows:
+            epochs = _to_epochs(windows, float(info["sfreq"]))
+            got = self.module.process_epochs(epochs, **params)
+            kept = _from_epochs(got if got is not None else epochs, windows,
+                                float(info["sfreq"]))  # fmt: skip
+        return {"data": data, "state": state or {}, "events": [],
+                "rails": {EPOCHS_PORT: kept}}  # fmt: skip
 
     def _windows(
         self,
@@ -453,6 +501,61 @@ class ScriptPlugin(Plugin):
                 f"samples, got {array.shape}"
             )
         return array, state or {}, events
+
+
+def _to_epochs(windows: list[dict[str, Any]], sfreq: float) -> Any:
+    """The epochs rail's windows (dims epoch, channel, time; one epoch each,
+    its label in ``coords["epoch"]``) as an ``mne.EpochsArray``, each epoch's
+    event at its time 0 on the source's clock."""
+    import mne
+
+    first = windows[0]
+    coords = first.get("coords") or {}
+    channels = [str(c) for c in coords.get("channel", [])]
+    times = np.asarray(coords.get("time", []), dtype=np.float64)
+    labels = [str((w.get("coords") or {}).get("epoch", ["epoch"])[0]) for w in windows]
+    codes = {label: i + 1 for i, label in enumerate(dict.fromkeys(labels))}
+    onset = round(float(times[0]) * sfreq) if times.size else 0
+    events = np.array([[int(w["window"][0]) - onset, 0, codes[label]]
+                       for w, label in zip(windows, labels, strict=True)])  # fmt: skip
+    x = np.stack([np.asarray(w["data"], dtype=np.float64)[0] for w in windows])
+    info = mne.create_info(channels, sfreq, "eeg")
+    return mne.EpochsArray(x, info, events, tmin=float(times[0]) if times.size else 0.0,
+                           event_id=codes, baseline=None, verbose="error")  # fmt: skip
+
+
+def _from_epochs(
+    epochs: Any, windows: list[dict[str, Any]], sfreq: float
+) -> list[dict[str, Any]]:
+    """What ``process_epochs`` returned, as the rail's windows: each kept epoch
+    at its own samples (its event plus its times), with its label."""
+    import mne
+
+    if not isinstance(epochs, mne.BaseEpochs):
+        raise ScriptError(
+            f"process_epochs must return mne.Epochs, got {type(epochs).__name__}"
+        )
+    if float(epochs.info["sfreq"]) != sfreq:
+        raise ScriptError("process_epochs must keep the sampling rate")
+    names = {code: label for label, code in epochs.event_id.items()}
+    times = [float(t) for t in epochs.times]
+    offset = round(times[0] * sfreq)
+    out = []
+    x = epochs.get_data(copy=True)
+    for i, (sample, _, code) in enumerate(epochs.events):
+        lo = int(sample) + offset
+        # the timestamp from the epoch it came from (mne keeps the original
+        # index in ``selection``), else from the first one, by samples
+        pick = int(epochs.selection[i]) if i < len(epochs.selection) else 0
+        source = windows[pick] if 0 <= pick < len(windows) else windows[0]
+        ts = float(source.get("timestamp", 0.0))
+        ts += (lo - int(source["window"][0])) / sfreq
+        out.append({"window": [lo, lo + x.shape[2]], "timestamp": ts,
+                    "dims": ["epoch", "channel", "time"],
+                    "coords": {"epoch": [names.get(int(code), str(code))],
+                               "channel": list(epochs.ch_names), "time": times},
+                    "data": x[i][np.newaxis], "unit": "V"})  # fmt: skip
+    return out
 
 
 def _feature_table(got: Any, n_channels: int) -> tuple[np.ndarray, list[str]]:

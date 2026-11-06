@@ -46,9 +46,10 @@ def run(
       e.g. a ``.set``'s ICA).
     - ``output``: where the result is read. None: the signal at the chain's
       end, as ``mne.io.Raw``. A strip's id: its signal (``mne.io.Raw``), or
-      for an Epochs strip (or Review epochs) its epochs (``mne.Epochs``;
-      None when no event was cut). ``"strip:port"``: that rail output, e.g.
-      ``"ica1:ics"`` for the ICA strip's components (``misc`` channels).
+      for an Epochs strip (or Review epochs, an epochs script) its epochs
+      (``mne.Epochs``; None when no event was cut). ``"strip:port"``: that
+      rail output, e.g. ``"ica1:ics"`` for the ICA strip's components
+      (``misc`` channels).
     - ``ica``: an ``mne.preprocessing.ICA`` of ``raw``, or its file
       (``-ica.fif``): its components start the ICs rail at the input
       (``"input:ics"``), instead of a ``.set``'s own.

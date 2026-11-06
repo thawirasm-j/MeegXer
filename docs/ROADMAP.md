@@ -81,7 +81,7 @@ Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
 (now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
 reference.
 
-**Next:** M11's exit criterion is met (SSVEP → keypress, 0.5.0b1; Sterile output identical to local, 0.5.0b2). Left in M11: the Octave script tier (M11.5), and structured custom scripting (decided 2026-11-06: the scaffold and porting guide, done; epochs scripts, script folders, declared dependencies, next); then M12 (spec freeze, validation report, ERP CORE replication).
+**Next:** M11's exit criterion is met (SSVEP → keypress, 0.5.0b1; Sterile output identical to local, 0.5.0b2). Left in M11: the Octave script tier (M11.5), and structured custom scripting (decided 2026-11-06: the scaffold and porting guide, done (PR #167); epochs scripts, done (this PR); script folders, declared dependencies, next); then M12 (spec freeze, validation report, ERP CORE replication).
 
 ### M9: Fix and harden (0.3.0bN)
 

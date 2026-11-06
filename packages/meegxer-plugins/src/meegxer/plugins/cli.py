@@ -83,7 +83,8 @@ def main(argv: list[str] | None = None) -> int:
         default="process",
         help="process: the whole recording (MNE Raw), offline; transform: block "
         "by block, live and offline; calibrated: fit, then transform; "
-        "features: values per window",
+        "features: values per window; epochs: the epochs an Epochs strip cut "
+        "(MNE Epochs), offline",
     )
     new.add_argument("--folder", type=Path, default=Path(), help="where to write it")
 
@@ -93,9 +94,21 @@ def main(argv: list[str] | None = None) -> int:
     trial.add_argument("--script", type=Path, required=True)
     trial.add_argument("-i", "--input", type=Path, required=True, help="a recording")
     trial.add_argument(
-        "-o", "--output", type=Path, help="write the result (.set/.edf, or .tsv)"
+        "-o",
+        "--output",
+        type=Path,
+        help="write the result (.set/.edf, .tsv for features, -epo.fif/.set "
+        "for epochs)",
     )
     trial.add_argument("--param", action="append", default=[], help="name=value")
+    trial.add_argument(
+        "--epochs",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="an epochs script: a setting of the Epochs strip before it "
+        "(tmin, tmax, events, baseline)",
+    )
     trial.add_argument("--overwrite", action="store_true")
 
     listing = sub.add_parser("list", help="list installed plugins")
@@ -111,7 +124,8 @@ def main(argv: list[str] | None = None) -> int:
             path = new_script(args.name, args.kind, args.folder)
         except (ValueError, FileExistsError) as exc:
             parser.error(str(exc))
-        print(f"wrote {path} (a {args.kind} script): put your code where it "
+        article = "an" if args.kind[0] in "aeiou" else "a"
+        print(f"wrote {path} ({article} {args.kind} script): put your code where it "
               "says, then\n"
               f"  meegxer-plugin run --script {path} -i RECORDING\n"
               f"  meegxer-plugin add --script {path}")  # fmt: skip
@@ -124,7 +138,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             done = try_script(args.script, args.input, out=args.output,
                               params=_params(args.param),
-                              overwrite=args.overwrite)  # fmt: skip
+                              overwrite=args.overwrite,
+                              epochs=_params(args.epochs))  # fmt: skip
         except Exception as exc:  # the script's own error, in its words
             print(f"error: {exc}", file=sys.stderr)
             return 1

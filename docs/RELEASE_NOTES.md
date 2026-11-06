@@ -17,6 +17,17 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   it and says what came out (channels, rate, length, events, or feature
   windows).
 
+- **Epochs scripts.** A custom script with `process_epochs(epochs, ...)` works
+  on the epochs an Epochs strip cut, as `mne.Epochs` (rejection, baseline,
+  relabelling, your own measures that keep epochs), and the strips after it
+  get the epochs it returns. `meegxer-plugin new NAME --kind epochs` writes a
+  template; `meegxer-plugin run` cuts the epochs first and says how many were
+  kept, per label (`-o kept-epo.fif` writes them). It runs in Sterile mode too.
+  `meegxer-plugin check` now gives a strip that reads the epochs rail test
+  epochs to work on.
+- **Fixed:** `meegxer-plugin run` on a script already added (to try a change)
+  stopped with "two node classes registered"; it now runs the file as it is.
+
 - **Custom scripts in Sterile mode.** With Sterile mode on, a custom script
   runs in a container of the Sterile image (no network, read-only, no
   capabilities), like the built-in strips, with the same output. Nothing is

@@ -139,11 +139,37 @@ def features(data, info, window: float = 2.0, step: float = 0.5):
     }}
 '''
 
+EPOCHS = '''"""{title}: what it does, in one line (the strip's description)."""
+
+# A script on the epochs an Epochs strip cut, as MNE gives them: paste the body
+# of your script on mne.Epochs into process_epochs(). Put it after an Epochs
+# strip; the strips after it (the ERP tap, the epochs writer) get the epochs it
+# returns. Offline only (it sees all of the epochs at once).
+{credit}
+
+def process_epochs(epochs, threshold: float = 100.0):
+    """Drop epochs by peak-to-peak amplitude (replace with your own).
+
+    Parameters
+    ----------
+    threshold : float
+        Largest peak-to-peak amplitude kept (µV).
+    """
+    # `epochs` is an mne.Epochs: one per event, labelled by its event (its
+    # event_id), in volts, times from the event. Return the epochs you keep:
+    # fewer of them, other data, other labels, but the same rate.
+    #
+    # -- your code: anything on `epochs` (rejection, baseline, relabelling...)
+    epochs.drop_bad(reject={{"eeg": threshold * 1e-6}}, verbose="error")  # µV -> V
+    return epochs
+'''
+
 TEMPLATES = {
     "process": PROCESS,
     "transform": TRANSFORM,
     "calibrated": CALIBRATED,
     "features": FEATURES,
+    "epochs": EPOCHS,
 }
 KINDS = tuple(TEMPLATES)
 

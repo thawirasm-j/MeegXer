@@ -3,7 +3,7 @@
 A custom script turns your own MNE-Python code (or code from a paper) into a
 MeegXer strip, without containers or packaging. **New to this? Start with
 `docs/PORTING.md`**: which entry point fits your code, a template to paste it
-into (`meegxer-plugin new NAME --kind process|transform|calibrated|features`),
+into (`meegxer-plugin new NAME --kind process|transform|calibrated|features|epochs`),
 before/after recipes, and `meegxer-plugin run --script FILE -i REC` to try it
 on a recording. This page is the reference.
 
@@ -198,6 +198,46 @@ def features(data, info, fmin: float = 8.0, fmax: float = 13.0):
   (`UNITS = "V^2"`) or one per feature name
   (`UNITS = {"alpha_power": "V^2/Hz", "line_length": "V"}`). Use `"1"` for a
   dimensionless value.
+
+## Epochs scripts
+
+A script with `process_epochs` works on the epochs an Epochs strip cut, as
+`mne.Epochs`. Put it after an Epochs strip; the strips after it (an ERP tap, the
+epochs writers, the Python API's `output=`) get the epochs it returns. Offline
+only, like `process`.
+
+```python
+"""Drop epochs by peak-to-peak amplitude, then baseline-correct."""
+
+
+def process_epochs(epochs, threshold: float = 100.0):
+    """Peak-to-peak rejection (MNE).
+
+    Parameters
+    ----------
+    threshold : float
+        Largest peak-to-peak amplitude kept (µV).
+    """
+    epochs.drop_bad(reject={"eeg": threshold * 1e-6}, verbose="error")  # µV -> V
+    return epochs.apply_baseline((None, 0), verbose="error")
+```
+
+- `epochs` holds one epoch per event, labelled by its event (`event_id`, the
+  labels on the epochs rail), in volts, with times from the event as the Epochs
+  strip set them. Settings come from the signature, as for `process`.
+- Return `mne.Epochs` (the same object is fine): fewer epochs, other data
+  (a baseline, a spatial filter), other labels (`epochs.event_id`), other times
+  (`crop`). The **sampling rate stays the same**; resample before the Epochs
+  strip instead.
+- The strip passes the signal on unchanged and writes its own epochs rail
+  (`docs/RAILS.md`, rule 8), as *Review epochs* does: the strips after it read
+  its epochs, and the Epochs strip's own rail stays as it was cut.
+- Where a Reject segments strip has cut the recording, `process_epochs` is
+  called once for each stretch between cuts (with that stretch's epochs).
+- `meegxer-plugin check` gives the script test epochs (around an event every
+  second, labelled `go` and `stop`); `meegxer-plugin run --script FILE -i REC`
+  cuts them with an Epochs strip first (`--epochs tmin=-0.5` sets its settings)
+  and says how many it kept, per label; `-o kept-epo.fif` writes them.
 
 Octave/EEGLAB scripts (`function EEG = process(EEG, ...)`) are planned next.
 
