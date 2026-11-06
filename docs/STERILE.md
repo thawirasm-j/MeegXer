@@ -125,7 +125,11 @@ modules and data files), each checked by its SHA-256, and the container
 serves it as
 `meegxer.plugins.script` does outside Sterile mode, so the output is the
 same. The code is read when the run starts, so an edited script needs no
-image rebuild. After the run the strip is a local process again. A local
+image rebuild. A script's extra packages (`REQUIRES`) are installed into
+the image by `meegxer sterile build`, at the versions installed here, and
+listed in its `org.meegxer.requires` label: after adding a script that
+declares one, build again (a run says so). After the run the strip is a
+local process again. A local
 plugin that is a program of its own (`meegxer-plugin add --local`) cannot run
 in the image: Sterile mode refuses it, saying so.
 

@@ -17,6 +17,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   it and says what came out (channels, rate, length, events, or feature
   windows).
 
+- **Extra packages for scripts (`REQUIRES`).** A script names the packages
+  it imports that MeegXer does not ship: `REQUIRES = ["pyriemann"]`.
+  `meegxer-plugin add|check|run` refuse it while one is missing, naming the
+  command that installs it; sessions record the versions used (a different
+  version warns); `meegxer sterile build` installs them into the Sterile image,
+  and a run whose scripts need one the image lacks asks to build again.
+
 - **Script folders.** A method made of several files (helper modules,
   trained weights, a lookup table) is added as its folder: `meegxer-plugin
   add --script lab_method/` or *+ Add strip → ✎ Add a script folder…*. The

@@ -139,6 +139,11 @@ def origin_of(entry: dict[str, Any]) -> dict[str, Any]:
             origin["sha256"] = code_sha256(command)
         if entry.get("script"):
             origin["script"] = Path(entry["script"]).name
+            from meegxer.plugins.requires import versions
+
+            required = versions(Path(entry["script"]))  # its REQUIRES, as installed
+            if required:
+                origin["requires"] = required
         return origin
     origin = {"image": entry["image"]}
     for key in ("image_id", "repo_digests", "engine"):
@@ -210,10 +215,26 @@ def add_local(
         "manifest": manifest,
     }
     if script is not None:
+        from meegxer.plugins.requires import declared
+
         entry["script"] = str(script.resolve())
+        required = [str(r) for r in declared(script)]
+        if required:
+            entry["requires"] = required  # what it declares (REQUIRES)
     entries = [e for e in load_index(path) if e["manifest"]["name"] != manifest["name"]]
     save_index([*entries, entry], path)
     return entry
+
+
+def declared_requires(path: Path | None = None, *, but: str = "") -> list[str]:
+    """Every package the added scripts declare (``REQUIRES``), in order, the
+    script named ``but`` left out: what ``meegxer sterile build`` installs and
+    an install command must name together."""
+    found: list[str] = []
+    for entry in load_index(path):
+        if entry.get("consent") and entry["manifest"]["name"] != but:
+            found += [str(r) for r in entry.get("requires", [])]
+    return list(dict.fromkeys(found))
 
 
 def remove(name: str, path: Path | None = None) -> bool:

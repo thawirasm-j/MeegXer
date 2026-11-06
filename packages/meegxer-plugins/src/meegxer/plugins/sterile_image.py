@@ -6,8 +6,12 @@ The image holds exactly the code the host runs: the installed ``meegxer.core``,
 are: a release, or an edited checkout), and their third-party dependencies are
 installed at the versions installed here. The image is labelled with the
 code's hash (``meegxer.plugins.sterile.code_hash``), so a run can tell at once
-whether it is up to date. Building needs the network once (the Python base
-image and the dependencies); running it never does.
+whether it is up to date. The extra packages the added custom scripts declare
+(``REQUIRES``; ``meegxer.plugins.requires``) are installed too, at the
+versions installed here, and listed in a second label: a run with a script
+whose packages the image lacks is refused, saying to build again. Building
+needs the network once (the Python base image and the dependencies); running
+it never does.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from importlib import metadata
 from pathlib import Path
 
@@ -41,6 +45,7 @@ from meegxer.plugins.worker import find_engine
 
 CODE_LABEL = "org.meegxer.code"
 VERSION_LABEL = "org.meegxer.version"
+REQUIRES_LABEL = "org.meegxer.requires"  # the scripts' packages: name==version,...
 DISTRIBUTIONS = ("meegxer-core", "meegxer-nodes", "meegxer-plugins")
 # what the worker never runs: the keyboard sink's library (a host sink; on
 # Linux it builds evdev from source)
@@ -61,21 +66,23 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt \\
 COPY meegxer /app/meegxer
 ENV PYTHONPATH=/app PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \\
     HOME=/tmp MNE_DONTWRITE_HOME=true MPLCONFIGDIR=/tmp NUMBA_CACHE_DIR=/tmp
-LABEL {code_label}="{code}" {version_label}="{version}"
+LABEL {code_label}="{code}" {version_label}="{version}" \\
+    {requires_label}="{requires}"
 USER worker
 WORKDIR /tmp
 ENTRYPOINT ["python", "-m", "meegxer.plugins.sterile_worker"]
 """
 
 
-def requirements() -> list[str]:
-    """The third-party distributions the worker's packages need, with every
-    dependency of theirs, pinned to the versions installed here
-    (``name==version``), as Linux sees their markers."""
+def requirements(extra: Iterable[str] = ()) -> list[str]:
+    """The third-party distributions the worker's packages need, and the
+    ``extra`` ones (the scripts' packages), with every dependency of theirs,
+    pinned to the versions installed here (``name==version``), as Linux sees
+    their markers."""
     env = {key: str(value) for key, value in default_environment().items()}
     env.update(LINUX, extra="")
     pinned: dict[str, str] = {}
-    todo = list(DISTRIBUTIONS)
+    todo = [*DISTRIBUTIONS, *extra]
     seen: set[str] = set()
     while todo:
         name = canonicalize_name(todo.pop())
@@ -96,9 +103,45 @@ def requirements() -> list[str]:
     return [f"{name}=={pinned[name]}" for name in sorted(pinned)]
 
 
-def context(folder: Path) -> Path:
+def script_packages(*, strict: bool = True) -> dict[str, str]:
+    """The packages the added custom scripts declare (``REQUIRES``), each at
+    the version installed here. ``strict``: one that is not installed is
+    refused, saying so (else left out)."""
+    from meegxer.plugins.index import declared_requires
+
+    found: dict[str, str] = {}
+    for text in declared_requires():
+        name = canonicalize_name(Requirement(text).name)
+        try:
+            found[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            if strict:
+                raise SterileError(
+                    f"{name}, which an added custom script needs (REQUIRES), is "
+                    "not installed here: install it, then build the image"
+                ) from None
+    return dict(sorted(found.items()))
+
+
+def beyond_meegxer(packages: Mapping[str, str]) -> dict[str, str]:
+    """``packages`` without those the image has anyway: MeegXer's own
+    dependencies, at the same version (numpy, MNE, SciPy...)."""
+    if not packages:
+        return {}
+    base = dict(r.split("==", 1) for r in requirements())
+    return {n: v for n, v in packages.items() if base.get(n) != v}
+
+
+def requires_text(packages: Mapping[str, str]) -> str:
+    """``packages`` as the image's label says them: ``name==version,...``."""
+    return ",".join(f"{n}=={v}" for n, v in sorted(packages.items()))
+
+
+def context(folder: Path, packages: Mapping[str, str] | None = None) -> Path:
     """Write the build context into ``folder``: the Dockerfile, the pinned
-    requirements and a copy of the worker's MeegXer packages."""
+    requirements (with the scripts' ``packages``, by default those of the
+    added scripts) and a copy of the worker's MeegXer packages."""
+    packages = script_packages() if packages is None else packages
     for name in CODE_PACKAGES:
         root = package_dir(name)
         target = folder / Path(*name.split("."))
@@ -106,11 +149,13 @@ def context(folder: Path) -> Path:
             out = target / path.relative_to(root)
             out.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, out)
-    (folder / "requirements.txt").write_text("\n".join(requirements()) + "\n")
+    pinned = requirements(packages)
+    (folder / "requirements.txt").write_text("\n".join(pinned) + "\n")
     python = f"{sys.version_info.major}.{sys.version_info.minor}"
     (folder / "Dockerfile").write_text(DOCKERFILE.format(
         python=python, code_label=CODE_LABEL, code=code_hash(),
         version_label=VERSION_LABEL, version=__version__,
+        requires_label=REQUIRES_LABEL, requires=requires_text(packages),
     ))  # fmt: skip
     return folder
 
@@ -177,10 +222,32 @@ def image_code(tag: str = IMAGE, engine: str | None = None) -> str | None:
     return done.stdout.strip() or ""
 
 
-def check_image(tag: str | None = None, engine: str | None = None) -> str:
+def image_requires(tag: str = IMAGE, engine: str | None = None) -> dict[str, str]:
+    """The scripts' packages ``tag`` was built with (its label), by name."""
+    exe = find_engine(engine)
+    label = '{{index .Config.Labels "' + REQUIRES_LABEL + '"}}'
+    done = subprocess.run([exe, "image", "inspect", "--format", label, tag],
+                          capture_output=True, text=True, check=False,
+                          encoding="utf-8", errors="replace",
+                          timeout=60)  # fmt: skip
+    found = {}
+    for item in done.stdout.strip().split(",") if done.returncode == 0 else []:
+        name, _, version = item.partition("==")
+        if name and version and not name.startswith("<"):  # "<no value>": none
+            found[name] = version
+    return found
+
+
+def check_image(
+    tag: str | None = None,
+    engine: str | None = None,
+    requires: Mapping[str, str] | None = None,
+) -> str:
     """Refuse at once (before a run starts) when the Sterile image (``tag``,
     else ``MEEGXER_STERILE_IMAGE``, else ``meegxer-sterile:VERSION``) is
-    missing or was built from other code, saying what to do. With
+    missing, was built from other code, or lacks a package a custom script
+    needs (``requires``, by name and version; by default those of the added
+    scripts that are installed here), saying what to do. With
     ``MEEGXER_STERILE_LOCAL=1`` (development) no image is needed."""
     if os.environ.get(LOCAL_ENV) == "1" and tag is None:
         return "local worker (development, no container)"
@@ -198,4 +265,14 @@ def check_image(tag: str | None = None, engine: str | None = None) -> str:
             f"the Sterile image {tag} was built from other code than this MeegXer: "
             "run `meegxer sterile build` again"
         )
+    wanted = script_packages(strict=False) if requires is None else requires
+    wanted = beyond_meegxer(wanted)
+    if wanted:
+        has = image_requires(tag, engine)
+        lacking = [f"{n}=={v}" for n, v in sorted(wanted.items()) if has.get(n) != v]
+        if lacking:
+            raise SterileError(
+                f"the Sterile image {tag} lacks {', '.join(lacking)}, which a "
+                "custom script needs (REQUIRES): run `meegxer sterile build` again"
+            )
     return tag

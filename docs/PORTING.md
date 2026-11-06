@@ -19,8 +19,8 @@ write files. The reference for every convention is `docs/CUSTOM_SCRIPTS.md`.
 Code in several files (helper modules, data files such as weights or a
 lookup table): keep the folder, put the entry function in one of its `.py`
 files, and give MeegXer the folder (`--script lab_method/`; *Add a script
-folder…*). See *Script folders* in `docs/CUSTOM_SCRIPTS.md`. Coming next:
-declared extra packages (`REQUIRES`).
+folder…*). See *Script folders* in `docs/CUSTOM_SCRIPTS.md`. Packages
+MeegXer does not ship: name them in `REQUIRES` (*Extra packages* there).
 
 ## 2. Five steps
 
@@ -232,6 +232,7 @@ data stay in volts.
 | In your code | In a MeegXer script |
 |---|---|
 | reading and writing files, paths | none: the input strip reads, writers after it write |
+| `pip install` of a package MeegXer does not ship (pyRiemann, …) | `REQUIRES = ["pyriemann"]` at the top; install it into MeegXer's Python once |
 | `sys.path` tricks, files next to the script | a script folder: helpers import as usual; read data at `Path(__file__).parent / "data" / ...` |
 | numbers you tune (cut-offs, thresholds) | settings: parameters with a default, typed, described in the docstring (`(Hz)` gives the unit) |
 | channel picks (`pick_types`, lists of names) | MeegXer gives the channel types the strip processes (EEG by default; *Advanced → Channel types*); keep the same channels in what you return |

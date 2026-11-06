@@ -349,6 +349,15 @@ def _check_nodes(
                 f"(sha256 {str(installed.get('sha256') or 'missing')[:12]}, "
                 f"recorded {code[:12]})"
             )
+        packages = recorded.get("provenance", {}).get("requires") or {}
+        now = installed.get("requires") or {}
+        changed = [f"{n} {now.get(n, 'not installed')} (recorded {v})"
+                   for n, v in sorted(packages.items()) if now.get(n) != v]  # fmt: skip
+        if changed:  # a script's REQUIRES: library versions, a warning only
+            loaded.warnings.append(
+                f"node {node_id!r}: its packages differ (results may change): "
+                + ", ".join(changed)
+            )
         if not problems:
             continue
         text = f"node {node_id!r}: " + "; ".join(problems)
