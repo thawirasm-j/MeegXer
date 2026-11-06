@@ -93,23 +93,39 @@ class ConsentRequired(PermissionError):
     """A local plugin needs the user to accept the local-code notice first."""
 
 
-def code_files(command: list[str]) -> list[Path]:
-    """The files a local command runs: its arguments that are existing files
-    (the interpreter itself excluded)."""
-    files = []
+def code_entries(command: list[str]) -> list[tuple[str, Path]]:
+    """The files a local command runs, by name: its arguments that are
+    existing files (by file name; the interpreter itself excluded), and for a
+    custom script, every file of the script folder it names (by the folder's
+    name and its path in it, ``folder/helpers.py``;
+    ``meegxer.plugins.script.folder_files``)."""
+    from meegxer.plugins.script import folder_files
+
+    found = []
+    script = command[1:3] == ["-m", "meegxer.plugins.script"]
     for arg in command[1:]:
         path = Path(arg)
         if path.suffix and path.is_file():
-            files.append(path.resolve())
-    return files
+            found.append((path.name, path.resolve()))
+        elif script and path.is_dir():
+            folder = path.resolve()
+            found += [(f"{folder.name}/{rel}", file)
+                      for rel, file in folder_files(folder)]  # fmt: skip
+    return found
+
+
+def code_files(command: list[str]) -> list[Path]:
+    """The files of ``code_entries``."""
+    return [path for _, path in code_entries(command)]
 
 
 def code_sha256(command: list[str]) -> str:
     """One SHA-256 over the code files of a local command (in name order), so
-    a session can tell whether the script changed since it was saved."""
+    a session can tell whether the script, or any file of its folder,
+    changed since it was saved."""
     digest = hashlib.sha256()
-    for path in sorted(code_files(command), key=lambda p: p.name):
-        digest.update(path.name.encode() + b"\0")
+    for name, path in sorted(code_entries(command), key=lambda e: e[0]):
+        digest.update(name.encode() + b"\0")
         digest.update(hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
 

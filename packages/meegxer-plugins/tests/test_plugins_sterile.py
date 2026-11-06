@@ -401,7 +401,8 @@ def test_a_custom_script_runs_in_sterile_mode(recording: Path, tmp_path: Path) -
         assert isinstance(launcher, SterileScriptLauncher)
         # the file's bytes as they are on disk (Windows writes the test's \r\n)
         on_disk = (tmp_path / "lab_highpass.py").read_bytes()
-        assert launcher.name == "lab_highpass.py" and launcher.source == on_disk
+        assert launcher.name == "lab_highpass.py" and not launcher.folder
+        assert launcher.files == (("lab_highpass.py", on_disk),)
         assert set(isolation.proxied) == {"notch", "hp"}
         BatchScheduler(block_size=500).run(isolated)
     same(outputs(isolated), outputs(local))
@@ -445,30 +446,97 @@ def test_an_epochs_script_runs_in_sterile_mode(recording: Path, tmp_path: Path) 
     same(outputs(isolated), outputs(local))
 
 
-def test_the_script_frame_is_checked() -> None:
+def test_a_script_folder_runs_in_sterile_mode(recording: Path, tmp_path: Path) -> None:
+    """A script folder is sent whole: its helper module and data file are in
+    the container, and the output is the local run's."""
+    from meegxer.plugins import index
+    from meegxer.plugins.adapter import plugin_class, probe_manifest
+    from meegxer.plugins.sterile import SterileScriptLauncher
+    from meegxer.plugins.worker import LocalLauncher
+
+    folder = tmp_path / "lab_gain"
+    (folder / "data").mkdir(parents=True)
+    (folder / "main.py").write_text(
+        "from pathlib import Path\n\nimport numpy as np\n\n"
+        "from helpers import scaled\n\n"
+        "GAIN = float(np.load(Path(__file__).parent / 'data' / 'gain.npy'))\n\n\n"
+        "def process(raw):\n    return scaled(raw.get_data(), GAIN)\n"
+    )
+    (folder / "helpers.py").write_text("def scaled(x, g):\n    return x * g\n")
+    np.save(folder / "data" / "gain.npy", np.array(0.5))
+    command = index.script_command(folder)
+    launcher = LocalLauncher(tuple(command), allow=True)
+    origin = index.origin_of({"command": command, "script": str(folder)})
+    cls = plugin_class(probe_manifest(launcher), launcher, origin=origin)
+    registry = Registry([*Registry.from_entry_points().as_mapping().values(), cls])
+
+    def graph() -> Graph:
+        entries = [{"id": "input", "node": "meegxer.core.file",
+                    "params": {"path": str(recording)}},
+                   {"id": "gain", "node": cls.manifest.name, "params": {}},
+                   tap("gain")]  # fmt: skip
+        return Graph.from_dict({"spec_version": SPEC_VERSION, "nodes": entries},
+                               registry)  # fmt: skip
+
+    local = graph()
+    try:
+        BatchScheduler().run(local)
+    finally:
+        local["gain"].impl.processor.close()  # type: ignore[union-attr]
+    isolated = graph()
+    with sterilize(isolated, **WORKER):
+        stage = isolated["gain"].impl
+        assert isinstance(stage, Stage)
+        sent = stage.processor.launcher  # type: ignore[attr-defined]
+        assert isinstance(sent, SterileScriptLauncher) and sent.folder
+        assert [name for name, _ in sent.files] == ["data/gain.npy", "helpers.py",
+                                                     "main.py"]  # fmt: skip
+        BatchScheduler().run(isolated)
+    same(outputs(isolated), outputs(local))
+
+
+def test_the_script_frame_is_checked(tmp_path: Path) -> None:
     """The container takes the script only as its first frame, and only when
-    its bytes match their SHA-256 (a .py file, no folders in its name)."""
+    each file's bytes match their SHA-256: one .py file (no folders in its
+    name), or a script folder's files, none of them outside the folder."""
     import hashlib
     import io
 
+    from meegxer.plugins.sterile import SterileScriptLauncher
     from meegxer.plugins.sterile_script import receive
     from meegxer.plugins.wire import WireError, encode
 
     source = b"def process(raw):\n    return raw\n"
 
-    def frame(header: dict[str, Any]) -> io.BytesIO:
-        return io.BytesIO(encode(header, {"source": np.frombuffer(source, np.uint8)}))
+    def frame(header: dict[str, Any], data: bytes = source) -> io.BytesIO:
+        return io.BytesIO(encode(header, {"f0": np.frombuffer(data, np.uint8)}))
 
-    good = {"type": "script", "name": "../../etc/x.py",
-            "sha256": hashlib.sha256(source).hexdigest()}  # fmt: skip
+    def item(name: str, data: bytes = source) -> dict[str, Any]:
+        return {"name": name, "data": "f0", "sha256": hashlib.sha256(data).hexdigest()}
+
+    good = {"type": "script", "name": "../../etc/x.py", "files": [item("x.py")]}
     path = receive(frame(good))
     assert path.name == "x.py" and path.read_bytes() == source  # no folders
     with pytest.raises(WireError, match="SHA-256"):
-        receive(frame({**good, "sha256": "0" * 64}))
+        receive(frame({**good, "files": [{**item("x.py"), "sha256": "0" * 64}]}))
     with pytest.raises(WireError, match="first frame"):
         receive(frame({**good, "type": "hello"}))
     with pytest.raises(WireError, match="not a Python script"):
         receive(frame({**good, "name": "x.sh"}))
+    for bad in ("../x.py", "/etc/x.py", "a/../../x.py", "a\\..\\x.py", "C:x.py"):
+        folder = {"type": "script", "name": "lab", "folder": True,
+                  "files": [item(bad)]}  # fmt: skip
+        with pytest.raises(WireError, match="not a path inside"):
+            receive(frame(folder))
+    # a folder, as the launcher sends it: rebuilt file for file
+    files = (("main.py", source), ("lib/helpers.py", b"K = 2\n"),
+             ("data/weights.npy", bytes(range(256))))  # fmt: skip
+    launcher = SterileScriptLauncher("lab", files, folder=True)
+    ((header, arrays),) = launcher.preamble()
+    root = receive(io.BytesIO(encode(header, arrays)))
+    assert root.name == "lab" and root.is_dir()
+    assert {f.relative_to(root).as_posix(): f.read_bytes()
+            for f in root.rglob("*") if f.is_file()} == dict(files)  # fmt: skip
 
 
 def test_a_worker_of_another_version_is_refused(

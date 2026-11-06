@@ -77,3 +77,50 @@ def test_a_custom_script_is_added_only_after_the_notice(
             w.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         qapp.processEvents()
+
+
+def test_a_script_folder_is_added_from_the_chain_menu(
+    qapp: QApplication, isolated_daemon: str, tmp_path: Path
+) -> None:
+    """*Add a script folder…* picks a folder (its entry file found in it) and
+    adds it as one strip, named after the folder."""
+    from PySide6.QtWidgets import QFileDialog
+
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    folder = tmp_path / "lab_scale"
+    folder.mkdir()
+    (folder / "main.py").write_text(
+        "from helpers import factor\n\n\n"
+        "def process(raw):\n    return raw.get_data() * factor()\n"
+    )
+    (folder / "helpers.py").write_text("def factor():\n    return 2.0\n")
+    win = MainWindow(DaemonLink(isolated_daemon))
+    try:
+        win._accept_local_code = lambda what: True  # type: ignore[method-assign]
+        picked: list[str] = []
+
+        def choose(*args: object) -> str:
+            picked.append("folder")
+            return str(folder)
+
+        original = QFileDialog.getExistingDirectory
+        QFileDialog.getExistingDirectory = staticmethod(choose)  # type: ignore[assignment]
+        try:
+            menu = win.chain.build_palette(1)
+            assert menu is not None
+            action = next(a for a in menu.actions()
+                          if a.text() == "✎ Add a script folder…")  # fmt: skip
+            action.trigger()
+        finally:
+            QFileDialog.getExistingDirectory = original  # type: ignore[method-assign]
+        assert picked == ["folder"]
+        assert win.doc.strips[1].node == "script.lab_scale"
+        assert "Added custom script lab_scale" in win.logbox.toPlainText()
+    finally:
+        win.close()
+        for w in (win.stacked, win.recording_window, win):
+            w.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()

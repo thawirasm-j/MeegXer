@@ -313,6 +313,9 @@ class MainWindow(QMainWindow):
         self.chain.remove_requested.connect(self.remove_strip)
         self.chain.insert_requested.connect(self.insert_strip)
         self.chain.script_requested.connect(self.add_script)
+        self.chain.script_folder_requested.connect(
+            lambda index: self.add_script(index, folder=True)
+        )
         self.chain.move_requested.connect(self.move_strip)
         self.chain.tap_clicked.connect(self.click_tap)
         self.chain.calibrate_requested.connect(lambda sid: self.calibrate(sid, 60.0))
@@ -914,11 +917,21 @@ class MainWindow(QMainWindow):
         self.selected = strip_id
         self.refresh_chain()
 
-    def add_script(self, index: int, path: str | None = None) -> None:
-        """Add a custom script as a strip: pick the file, accept the local-code
-        notice, install it with ``meegxer-plugin`` (a separate process: the GUI
-        never imports plugin code, rule 9), then insert it at ``index``."""
-        if path is None:
+    def add_script(
+        self, index: int, path: str | None = None, *, folder: bool = False
+    ) -> None:
+        """Add a custom script as a strip: pick the file (or, ``folder``, a
+        script folder), accept the local-code notice, install it with
+        ``meegxer-plugin`` (a separate process: the GUI never imports plugin
+        code, rule 9), then insert it at ``index``."""
+        if path is None and folder:
+            path = QFileDialog.getExistingDirectory(
+                self, "Add a script folder", self._start_dir()
+            )
+            if not path:
+                return
+            self._remember_file(path)
+        elif path is None:
             path, _ = QFileDialog.getOpenFileName(
                 self, "Add a custom script", self._start_dir(), "Python scripts (*.py)"
             )
