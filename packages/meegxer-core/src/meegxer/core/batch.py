@@ -209,6 +209,9 @@ class BatchScheduler:
         # the processors in the Sterile worker (docs/STERILE.md); None: the
         # setting (meegxer.core.sterile.enabled)
         self.sterile = sterile
+        # this run is in Sterile mode: its cached outputs are its own (a
+        # Sterile run computes in its container, never from a local run's)
+        self._isolated = False
         self._events: tuple[Event, ...] = ()  # the recording's, for labelled fits
         self._rail = EventsRail()  # those plus what strips emit (docs/RAILS.md)
         self._graph: Graph | None = None
@@ -222,7 +225,8 @@ class BatchScheduler:
     def run(self, graph: Graph, *, keep: Iterable[str] = ()) -> BatchResult:
         from meegxer.core.sterile import running
 
-        with running(graph, self.sterile):
+        with running(graph, self.sterile) as isolation:
+            self._isolated = isolation is not None
             return self._run(graph, keep=keep)
 
     def _run(self, graph: Graph, *, keep: Iterable[str] = ()) -> BatchResult:
@@ -379,8 +383,9 @@ class BatchScheduler:
             and not stage.manifest.rail_outputs
         )
 
+        cache_key = fingerprint("sterile", output_fp) if self._isolated else output_fp
         if cacheable and self.cache is not None:
-            hit = self.cache.get(output_fp)
+            hit = self.cache.get(cache_key)
             if hit is not None:
                 result.cached.append(node.id)
                 result.events[node.id] = hit.events
@@ -429,7 +434,7 @@ class BatchScheduler:
         if cacheable and self.cache is not None and signal_out:
             runs = contiguous_runs(signal_out)
             if len(runs) == 1:  # a cut stream is not cached (one block each)
-                self.cache.put(output_fp, CachedOutput(runs[0], tuple(events)))
+                self.cache.put(cache_key, CachedOutput(runs[0], tuple(events)))
         return out
 
     def _run_on_features(

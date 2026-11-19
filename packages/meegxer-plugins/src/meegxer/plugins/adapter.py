@@ -98,6 +98,44 @@ def _info_from(new: Mapping[str, Any], info: SignalInfo) -> SignalInfo:
     )
 
 
+# a local command's code hash, as last found: (checked at, files' stat,
+# sha256, big). Code up to HASH_ALWAYS_BYTES (any script) is hashed at every
+# check: an edit can keep the size, and file times are only as fine as the
+# system's clock tick. A bigger script folder (data files) is looked at again
+# at most once a second (a live strip asks on every block), and hashed again
+# only when a file's size or modification time changed.
+_CODE: dict[tuple[str, ...], tuple[float, tuple[Any, ...], str, bool]] = {}
+RECHECK_SECONDS = 1.0
+HASH_ALWAYS_BYTES = 4 * 1024 * 1024
+
+
+def current_code(command: tuple[str, ...], recorded: str) -> str:
+    """The SHA-256 of ``command``'s code files as they are now (a custom
+    script, or a script folder's files); ``recorded`` when they cannot be
+    read."""
+    import time
+
+    from meegxer.plugins.index import code_entries, code_sha256
+
+    now = time.monotonic()
+    known = _CODE.get(command)
+    if known is not None and known[3] and now - known[0] < RECHECK_SECONDS:
+        return known[2]
+    try:
+        entries = code_entries(list(command))
+        stat = tuple((name, p.stat().st_mtime_ns, p.stat().st_size)
+                     for name, p in entries)  # fmt: skip
+        big = sum(size for _, _, size in stat) > HASH_ALWAYS_BYTES
+        if big and known is not None and known[1] == stat:
+            digest = known[2]
+        else:
+            digest = code_sha256(list(command)) if entries else recorded
+    except (OSError, ValueError):  # gone, or a folder that grew too big
+        return recorded
+    _CODE[command] = (now, stat, digest, big)
+    return digest
+
+
 class PluginProcessor(Processor):
     """Base class of generated plugin adapters."""
 
@@ -107,7 +145,15 @@ class PluginProcessor(Processor):
 
     @classmethod
     def provenance(cls) -> dict[str, Any]:
-        return dict(cls.origin)
+        """Where the plugin comes from (sessions; ``Stage.fingerprint``): for a
+        local script, ``sha256`` is its code as it is on disk now, so an edited
+        script is noticed while MeegXer runs (its cached outputs and fitted
+        models no longer match)."""
+        origin = dict(cls.origin)
+        command = origin.get("command")
+        if command and origin.get("sha256"):
+            origin["sha256"] = current_code(tuple(command), origin["sha256"])
+        return origin
 
     def __init__(self) -> None:
         self._worker: PluginWorker | None = None

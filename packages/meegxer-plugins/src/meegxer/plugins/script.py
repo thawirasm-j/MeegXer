@@ -183,7 +183,11 @@ def load_script(path: Path) -> ModuleType:
     if spec is None or spec.loader is None:
         raise ScriptError(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[spec.name] = module
+    # compiled from the source as it is now, never from a cached .pyc (which
+    # Python trusts while the file's size and time in whole seconds match, so
+    # an edit made within a second could run the old code)
+    exec(compile(path.read_bytes(), str(path), "exec"), module.__dict__)
     found = [f for f in _ENTRY if callable(getattr(module, f, None))]
     if len(found) != 1:
         raise ScriptError(
@@ -657,6 +661,7 @@ def _feature_table(got: Any, n_channels: int) -> tuple[np.ndarray, list[str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    sys.dont_write_bytecode = True  # a script folder's helpers: no stale .pyc
     args = sys.argv[1:] if argv is None else argv
     if len(args) != 1:
         print("usage: python -m meegxer.plugins.script FILE.py|FOLDER", file=sys.stderr)

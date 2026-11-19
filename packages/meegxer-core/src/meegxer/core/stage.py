@@ -164,7 +164,10 @@ class Stage:
             self.state = None
 
     def fingerprint(self, input_fp: str) -> str:
-        """What a model fitted for this stage depends on.
+        """What a model fitted for this stage depends on (and what its output
+        does, ``output_fingerprint``): the node, its settings and input, and a
+        plugin's code (``code_identity``: an edited script needs a refit and
+        is not served from the cache).
 
         A fitted node's live parameters act in ``transform`` only (manifest
         ``live_params``), so they are left out: changing one needs no refit.
@@ -174,14 +177,28 @@ class Stage:
             params = {
                 k: v for k, v in params.items() if k not in self.manifest.live_params
             }
-        return fingerprint(
+        parts = [
             "stage",
             self.manifest.name,
             self.manifest.version,
             canonical_json(params),
             ",".join(self.channel_types),
             input_fp,
-        )
+        ]
+        code = self.code_identity()
+        if code:  # a plugin's code: an edited script gives other outputs
+            parts.append(code)
+        return fingerprint(*parts)
+
+    def code_identity(self) -> str:
+        """A plugin's code as it is now: a custom script's SHA-256 (its file,
+        or every file of its folder), a container plugin's image ID; empty for
+        a built-in node, whose code goes with its version."""
+        provenance = getattr(type(self.processor), "provenance", None)
+        if not callable(provenance):
+            return ""
+        origin = provenance()
+        return str(origin.get("sha256") or origin.get("image_id") or "")
 
     def output_fingerprint(self, input_fp: str) -> str:
         """What the next stage's input depends on (includes this stage's model)."""

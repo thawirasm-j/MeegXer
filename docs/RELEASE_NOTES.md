@@ -41,6 +41,19 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   kept, per label (`-o kept-epo.fif` writes them). It runs in Sterile mode too.
   `meegxer-plugin check` now gives a strip that reads the epochs rail test
   epochs to work on.
+- **Fixed: an edited custom script could keep giving its old output.** The
+  offline output cache, and the check that a fitted model still fits, knew a
+  strip by its name, version and settings: editing a script changed none of
+  them, so the next run reused the old output (and a calibrated script its old
+  model). A plugin's code (a script's SHA-256, of its folder's files too; a
+  container plugin's image ID) is now part of that; MeegXer looks at the files
+  again before each run (at most once a second live), and a script is compiled
+  from its source each time, never from a `.pyc` Python may still trust after
+  an edit made within a second. Built-in strips keep their cached outputs; a
+  saved session's model of a calibrated custom script is refitted once.
+- **Sterile runs compute in their container.** A Sterile run no longer reuses
+  an output a local run cached (the same output, but it would not have run in
+  the container); each mode keeps its own.
 - **Fixed:** `meegxer-plugin run` on a script already added (to try a change)
   stopped with "two node classes registered"; it now runs the file as it is.
 
