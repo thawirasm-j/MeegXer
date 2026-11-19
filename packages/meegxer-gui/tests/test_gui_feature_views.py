@@ -444,7 +444,8 @@ def test_an_epochs_rail_tap_draws_without_error(
         win.redraw()
         view = win.erp_view  # an epochs rail: its ERP (M10.3)
         assert win.views.currentWidget() is view
-        assert "3 epochs (offline run)" in view.legend.text()
+        # named as the chain labels the rail, not by its id
+        assert view.legend.text() == "Epochs · 3 epochs (offline run)"
         assert view.reset.isHidden()  # nothing to reset offline
         assert view.channel == "Cz" and view.channels.text() == "Channel: Cz"
         assert [c.name for c in view.curves()] == ["go (n=3)"]
@@ -459,6 +460,13 @@ def test_an_epochs_rail_tap_draws_without_error(
         assert [c.name for c in view.curves()] == ["Cz", "Pz"]
         view.condition.setCurrentText("All conditions")  # back to its channel
         assert view.channel == "Pz" and view.channels.hidden == {"Fz", "Cz"}
+        # a second epochs rail (a script, Review epochs...) is Epochs·2
+        from meegxer.gui.pipeline_doc import tap_id
+
+        second = win.doc.insert(len(win.doc.strips), "meegxer.nodes.epochs")
+        names = win._probe_names()
+        assert names[tap_id("epochs1:epochs")] == "Epochs"
+        assert names[tap_id(f"{second.id}:epochs")] == "Epochs·2"
     finally:
         win.close()
 

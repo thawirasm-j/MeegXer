@@ -51,6 +51,9 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   from its source each time, never from a `.pyc` Python may still trust after
   an edit made within a second. Built-in strips keep their cached outputs; a
   saved session's model of a calibrated custom script is refitted once.
+- **Fixed:** the ERP view of an epochs rail was headed by its internal id
+  (`labreject1:epochs`); it now has the rail's name in the chain (*Epochs*,
+  *Epochs·2*).
 - **Sterile runs compute in their container.** A Sterile run no longer reuses
   an output a local run cached (the same output, but it would not have run in
   the container); each mode keeps its own.
