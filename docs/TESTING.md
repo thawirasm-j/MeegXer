@@ -940,7 +940,11 @@ script ran in a `meegxer-sterile` container of its own (`python -m
 meegxer.plugins.sterile_script`, network `none`) and the written `.set` is
 identical to the local run's; with an edited MeegXer, the run was refused
 until the image was rebuilt. In CI's container job the Sterile tests run a
-script strip in the image next to built-in strips, output identical.
+script strip in the image next to built-in strips, output identical. Run
+again in the GUI (offscreen, Docker 29) on 2026-11-19, this found two faults,
+fixed since: a Sterile run reused the local run's cached output (no container
+started), and an edited script gave its old output (the cache and Python's
+`.pyc` did not know the code changed).
 
 1. Pull and `uv sync --all-packages`, then `uv run meegxer sterile build`
    (MeegXer changed, so `meegxer sterile check` says it is out of date).
@@ -979,8 +983,9 @@ epochs are the local run's.
    *New…* is fine): it says how many epochs it kept, per label.
 2. In the GUI: an Epochs strip, then *+ Add strip → ✎ Add a custom script…*
    `lab_reject.py` after it, and an ERP tap on its rail (*Epochs·2*); run
-   offline: the ERP view of *Epochs·2* has fewer epochs than *Epochs* when you
-   lower *Removal threshold*.
+   offline: the ERP view of *Epochs·2* has fewer epochs than *Epochs*, and
+   fewer again when you lower *Removal threshold* (to 50 µV, say; at 40 µV
+   the helper's recording keeps none).
 3. The same with *Sterile* on (after `meegxer sterile build`): the same counts.
 
 | Item | Value / result | Notes |
