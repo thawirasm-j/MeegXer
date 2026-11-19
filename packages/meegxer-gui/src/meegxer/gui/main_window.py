@@ -768,7 +768,8 @@ class MainWindow(QMainWindow):
 
     def _probe_names(self) -> dict[str, str]:
         """Legend names: "Input", "after Notch" (the id is added when two strips
-        share a title, or in advanced mode)."""
+        share a title, or in advanced mode); a rail output as the chain labels
+        it ("Epochs·2")."""
         titles = {s.id: self._name(s.id) for s in self.doc.tappable()}
         repeated = {t for t in titles.values() if list(titles.values()).count(t) > 1}
         names = {}
@@ -782,6 +783,11 @@ class MainWindow(QMainWindow):
             names[tap_id(strip.id)] = text + (f" ({strip.id})" if self.advanced else "")
         for key in self.doc.rail_taps():
             names[tap_id(key)] = self.doc.choice_label(key)
+        for rail in self.doc.rails()[0]:  # an epochs rail: as the chain labels it
+            key = tap_id(rail.id)
+            if ":" in rail.id and key not in names:
+                sid = rail.id.partition(":")[0]
+                names[key] = rail.label + (f" ({sid})" if self.advanced else "")
         return names
 
     def refresh_inspector(self) -> None:
