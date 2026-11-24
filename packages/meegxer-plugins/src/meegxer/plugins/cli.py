@@ -130,6 +130,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     trial.add_argument("--overwrite", action="store_true")
 
+    octave = sub.add_parser(
+        "octave", help="the Octave image Octave/EEGLAB scripts run in (docs/OCTAVE.md)"
+    )
+    octave.add_argument("action", choices=("build", "check"))
+    octave.add_argument("--engine", help="docker or podman (default: the one found)")
+    octave.add_argument(
+        "--tag", help="the image's tag (default: meegxer-octave:VERSION)"
+    )
+
     listing = sub.add_parser("list", help="list installed plugins")
     listing.add_argument(
         "--json", action="store_true", help="one JSON array (name, version, ...)"
@@ -219,6 +228,28 @@ def main(argv: list[str] | None = None) -> int:
             f"installed {entry['manifest']['name']} {entry['manifest']['version']} "
             f"({entry['image_id'][:19]}) into {index.index_path()}"
         )
+        return 0
+    if args.command == "octave":
+        from meegxer.plugins import octave_image
+        from meegxer.plugins.sterile import SterileError
+
+        try:
+            tag = args.tag or octave_image.IMAGE
+            if args.action == "build":
+                octave_image.build_image(tag=tag, engine=args.engine)
+                print(f"built {tag}")
+                return 0
+            found = octave_image.self_check(tag, engine=args.engine)
+        except SterileError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        if not found.get("filter_ok"):
+            print(f"error: {tag}: EEGLAB's pop_eegfiltnew gave a "
+                  "wrong result in the image", file=sys.stderr)  # fmt: skip
+            return 1
+        print(f"ok: {tag} is up to date (GNU Octave "
+              f"{found['octave']}, signal {found['signal']}, EEGLAB "
+              f"{found['eeglab']}; pop_eegfiltnew works)")  # fmt: skip
         return 0
     if args.command == "list":
         if args.json:

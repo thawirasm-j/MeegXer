@@ -7,6 +7,15 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **The Octave image (Octave/EEGLAB scripts, first step).** `meegxer-plugin
+  octave build` builds the image Octave/EEGLAB scripts will run in: GNU Octave
+  with the signal package and EEGLAB 2026.0.0 (its core, firfilt and ICLabel,
+  at the commits that release pins), sandboxed like any plugin container.
+  `meegxer-plugin octave check` runs its self-check (EEGLAB's
+  `pop_eegfiltnew` on a test signal) and says what it holds; an image built
+  from other code is refused (`docs/OCTAVE.md`). The scripts themselves come
+  next.
+
 - **Porting your code (custom scripts).** A guide, `docs/PORTING.md`: which
   entry point fits what your code works on (a Raw, blocks, a fitted model,
   windows), before/after recipes for each (CI runs them as written), and

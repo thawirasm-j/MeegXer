@@ -67,6 +67,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - name: Build reference plugin images
         working-directory: packages/meegxer-plugins
+        timeout-minutes: 30  # a stuck download fails here, not hours later
         run: |
           docker build -f plugins/average_reference/Dockerfile -t meegxer/example-average-reference:0.1.0 .
           docker build -f plugins/octave_iir_bandpass/Dockerfile -t meegxer/example-octave-iir-bandpass:0.1.0 .
@@ -88,6 +89,15 @@ jobs:
         run: uv run --frozen pytest packages/meegxer-plugins/tests/test_plugins_sterile.py
         env:
           MEEGXER_TEST_STERILE_IMAGE: meegxer-sterile:ci
+      - name: Build the Octave image (docs/OCTAVE.md)
+        timeout-minutes: 30
+        run: |
+          uv run --frozen meegxer-plugin octave build --tag meegxer-octave:ci
+          uv run --frozen meegxer-plugin octave check --tag meegxer-octave:ci
+      - name: Octave and EEGLAB run in the image
+        run: uv run --frozen pytest packages/meegxer-plugins/tests/test_plugins_octave_image.py
+        env:
+          MEEGXER_TEST_OCTAVE_IMAGE: meegxer-octave:ci
 
   deps-smoke:
     name: Dependency smoke (${{ matrix.os }}, py${{ matrix.python }})
