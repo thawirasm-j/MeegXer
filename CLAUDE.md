@@ -142,6 +142,8 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   from the installed MeegXer), `meegxer sterile check`; switched on by the
   `general.sterile` setting (*Sterile* in the GUI), `MEEGXER_STERILE`, or
   `--sterile` on `meegxer run` / `meegxer daemon`.
+- Octave/EEGLAB (`docs/OCTAVE.md`): `meegxer-plugin octave build|check [--tag T]`,
+  the image Octave scripts run in (GNU Octave, a pinned EEGLAB; sandboxed).
 - Plugins: `uv run meegxer-plugin check IMAGE` (conformance),
   `meegxer-plugin add IMAGE`, `meegxer-plugin list`. Custom scripts
   (`process(raw, ...)` offline, `process_epochs(epochs, ...)` after an Epochs

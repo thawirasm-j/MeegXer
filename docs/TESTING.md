@@ -1042,3 +1042,21 @@ run's output.
 | AB1 refused, with the install command | | |
 | AB2 installed, added, runs | | |
 | AB3 Sterile: asks to build, then the same output | | |
+
+## AC. The Octave image
+
+Already run by Claude on Linux (Docker 29): `meegxer-plugin octave build`
+built `meegxer-octave` (1.3 GB; with this machine's proxy certificate added,
+which yours does not need), and `meegxer-plugin octave check` said `ok: … up
+to date (GNU Octave 8.4.0, signal 1.4.5, EEGLAB 2026.0.0; pop_eegfiltnew
+works)` in about a second, in the sandbox (no network, read-only). CI's
+container job builds and checks it on every change.
+
+1. Pull, `uv sync --all-packages`, Docker Desktop running, then
+   `uv run meegxer-plugin octave build` (a few minutes, about 1.3 GB).
+2. `uv run meegxer-plugin octave check`: the line above.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| AC1 the image builds on Windows | | |
+| AC2 check: versions, pop_eegfiltnew works | | |
