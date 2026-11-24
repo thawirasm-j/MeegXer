@@ -137,6 +137,7 @@ def test_build_and_check(engine: Path, capsys: pytest.CaptureFixture[str]) -> No
 def test_the_cli_says_what_the_image_holds(
     engine: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    monkeypatch.delenv("MEEGXER_OCTAVE_IMAGE", raising=False)  # the default tag
     assert main(["octave", "check", "--engine", "docker"]) == 1
     assert "not built yet" in capsys.readouterr().err
     (engine / "label.txt").write_text(code_hash())
