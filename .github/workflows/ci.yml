@@ -94,10 +94,13 @@ jobs:
         run: |
           uv run --frozen meegxer-plugin octave build --tag meegxer-octave:ci
           uv run --frozen meegxer-plugin octave check --tag meegxer-octave:ci
-      - name: Octave and EEGLAB run in the image
-        run: uv run --frozen pytest packages/meegxer-plugins/tests/test_plugins_octave_image.py
+      - name: Octave and EEGLAB run in the image, and Octave scripts in it
+        run: >
+          uv run --frozen pytest packages/meegxer-plugins/tests/test_plugins_octave_image.py
+          packages/meegxer-plugins/tests/test_plugins_octave_script.py
         env:
           MEEGXER_TEST_OCTAVE_IMAGE: meegxer-octave:ci
+          MEEGXER_OCTAVE_IMAGE: meegxer-octave:ci
 
   deps-smoke:
     name: Dependency smoke (${{ matrix.os }}, py${{ matrix.python }})

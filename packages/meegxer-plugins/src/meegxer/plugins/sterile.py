@@ -503,8 +503,8 @@ def isolate(
     scripts: list[tuple[str, PluginProcessor, Path]] = []
     for node_id, stage in stages:
         processor = stage.processor
-        if isinstance(processor, PluginProcessor) and not isinstance(
-            processor.launcher, ContainerLauncher
+        if isinstance(processor, PluginProcessor) and not (
+            processor.launcher.sandboxed  # a container already (an Octave script)
         ):
             path = script_path(processor)
             if path is None:

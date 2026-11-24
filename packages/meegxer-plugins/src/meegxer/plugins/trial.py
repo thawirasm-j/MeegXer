@@ -93,10 +93,17 @@ def try_script(
     came out (and write it to ``out``). An epochs script gets the epochs an
     Epochs strip with the settings ``epochs`` cuts (its defaults: every event,
     -0.2 to 0.8 s)."""
-    command = index.script_command(script)
-    launcher = LocalLauncher(tuple(command), allow=True)
-    origin = index.origin_of({"command": command, "script": str(script)})
-    cls = plugin_class(probe_manifest(launcher), launcher, origin=origin)
+    if script.suffix.lower() == ".m":  # an Octave script, in the Octave image
+        from meegxer.plugins import octave_script
+
+        octave = octave_script.OctaveScriptLauncher(str(script.resolve()))
+        cls = plugin_class(octave_script.script_manifest(script), octave,
+                           origin=octave_script.origin_of(script))  # fmt: skip
+    else:
+        command = index.script_command(script)
+        launcher = LocalLauncher(tuple(command), allow=True)
+        origin = index.origin_of({"command": command, "script": str(script)})
+        cls = plugin_class(probe_manifest(launcher), launcher, origin=origin)
     name = cls.manifest.name
     # the file as it is now, in place of the copy added before (if any)
     installed = Registry.from_entry_points().as_mapping()

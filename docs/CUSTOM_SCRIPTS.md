@@ -304,7 +304,8 @@ REQUIRES = ["pyriemann", "mne-connectivity>=0.7"]
   run whose scripts need one the image lacks is refused, saying to build
   again (as after updating MeegXer).
 
-Octave/EEGLAB scripts (`function EEG = process(EEG, ...)`) are planned next.
+Octave/EEGLAB scripts (`function EEG = my_filter(EEG, varargin)`, run in
+MeegXer's Octave image with a pinned EEGLAB) are described in `docs/OCTAVE.md`.
 
 ## Add one
 

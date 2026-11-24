@@ -131,7 +131,9 @@ always runs the processing in the containers. A script's extra packages (`REQUIR
 the image by `meegxer sterile build`, at the versions installed here, and
 listed in its `org.meegxer.requires` label: after adding a script that
 declares one, build again (a run says so). After the run the strip is a
-local process again. A local
+local process again. An Octave/EEGLAB script
+(`docs/OCTAVE.md`) already runs in its own sandboxed container and stays
+there. A local
 plugin that is a program of its own (`meegxer-plugin add --local`) cannot run
 in the image: Sterile mode refuses it, saying so.
 

@@ -50,7 +50,8 @@ def test_the_recipe_pins_eeglab_and_leaves_out_what_it_cannot_ship(
     assert "rm -rf /opt/eeglab/sample_data" in text
     folder = context(tmp_path / "ctx")
     assert sorted(p.name for p in (folder / "octave").iterdir()) == [
-        "meegxer_octave_check.m", "meegxer_plugin_run.m"]  # fmt: skip
+        "meegxer_octave_check.m", "meegxer_octave_script.m",
+        "meegxer_plugin_run.m"]  # fmt: skip
     dockerfile = (folder / "Dockerfile").read_text()
     assert f'org.meegxer.octave.code="{code_hash()}"' in dockerfile
     assert "{code}" not in dockerfile and "{version}" not in dockerfile

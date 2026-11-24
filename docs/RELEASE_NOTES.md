@@ -15,6 +15,16 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   `pop_eegfiltnew` on a test signal) and says what it holds; an image built
   from other code is refused (`docs/OCTAVE.md`). The scripts themselves come
   next.
+- **Octave/EEGLAB scripts (offline).** A `.m` file with `function EEG =
+  name (EEG, varargin)` is a strip: paste your EEGLAB code in (pop_*
+  functions, firfilt, ICLabel). Its settings come from its help block
+  (`low : float = 1`, then a description; `(Hz)` the unit) and reach it as
+  name-value pairs; `EEG` is the recording in microvolts, as EEGLAB has it;
+  events it adds come out as events. It always runs sandboxed in the Octave
+  image, its code sent in at the start, so adding one needs no local-code
+  notice. `meegxer-plugin new NAME --kind octave` writes a template; `run`,
+  `check`, `add` and the GUI's *Add a custom script…* take `.m` files.
+  Sessions record its SHA-256, the image and EEGLAB's version.
 
 - **Porting your code (custom scripts).** A guide, `docs/PORTING.md`: which
   entry point fits what your code works on (a Raw, blocks, a fitted model,
