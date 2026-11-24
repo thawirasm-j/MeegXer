@@ -939,12 +939,17 @@ class MainWindow(QMainWindow):
             self._remember_file(path)
         elif path is None:
             path, _ = QFileDialog.getOpenFileName(
-                self, "Add a custom script", self._start_dir(), "Python scripts (*.py)"
+                self,
+                "Add a custom script",
+                self._start_dir(),
+                "Scripts (*.py *.m);;Python scripts (*.py);;"
+                "Octave/EEGLAB scripts (*.m)",
             )
             if not path:
                 return
             self._remember_file(path)
-        if not self._accept_local_code(Path(path).name):
+        octave = Path(path).suffix.lower() == ".m"  # sandboxed in the Octave image
+        if not octave and not self._accept_local_code(Path(path).name):
             self.log("Custom script not added (the notice was not accepted).")
             return
         before = set(self.doc.manifests)
@@ -964,7 +969,8 @@ class MainWindow(QMainWindow):
         self.doc.set_manifests(nodes)
         added = [n for n in self.doc.manifests if n not in before]
         name = added[0] if added else result.stdout.split()[1]
-        self.log(f"Added custom script {Path(path).name} as {name} (unsandboxed).")
+        how = "Octave, sandboxed" if octave else "unsandboxed"
+        self.log(f"Added custom script {Path(path).name} as {name} ({how}).")
         if name in self.doc.manifests:
             self.insert_strip(index, name)
 

@@ -165,12 +165,35 @@ def process_epochs(epochs, threshold: float = 100.0):
     return epochs
 '''
 
+OCTAVE = """function EEG = {name} (EEG, varargin)
+% {title}: what it does, in one line (the strip's description).
+%
+% An Octave/EEGLAB script: paste the body of your EEGLAB script here. It runs
+% in MeegXer's Octave image (GNU Octave, EEGLAB with firfilt and ICLabel),
+% offline: EEG is the whole recording, in microvolts, as EEGLAB has it.
+% Build the image once: meegxer-plugin octave build (docs/OCTAVE.md).
+%
+% Parameters
+% ----------
+% low : float = 1
+%     Low cut-off (Hz).
+% high : float = 40
+%     High cut-off (Hz).
+  opt = struct (varargin{{:}});  % every setting above, by name: opt.low...
+  % -- your code: anything that changes EEG and keeps its channels and
+  % -- length (filters, re-referencing, ICA applied...)
+  EEG = pop_eegfiltnew (EEG, opt.low, opt.high);
+  % EEG.event(end + 1) = struct ('type', 'mark', 'latency', 1, 'duration', 0);
+end
+"""
+
 TEMPLATES = {
     "process": PROCESS,
     "transform": TRANSFORM,
     "calibrated": CALIBRATED,
     "features": FEATURES,
     "epochs": EPOCHS,
+    "octave": OCTAVE,
 }
 KINDS = tuple(TEMPLATES)
 
@@ -180,19 +203,20 @@ def script_text(name: str, kind: str) -> str:
     if kind not in TEMPLATES:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}, not {kind!r}")
     title = name.replace("_", " ").capitalize()
-    return TEMPLATES[kind].format(title=title, credit=CREDIT)
+    return TEMPLATES[kind].format(title=title, credit=CREDIT, name=name)
 
 
 def new_script(name: str, kind: str, folder: Path = Path()) -> Path:
     """Write ``folder/name.py`` from the template of ``kind``; never over an
     existing file. ``name`` must be a Python identifier (it becomes the
     strip's name, ``script.<name>``)."""
-    stem = name.removesuffix(".py")
+    stem = name.removesuffix(".py").removesuffix(".m")
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", stem) or keyword.iskeyword(stem):
         raise ValueError(
             f"{name!r}: use letters, digits and underscores (e.g. my_filter)"
         )
-    path = folder / f"{stem}.py"
+    suffix = ".m" if kind == "octave" else ".py"  # an Octave/EEGLAB script
+    path = folder / f"{stem}{suffix}"
     if path.exists():
         raise FileExistsError(f"{path} exists: choose another name")
     path.write_text(script_text(stem, kind), encoding="utf-8")

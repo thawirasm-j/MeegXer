@@ -975,7 +975,9 @@ class ChainView(QScrollArea):
             "An MNE-Python script: process(raw, ...) for offline runs, "
             "transform(data, state, ...) for live and offline, features(data, "
             "...) per window, or process_epochs(epochs, ...) after an Epochs "
-            "strip (runs on your computer, unsandboxed)"
+            "strip (runs on your computer, unsandboxed); or an Octave/EEGLAB "
+            "script (.m, function EEG = name(EEG, ...)), sandboxed in the Octave "
+            "image"
         )
         script.triggered.connect(lambda: self.script_requested.emit(index))
         folder = menu.addAction("✎ Add a script folder…")

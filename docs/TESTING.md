@@ -1060,3 +1060,33 @@ container job builds and checks it on every change.
 |---|---|---|
 | AC1 the image builds on Windows | | |
 | AC2 check: versions, pop_eegfiltnew works | | |
+
+## AD. An Octave/EEGLAB script
+
+Already run by Claude on Linux (Docker 29, the image built from this code):
+`meegxer-plugin new lab_bandpass --kind octave`, then `run --script
+lab_bandpass.m -i rec_raw.fif` (filtered by EEGLAB's pop_eegfiltnew in the
+image, `-o out.set` written), `check --script` (conformant) and `add
+--script` (no local-code notice: it runs sandboxed); `meegxer run` with it
+saved a session recording its SHA-256, the image and EEGLAB 2026.0.0 (shared:
+the file name only), and an edited script made that session refuse to run. In
+the GUI (offscreen), *Add a custom script…* took the `.m` file without the
+notice, logged "(Octave, sandboxed)" and ran offline; *High cut-off* set to
+10 Hz on the strip took the 15–35 Hz power (relative to 5–9 Hz) from 0.45 to
+4·10⁻⁸ in the written file. Exact checks in CI:
+doubling `EEG.data` doubles the signal; `EEG.data + 1` adds 1 µV.
+
+1. Pull, `uv sync --all-packages`, `uv run meegxer-plugin octave build`.
+2. `uv run meegxer-plugin new lab_bandpass --kind octave`, then
+   `uv run meegxer-plugin run --script lab_bandpass.m -i REC` on a recording
+   of yours: it says what came out.
+3. In the GUI, *+ Add strip → ✎ Add a custom script…*, pick `lab_bandpass.m`
+   (or your own EEGLAB code in that shape): no notice; run offline; the
+   signal after it is band-passed (*Spectrum*: nothing above *High cut-off*).
+4. Change *High cut-off* on the strip, run again: the spectrum follows.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| AD1 `run` on your recording | | |
+| AD2 the GUI adds it with no notice and runs it | | |
+| AD3 a setting changed in the GUI reaches the script | | |

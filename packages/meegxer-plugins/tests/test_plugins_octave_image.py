@@ -50,7 +50,8 @@ def test_the_recipe_pins_eeglab_and_leaves_out_what_it_cannot_ship(
     assert "rm -rf /opt/eeglab/sample_data" in text
     folder = context(tmp_path / "ctx")
     assert sorted(p.name for p in (folder / "octave").iterdir()) == [
-        "meegxer_octave_check.m", "meegxer_plugin_run.m"]  # fmt: skip
+        "meegxer_octave_check.m", "meegxer_octave_script.m",
+        "meegxer_plugin_run.m"]  # fmt: skip
     dockerfile = (folder / "Dockerfile").read_text()
     assert f'org.meegxer.octave.code="{code_hash()}"' in dockerfile
     assert "{code}" not in dockerfile and "{version}" not in dockerfile
@@ -136,6 +137,7 @@ def test_build_and_check(engine: Path, capsys: pytest.CaptureFixture[str]) -> No
 def test_the_cli_says_what_the_image_holds(
     engine: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    monkeypatch.delenv("MEEGXER_OCTAVE_IMAGE", raising=False)  # the default tag
     assert main(["octave", "check", "--engine", "docker"]) == 1
     assert "not built yet" in capsys.readouterr().err
     (engine / "label.txt").write_text(code_hash())

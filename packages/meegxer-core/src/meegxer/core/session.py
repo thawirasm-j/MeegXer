@@ -554,6 +554,9 @@ def share_safe(session: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(provenance.get("command"), list):  # a local plugin's command
             provenance["command"] = [re.split(r"[/\\]", str(a))[-1]
                                      for a in provenance["command"]]  # fmt: skip
+        if provenance.get("octave_script"):  # an Octave script: its name only
+            provenance["octave_script"] = re.split(
+                r"[/\\]", str(provenance["octave_script"]))[-1]  # fmt: skip
         entry.get("review", {}).pop("reviewer", None)  # it names a person
     return out
 

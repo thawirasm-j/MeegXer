@@ -7,7 +7,10 @@ node instance owns one worker; the host keeps model and state.
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any, ClassVar
 
 import numpy as np
@@ -153,6 +156,10 @@ class PluginProcessor(Processor):
         command = origin.get("command")
         if command and origin.get("sha256"):
             origin["sha256"] = current_code(tuple(command), origin["sha256"])
+        script = origin.get("octave_script")
+        if script and origin.get("sha256"):  # one small file: hashed each time
+            with contextlib.suppress(OSError):  # gone: the recorded one
+                origin["sha256"] = hashlib.sha256(Path(script).read_bytes()).hexdigest()
         return origin
 
     def __init__(self) -> None:

@@ -132,6 +132,14 @@ def code_sha256(command: list[str]) -> str:
 
 def origin_of(entry: dict[str, Any]) -> dict[str, Any]:
     """Where an index entry's plugin comes from, as sessions record it."""
+    if "octave_script" in entry:  # an Octave script, in the Octave image
+        from meegxer.plugins import octave_script
+
+        path = Path(entry["octave_script"])
+        try:
+            return octave_script.origin_of(path)
+        except OSError:  # gone: what the entry says
+            return {"octave_script": str(path), "script": path.name}
     if "command" in entry:
         command = list(entry["command"])
         origin: dict[str, Any] = {"command": command, "unsandboxed": True}
@@ -153,6 +161,10 @@ def origin_of(entry: dict[str, Any]) -> dict[str, Any]:
 
 
 def launcher_for_entry(entry: dict[str, Any]) -> Launcher:
+    if "octave_script" in entry:
+        from meegxer.plugins.octave_script import OctaveScriptLauncher
+
+        return OctaveScriptLauncher(entry["octave_script"], engine=entry.get("engine"))
     if "command" in entry:
         if not entry.get("unsandboxed"):
             raise ValueError("local plugin entries must be marked 'unsandboxed'")
@@ -235,6 +247,22 @@ def declared_requires(path: Path | None = None, *, but: str = "") -> list[str]:
         if entry.get("consent") and entry["manifest"]["name"] != but:
             found += [str(r) for r in entry.get("requires", [])]
     return list(dict.fromkeys(found))
+
+
+def add_octave_script(script: Path, path: Path | None = None) -> dict[str, Any]:
+    """Record an Octave script (it runs sandboxed in the Octave image, so no
+    local-code notice); its manifest comes from its help block."""
+    from meegxer.plugins.octave_script import script_manifest
+
+    manifest = script_manifest(script)
+    entry: dict[str, Any] = {
+        "octave_script": str(script.resolve()),
+        "added": datetime.now(UTC).isoformat(timespec="seconds"),
+        "manifest": manifest,
+    }
+    entries = [e for e in load_index(path) if e["manifest"]["name"] != manifest["name"]]
+    save_index([*entries, entry], path)
+    return entry
 
 
 def remove(name: str, path: Path | None = None) -> bool:

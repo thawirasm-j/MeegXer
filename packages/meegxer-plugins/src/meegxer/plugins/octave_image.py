@@ -20,6 +20,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -32,6 +33,7 @@ from meegxer.plugins.sterile_image import ensure_running
 from meegxer.plugins.worker import find_engine
 
 IMAGE = f"meegxer-octave:{__version__}"
+IMAGE_ENV = "MEEGXER_OCTAVE_IMAGE"  # another tag (CI's meegxer-octave:ci)
 CODE_LABEL = "org.meegxer.octave.code"
 VERSION_LABEL = "org.meegxer.version"
 OCTAVE_DIR = Path(__file__).parent / "octave"  # MeegXer's .m files
@@ -72,6 +74,12 @@ LABEL {code_label}="{code}" {version_label}="{version}"
 USER octave
 WORKDIR /tmp
 """
+
+
+def default_image() -> str:
+    """The image Octave scripts run in: ``MEEGXER_OCTAVE_IMAGE``, else
+    ``meegxer-octave:VERSION``."""
+    return os.environ.get(IMAGE_ENV) or IMAGE
 
 
 def recipe() -> str:

@@ -42,6 +42,11 @@ def recording(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.mark.parametrize("kind", KINDS)
 def test_every_template_works_as_written(tmp_path: Path, kind: str) -> None:
+    if kind == "octave":  # runs in the Octave image: test_plugins_octave_script
+        from meegxer.plugins.octave_script import script_manifest
+
+        assert script_manifest(new_script(f"my_{kind}", kind, tmp_path))["params"]
+        return
     conformant(new_script(f"my_{kind}", kind, tmp_path))
 
 

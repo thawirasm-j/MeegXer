@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from meegxer.core.notices import LOCAL_CODE_NOTICE
 from meegxer.plugins import index
@@ -25,9 +26,17 @@ def _params(items: list[str]) -> dict[str, object]:
     return params
 
 
+def _octave(script: Path | None) -> bool:
+    """An Octave/EEGLAB script (``.m``): it runs in the Octave image."""
+    return script is not None and script.suffix.lower() == ".m"
+
+
 def _missing(script: Path) -> str:
     """Why ``script`` cannot run here (its ``REQUIRES`` not installed, or
-    written wrong), or empty."""
+    written wrong), or empty. An Octave script needs none: its image holds
+    everything it may use."""
+    if _octave(script):
+        return ""
     from meegxer.plugins.requires import installed
     from meegxer.plugins.script import ScriptError
 
@@ -36,6 +45,31 @@ def _missing(script: Path) -> str:
     except ScriptError as exc:
         return str(exc)
     return ""
+
+
+def _add_octave(script: Path) -> int:
+    """Add an Octave script: its settings read from its help block, then the
+    conformance suite in the Octave image."""
+    from meegxer.plugins.octave_image import default_image
+    from meegxer.plugins.octave_script import OctaveScriptLauncher, script_manifest
+    from meegxer.plugins.script import ScriptError
+
+    try:
+        script_manifest(script)
+    except ScriptError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    checks = run_conformance(OctaveScriptLauncher(str(script.resolve())))
+    if not all(c.passed for c in checks):
+        print(format_report(checks), file=sys.stderr)
+        print(f"\n{script.name} was not added: fix what failed above "
+              "(docs/OCTAVE.md)", file=sys.stderr)  # fmt: skip
+        return 1
+    entry = index.add_octave_script(script)
+    print(f"installed {entry['manifest']['name']} {entry['manifest']['version']} "
+          f"(Octave, sandboxed in {default_image()}) into "
+          f"{index.index_path()}")  # fmt: skip
+    return 0
 
 
 def _accepted(args: argparse.Namespace) -> bool:
@@ -103,7 +137,8 @@ def main(argv: list[str] | None = None) -> int:
         help="process: the whole recording (MNE Raw), offline; transform: block "
         "by block, live and offline; calibrated: fit, then transform; "
         "features: values per window; epochs: the epochs an Epochs strip cut "
-        "(MNE Epochs), offline",
+        "(MNE Epochs), offline; octave: an Octave/EEGLAB script (.m, EEG), "
+        "offline, in the Octave image",
     )
     new.add_argument("--folder", type=Path, default=Path(), help="where to write it")
 
@@ -180,8 +215,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.script and (reason := _missing(args.script)):
             print(f"error: {reason}", file=sys.stderr)
             return 1
-        if args.script:
-            launcher: ContainerLauncher | LocalLauncher = LocalLauncher(
+        launcher: Any
+        if _octave(args.script):
+            from meegxer.plugins.octave_script import OctaveScriptLauncher
+
+            launcher = OctaveScriptLauncher(str(args.script.resolve()))
+        elif args.script:
+            launcher = LocalLauncher(
                 tuple(index.script_command(args.script)), allow=True
             )
         elif args.local:
@@ -199,6 +239,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.script and (reason := _missing(args.script)):
             print(f"error: {reason}", file=sys.stderr)
             return 1
+        if _octave(args.script):  # sandboxed in the Octave image: no notice
+            return _add_octave(args.script)
         if not _accepted(args):
             return 1
         command = index.script_command(args.script) if args.script else args.local
@@ -234,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
         from meegxer.plugins.sterile import SterileError
 
         try:
-            tag = args.tag or octave_image.IMAGE
+            tag = args.tag or octave_image.default_image()
             if args.action == "build":
                 octave_image.build_image(tag=tag, engine=args.engine)
                 print(f"built {tag}")
@@ -256,13 +298,18 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps([{
                 "name": e["manifest"]["name"],
                 "version": e["manifest"]["version"],
-                "where": e.get("image") or " ".join(e.get("command", [])),
+                "where": e.get("image") or e.get("octave_script")
+                or " ".join(e.get("command", [])),
                 "unsandboxed": bool(e.get("unsandboxed")),
                 "description": e["manifest"].get("description", ""),
             } for e in index.load_index()]))  # fmt: skip
             return 0
         for entry in index.load_index():
-            where = entry.get("image") or " ".join(entry.get("command", []))
+            where = (
+                entry.get("image")
+                or entry.get("octave_script")
+                or " ".join(entry.get("command", []))
+            )
             flag = "  local, unsandboxed" if entry.get("unsandboxed") else ""
             name, version = entry["manifest"]["name"], entry["manifest"]["version"]
             print(f"{name:40} {version:8} {where}{flag}")

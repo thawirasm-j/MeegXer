@@ -71,6 +71,8 @@
             "unsandboxed": {"type": "boolean"},
             "sha256": {"type": "string"},
             "script": {"type": "string"},
+            "octave_script": {"type": "string"},
+            "eeglab": {"type": "string"},
             "requires": {
               "description": "A custom script's extra packages (REQUIRES): normalised name -> the version installed when saved.",
               "type": "object",
