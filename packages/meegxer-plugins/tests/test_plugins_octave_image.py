@@ -51,7 +51,7 @@ def test_the_recipe_pins_eeglab_and_leaves_out_what_it_cannot_ship(
     folder = context(tmp_path / "ctx")
     assert sorted(p.name for p in (folder / "octave").iterdir()) == [
         "meegxer_octave_check.m", "meegxer_octave_script.m",
-        "meegxer_plugin_run.m"]  # fmt: skip
+        "meegxer_plugin_run.m", "yulewalk.m"]  # fmt: skip
     dockerfile = (folder / "Dockerfile").read_text()
     assert f'org.meegxer.octave.code="{code_hash()}"' in dockerfile
     assert "{code}" not in dockerfile and "{version}" not in dockerfile
@@ -154,6 +154,10 @@ def test_the_cli_says_what_the_image_holds(
     assert main(["octave", "check", "--engine", "docker"]) == 1
     assert "pop_eegfiltnew gave a wrong result" in capsys.readouterr().err
     assert main(["octave", "build", "--engine", "docker"]) == 0
+    build = ["octave", "build", "--engine", "docker", "--with"]
+    assert main([*build, "clean_rawdata"]) == 0
+    assert main([*build, "nosuch"]) == 1
+    assert "not an EEGLAB plugin MeegXer knows" in capsys.readouterr().err
 
 
 @pytest.mark.skipif(not REAL_IMAGE, reason="set MEEGXER_TEST_OCTAVE_IMAGE")

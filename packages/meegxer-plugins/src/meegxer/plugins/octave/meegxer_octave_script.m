@@ -1,7 +1,7 @@
 ## -*- texinfo -*-
 ## MeegXer's runner for Octave/EEGLAB scripts, in the Octave image
 ## (docs/OCTAVE.md). Nothing is mounted: the first frame on stdin is
-##   {"type": "script", "name": FILE.m, "manifest": {...},
+##   {"type": "script", "name": FILE.m, "manifest": {...}, "plugins": [...],
 ##    "files": [{"name": FILE.m, "data": "f0", "sha256": HEX}]}
 ## with the file's bytes as a uint8 array. The script is written to /tmp and
 ## served through the plugin SDK (meegxer_plugin_run): each block is handed
@@ -39,6 +39,17 @@ function meegxer_octave_script ()
   addpath (genpath (fullfile (eeglab_root, "functions")));
   addpath (fullfile (eeglab_root, "plugins", "firfilt"));
   addpath (genpath (fullfile (eeglab_root, "plugins", "ICLabel")));
+  plugins = {};
+  if (isfield (header, "plugins")) plugins = header.plugins; endif
+  if (ischar (plugins)) plugins = {plugins}; endif
+  for k = 1:numel (plugins)  # the EEGLAB plugins this script declares, only
+    folder = fullfile (eeglab_root, "plugins", plugins{k});
+    if (! exist (folder, "dir"))
+      error ("the Octave image lacks the EEGLAB plugin %s: run meegxer-plugin octave build again",
+             plugins{k});
+    endif
+    addpath (genpath (folder));
+  endfor
   addpath (root);  # the script last added: it comes first on the path
   MX_SCRIPT = str2func (name);
   meegxer_plugin_run (mx_manifest (header.manifest), [], @mx_process, []);

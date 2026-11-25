@@ -173,6 +173,15 @@ def main(argv: list[str] | None = None) -> int:
     octave.add_argument(
         "--tag", help="the image's tag (default: meegxer-octave:VERSION)"
     )
+    octave.add_argument(
+        "--with",
+        dest="plugins",
+        action="append",
+        default=[],
+        metavar="PLUGIN",
+        help="build: also fetch this EEGLAB plugin (a name MeegXer knows, e.g. "
+        "clean_rawdata), besides those the added scripts declare",
+    )
 
     listing = sub.add_parser("list", help="list installed plugins")
     listing.add_argument(
@@ -278,20 +287,31 @@ def main(argv: list[str] | None = None) -> int:
         try:
             tag = args.tag or octave_image.default_image()
             if args.action == "build":
-                octave_image.build_image(tag=tag, engine=args.engine)
+                from meegxer.plugins.octave_plugins import merged, named
+
+                asked = [named(n) for n in args.plugins]
+                wanted = merged([*octave_image.scripts_plugins(), *asked])
+                octave_image.build_image(tag=tag, engine=args.engine,
+                                         plugins=wanted)  # fmt: skip
                 print(f"built {tag}")
                 return 0
             found = octave_image.self_check(tag, engine=args.engine)
-        except SterileError as exc:
+        except (SterileError, ValueError) as exc:  # ValueError: a bad --with
             print(f"error: {exc}", file=sys.stderr)
             return 1
         if not found.get("filter_ok"):
             print(f"error: {tag}: EEGLAB's pop_eegfiltnew gave a "
                   "wrong result in the image", file=sys.stderr)  # fmt: skip
             return 1
+        plugins = octave_image.image_plugins(tag, args.engine)
+        extra = f", with {', '.join(sorted(plugins))}" if plugins else ""
         print(f"ok: {tag} is up to date (GNU Octave "
               f"{found['octave']}, signal {found['signal']}, EEGLAB "
-              f"{found['eeglab']}; pop_eegfiltnew works)")  # fmt: skip
+              f"{found['eeglab']}{extra}; pop_eegfiltnew works)")  # fmt: skip
+        try:  # the added scripts' plugins the image lacks: say what to do
+            octave_image.check_image(tag, args.engine, octave_image.scripts_plugins())
+        except (SterileError, ValueError) as exc:  # ValueError: scripts disagree
+            print(f"note: {exc}", file=sys.stderr)
         return 0
     if args.command == "list":
         if args.json:

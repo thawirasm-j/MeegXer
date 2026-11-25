@@ -25,6 +25,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   notice. `meegxer-plugin new NAME --kind octave` writes a template; `run`,
   `check`, `add` and the GUI's *Add a custom script…* take `.m` files.
   Sessions record its SHA-256, the image and EEGLAB's version.
+- **EEGLAB plugins for Octave scripts.** A script declares the plugins it
+  needs in its help block (`% Requires: clean_rawdata`, or any repository at a
+  full commit); `meegxer-plugin octave build` fetches them into the image at
+  their pinned commits (`--with NAME` for more), `octave check` lists them, a
+  script whose plugins the image lacks is refused with what to do, and each
+  script sees only its own. Known: clean_rawdata, dipfit, EEG-BIDS, at the
+  commits EEGLAB 2026.0.0 pins. ASR runs at any rate (MeegXer's `yulewalk`
+  port is in the image).
 
 - **Porting your code (custom scripts).** A guide, `docs/PORTING.md`: which
   entry point fits what your code works on (a Raw, blocks, a fitted model,

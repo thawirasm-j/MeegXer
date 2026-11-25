@@ -42,6 +42,7 @@ import numpy as np
 import numpy.typing as npt
 
 from meegxer.plugins.octave_image import EEGLAB_VERSION, check_image, default_image
+from meegxer.plugins.octave_plugins import declared
 from meegxer.plugins.script import ScriptError
 from meegxer.plugins.worker import ContainerLauncher
 
@@ -193,10 +194,16 @@ def code_sha256(path: Path) -> str:
 
 def origin_of(path: Path, image: str = "") -> dict[str, Any]:
     """What sessions record of an Octave script: its file, the SHA-256 of its
-    code, and the image (EEGLAB) it runs with."""
-    return {"octave_script": str(path.resolve()), "script": path.name,
-            "sha256": code_sha256(path), "image": image or default_image(),
-            "eeglab": EEGLAB_VERSION}  # fmt: skip
+    code, the image (EEGLAB) it runs with and the EEGLAB plugins it declares
+    (name -> commit)."""
+    origin: dict[str, Any] = {"octave_script": str(path.resolve()),
+              "script": path.name,
+              "sha256": code_sha256(path), "image": image or default_image(),
+              "eeglab": EEGLAB_VERSION}  # fmt: skip
+    plugins = declared(path)
+    if plugins:
+        origin["eeglab_plugins"] = {p.name: p.commit for p in plugins}
+    return origin
 
 
 @dataclass(frozen=True)
@@ -220,7 +227,8 @@ class OctaveScriptLauncher:
         return ContainerLauncher(self.tag, self.engine, memory=self.memory)
 
     def command(self, name: str) -> list[str]:
-        check_image(self.tag, self.engine)  # missing or stale: say so now
+        # missing, stale, or without a plugin the script declares: say so now
+        check_image(self.tag, self.engine, declared(Path(self.path)))
         base = self._container().command(name)  # [..., image]
         return [*base[:-1], "--entrypoint", "sh", base[-1], "-c", RUN]
 
@@ -239,6 +247,7 @@ class OctaveScriptLauncher:
         digest = hashlib.sha256(source).hexdigest()
         header = {"type": "script", "name": path.name,
                   "manifest": script_manifest(path),
+                  "plugins": [p.name for p in declared(path)],
                   "files": [{"name": path.name, "data": "f0",
                              "sha256": digest}]}  # fmt: skip
         return [(header, {"f0": np.frombuffer(source, dtype=np.uint8)})]
