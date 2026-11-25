@@ -15,6 +15,7 @@ write files. The reference for every convention is `docs/CUSTOM_SCRIPTS.md`.
 | a model learnt first, then applied (a spatial filter, a classifier, a z-score) | `calibrated` | `fit(raw, ...)` returns the model; `transform(data, state, model, ...)` | live and offline |
 | one value (or a few) per channel per analysis window (band power, entropy, a ratio) | `features` | `features(data, info, ...)` returns `{name: per-channel values}` | live and offline |
 | an EEGLAB script on `EEG` (pop_* functions, firfilt, ICLabel) | `octave` | `function EEG = name(EEG, varargin)` returns `EEG`; `docs/OCTAVE.md` | offline |
+| Octave code on one block at a time, with what carries over (`filter` with its state) | `octave-live` | `function [EEG, state] = name(EEG, state, varargin)`; `docs/OCTAVE.md` | live and offline |
 | the epochs around events, as `mne.Epochs` (rejection, baseline, relabelling) | `epochs` | `process_epochs(epochs, ...)` returns the Epochs kept; after an Epochs strip | offline |
 
 Code in several files (helper modules, data files such as weights or a

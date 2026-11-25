@@ -45,8 +45,8 @@ end
 - **Return the same channels and number of samples** (`EEG.data`); events
   you add to `EEG.event` (`type`, `latency` in samples from 1, `duration`)
   come out as events. To drop channels, use the *Pick channels* strip.
-- **Offline only for now**: the script sees the whole recording at once.
-  Live Octave scripts come next.
+- **Offline**: this script sees the whole recording at once. For live use,
+  write a live script (below).
 - **Sandboxed, always**: the script runs in a container of the Octave image
   (no network, read-only, no capabilities), its code sent in when it starts
   (nothing is mounted), so adding one asks for no local-code notice, and an
@@ -62,6 +62,57 @@ meegxer-plugin add --script lab_bandpass.m                # make it a strip
 ```
 
 In the GUI: **+ Add strip → ✎ Add a custom script…**, pick the `.m` file.
+
+## A live script
+
+A script that also takes and returns its **state** is called block by block,
+live and offline alike (decided 2026-11-25):
+
+```matlab
+function [EEG, state] = lab_highpass (EEG, state, varargin)
+% High-pass block by block (Butterworth, the signal package's butter).
+%
+% Parameters
+% ----------
+% cutoff : float = 1
+%     High-pass cut-off (Hz).
+% order : int = 2
+%     Butterworth order.
+  opt = struct (varargin{:});
+  [b, a] = butter (opt.order, opt.cutoff / (EEG.srate / 2), "high");
+  if (isempty (state))  % the first block
+    state = struct ("zi", zeros (max (numel (a), numel (b)) - 1, EEG.nbchan));
+  endif
+  % along time (dimension 2), even for a block of one sample
+  [EEG.data, state.zi] = filter (b, a, double (EEG.data), state.zi, 2);
+end
+```
+
+- **`EEG` is one block**, in microvolts, with the same fields as above;
+  `EEG.xmin` is its start in seconds since the first sample. A block can be
+  a single sample: work along dimension 2 (time), not on `EEG.data'`.
+- **`state` is `[]` on the first block**; whatever the script returns comes
+  back with the next block (numbers, arrays, text, structs and cells of
+  them). MeegXer keeps it, not Octave, so a restarted container carries on
+  exactly.
+- **Causal, and the same block by block as in one pass**: the script sees
+  no samples after the block. `meegxer-plugin check --script` runs MeegXer's
+  acceptance test 1 (random block sizes, down to one sample); a script that
+  forgets its state fails it.
+- **Settings** come from the help block as for any script and change live
+  (`meegxer set NODE cutoff=3`, or the strip in the GUI): read them on every
+  block, as above.
+- **Cost**: each block is a round trip into the container, about 5 ms here
+  at 16 channels and 500 Hz (well under the block's own duration). When a
+  block holds only a sample or two, that round trip is longer than the
+  block, and the status counts it as a late block; the next block carries
+  more samples, so nothing piles up. The container's start counts a few
+  more at the beginning.
+
+```bash
+meegxer-plugin new lab_highpass --kind octave-live   # a template
+meegxer-plugin check --script lab_highpass.m         # block-wise == one pass
+```
 
 ## The image
 

@@ -1117,3 +1117,35 @@ runs both.
 | AE1 check notes the missing plugin | | |
 | AE2 build fetches it; check lists it | | |
 | AE3 the script runs on your recording | | |
+
+## AF. A live Octave script
+
+Already run by Claude on Linux (Docker 29, the image built from this code):
+`meegxer-plugin new lab_highpass --kind octave-live`, then `check --script`
+(conformant: block-wise == one pass, max deviation 0; restart with
+host-held state exact) and `add --script`. `meegxer daemon --pipeline live.json
+--start` with a 16-channel, 500 Hz synthetic input and the strip ran it live
+(about 5 ms per block; samples kept pace with the clock; a few late blocks at
+the start while the container started, then about one a second on blocks of
+a sample or two); `meegxer set hp cutoff=3` reached it. In the GUI
+(offscreen), *Add a custom script…* took the `.m` file, the input set to
+*Synthetic EEG*, *LIVE*: it ran with no errors, its tap showing the signal,
+and *Cutoff* changed on the strip while running. CI checks the template
+against scipy's Butterworth filter, live and in a batch run in 37-sample blocks.
+
+1. Pull, `uv sync --all-packages`, `uv run meegxer-plugin octave build`.
+2. `uv run meegxer-plugin new lab_highpass --kind octave-live`, then
+   `uv run meegxer-plugin check --script lab_highpass.m`: `conformant`.
+3. In the GUI, *+ Add strip → ✎ Add a custom script…*, pick
+   `lab_highpass.m`; input *Synthetic EEG* (or your amplifier over LSL), *LIVE*,
+   *Start*: the strip's tap shows the signal without its slow drift.
+4. Set *Cutoff* to 5 Hz while it runs: the view follows within a second.
+5. The status line: processing load and late blocks stay steady after the
+   first seconds.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| AF1 `check --script`: conformant | | |
+| AF2 runs live in the GUI | | |
+| AF3 a setting changed live reaches it | | |
+| AF4 load and late blocks steady | | |

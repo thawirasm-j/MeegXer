@@ -25,6 +25,13 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   notice. `meegxer-plugin new NAME --kind octave` writes a template; `run`,
   `check`, `add` and the GUI's *Add a custom script…* take `.m` files.
   Sessions record its SHA-256, the image and EEGLAB's version.
+- **Live Octave scripts.** `function [EEG, state] = name (EEG, state,
+  varargin)` runs block by block, live and offline alike: `EEG` is one block
+  in microvolts, `state` is `[]` on the first block and whatever the script
+  returned after that (MeegXer keeps it). Settings change live.
+  `meegxer-plugin new NAME --kind octave-live` writes a template (a
+  Butterworth high-pass carrying `filter`'s state); `check --script` runs
+  acceptance test 1 on it (block-wise equals one pass).
 - **EEGLAB plugins for Octave scripts.** A script declares the plugins it
   needs in its help block (`% Requires: clean_rawdata`, or any repository at a
   full commit); `meegxer-plugin octave build` fetches them into the image at

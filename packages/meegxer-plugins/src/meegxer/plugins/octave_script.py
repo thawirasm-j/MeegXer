@@ -26,8 +26,15 @@ sandboxed like any plugin container: its code is sent in when its process
 starts (nothing is mounted), and MeegXer's runner (``octave/
 meegxer_octave_script.m``) hands it the recording as ``EEG`` in microvolts,
 as EEGLAB expects, and takes back ``EEG.data`` (the same channels and length)
-and the events it added to ``EEG.event``. Offline only for now: the script
-sees the whole recording at once.
+and the events it added to ``EEG.event``. That script sees the whole
+recording at once (offline). A live script also takes and returns its state,
+and is called block by block, live and offline alike (decided 2026-11-25)::
+
+    function [EEG, state] = lab_highpass (EEG, state, varargin)
+
+``state`` is ``[]`` on the first block; whatever it returns comes back with
+the next one. ``EEG`` is that block (``EEG.xmin``: its start, in seconds since
+the first sample).
 """
 
 from __future__ import annotations
@@ -48,7 +55,7 @@ from meegxer.plugins.worker import ContainerLauncher
 
 SPEC_VERSION = "0.2.5"
 _FUNCTION = re.compile(
-    r"^\s*function\s+(?:(?:\[[^\]]*\]|\w+)\s*=\s*)?(\w+)\s*(?:\(([^)]*)\))?"
+    r"^\s*function\s+(?:(\[[^\]]*\]|\w+)\s*=\s*)?(\w+)\s*(?:\(([^)]*)\))?"
 )
 _SETTING = re.compile(
     r"^(\w+)\s*:\s*(float|int|bool|str|\{[^}]*\})\s*(?:=\s*(.+?))?\s*$"
@@ -107,13 +114,24 @@ def script_manifest(path: Path) -> dict[str, Any]:
         )
     match = _FUNCTION.match(lines[head])
     assert match is not None
-    name, args = match.group(1), [a.strip() for a in (match.group(2) or "").split(",")]
+    outs = [o.strip() for o in (match.group(1) or "").strip("[]").replace(",", " ")
+            .split() if o.strip()]  # fmt: skip
+    name, args = match.group(2), [a.strip() for a in (match.group(3) or "").split(",")]
     if name != path.stem:
         raise ScriptError(f"{path.name}: the function is {name!r}; Octave needs it "
                           f"named as its file, {path.stem!r}")  # fmt: skip
     if not args or not args[0]:
         raise ScriptError(f"{name} needs the recording as its first argument: "
                           f"function EEG = {name} (EEG, varargin)")  # fmt: skip
+    live = len(outs) == 2
+    if live and (len(args) < 2 or args[1] != outs[1]):
+        raise ScriptError(f"{name} returns its state: take it as the second "
+                          f"argument, function [EEG, {outs[1]}] = {name} (EEG, "
+                          f"{outs[1]}, varargin)")  # fmt: skip
+    if len(outs) > 2:
+        raise ScriptError(f"{name}: return EEG, or EEG and its state: "
+                          f"function [EEG, state] = {name} (EEG, state, "
+                          "varargin)")  # fmt: skip
     help_lines = []
     for line in lines[head + 1 :]:
         text = _comment(line)
@@ -133,7 +151,7 @@ def script_manifest(path: Path) -> dict[str, Any]:
         "name": f"script.{stem}",
         "version": "0.1.0",
         "type": "stream",
-        "availability": "offline",
+        "availability": "both" if live else "offline",
         "description": description.rstrip(".") + "."
         if description
         else f"Octave script {path.name}",

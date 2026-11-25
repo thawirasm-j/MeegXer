@@ -43,7 +43,7 @@ methods paper. Milestones and their state also live in `docs/WORKPLAN.md`
 
 One PR per item, as before. Items keep their IDs (M9.1 …) in commits and PRs.
 
-## Status (2026-11-05, 0.5.0b2)
+## Status (2026-11-25, 0.5.0b2)
 
 M9 is done (0.3.0b1 to 0.3.1b3). M10's exit criterion is met in 0.4.0b1: an
 ERP and a resting-state study run end to end from the GUI and the CLI (the
@@ -74,7 +74,7 @@ Windows): with it, M11's exit criterion is met.
 | M11.2 Plugin hardening | Done: the container limits (memory 2 GB, 256 processes, optional CPUs; no network, read-only, no capabilities) and digest pinning (a plugin runs by its recorded image ID; a session refuses another) were in place. Now the plugin wire reader checks every size and descriptor before reading (256 MiB payload cap, read in pieces), and the GUI drops display frames it cannot decode; both fuzzed with seeded mutations in CI | this PR |
 | M11.3 LDA classifier | Done: the *LDA* strip reads a feature strip (CSP, band power…; *Reads*), fits shrinkage LDA (scikit-learn, Ledoit-Wolf) on the windows lying in its classes' trials, and gives each window's class probabilities and a `pred_<class>` event on the Events rail; offline and live (spec 0.2.23) | PR #143 |
 | M11.4 Keyboard sink | Done: the *Keyboard (key presses)* output presses a key for each event it maps (`pred_left=left`), only while armed by hand for one live run (the strip's *Arm*, `meegxer arm NODE`), at most *Keys per second* (2), disarmed by Esc, *Disarm* or *Stop*; never in a batch run, never from a pipeline (pynput). "Not a medical device" in the README and the new About box. Live runs now hand action sinks each new event and file writers the Events rail | PR #145 |
-| M11.5 Octave/EEGLAB scripts | In progress (`docs/OCTAVE.md`): the image, GNU Octave with a pinned EEGLAB 2026.0.0 (core, firfilt, ICLabel), built locally and checked by its code hash (`meegxer-plugin octave build|check`), in which every Octave script runs sandboxed (decided 2026-11-24) (PR #173); offline scripts, `function EEG = name(EEG, varargin)`, settings from the help block, called name-value, `EEG` in microvolts, their code sent in at the start (PR #174); EEGLAB plugins a script declares (`% Requires:`), fetched at their pinned commits when the image is built, each script seeing only its own (decided 2026-11-25) (this PR). Next: live Octave scripts | PR #173, PR #174, this PR |
+| M11.5 Octave/EEGLAB scripts | Done; manual checks AC–AF pending on Windows (`docs/OCTAVE.md`): the image, GNU Octave with a pinned EEGLAB 2026.0.0 (core, firfilt, ICLabel), built locally and checked by its code hash (`meegxer-plugin octave build|check`), in which every Octave script runs sandboxed (decided 2026-11-24) (PR #173); offline scripts, `function EEG = name(EEG, varargin)`, settings from the help block, called name-value, `EEG` in microvolts, their code sent in at the start (PR #174); EEGLAB plugins a script declares (`% Requires:`), fetched at their pinned commits when the image is built, each script seeing only its own (decided 2026-11-25) (PR #175); live scripts, `function [EEG, state] = name(EEG, state, varargin)`, block by block, live and offline, checked block-wise == one pass (decided 2026-11-25) (this PR) | PR #173, PR #174, PR #175, this PR |
 | M11.6 Shortcut creation | Done: `meegxer-gui --create-shortcut` (and `--remove-shortcut`): Start menu and desktop on Windows (PowerShell `WScript.Shell`, `pythonw`: no console), the application menu on Linux (`.desktop`), `~/Applications/MeegXer.app` on macOS; no icon yet | PR #147 |
 
 Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
@@ -82,7 +82,7 @@ Commit IDs and roadmap IDs drifted during M10: the commits named "M10.2",
 (now M10.11), and "M10.3" is the Epochs strip (M10.2 here). This table is the
 reference.
 
-**Next:** M11's exit criterion is met (SSVEP → keypress, 0.5.0b1; Sterile output identical to local, 0.5.0b2). Left in M11: the Octave script tier (M11.5), and structured custom scripting (decided 2026-11-06: the scaffold and porting guide, done (PR #167); epochs scripts, done (PR #168); script folders, done (PR #169); declared dependencies, done (this PR)); then M12 (spec freeze, validation report, ERP CORE replication).
+**Next:** M11's exit criterion is met (SSVEP → keypress, 0.5.0b1; Sterile output identical to local, 0.5.0b2). M11's items are done: the Octave script tier (M11.5: the image, offline and live scripts, declared EEGLAB plugins) and structured custom scripting (decided 2026-11-06: the scaffold and porting guide (PR #167); epochs scripts (PR #168); script folders (PR #169); declared dependencies (PR #170)). Their manual checks (`docs/TESTING.md` Y–AF) wait on Windows; then a beta, and M12 (spec freeze, validation report, ERP CORE replication).
 
 ### M9: Fix and harden (0.3.0bN)
 
