@@ -187,6 +187,33 @@ OCTAVE = """function EEG = {name} (EEG, varargin)
 end
 """
 
+OCTAVE_LIVE = """function [EEG, state] = {name} (EEG, state, varargin)
+% {title}: what it does, in one line (the strip's description).
+%
+% A live Octave script: called block by block, live and offline alike, in
+% MeegXer's Octave image. EEG is one block, in microvolts; keep what must
+% carry over to the next block in state ([] on the first block). It must give
+% the same result block by block as in one pass (meegxer-plugin check).
+% Build the image once: meegxer-plugin octave build (docs/OCTAVE.md).
+%
+% Parameters
+% ----------
+% cutoff : float = 1
+%     High-pass cut-off (Hz).
+% order : int = 2
+%     Butterworth order.
+  opt = struct (varargin{{:}});  % every setting above, by name: opt.cutoff...
+  % -- your code: anything causal (it sees no samples after the block),
+  % -- with what it carries over in state
+  [b, a] = butter (opt.order, opt.cutoff / (EEG.srate / 2), "high");
+  if (isempty (state))  % the first block
+    state = struct ("zi", zeros (max (numel (a), numel (b)) - 1, EEG.nbchan));
+  endif
+  % along time (dimension 2), even for a block of one sample
+  [EEG.data, state.zi] = filter (b, a, double (EEG.data), state.zi, 2);
+end
+"""
+
 TEMPLATES = {
     "process": PROCESS,
     "transform": TRANSFORM,
@@ -194,6 +221,7 @@ TEMPLATES = {
     "features": FEATURES,
     "epochs": EPOCHS,
     "octave": OCTAVE,
+    "octave-live": OCTAVE_LIVE,
 }
 KINDS = tuple(TEMPLATES)
 
@@ -215,7 +243,7 @@ def new_script(name: str, kind: str, folder: Path = Path()) -> Path:
         raise ValueError(
             f"{name!r}: use letters, digits and underscores (e.g. my_filter)"
         )
-    suffix = ".m" if kind == "octave" else ".py"  # an Octave/EEGLAB script
+    suffix = ".m" if kind.startswith("octave") else ".py"  # Octave/EEGLAB
     path = folder / f"{stem}{suffix}"
     if path.exists():
         raise FileExistsError(f"{path} exists: choose another name")

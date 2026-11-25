@@ -9,7 +9,9 @@
 ## name-value pairs:
 ##   EEG = my_filter (EEG, 'low', 1, 'high', 40)
 ## It must give back the same channels and number of samples; events it adds
-## to EEG.event come out as events.
+## to EEG.event come out as events. A live script (availability "both") takes
+## and returns its state, block by block, [] on the first block:
+##   [EEG, state] = my_highpass (EEG, state, 'cutoff', 1)
 function meegxer_octave_script ()
   global MX_SCRIPT;
   [header, arrays] = mx_first_frame ();
@@ -52,6 +54,8 @@ function meegxer_octave_script ()
   endfor
   addpath (root);  # the script last added: it comes first on the path
   MX_SCRIPT = str2func (name);
+  global MX_LIVE;
+  MX_LIVE = strcmp (header.manifest.availability, "both");
   meegxer_plugin_run (mx_manifest (header.manifest), [], @mx_process, []);
 endfunction
 
@@ -87,8 +91,9 @@ function c = mx_cell (v)
 endfunction
 
 function [out, state, events] = mx_process (data, info, model, state, params)
-  ## One call of the script on a whole recording (the offline tier).
-  global MX_SCRIPT;
+  ## One call of the script: on a whole recording (offline scripts), or on
+  ## one block, with the script's own state (live scripts).
+  global MX_SCRIPT MX_LIVE;
   labels = info.ch_labels;
   if (ischar (labels)) labels = {labels}; endif
   [n_ch, n] = size (data);
@@ -98,13 +103,13 @@ function [out, state, events] = mx_process (data, info, model, state, params)
   EEG.nbchan = n_ch;
   EEG.pnts = n;
   EEG.trials = 1;
-  EEG.xmin = 0;
-  EEG.xmax = (n - 1) / info.sfreq;
-  EEG.times = (0:n - 1) / info.sfreq * 1000;
+  start = info.sample_index;
+  EEG.xmin = start / info.sfreq;  # seconds since the first sample
+  EEG.xmax = (start + n - 1) / info.sfreq;
+  EEG.times = (start:start + n - 1) / info.sfreq * 1000;
   EEG.data = data * 1e6;  # EEGLAB works in microvolts; MeegXer in volts
   EEG.chanlocs = struct ("labels", labels(:)');
   EEG.event = struct ("type", {}, "latency", {}, "duration", {});
-  start = info.sample_index;
   if (isfield (info, "events"))
     evs = info.events;
     if (! iscell (evs)) evs = num2cell (evs); endif
@@ -125,7 +130,15 @@ function [out, state, events] = mx_process (data, info, model, state, params)
   for k = 1:numel (names)
     args(end + 1:end + 2) = {names{k}, params.(names{k})};
   endfor
-  EEG = MX_SCRIPT (EEG, args{:});
+  if (MX_LIVE)
+    ## the host keeps the state between blocks; wrapped so the script sees
+    ## [] on the first block only, whatever it keeps
+    mine = [];
+    if (isstruct (state) && isfield (state, "script")) mine = state.script; endif
+    [EEG, mine] = MX_SCRIPT (EEG, mine, args{:});
+  else
+    EEG = MX_SCRIPT (EEG, args{:});
+  endif
   if (! isstruct (EEG) || ! isfield (EEG, "data"))
     error ("the script must return the EEG structure");
   endif
@@ -152,7 +165,11 @@ function [out, state, events] = mx_process (data, info, model, state, params)
                                 "label", label, "duration", duration);
     endfor
   endif
-  state = struct ();
+  if (MX_LIVE)
+    state = struct ("script", {mine});
+  else
+    state = struct ();
+  endif
 endfunction
 
 function v = getfield_or (s, name, default)
