@@ -87,12 +87,59 @@ What it holds:
 | firfilt (`pop_eegfiltnew` and the FIR filters) | as EEGLAB 2026.0.0 pins it, `ff8227f8` | GPL-2.0-or-later |
 | ICLabel | as EEGLAB 2026.0.0 pins it, `644578bd` | GPL-2.0-or-later |
 
-Left out: EEGLAB's sample data and its other plugins. clean_rawdata's ASR
-files are under the UC Regents licence (non-commercial); the separate EEGLAB
-ASR plugin image (`packages/meegxer-plugins/plugins/eeglab_asr`) fetches it for
-those who accept that. dipfit bundles FieldTrip.
+Left out of the base: EEGLAB's sample data and its other plugins (a script
+declares the ones it needs, below). clean_rawdata's ASR files are under the UC
+Regents licence (non-commercial); dipfit bundles FieldTrip.
 
 The image is labelled with a SHA-256 of its recipe and of MeegXer's Octave
 files (the plugin SDK and the runner, `meegxer/plugins/octave/`), so an image
 built from other code (another MeegXer version, an edited checkout) is refused
 with what to do: build it again.
+
+## EEGLAB plugins
+
+A script that needs an EEGLAB plugin beyond firfilt and ICLabel says so in
+its help block (decided 2026-11-25):
+
+```matlab
+function EEG = lab_clean (EEG, varargin)
+% Remove drifts and bursts with clean_rawdata (ASR).
+%
+% Requires: clean_rawdata
+  EEG = clean_drifts (EEG, [0.25 0.75]);
+  EEG = clean_asr (EEG, 20);
+end
+```
+
+- **A name MeegXer knows**, case-insensitive, several per line
+  (`% Requires: clean_rawdata, dipfit`), or **any git repository at a full
+  commit**: `% Requires: zapline_plus = https://github.com/... @ 40-HEX-COMMIT`
+  (an `https://` URL of letters, digits and `._~%+-`; the name is its
+  folder under EEGLAB's `plugins/`).
+- **Fetched when the image is built, never while a script runs.**
+  `meegxer-plugin octave build` fetches every plugin the added scripts
+  declare (and any `--with NAME`), each at its pinned commit, and lists them
+  in the image's label; `octave check` says which it holds. A script whose
+  plugins the image lacks is refused, saying to build again. The base image
+  and its code hash do not change.
+- **Each script gets only its own plugins** on its path, so two scripts
+  cannot see each other's. One image holds one copy of each plugin: two
+  added scripts asking for one at different commits make the build refuse,
+  naming both.
+- Sessions record each plugin's commit with the script.
+
+The plugins MeegXer knows, at the commits EEGLAB 2026.0.0 pins:
+
+| Name | Commit | Licence |
+|---|---|---|
+| `clean_rawdata` | `d4b143f2` | GPL-3.0; `asr_calibrate.m`, `asr_process.m`: UC Regents, non-commercial use only |
+| `dipfit` | `b0b660e7` | GPL-2.0-or-later (bundles FieldTrip) |
+| `EEG-BIDS` | `8486b1dd` | GPL-2.0-or-later |
+
+A plugin's licence is yours to accept when you declare it: clean_rawdata's ASR
+files allow non-commercial use only.
+
+The image also holds `yulewalk.m`, MeegXer's tested port (the one the EEGLAB
+ASR plugin uses): `asr_calibrate` designs its filter with it at rates
+EEGLAB has no precomputed filter for (anything but 100, 128, 200, 256, 300,
+500 and 512 Hz), as Octave's signal package has no `yulewalk`.

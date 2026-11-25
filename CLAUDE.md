@@ -145,7 +145,9 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - Octave/EEGLAB (`docs/OCTAVE.md`): `meegxer-plugin octave build|check [--tag T]`,
   the image Octave scripts run in (GNU Octave, a pinned EEGLAB; sandboxed);
   scripts `function EEG = name(EEG, varargin)` (`.m`, settings from the help
-  block) with `meegxer-plugin new --kind octave` / `run|check|add --script X.m`.
+  block) with `meegxer-plugin new --kind octave` / `run|check|add --script X.m`;
+  EEGLAB plugins a script declares (`% Requires: clean_rawdata`, or
+  `name = URL @ COMMIT`) are fetched by `octave build` (`--with NAME`), pinned.
 - Plugins: `uv run meegxer-plugin check IMAGE` (conformance),
   `meegxer-plugin add IMAGE`, `meegxer-plugin list`. Custom scripts
   (`process(raw, ...)` offline, `process_epochs(epochs, ...)` after an Epochs

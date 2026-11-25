@@ -73,6 +73,11 @@
             "script": {"type": "string"},
             "octave_script": {"type": "string"},
             "eeglab": {"type": "string"},
+            "eeglab_plugins": {
+              "description": "An Octave script's declared EEGLAB plugins (Requires): name -> the commit fetched into the image.",
+              "type": "object",
+              "additionalProperties": {"type": "string"}
+            },
             "requires": {
               "description": "A custom script's extra packages (REQUIRES): normalised name -> the version installed when saved.",
               "type": "object",

@@ -1090,3 +1090,30 @@ doubling `EEG.data` doubles the signal; `EEG.data + 1` adds 1 µV.
 | AD1 `run` on your recording | | |
 | AD2 the GUI adds it with no notice and runs it | | |
 | AD3 a setting changed in the GUI reaches the script | | |
+
+## AE. An EEGLAB plugin a script declares (`% Requires:`)
+
+Already run by Claude on Linux (Docker 29): `meegxer-plugin octave build
+--with clean_rawdata` fetched clean_rawdata at commit `d4b143f2` into the
+image (the label lists it; `octave check` says `with clean_rawdata`). A script
+declaring `% Requires: clean_rawdata` ran `clean_drifts` and `clean_asr` at
+250 Hz (a rate EEGLAB has no precomputed ASR filter for); the same script
+without the line failed, saying `clean_drifts` is undefined (each script sees
+only its own plugins); a script declaring a plugin the image lacked was
+refused, saying to build again. CI builds its image with clean_rawdata and
+runs both.
+
+1. Pull, `uv sync --all-packages`.
+2. Write `lab_clean.m` (the example in `docs/OCTAVE.md`, *EEGLAB plugins*),
+   then `uv run meegxer-plugin add --script lab_clean.m`.
+3. `uv run meegxer-plugin octave check`: a note says the image lacks
+   clean_rawdata. `uv run meegxer-plugin octave build`: it fetches it;
+   `octave check` now says `with clean_rawdata`.
+4. `uv run meegxer-plugin run --script lab_clean.m -i REC` on a recording of
+   yours, or add the strip in the GUI and run offline: bursts are removed.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| AE1 check notes the missing plugin | | |
+| AE2 build fetches it; check lists it | | |
+| AE3 the script runs on your recording | | |

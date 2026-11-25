@@ -252,6 +252,7 @@ def declared_requires(path: Path | None = None, *, but: str = "") -> list[str]:
 def add_octave_script(script: Path, path: Path | None = None) -> dict[str, Any]:
     """Record an Octave script (it runs sandboxed in the Octave image, so no
     local-code notice); its manifest comes from its help block."""
+    from meegxer.plugins.octave_plugins import declared
     from meegxer.plugins.octave_script import script_manifest
 
     manifest = script_manifest(script)
@@ -260,6 +261,12 @@ def add_octave_script(script: Path, path: Path | None = None) -> dict[str, Any]:
         "added": datetime.now(UTC).isoformat(timespec="seconds"),
         "manifest": manifest,
     }
+    plugins = declared(script)
+    if plugins:  # what `meegxer-plugin octave build` fetches (Requires)
+        entry["eeglab_plugins"] = [
+            {"name": p.name, "url": p.url, "commit": p.commit, "licence": p.licence}
+            for p in plugins
+        ]
     entries = [e for e in load_index(path) if e["manifest"]["name"] != manifest["name"]]
     save_index([*entries, entry], path)
     return entry

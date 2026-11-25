@@ -123,7 +123,7 @@ def test_the_launcher_sends_the_code_into_the_sandbox(
     read when the process starts (an edit needs no rebuild); the container is
     the plugin sandbox, its entry point the runner."""
     monkeypatch.setattr("meegxer.plugins.octave_script.check_image",
-                        lambda tag, engine=None: tag)  # fmt: skip
+                        lambda tag, engine=None, plugins=(): tag)  # fmt: skip
     monkeypatch.setattr("meegxer.plugins.worker.find_engine",
                         lambda preferred=None: "docker")  # fmt: skip
     path = write(tmp_path, "lab_bandpass", BANDPASS)

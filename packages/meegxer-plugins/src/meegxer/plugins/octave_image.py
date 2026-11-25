@@ -23,11 +23,17 @@ import json
 import os
 import subprocess
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 from meegxer.core import __version__
+from meegxer.plugins.octave_plugins import (
+    EeglabPlugin,
+    from_label,
+    label_text,
+    merged,
+)
 from meegxer.plugins.sterile import SterileError
 from meegxer.plugins.sterile_image import ensure_running
 from meegxer.plugins.worker import find_engine
@@ -35,6 +41,7 @@ from meegxer.plugins.worker import find_engine
 IMAGE = f"meegxer-octave:{__version__}"
 IMAGE_ENV = "MEEGXER_OCTAVE_IMAGE"  # another tag (CI's meegxer-octave:ci)
 CODE_LABEL = "org.meegxer.octave.code"
+PLUGINS_LABEL = "org.meegxer.octave.plugins"  # the scripts' EEGLAB plugins
 VERSION_LABEL = "org.meegxer.version"
 OCTAVE_DIR = Path(__file__).parent / "octave"  # MeegXer's .m files
 
@@ -63,14 +70,15 @@ RUN apt-get update \\
  && rm -rf /opt/eeglab/sample_data /opt/eeglab/tutorial_scripts /opt/eeglab/plugins/* \\
  && fetch /opt/eeglab/plugins/firfilt {firfilt_url} {firfilt_commit} \\
  && fetch /opt/eeglab/plugins/ICLabel {iclabel_url} {iclabel_commit} \\
- && apt-get purge -y git && apt-get autoremove -y \\
+{extra} && apt-get purge -y git && apt-get autoremove -y \\
  && rm -rf /var/lib/apt/lists/* \\
  && useradd --create-home --uid 10001 octave
 COPY octave /app
 # Read-only filesystem: only /tmp is writable. EEGLAB prints to stdout, so the
 # protocol keeps the original stdout as descriptor 3 and prints go to stderr.
 ENV HOME=/tmp MEEGXER_PROTOCOL_FD=3 MEEGXER_EEGLAB=/opt/eeglab
-LABEL {code_label}="{code}" {version_label}="{version}"
+LABEL {code_label}="{code}" {version_label}="{version}" \\
+      {plugins_label}="{plugins}"
 USER octave
 WORKDIR /tmp
 """
@@ -82,10 +90,16 @@ def default_image() -> str:
     return os.environ.get(IMAGE_ENV) or IMAGE
 
 
-def recipe() -> str:
-    """The Dockerfile, without its label (what the code hash covers)."""
+def recipe(plugins: Sequence[EeglabPlugin] = ()) -> str:
+    """The Dockerfile, without its labels' values; with the EEGLAB plugins
+    the scripts declare fetched too (the code hash covers it without them)."""
     eeglab, firfilt, iclabel = PINS["eeglab"], PINS["firfilt"], PINS["ICLabel"]
+    extra = "".join(
+        f" && fetch /opt/eeglab/plugins/{p.name} {p.url} {p.commit} \\\n"
+        for p in sorted(plugins, key=lambda p: p.name.lower())
+    )
     return DOCKERFILE.format(
+        extra=extra, plugins_label=PLUGINS_LABEL, plugins="{plugins}",
         eeglab_version=EEGLAB_VERSION,
         eeglab_url=eeglab[0], eeglab_commit=eeglab[1],
         firfilt_url=firfilt[0], firfilt_commit=firfilt[1],
@@ -111,15 +125,28 @@ def code_hash() -> str:
     return digest.hexdigest()
 
 
-def context(folder: Path) -> Path:
-    """Write the build context into ``folder``: the Dockerfile and ``octave/``."""
+def scripts_plugins() -> list[EeglabPlugin]:
+    """Every EEGLAB plugin the added Octave scripts declare (the plugin index)."""
+    from meegxer.plugins.index import load_index
+
+    return merged([
+        EeglabPlugin(item["name"], item["url"], item["commit"],
+                     item.get("licence", ""))
+        for entry in load_index() for item in entry.get("eeglab_plugins", [])
+    ], "the added Octave scripts: ")  # fmt: skip
+
+
+def context(folder: Path, plugins: Sequence[EeglabPlugin] | None = None) -> Path:
+    """Write the build context into ``folder``: the Dockerfile and ``octave/``,
+    with ``plugins`` (by default those the added scripts declare)."""
+    plugins = scripts_plugins() if plugins is None else list(plugins)
     target = folder / "octave"
     target.mkdir(parents=True, exist_ok=True)
     for path in octave_files():
         (target / path.name).write_bytes(path.read_bytes())
-    dockerfile = (
-        recipe().replace("{code}", code_hash()).replace("{version}", __version__)
-    )
+    dockerfile = recipe(plugins).replace("{code}", code_hash())
+    dockerfile = dockerfile.replace("{version}", __version__)
+    dockerfile = dockerfile.replace("{plugins}", label_text(list(plugins)))
     (folder / "Dockerfile").write_text(dockerfile, encoding="utf-8")
     return folder
 
@@ -129,6 +156,7 @@ def build_image(
     tag: str = IMAGE,
     engine: str | None = None,
     log: Callable[[str], None] = print,
+    plugins: Sequence[EeglabPlugin] | None = None,
 ) -> str:
     """Build the Octave image (``tag``); the build's output goes to ``log``
     line by line. Needs the network once (Ubuntu's packages, EEGLAB)."""
@@ -138,8 +166,10 @@ def build_image(
         raise SterileError(f"Octave scripts need Docker or Podman: {exc}") from None
     ensure_running(exe)
     with tempfile.TemporaryDirectory(prefix="meegxer-octave-") as tmp:
-        folder = context(Path(tmp))
-        log(f"Building {tag}: GNU Octave and EEGLAB {EEGLAB_VERSION} "
+        plugins = scripts_plugins() if plugins is None else list(plugins)
+        folder = context(Path(tmp), plugins)
+        extra = f", with {', '.join(p.name for p in plugins)}" if plugins else ""
+        log(f"Building {tag}: GNU Octave and EEGLAB {EEGLAB_VERSION}{extra} "
             f"({code_hash()[:12]})…")  # fmt: skip
         proc = subprocess.Popen(
             [exe, "build", "-t", tag, str(folder)],
@@ -169,9 +199,25 @@ def image_code(tag: str = IMAGE, engine: str | None = None) -> str | None:
     return done.stdout.strip() or ""
 
 
-def check_image(tag: str = IMAGE, engine: str | None = None) -> str:
-    """Refuse, saying what to do, when the Octave image is missing or was
-    built from other code."""
+def image_plugins(tag: str = IMAGE, engine: str | None = None) -> dict[str, str]:
+    """The EEGLAB plugins ``tag`` holds beyond its base: name -> commit."""
+    exe = find_engine(engine)
+    label = '{{index .Config.Labels "' + PLUGINS_LABEL + '"}}'
+    done = subprocess.run([exe, "image", "inspect", "--format", label, tag],
+                          capture_output=True, text=True, check=False,
+                          encoding="utf-8", errors="replace",
+                          timeout=60)  # fmt: skip
+    return from_label(done.stdout.strip()) if done.returncode == 0 else {}
+
+
+def check_image(
+    tag: str = IMAGE,
+    engine: str | None = None,
+    plugins: Sequence[EeglabPlugin] = (),
+) -> str:
+    """Refuse, saying what to do, when the Octave image is missing, was
+    built from other code, or lacks an EEGLAB plugin a script declares
+    (``plugins``, at its commit)."""
     try:
         found = image_code(tag, engine)
     except FileNotFoundError as exc:
@@ -186,6 +232,15 @@ def check_image(tag: str = IMAGE, engine: str | None = None) -> str:
             f"the Octave image {tag} was built from other code than this MeegXer: "
             "run `meegxer-plugin octave build` again"
         )
+    if plugins:
+        has = image_plugins(tag, engine)
+        lacking = [p.name for p in plugins if has.get(p.name) != p.commit]
+        if lacking:
+            raise SterileError(
+                f"the Octave image {tag} lacks the EEGLAB plugin "
+                f"{', '.join(lacking)} a script declares (Requires): run "
+                "`meegxer-plugin octave build` again"
+            )
     return tag
 
 

@@ -92,7 +92,7 @@ jobs:
       - name: Build the Octave image (docs/OCTAVE.md)
         timeout-minutes: 30
         run: |
-          uv run --frozen meegxer-plugin octave build --tag meegxer-octave:ci
+          uv run --frozen meegxer-plugin octave build --tag meegxer-octave:ci --with clean_rawdata
           uv run --frozen meegxer-plugin octave check --tag meegxer-octave:ci
       - name: Octave and EEGLAB run in the image, and Octave scripts in it
         run: >
