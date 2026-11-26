@@ -7,6 +7,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Security: the red team's findings (`docs/SECURITY.md`).** Sterile mode
+  and custom scripts (Python/MNE, Octave) were attacked from a hostile
+  script's side: no container escape and no network. What the host accepts
+  back from a plugin is being tightened, one fix at a time: a plugin's
+  stderr lines are cut at 4 KB (a line without end filled memory).
 - **The Octave image (Octave/EEGLAB scripts, first step).** `meegxer-plugin
   octave build` builds the image Octave/EEGLAB scripts will run in: GNU Octave
   with the signal package and EEGLAB 2026.0.0 (its core, firfilt and ICLabel,

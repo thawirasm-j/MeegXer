@@ -114,6 +114,37 @@ class Printer(Plugin):
 
 run(Printer())
 """,
+    "hostile": """
+# a hostile plugin (the red team, docs/SECURITY.md): MODE picks the attack;
+# it speaks the wire format itself, so it can send what no SDK would
+from meegxer.plugins.wire import read_message, write_message
+MODE = os.environ.get("MODE", "")
+inp, out = sys.stdin.buffer, sys.stdout.buffer
+MANIFEST = manifest("test.hostile")
+if MODE == "stderr_flood":  # 50 MB without a newline, then a line
+    for _ in range(50):
+        sys.stderr.buffer.write(b"A" * 2**20)
+    sys.stderr.buffer.write(b"\\nafter the flood\\n")
+    sys.stderr.flush()
+while True:
+    try:
+        msg = read_message(inp)
+    except EOFError:
+        break
+    h = msg.header
+    rid = h.get("id")
+    if h["type"] == "hello":
+        write_message(out, {"type": "hello", "id": rid, "spec_version": "0.2.1",
+                            "manifest": MANIFEST, "sdk": "hostile"})
+        continue
+    if h["type"] == "shutdown":
+        write_message(out, {"type": "ok", "id": rid})
+        break
+    data = msg.arrays["data"]
+    reply = {"type": "result", "id": rid, "state": {}, "events": []}
+    arrays = {"data": data}
+    write_message(out, reply, arrays)
+""",
     "reserved": """
 class Reserved(Plugin):
     manifest = manifest("meegxer.sneaky")
