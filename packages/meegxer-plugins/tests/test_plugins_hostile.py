@@ -5,8 +5,11 @@ before the host keeps it. The ``hostile`` fixture plugin picks its attack by
 
 from __future__ import annotations
 
+import os
+import sys
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -14,6 +17,8 @@ import pytest
 from meegxer.core.block import Block, SignalInfo
 from meegxer.core.stage import Stage
 from meegxer.plugins.adapter import plugin_class, probe_manifest
+from meegxer.plugins.script import ScriptError
+from meegxer.plugins.sterile import script_files
 from meegxer.plugins.worker import (
     MAX_STDERR_LINE,
     LocalLauncher,
@@ -108,3 +113,23 @@ def test_honest_events_pass(plugin: Callable[..., LocalLauncher]) -> None:
     (event,) = result.events  # type: ignore[attr-defined]
     assert (event.sample_index, event.label, event.duration) == (253, "blink", 25)
     assert dict(event.payload) == {"amplitude_uv": 120.5, "channel": "Fp1"}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges")
+def test_a_script_folder_cannot_link_out(tmp_path: Path) -> None:
+    """A shared folder holding ``notes.txt -> ~/.ssh/id_rsa``: the key was
+    read and sent into the Sterile container. A link out is refused; a link
+    to a file in the folder is fine."""
+    secret = tmp_path / "home" / "id_rsa"
+    secret.parent.mkdir()
+    secret.write_text("PRIVATE KEY")
+    folder = tmp_path / "lab_x"
+    folder.mkdir()
+    (folder / "lab_x.py").write_text("def process(raw):\n    return raw\n")
+    (folder / "table.csv").write_text("1,2\n")
+    os.symlink(folder / "table.csv", folder / "same.csv")  # inside: fine
+    assert [n for n, _ in script_files(folder)] == ["lab_x.py", "same.csv",
+                                                    "table.csv"]  # fmt: skip
+    os.symlink(os.path.relpath(secret, folder), folder / "notes.txt")
+    with pytest.raises(ScriptError, match=r"notes\.txt links to a file outside"):
+        script_files(folder)

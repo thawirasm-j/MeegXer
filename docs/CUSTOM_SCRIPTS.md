@@ -268,7 +268,9 @@ lab_method/
   `.venv`, `.env`, …), `__pycache__` and compiled Python, at most 100 MB in
   2000 files. Sessions record one SHA-256 over all of them, so a changed
   helper or data file is noticed like a changed script; Sterile mode sends
-  them all. Keep recordings and outputs out of the folder.
+  them all. Keep recordings and outputs out of the folder. A file that
+  links outside the folder is refused (a shared folder could otherwise pull
+  a file from your home into the script's container): copy it in instead.
 
 ```bash
 meegxer-plugin run --script lab_method/ -i rec.set   # try it
