@@ -8,7 +8,37 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from meegxer.plugins.worker import MAX_STDERR_LINE, LocalLauncher, PluginWorker
+import numpy as np
+import pytest
+
+from meegxer.core.block import Block, SignalInfo
+from meegxer.core.stage import Stage
+from meegxer.plugins.adapter import plugin_class, probe_manifest
+from meegxer.plugins.worker import (
+    MAX_STDERR_LINE,
+    LocalLauncher,
+    PluginError,
+    PluginWorker,
+)
+
+INFO = SignalInfo(("C3", "C4", "Cz"), 250.0)
+
+
+def block(start: int = 0, n: int = 250) -> Block:
+    data = np.random.default_rng(start).standard_normal((3, n)) * 1e-5
+    return Block(data, INFO, start, start / INFO.sfreq)
+
+
+def hostile(plugin: Callable[..., LocalLauncher], mode: str) -> Stage:
+    launcher = plugin("hostile", MODE=mode)
+    return Stage(plugin_class(probe_manifest(launcher), launcher)(), {})
+
+
+def transform(stage: Stage, b: Block) -> object:
+    try:
+        return stage.transform(b, "fp")
+    finally:
+        stage.processor.close()
 
 
 def test_a_stderr_line_without_end_is_cut(plugin: Callable[..., LocalLauncher]) -> None:
@@ -28,3 +58,24 @@ def test_a_stderr_line_without_end_is_cut(plugin: Callable[..., LocalLauncher]) 
     assert lines[-2].endswith("… (cut)")
     assert len(lines[-2]) <= MAX_STDERR_LINE + len(" … (cut)")
     assert len(tail) < 2 * MAX_STDERR_LINE
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    [("longer", r"covers samples 0 to 25000, but it was given samples up to 250"),
+     ("future", r"covers samples 1000000000000000 to")],
+)  # fmt: skip
+def test_output_beyond_its_input_is_refused(
+    plugin: Callable[..., LocalLauncher], mode: str, message: str
+) -> None:
+    """100 times the samples it was given, or its output at sample 10**15:
+    refused, naming the plugin (it grew memory on every block, and broke
+    alignment by sample index, rule 8)."""
+    with pytest.raises(PluginError, match=r"test\.hostile: its output " + message):
+        transform(hostile(plugin, mode), block())
+
+
+def test_honest_plugins_still_pass(plugin: Callable[..., LocalLauncher]) -> None:
+    """The same plugin, answering honestly, a block later in the stream."""
+    result = transform(hostile(plugin, ""), block(start=500))
+    assert result.block.sample_index == 500  # type: ignore[attr-defined]

@@ -11,7 +11,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   and custom scripts (Python/MNE, Octave) were attacked from a hostile
   script's side: no container escape and no network. What the host accepts
   back from a plugin is being tightened, one fix at a time: a plugin's
-  stderr lines are cut at 4 KB (a line without end filled memory).
+  stderr lines are cut at 4 KB (a line without end filled memory); its
+  output (and its rails and feature windows) must lie within the input it
+  was given, by the exact ratio of the rates (it could return 100 times its
+  input, or place it at sample 10¹⁵).
 - **The Octave image (Octave/EEGLAB scripts, first step).** `meegxer-plugin
   octave build` builds the image Octave/EEGLAB scripts will run in: GNU Octave
   with the signal package and EEGLAB 2026.0.0 (its core, firfilt and ICLabel,
