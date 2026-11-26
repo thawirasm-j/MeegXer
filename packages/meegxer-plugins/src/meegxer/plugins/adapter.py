@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import math
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, ClassVar
@@ -165,6 +166,21 @@ class PluginProcessor(Processor):
     def __init__(self) -> None:
         self._worker: PluginWorker | None = None
         self._model_ids: dict[int, tuple[State, str]] = {}
+        self._given: tuple[int, float] = (0, 0.0)  # input's end (index, sfreq)
+
+    def _within(self, what: str, first: int, n: int, sfreq: float) -> None:
+        """Refuse output a plugin was not given the input for (rule 9; red
+        team M2): starting before sample 0, or ending past the input's end
+        (at the output's rate, by the exact ratio of the rates; one sample
+        of rounding). A lagging plugin may start earlier than its block."""
+        stop, in_sfreq = self._given
+        limit = math.ceil(stop * sfreq / in_sfreq) + 1 if in_sfreq > 0 else 0
+        if first < 0 or first + n > limit:
+            raise PluginError(
+                f"{self.manifest.name}: its {what} covers samples {first} to "
+                f"{first + n}, but it was given samples up to {limit - 1} "
+                f"(at {sfreq:g} Hz)"
+            )
 
     @property
     def worker(self) -> PluginWorker:
@@ -231,7 +247,7 @@ class PluginProcessor(Processor):
             if item is None:
                 continue
             if port.type is PortType.FEATURES:
-                rails[port.name] = _windows_from_wire(
+                rails[port.name] = self._windows(
                     item.get("windows", []), reply.arrays, info, block
                 )
                 continue
@@ -243,6 +259,7 @@ class PluginProcessor(Processor):
                                  block.sample_index if block else 0))  # fmt: skip
             timestamp = (block.timestamp + (first - block.sample_index) / info.sfreq
                          if block is not None else 0.0)  # fmt: skip
+            self._within(f"rail {port.name}", first, data.shape[-1], rail_info.sfreq)
             rails[port.name] = Block(data, rail_info, first, timestamp)
         return rails
 
@@ -311,14 +328,30 @@ class PluginProcessor(Processor):
             return result if result.block else None
         return result if result.block.n_samples else None
 
+    def _windows(
+        self,
+        wire: Any,
+        arrays: Mapping[str, Any],
+        info: SignalInfo,
+        block: Block | None,
+    ) -> tuple[FeatureBlock, ...]:
+        """Feature windows from a reply, each within the input given (M2)."""
+        windows = _windows_from_wire(wire, arrays, info, block)
+        for w in windows:
+            start, stop = w.window
+            if stop < start:
+                raise PluginError(f"{self.manifest.name}: a window ends before "
+                                  f"it starts ({start}, {stop})")  # fmt: skip
+            self._within("window", start, stop - start, info.sfreq)
+        return windows
+
     def _features(
         self, reply: Any, info: SignalInfo, block: Block | None
     ) -> TransformResult:
         """An analysis plugin's result: its completed feature windows (0.2.14)."""
         if reply.type != "result" or not isinstance(reply.header.get("features"), list):
             raise PluginError(f"expected a result with features, got {reply.header}")
-        windows = _windows_from_wire(reply.header["features"], reply.arrays, info,
-                                     block)  # fmt: skip
+        windows = self._windows(reply.header["features"], reply.arrays, info, block)
         new_state = tree_from_wire(reply.header.get("state") or {}, reply.arrays)
         events = tuple(Event(**e) for e in reply.header.get("events", []))
         rails = self._rails_from_wire(reply, info, block)
@@ -337,6 +370,7 @@ class PluginProcessor(Processor):
         arrays: dict[str, Any] = {}
         if block is not None:
             arrays["data"] = block.data.astype(np.float32)
+            self._given = (block.sample_index + block.n_samples, block.info.sfreq)
         rails_wire = self._rails_to_wire(rails, arrays) if rails is not None else None
         state_tree = None if state is None else tree_to_wire(state, arrays, "s")
         models: dict[str, tuple[Any, dict[str, Any]]] = {}
@@ -373,6 +407,7 @@ class PluginProcessor(Processor):
             timestamp = block.timestamp + (first - block.sample_index) / info.sfreq
         else:
             timestamp = 0.0
+        self._within("output", first, data.shape[-1], info.sfreq)
         out = Block(data, info, first, timestamp)
         new_state = tree_from_wire(reply.header.get("state") or {}, reply.arrays)
         events = tuple(Event(**e) for e in reply.header.get("events", []))

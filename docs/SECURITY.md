@@ -10,8 +10,8 @@ below), and of each finding's fix. The attacks are kept as regression tests
 
 | Finding | Status |
 |---|---|
-| M1 stderr can exhaust host memory | Fixed: lines cut at 4 KB (this PR) |
-| M2 output length and position unchecked | Open |
+| M1 stderr can exhaust host memory | Fixed: lines cut at 4 KB (PR #177) |
+| M2 output length and position unchecked | Fixed: output, rails and windows within the input given (this PR) |
 | M3 event contents unchecked | Open |
 | M4 a hung plugin freezes a live run ~40 s | Open (decided: live, a block budget, no retry, the strip passes through) |
 | M5 symlinks reach into the Sterile container | Open |
