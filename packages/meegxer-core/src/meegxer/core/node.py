@@ -331,6 +331,17 @@ class ActionSink(Sink):
         """Start (or stop) acting. Raise when it cannot act here."""
         self.armed = bool(on)
 
+    def arm_summary(self) -> str:
+        """What it will do once armed, said before arming (e.g. the keys it
+        presses)."""
+        return ""
+
+    def arm_warning(self) -> str | None:
+        """A risk the user must confirm before arming (``arm`` with
+        ``confirm``), or None (red team L3: a keyboard map that can type
+        text)."""
+        return None
+
     @abstractmethod
     def act(self, events: Sequence[Event]) -> None:
         """New events it sees (live, armed or not: it decides)."""

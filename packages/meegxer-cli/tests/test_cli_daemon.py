@@ -100,3 +100,32 @@ def test_arm_the_keyboard_for_the_run(
     assert "ARMED  pressed 0  dropped 0" in cli("status", *c)
     assert "keys: disarmed" in cli("arm", "keys", "--off", *c)
     cli("stop", *c)
+
+
+def test_a_keyboard_map_that_types_text_is_confirmed(
+    control: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Red team L3: arming says what it presses; a map that can type text
+    (letters with enter) is armed only when confirmed, by any client."""
+    from meegxer.core.control import ControlClient
+    from meegxer.nodes.actions import KeyboardSink
+
+    quiet = staticmethod(lambda esc: (lambda k: None, lambda: None))
+    monkeypatch.setattr(KeyboardSink, "keyboard", quiet)
+    pipeline = tmp_path / "text.json"
+    pipeline.write_text(json.dumps({"spec_version": "0.2.23", "nodes": [
+        {"id": "src", "node": "meegxer.core.synthetic",
+         "params": {"duration": 0, "n_channels": 2, "sfreq": 100}},
+        {"id": "keys", "node": "meegxer.nodes.keyboard",
+         "params": {"keys": "a=r, b=m, c=x, go=enter"}},
+    ]}))  # fmt: skip
+    c = ["--control", control]
+    cli("load", str(pipeline), *c)
+    cli("start", *c)
+    asked = runner.invoke(app, ["arm", "keys", *c], input="n\n")
+    assert asked.exit_code == 1 and "keys: not armed" in asked.output
+    assert "can type text" in asked.output and "presses a → r" in asked.output
+    with pytest.raises(Exception, match="confirm to arm it"):  # the API itself
+        ControlClient(control).call("arm", node="keys", on=True)
+    assert "keys: ARMED" in cli("arm", "keys", "--confirm", *c)
+    cli("stop", *c)

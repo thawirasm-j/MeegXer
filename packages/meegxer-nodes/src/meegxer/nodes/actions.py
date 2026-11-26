@@ -33,6 +33,16 @@ KEY_NAMES = ("left", "right", "up", "down", "space", "enter", "tab", "backspace"
              *(f"f{i}" for i in range(1, 13)))  # fmt: skip
 
 
+TEXT_KEYS = ("enter", "tab")  # with letters: they type a command, and send it
+
+
+def types_text(keys: dict[str, str]) -> bool:
+    """Whether a key map can type text into the window in focus and send it:
+    enter (or tab) with three or more letters or digits (red team L3)."""
+    letters = sum(len(k) == 1 for k in set(keys.values()))
+    return any(k in TEXT_KEYS for k in keys.values()) and letters >= 3
+
+
 def parse_keys(text: str) -> dict[str, str]:
     """``label=key`` pairs, comma-separated: an event label and the key it
     presses (one letter or digit, or a key name: ``KEY_NAMES``)."""
@@ -162,3 +172,24 @@ class KeyboardSink(ActionSink):
 
     def action_status(self) -> dict[str, Any]:
         return {"armed": self.armed, "pressed": self.pressed, "dropped": self.dropped}
+
+    def arm_summary(self) -> str:
+        pairs = ", ".join(f"{label} → {key}" for label, key in self.keys.items())
+        return (f"presses {pairs} (at most {float(self.params['max_rate']):g} "
+                "keys a second) in the window in focus")  # fmt: skip
+
+    def arm_warning(self) -> str | None:
+        """A map that can type text (red team L3): once armed, any strip
+        before it, a plugin or a script included, could type words into the
+        window in focus and press enter there."""
+        if not types_text(self.keys):
+            return None
+        letters = sorted(k for k in set(self.keys.values()) if len(k) == 1)
+        sends = " and ".join(k for k in TEXT_KEYS if k in self.keys.values())
+        return (
+            f"This map can type text: {len(letters)} letters or digits "
+            f"({' '.join(letters)}) and {sends}. Once armed, any strip before "
+            "it, a plugin or a script included, can type words into the "
+            f"window in focus and press {sends} there. Arm it only with the "
+            "program it drives in focus."
+        )

@@ -162,3 +162,21 @@ def test_it_loads_from_a_pipeline_unarmed() -> None:
     sink = graph["keys"].impl
     assert isinstance(sink, KeyboardSink) and not sink.armed
     assert "armed" not in graph.to_dict()["nodes"][1]["params"]  # never saved
+
+
+def test_a_map_that_types_text_is_named_before_arming() -> None:
+    """Red team L3 (docs/SECURITY.md): enter or tab with three or more
+    letters or digits can type a command into the window in focus and send
+    it; arming such a map must be confirmed. Arrow-style maps arm as before."""
+    from meegxer.nodes.actions import KeyboardSink, types_text
+
+    assert not types_text({"pred_left": "left", "pred_right": "right"})
+    assert not types_text({"a": "a", "b": "b", "go": "enter"})  # two letters
+    assert types_text({"a": "a", "b": "b", "c": "c", "go": "enter"})
+    assert types_text({"x": "1", "y": "2", "z": "3", "t": "tab"})
+    plain = KeyboardSink({})
+    assert plain.arm_warning() is None
+    assert plain.arm_summary().startswith("presses pred_left → left, pred_right")
+    text = KeyboardSink({"keys": "a=r, b=m, c=x, go=enter"})
+    warning = text.arm_warning()
+    assert warning is not None and "3 letters or digits (m r x) and enter" in warning
