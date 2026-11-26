@@ -30,7 +30,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   container is pinned to all CPUs but the first (setting *Plugin CPUs
   (live)*, `general.live_cpus`): a script spinning on every core made the
   host's timing late by up to 4 ms; pinned, by 0.3 ms (a time quota,
-  `--cpus`, did not help).
+  `--cpus`, did not help). `meegxer-plugin run|check --script` now show the
+  local-code notice before a Python script's first run, once per version of
+  it (`--accept-risk` accepts it; `add` remembers it): they started a
+  downloaded script with your permissions without asking.
 - **The Octave image (Octave/EEGLAB scripts, first step).** `meegxer-plugin
   octave build` builds the image Octave/EEGLAB scripts will run in: GNU Octave
   with the signal package and EEGLAB 2026.0.0 (its core, firfilt and ICLabel,

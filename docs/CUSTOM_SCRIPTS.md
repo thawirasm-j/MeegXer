@@ -328,6 +328,11 @@ meegxer-plugin list
 meegxer-plugin remove script.my_filter
 ```
 
+`run` and `check` start the script too, so the first time each version of a
+Python script runs here they show the notice below and ask (or take
+`--accept-risk`); an edited script asks again. An Octave script runs
+sandboxed and never asks.
+
 ## The notice: it runs on your computer
 
 A custom script runs as a local process **with your permissions**, outside any

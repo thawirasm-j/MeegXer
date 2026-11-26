@@ -48,6 +48,35 @@ def index_path() -> Path:
     return config_dir() / "plugins.json"
 
 
+def accepted_path() -> Path:
+    """Where the code the user accepted the local-code notice for is listed
+    (by SHA-256), next to ``plugins.json``."""
+    return index_path().with_name("accepted_code.json")
+
+
+def code_accepted(sha256: str) -> bool:
+    """Whether the user accepted the local-code notice for this exact code
+    (``meegxer-plugin run|check|add --script``; red team I1)."""
+    try:
+        data = json.loads(accepted_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and sha256 in data.get("sha256", [])
+
+
+def accept_code(sha256: str) -> None:
+    """Remember that the notice was accepted for this code (the newest 1000)."""
+    try:
+        data = json.loads(accepted_path().read_text(encoding="utf-8"))
+        known = [h for h in data.get("sha256", []) if isinstance(h, str)]
+    except (OSError, ValueError, AttributeError):
+        known = []
+    known = [*[h for h in known if h != sha256][-999:], sha256]
+    path = accepted_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"sha256": known}, indent=1), encoding="utf-8")
+
+
 def load_index(path: Path | None = None) -> list[dict[str, Any]]:
     path = path or index_path()
     if not path.is_file():

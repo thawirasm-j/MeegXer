@@ -310,7 +310,7 @@ def test_a_script_fits_on_labelled_trials(tmp_path: Path) -> None:
     assert impl.model.data == {"labels": ["left", "right"], "n": 3, "first": 1.5}
     impl.processor.close()
     # the conformance suite gives such a script labelled trials to fit on
-    assert cli_main(["check", "--script", str(path)]) == 0
+    assert cli_main(["check", "--accept-risk", "--script", str(path)]) == 0
 
 
 def test_a_live_script_that_is_not_blockwise_is_refused(
@@ -367,10 +367,10 @@ def test_the_check_mentions_missing_credit_without_failing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     plain = write(tmp_path, "plain.py", "def process(raw):\n    return raw\n")
-    assert cli_main(["check", "--script", str(plain)]) == 0
+    assert cli_main(["check", "--accept-risk", "--script", str(plain)]) == 0
     assert "PASS  credits" in capsys.readouterr().out
     credited = write(tmp_path, "credited.py", CREDITED)
-    assert cli_main(["check", "--script", str(credited)]) == 0
+    assert cli_main(["check", "--accept-risk", "--script", str(credited)]) == 0
     assert "2 author(s), 2 reference(s)" in capsys.readouterr().out
 
 
@@ -477,10 +477,15 @@ def test_a_feature_script_that_returns_the_wrong_shape_is_explained(
 ) -> None:
     monkeypatch.setenv(index.INDEX_ENV, str(tmp_path / "plugins.json"))
     bad = "def features(data):\n    return {'mean': 1.0}\n"
-    assert cli_main(["check", "--script", str(write(tmp_path, "bad.py", bad))]) == 1
+    assert (
+        cli_main(
+            ["check", "--accept-risk", "--script", str(write(tmp_path, "bad.py", bad))]
+        )
+        == 1
+    )
     assert "one value per channel" in capsys.readouterr().out
     good = write(tmp_path, "bp.py", BANDPOWER)
-    assert cli_main(["check", "--script", str(good)]) == 0
+    assert cli_main(["check", "--accept-risk", "--script", str(good)]) == 0
     report = capsys.readouterr().out
     assert "PASS  transform" in report and "feature windows" in report
     assert "PASS  restart with host-held state" in report
