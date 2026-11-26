@@ -15,11 +15,11 @@ below), and of each finding's fix. The attacks are kept as regression tests
 | M3 event contents unchecked | Fixed: labels, positions, counts and payloads checked (PR #179; `spec/plugin-protocol.md`) |
 | M4 a hung plugin freezes a live run ~40 s | Fixed: live, 2 s per block, no restart, the strip passes through (PR #183) |
 | M5 symlinks reach into the Sterile container | Fixed: a file linking outside its script folder is refused (PR #180) |
-| L1 no CPU cap | Fixed: live, plugin containers pinned to all CPUs but the first (`general.live_cpus`; this PR) |
+| L1 no CPU cap | Fixed: live, plugin containers pinned to all CPUs but the first (`general.live_cpus`; PR #184) |
 | L2 plugin text as rich text, links of any scheme | Fixed: shown as written; only https/http links open (PR #181) |
 | L3 keyboard sink maps from a shared pipeline | Open (to decide) |
 | L4 per-script EEGLAB plugins read as a boundary | Fixed: `docs/OCTAVE.md` says it is not one (PR #182) |
-| I1 `run`/`check --script` without the notice | Open (decided: the notice once per script version) |
+| I1 `run`/`check --script` without the notice | Fixed: the notice once per script version (this PR) |
 | I2 declared packages join the shared Sterile image | Documented in `docs/STERILE.md` (PR #182) |
 | I3 Sterile does not isolate file parsing | Documented in `docs/STERILE.md` (PR #182); parsing in the worker would be an architecture change |
 

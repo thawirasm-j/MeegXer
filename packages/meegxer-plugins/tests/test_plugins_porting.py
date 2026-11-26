@@ -123,13 +123,13 @@ def test_the_cli(
     said = capsys.readouterr().out
     assert "wrote" in said and "meegxer-plugin run --script" in said
     script = tmp_path / "lab_filter.py"
-    assert main(["run", "--script", str(script), "-i", str(recording),
+    assert main(["run", "--accept-risk", "--script", str(script), "-i", str(recording),
                  "--param", "gain=2.0"]) == 0  # fmt: skip
     assert "script.lab_filter: 4 channels" in capsys.readouterr().out
     assert main(["new", "lab_reject", "--kind", "epochs",
                  "--folder", str(tmp_path)]) == 0  # fmt: skip
     capsys.readouterr()
-    assert main(["run", "--script", str(tmp_path / "lab_reject.py"),
+    assert main(["run", "--accept-risk", "--script", str(tmp_path / "lab_reject.py"),
                  "-i", str(recording), "--epochs", "tmin=-0.1"]) == 0  # fmt: skip
     assert "kept 2 of 2 epochs" in capsys.readouterr().out
 

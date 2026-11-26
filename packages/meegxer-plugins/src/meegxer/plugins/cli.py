@@ -72,7 +72,7 @@ def _add_octave(script: Path) -> int:
     return 0
 
 
-def _accepted(args: argparse.Namespace) -> bool:
+def _accepted(args: argparse.Namespace, what: str = "add this plugin") -> bool:
     """Show the local-code notice; accepted with --accept-risk or a typed yes."""
     print(LOCAL_CODE_NOTICE, file=sys.stderr)
     if args.accept_risk:
@@ -80,8 +80,26 @@ def _accepted(args: argparse.Namespace) -> bool:
     if not sys.stdin.isatty():
         print("\nRead the notice, then run again with --accept-risk.", file=sys.stderr)
         return False
-    answer = input("\nType yes to add this plugin: ")
+    answer = input(f"\nType yes to {what}: ")
     return answer.strip().lower() == "yes"
+
+
+def _may_run(args: argparse.Namespace, script: Path) -> bool:
+    """A Python script runs as a local process with the user's permissions:
+    the first run or check of each version of it asks for the local-code
+    notice, as adding one does (red team I1). An Octave script runs
+    sandboxed: no notice."""
+    if _octave(script):
+        return True
+    sha256 = index.code_sha256(index.script_command(script))
+    if index.code_accepted(sha256):
+        return True
+    print(f"{script.name} (this version of it) has not run here before.",
+          file=sys.stderr)  # fmt: skip
+    if not _accepted(args, "run it"):
+        return False
+    index.accept_code(sha256)
+    return True
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,6 +116,11 @@ def main(argv: list[str] | None = None) -> int:
         "files with it)",
     )
     check.add_argument("--param", action="append", default=[], help="name=value")
+    check.add_argument(
+        "--accept-risk",
+        action="store_true",
+        help="accept the local-code notice (a Python script runs unsandboxed)",
+    )
     check.add_argument(
         "--local",
         nargs=argparse.REMAINDER,
@@ -164,6 +187,11 @@ def main(argv: list[str] | None = None) -> int:
         "(tmin, tmax, events, baseline)",
     )
     trial.add_argument("--overwrite", action="store_true")
+    trial.add_argument(
+        "--accept-risk",
+        action="store_true",
+        help="accept the local-code notice (a Python script runs unsandboxed)",
+    )
 
     octave = sub.add_parser(
         "octave", help="the Octave image Octave/EEGLAB scripts run in (docs/OCTAVE.md)"
@@ -208,6 +236,8 @@ def main(argv: list[str] | None = None) -> int:
         if reason := _missing(args.script):
             print(f"error: {reason}", file=sys.stderr)
             return 1
+        if not _may_run(args, args.script):
+            return 1
         from meegxer.plugins.trial import try_script
 
         try:
@@ -223,6 +253,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "check":
         if args.script and (reason := _missing(args.script)):
             print(f"error: {reason}", file=sys.stderr)
+            return 1
+        if args.script and not _may_run(args, args.script):
             return 1
         launcher: Any
         if _octave(args.script):
@@ -253,6 +285,8 @@ def main(argv: list[str] | None = None) -> int:
         if not _accepted(args):
             return 1
         command = index.script_command(args.script) if args.script else args.local
+        if args.script:  # accepted for this version: run and check need not ask
+            index.accept_code(index.code_sha256(command))
         if args.script:  # a script must pass the conformance suite to be added
             checks = run_conformance(LocalLauncher(tuple(command), allow=True))
             if not all(c.passed for c in checks):

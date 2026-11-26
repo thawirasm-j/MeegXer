@@ -211,3 +211,33 @@ def test_live_containers_leave_the_run_a_core(
         assert cpuset(p.worker.launcher.command("n")) is None
     octave = OctaveScriptLauncher("x.m", image="meegxer-octave:t").with_cpuset("1-3")
     assert octave._container().cpuset == "1-3"
+
+
+def test_trying_a_python_script_asks_once_per_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``run``/``check --script`` started a downloaded script with the user's
+    permissions, without the notice ``add`` shows. Now the first run of each
+    version asks (here: refused without a terminal), ``--accept-risk``
+    accepts it, and an edited script asks again."""
+    import mne
+
+    from meegxer.plugins.cli import main
+
+    rec = tmp_path / "rec_raw.fif"
+    info = mne.create_info(["C3", "C4"], 100.0, "eeg")
+    mne.io.RawArray(np.zeros((2, 200)), info, verbose=False).save(rec, verbose=False)
+    marker = tmp_path / "ran.txt"
+    script = tmp_path / "lab_try.py"
+    script.write_text(
+        f"def process(raw):\n    open({str(marker)!r}, 'a').write('x')\n"
+        "    return raw\n"
+    )
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    run = ["run", "--script", str(script), "-i", str(rec)]
+    assert main(run) == 1 and not marker.exists()  # not accepted: not run
+    assert main([*run, "--accept-risk"]) == 0 and marker.read_text() == "x"
+    assert main(run) == 0 and marker.read_text() == "xx"  # this version: known
+    script.write_text(script.read_text() + "# edited\n")
+    assert main(run) == 1 and marker.read_text() == "xx"  # asks again
+    assert main(["check", "--script", str(script)]) == 1  # check asks too

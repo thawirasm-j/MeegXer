@@ -162,7 +162,7 @@ def test_the_cli_adds_and_tries_a_folder(
     raw = mne.io.RawArray(np.ones((2, 500)) * 1e-6, info, verbose="error")
     rec = tmp_path / "rec_raw.fif"
     raw.save(rec, verbose="error")
-    assert main(["run", "--script", str(folder), "-i", str(rec)]) == 0
+    assert main(["run", "--accept-risk", "--script", str(folder), "-i", str(rec)]) == 0
     assert "script.lab_method: 2 channels" in capsys.readouterr().out
     assert main(["add", "--script", str(folder), "--accept-risk"]) == 0
     (entry,) = [e for e in index.load_index()
