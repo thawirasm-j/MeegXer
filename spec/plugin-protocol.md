@@ -131,6 +131,20 @@ plugin should also declare `latency_samples` in its manifest.
 
 Each event is `{"sample_index": int, "label": str, "duration": int, "payload": {...}}`.
 
+What the host accepts in a result (a plugin is untrusted, rule 9; checked
+since the red team of 2026-11-26, `docs/SECURITY.md`); a result breaking one
+is an error naming the plugin:
+
+- the output, each signal rail and each feature window start at sample 0 or
+  later and end within the input given so far (at their rate, by the exact
+  ratio of the rates; one sample of rounding);
+- at most one event per sample of the block given, plus 16; each with only
+  the fields above, a `label` of 1 to 256 characters without control
+  characters (tabs, newlines), a `sample_index` within the input given, a
+  `duration` ≥ 0, and a `payload` of up to 32 plain values (text up to 256
+  characters, finite numbers, true/false, null) by name;
+- each stderr line is kept up to 4 KB.
+
 **Feature results (0.2.14).** A plugin whose manifest has `type: "analysis"` (a
 Features output) replies without a `data` array. Its `result` carries `features`,
 the feature windows completed by this call (possibly none), in order:

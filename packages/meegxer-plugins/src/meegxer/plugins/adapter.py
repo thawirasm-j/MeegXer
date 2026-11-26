@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import math
+import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, ClassVar
@@ -39,6 +40,13 @@ from meegxer.plugins.wire import tree_from_wire, tree_to_wire
 from meegxer.plugins.worker import Launcher, PluginError, PluginWorker
 
 RESERVED_PREFIXES = ("meegxer.",)
+# what a plugin's events may hold (rule 9; red team M3): they reach files
+# (events.tsv, .set), the GUI and the action sinks
+MAX_LABEL = 256
+MAX_PAYLOAD_ITEMS = 32
+EVENT_SLACK = 16  # events per reply beyond one per sample given
+_EVENT_KEYS = {"sample_index", "label", "duration", "payload"}
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def _info_dict(info: SignalInfo) -> dict[str, Any]:
@@ -88,6 +96,28 @@ def _windows_from_wire(
                                     timestamp, coords, info.stream_id,
                                     *units_from_wire(w)))  # fmt: skip
     return tuple(windows)
+
+
+def _whole(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _plain(payload: object) -> bool:
+    """An event payload a plugin may send: a few plain values by name."""
+    if not isinstance(payload, dict) or len(payload) > MAX_PAYLOAD_ITEMS:
+        return False
+    for key, value in payload.items():
+        if not isinstance(key, str) or len(key) > 64:
+            return False
+        if isinstance(value, str):
+            if len(value) > MAX_LABEL:
+                return False
+        elif isinstance(value, float):
+            if not math.isfinite(value):
+                return False
+        elif value is not None and not isinstance(value, (bool, int)):
+            return False
+    return True
 
 
 def _info_from(new: Mapping[str, Any], info: SignalInfo) -> SignalInfo:
@@ -167,6 +197,7 @@ class PluginProcessor(Processor):
         self._worker: PluginWorker | None = None
         self._model_ids: dict[int, tuple[State, str]] = {}
         self._given: tuple[int, float] = (0, 0.0)  # input's end (index, sfreq)
+        self._span = 0  # samples in the last block given
 
     def _within(self, what: str, first: int, n: int, sfreq: float) -> None:
         """Refuse output a plugin was not given the input for (rule 9; red
@@ -328,6 +359,53 @@ class PluginProcessor(Processor):
             return result if result.block else None
         return result if result.block.n_samples else None
 
+    def _events(self, wire: Any, sfreq: float) -> tuple[Event, ...]:
+        """A reply's events, each checked (red team M3): at most one per
+        sample given (plus ``EVENT_SLACK``); a label of text without control
+        characters, up to ``MAX_LABEL``; a sample index within the input given
+        (at the higher of the two rates); a duration of 0 or more; a payload
+        of up to ``MAX_PAYLOAD_ITEMS`` plain values."""
+        name = self.manifest.name
+        if wire is None:
+            return ()
+        if not isinstance(wire, list):
+            raise PluginError(f"{name}: events must be a list")
+        if len(wire) > self._span + EVENT_SLACK:
+            raise PluginError(f"{name}: {len(wire)} events for a block of "
+                              f"{self._span} samples")  # fmt: skip
+        stop, in_sfreq = self._given
+        ratio = max(1.0, sfreq / in_sfreq) if in_sfreq > 0 else 1.0
+        limit = math.ceil(stop * ratio) + 1
+        events = []
+        for e in wire:
+            if not isinstance(e, dict) or not {"sample_index", "label"} <= set(e):
+                raise PluginError(f"{name}: an event needs a sample_index and a "
+                                  "label")  # fmt: skip
+            if set(e) - _EVENT_KEYS:
+                raise PluginError(f"{name}: an event has unknown fields "
+                                  f"{sorted(set(e) - _EVENT_KEYS)}")  # fmt: skip
+            index, label = e["sample_index"], e["label"]
+            duration, payload = e.get("duration", 0), e.get("payload") or {}
+            if not isinstance(label, str) or not label or len(label) > MAX_LABEL:
+                raise PluginError(f"{name}: an event label must be text of 1 to "
+                                  f"{MAX_LABEL} characters")  # fmt: skip
+            if _CONTROL.search(label):
+                raise PluginError(f"{name}: an event label holds a control "
+                                  f"character: {label!r}")  # fmt: skip
+            if not _whole(index) or not 0 <= index < limit:
+                raise PluginError(f"{name}: an event at sample {index!r}, but it "
+                                  f"was given samples up to {limit - 1}")  # fmt: skip
+            if not _whole(duration) or duration < 0:
+                raise PluginError(f"{name}: an event's duration must be a whole "
+                                  "number of samples >= 0, got "
+                                  f"{duration!r}")  # fmt: skip
+            if not _plain(payload):
+                raise PluginError(f"{name}: an event's payload must be up to "
+                                  f"{MAX_PAYLOAD_ITEMS} plain values (text, "
+                                  "numbers, true/false) by name")  # fmt: skip
+            events.append(Event(index, label, duration, payload))
+        return tuple(events)
+
     def _windows(
         self,
         wire: Any,
@@ -353,7 +431,7 @@ class PluginProcessor(Processor):
             raise PluginError(f"expected a result with features, got {reply.header}")
         windows = self._windows(reply.header["features"], reply.arrays, info, block)
         new_state = tree_from_wire(reply.header.get("state") or {}, reply.arrays)
-        events = tuple(Event(**e) for e in reply.header.get("events", []))
+        events = self._events(reply.header.get("events"), info.sfreq)
         rails = self._rails_from_wire(reply, info, block)
         return TransformResult(windows, new_state, events, rails)
 
@@ -371,6 +449,7 @@ class PluginProcessor(Processor):
         if block is not None:
             arrays["data"] = block.data.astype(np.float32)
             self._given = (block.sample_index + block.n_samples, block.info.sfreq)
+            self._span = block.n_samples
         rails_wire = self._rails_to_wire(rails, arrays) if rails is not None else None
         state_tree = None if state is None else tree_to_wire(state, arrays, "s")
         models: dict[str, tuple[Any, dict[str, Any]]] = {}
@@ -410,7 +489,7 @@ class PluginProcessor(Processor):
         self._within("output", first, data.shape[-1], info.sfreq)
         out = Block(data, info, first, timestamp)
         new_state = tree_from_wire(reply.header.get("state") or {}, reply.arrays)
-        events = tuple(Event(**e) for e in reply.header.get("events", []))
+        events = self._events(reply.header.get("events"), info.sfreq)
         rails = self._rails_from_wire(reply, in_info, block)
         return TransformResult(out, new_state, events, rails)
 

@@ -147,6 +147,25 @@ while True:
         arrays["data"] = np.zeros((data.shape[0], data.shape[1] * 100))
     elif MODE == "future":  # its output far past its input
         reply["sample_index"] = 10**15
+    elif MODE.startswith("event_"):  # one bad event (or too many)
+        at = int(h["sample_index"])
+        bad = {
+            "event_dict": {"sample_index": at, "label": {"evil": [1, 2]}},
+            "event_long": {"sample_index": at, "label": "A" * 300},
+            "event_tab": {"sample_index": at, "label": "a\\tb\\nc"},
+            "event_future": {"sample_index": 10**12, "label": "press"},
+            "event_field": {"sample_index": at, "label": "x", "__class__": 1},
+            "event_payload": {"sample_index": at, "label": "x",
+                              "payload": {"deep": {"a": [1]}}},
+            "event_duration": {"sample_index": at, "label": "x", "duration": -5},
+        }
+        reply["events"] = ([{"sample_index": at, "label": "x"}] * 300
+                           if MODE == "event_flood" else [bad[MODE]])
+    elif MODE == "honest_events":
+        at = int(h["sample_index"])
+        reply["events"] = [{"sample_index": at + 3, "label": "blink",
+                            "duration": 25, "payload": {"amplitude_uv": 120.5,
+                                                        "channel": "Fp1"}}]
     write_message(out, reply, arrays)
 """,
     "reserved": """
