@@ -40,6 +40,11 @@
         "sterile": {
           "description": "Sterile mode: run the processing in a container with no network and a read-only filesystem (docs/STERILE.md; needs Docker or Podman and `meegxer sterile build`). MEEGXER_STERILE and --sterile/--no-sterile override it.",
           "type": "boolean"
+        },
+        "live_cpus": {
+          "description": "CPUs a plugin's or custom script's container may use in a live run, pinned to the last ones so the run keeps the first (0: all but one; docs/SECURITY.md L1). Offline runs are not capped. MEEGXER_LIVE_CPUS overrides it.",
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

@@ -23,6 +23,7 @@ feature windows keep their types. The host rebuilds only the types it knows.
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import hashlib
 import importlib
@@ -401,13 +402,17 @@ class SterileScriptLauncher:
     image: str = IMAGE
     local: bool = False
     memory: str = "8g"
+    cpuset: str | None = None  # a live run's CPUs (red team L1)
 
     @property
     def sandboxed(self) -> bool:
         return not self.local
 
+    def with_cpuset(self, cpuset: str | None) -> SterileScriptLauncher:
+        return dataclasses.replace(self, cpuset=cpuset)
+
     def _container(self) -> ContainerLauncher:
-        return ContainerLauncher(self.image, memory=self.memory)
+        return ContainerLauncher(self.image, memory=self.memory, cpuset=self.cpuset)
 
     def command(self, name: str) -> list[str]:
         if self.local:

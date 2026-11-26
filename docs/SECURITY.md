@@ -13,9 +13,9 @@ below), and of each finding's fix. The attacks are kept as regression tests
 | M1 stderr can exhaust host memory | Fixed: lines cut at 4 KB (PR #177) |
 | M2 output length and position unchecked | Fixed: output, rails and windows within the input given (PR #178) |
 | M3 event contents unchecked | Fixed: labels, positions, counts and payloads checked (PR #179; `spec/plugin-protocol.md`) |
-| M4 a hung plugin freezes a live run ~40 s | Fixed: live, 2 s per block, no restart, the strip passes through (this PR) |
+| M4 a hung plugin freezes a live run ~40 s | Fixed: live, 2 s per block, no restart, the strip passes through (PR #183) |
 | M5 symlinks reach into the Sterile container | Fixed: a file linking outside its script folder is refused (PR #180) |
-| L1 no CPU cap | Open (decided: live runs, cores − 1, a setting) |
+| L1 no CPU cap | Fixed: live, plugin containers pinned to all CPUs but the first (`general.live_cpus`; this PR) |
 | L2 plugin text as rich text, links of any scheme | Fixed: shown as written; only https/http links open (PR #181) |
 | L3 keyboard sink maps from a shared pipeline | Open (to decide) |
 | L4 per-script EEGLAB plugins read as a boundary | Fixed: `docs/OCTAVE.md` says it is not one (PR #182) |
@@ -100,8 +100,11 @@ refuse symlinks that resolve outside the folder.
 ### L1 · No CPU cap: one script takes every core · Low
 A Sterile script spun 16 processes: 400% CPU (all 4 cores). The host's 2 ms
 timer: p99 0.23 → 1.33 ms, worst 0.27 → 4 ms. Live timing degrades; on a Pi
-it would be worse. **Fix (decision):** `--cpus` default (cores − 1) for
-containers in live runs, a setting to change it.
+it would be worse. **Fix (decision):** in live runs, containers on cores − 1, a
+setting to change it. Measured for the fix (4 CPUs, the same script): a
+time quota (`--cpus 3`) left the timer late by 3.7 ms at p99, a lower weight
+(`--cpu-shares 64`) by 3.9 ms, pinning (`--cpuset-cpus 1-3`) by 0.25 ms: the
+fix pins.
 
 ### L2 · Plugin text shown as rich text; links of any scheme · Low
 A plugin's manifest description is put in a `QLabel` (auto rich text), and

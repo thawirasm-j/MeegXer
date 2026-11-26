@@ -26,7 +26,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   In a live run, a plugin or script that does not answer within 2 s is no
   longer restarted (which froze the whole run for ~40 s): its input passes
   through it for the rest of the run, its strip shows an error and the log
-  says why; the other strips go on.
+  says why; the other strips go on. In a live run a plugin's or script's
+  container is pinned to all CPUs but the first (setting *Plugin CPUs
+  (live)*, `general.live_cpus`): a script spinning on every core made the
+  host's timing late by up to 4 ms; pinned, by 0.3 ms (a time quota,
+  `--cpus`, did not help).
 - **The Octave image (Octave/EEGLAB scripts, first step).** `meegxer-plugin
   octave build` builds the image Octave/EEGLAB scripts will run in: GNU Octave
   with the signal package and EEGLAB 2026.0.0 (its core, firfilt and ICLabel,

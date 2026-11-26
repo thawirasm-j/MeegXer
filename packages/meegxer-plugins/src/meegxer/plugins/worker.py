@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import atexit
 import contextlib
+import dataclasses
+import functools
 import os
 import queue
 import shutil
@@ -55,6 +57,44 @@ class PluginCrashed(PluginError):
     """The plugin process exited unexpectedly."""
 
 
+LIVE_CPUS_ENV = "MEEGXER_LIVE_CPUS"
+
+
+@functools.cache
+def engine_cpus(engine: str | None = None) -> int:
+    """The CPUs the container engine can give (Docker Desktop's machine may
+    have fewer than this computer); this computer's when it does not say."""
+    try:
+        done = subprocess.run(
+            [find_engine(engine), "info", "--format", "{{.NCPU}}"],
+            capture_output=True, text=True, check=False, timeout=30,
+        )  # fmt: skip
+        return max(1, int(done.stdout.strip()))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return max(1, os.cpu_count() or 1)
+
+
+def live_cpus(engine: str | None = None) -> str | None:
+    """The CPUs a plugin's container may use in a live run (red team L1), as a
+    CPU set: the top ``general.live_cpus`` of the engine's CPUs
+    (``MEEGXER_LIVE_CPUS`` wins; 0: all but one), so CPU 0 stays free for the
+    live run. Pinned, not a time quota: measured 2026-11-26 (4 CPUs, a script
+    spinning 16 processes), ``--cpus 3`` left the host's 2 ms timer late by
+    3.7 ms at p99, ``--cpuset-cpus 1-3`` by 0.25 ms (0.23 with no script).
+    None when the engine has one CPU, or the setting gives it all."""
+    from meegxer.core.settings import resolve
+
+    have = engine_cpus(engine)
+    try:
+        asked = int(resolve("general.live_cpus", LIVE_CPUS_ENV))
+    except (TypeError, ValueError):
+        asked = 0
+    n = max(1, min(asked if asked > 0 else have - 1, have))
+    if n >= have:
+        return None
+    return f"{have - n}-{have - 1}" if n > 1 else str(have - 1)
+
+
 def find_engine(preferred: str | None = None) -> str:
     """Return the container engine executable (docker or podman)."""
     for name in [preferred] if preferred else ["docker", "podman"]:
@@ -72,6 +112,7 @@ class ContainerLauncher:
     memory: str = "2g"
     cpus: float | None = None
     pids_limit: int = 256
+    cpuset: str | None = None  # the CPUs it may use (a live run's: live_cpus)
 
     sandboxed = True
 
@@ -99,7 +140,13 @@ class ContainerLauncher:
         ]
         if self.cpus:
             cmd += ["--cpus", str(self.cpus)]
+        if self.cpuset:
+            cmd += ["--cpuset-cpus", self.cpuset]
         return [*cmd, self.image]
+
+    def with_cpuset(self, cpuset: str | None) -> ContainerLauncher:
+        """This launcher pinned to ``cpuset`` (a live run's; None: any CPU)."""
+        return dataclasses.replace(self, cpuset=cpuset)
 
     def kill(self, name: str) -> None:
         subprocess.run(

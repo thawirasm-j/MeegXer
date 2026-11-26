@@ -301,6 +301,20 @@ class SettingsDialog(QDialog):
                                                         "general.batch_jobs")))
         )  # fmt: skip
         form.addRow("Workers (all subjects)", jobs)
+        cpus = QSpinBox()
+        cpus.setRange(0, 256)
+        cpus.setSpecialValueText("All but one")
+        cpus.setToolTip(
+            "CPUs a plugin's or custom script's container may use in a live "
+            "run (pinned to the last ones, so the run keeps the first); "
+            "offline runs use them all"
+        )
+        cpus.valueChanged.connect(lambda v: self._set("general.live_cpus", int(v)))
+        self._loaders.append(
+            lambda: cpus.setValue(int(core_settings.get(self.working,
+                                                        "general.live_cpus")))
+        )  # fmt: skip
+        form.addRow("Plugin CPUs (live)", cpus)
         daemon = QLineEdit()
         daemon.setToolTip(
             "The processing engine's control address; MeegXer "
