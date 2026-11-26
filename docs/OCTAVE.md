@@ -173,8 +173,10 @@ end
   in the image's label; `octave check` says which it holds. A script whose
   plugins the image lacks is refused, saying to build again. The base image
   and its code hash do not change.
-- **Each script gets only its own plugins** on its path, so two scripts
-  cannot see each other's. One image holds one copy of each plugin: two
+- **Each script gets only its own plugins** on its path, so two scripts'
+  plugins never clash. This keeps them apart, it is not a boundary: a
+  script can `addpath` any plugin in the image, and every plugin runs in the
+  same sandbox (no network, read-only). One image holds one copy of each plugin: two
   added scripts asking for one at different commits make the build refuse,
   naming both.
 - Sessions record each plugin's commit with the script.
