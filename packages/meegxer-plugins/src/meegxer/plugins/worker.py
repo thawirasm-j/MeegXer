@@ -26,6 +26,7 @@ from typing import Any, Protocol
 import numpy.typing as npt
 
 from meegxer.core.manifest import SPEC_VERSION
+from meegxer.core.node import ProcessorTimeout
 from meegxer.plugins.wire import (
     MAX_PAYLOAD,
     Message,
@@ -45,8 +46,9 @@ class PluginError(RuntimeError):
     """The plugin reported an error or broke the protocol."""
 
 
-class PluginTimeout(PluginError):
-    """The plugin did not answer in time and was killed."""
+class PluginTimeout(PluginError, ProcessorTimeout):
+    """The plugin did not answer in time and was killed (a live run passes
+    the strip over: ``ProcessorTimeout``)."""
 
 
 class PluginCrashed(PluginError):
@@ -358,12 +360,15 @@ class PluginWorker:
         *,
         models: Mapping[str, tuple[Any, Mapping[str, npt.NDArray[Any]]]] | None = None,
         timeout: float | None = None,
+        retry_timeouts: bool = True,
     ) -> Message:
         """Send a request, restarting a dead or hung worker (with backoff).
 
         ``models`` maps model ids the request needs to their wire tree and arrays;
         they are loaded on demand (fresh workers, ``unknown_model``). ``timeout``:
         how long this request may take (default: the worker's).
+        ``retry_timeouts``: False in a live run, where a hung plugin is passed
+        over at once rather than restarted (red team M4).
         """
         attempts = 0
         with self._lock:
@@ -389,8 +394,10 @@ class PluginWorker:
                         code = reply.header.get("error")
                         raise PluginError(f"{code}: {reply.header.get('message')}")
                     return reply
-                except (PluginCrashed, PluginTimeout):
-                    if self._failures >= self.max_restarts:
+                except (PluginCrashed, PluginTimeout) as exc:
+                    if self._failures >= self.max_restarts or (
+                        isinstance(exc, PluginTimeout) and not retry_timeouts
+                    ):
                         raise
                     self._failures += 1
                     self.restarts += 1

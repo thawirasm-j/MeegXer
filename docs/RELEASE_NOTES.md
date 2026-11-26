@@ -23,6 +23,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   shows a plugin's text (its description, settings, references) and the
   values from a shared pipeline as written, never as HTML, and opens only
   web links from them (a `file:` link would have been handed to a program).
+  In a live run, a plugin or script that does not answer within 2 s is no
+  longer restarted (which froze the whole run for ~40 s): its input passes
+  through it for the rest of the run, its strip shows an error and the log
+  says why; the other strips go on.
 - **The Octave image (Octave/EEGLAB scripts, first step).** `meegxer-plugin
   octave build` builds the image Octave/EEGLAB scripts will run in: GNU Octave
   with the signal package and EEGLAB 2026.0.0 (its core, firfilt and ICLabel,

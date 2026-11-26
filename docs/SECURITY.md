@@ -13,15 +13,15 @@ below), and of each finding's fix. The attacks are kept as regression tests
 | M1 stderr can exhaust host memory | Fixed: lines cut at 4 KB (PR #177) |
 | M2 output length and position unchecked | Fixed: output, rails and windows within the input given (PR #178) |
 | M3 event contents unchecked | Fixed: labels, positions, counts and payloads checked (PR #179; `spec/plugin-protocol.md`) |
-| M4 a hung plugin freezes a live run ~40 s | Open (decided: live, a block budget, no retry, the strip passes through) |
+| M4 a hung plugin freezes a live run ~40 s | Fixed: live, 2 s per block, no restart, the strip passes through (this PR) |
 | M5 symlinks reach into the Sterile container | Fixed: a file linking outside its script folder is refused (PR #180) |
 | L1 no CPU cap | Open (decided: live runs, cores − 1, a setting) |
 | L2 plugin text as rich text, links of any scheme | Fixed: shown as written; only https/http links open (PR #181) |
 | L3 keyboard sink maps from a shared pipeline | Open (to decide) |
-| L4 per-script EEGLAB plugins read as a boundary | Fixed: `docs/OCTAVE.md` says it is not one (this PR) |
+| L4 per-script EEGLAB plugins read as a boundary | Fixed: `docs/OCTAVE.md` says it is not one (PR #182) |
 | I1 `run`/`check --script` without the notice | Open (decided: the notice once per script version) |
-| I2 declared packages join the shared Sterile image | Documented in `docs/STERILE.md` (this PR) |
-| I3 Sterile does not isolate file parsing | Documented in `docs/STERILE.md` (this PR); parsing in the worker would be an architecture change |
+| I2 declared packages join the shared Sterile image | Documented in `docs/STERILE.md` (PR #182) |
+| I3 Sterile does not isolate file parsing | Documented in `docs/STERILE.md` (PR #182); parsing in the worker would be an architecture change |
 
 2026-11-26 · main at 1b5787e (0.5.0b2 + M11.5) · Linux, Docker 29, the real
 `meegxer-sterile` and `meegxer-octave` images · every result below was run,
