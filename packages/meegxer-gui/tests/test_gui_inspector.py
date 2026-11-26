@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 import pytest
@@ -556,9 +557,11 @@ def test_a_plugin_s_text_is_shown_as_written(qapp: QApplication) -> None:
     labels = ins.findChildren(QLabel)
     desc = next(lb for lb in labels if "Trusted" in lb.text())
     assert desc.textFormat() == Qt.TextFormat.PlainText
-    refs = next(lb for lb in labels if "example.org" in lb.text())
-    assert 'href="https://example.org/p"' in refs.text()
-    assert 'href="file:' not in refs.text() and "&lt;i&gt;Me" in refs.text()
+    links = [re.findall(r'href="([^"]*)"', lb.text()) for lb in labels]
+    refs = next(lb for lb, found in zip(labels, links, strict=True) if found)
+    # the one web link opens; the file: URL is shown as text, not linked
+    assert re.findall(r'href="([^"]*)"', refs.text()) == ["https://example.org/p"]
+    assert "&lt;i&gt;Me" in refs.text()
     tips = [w.toolTip() for w in ins.findChildren(QWidget) if "y</a>" in w.toolTip()
             or "&lt;a" in w.toolTip()]  # fmt: skip
     assert tips and all(t.startswith("<qt>") and "&lt;a" in t for t in tips)
