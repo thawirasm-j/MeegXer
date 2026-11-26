@@ -77,7 +77,10 @@ def process(
 ## Live scripts
 
 A script with `transform` instead of `process` runs block by block, so the same
-code works live and offline:
+code works live and offline. In a live run each block gets 2 s: a script (or
+any plugin) that takes longer is not restarted; its input passes through it
+unprocessed for the rest of the run, and the run says so (its strip shows an
+error). Offline, it has 10 s, with retries.
 
 ```python
 """Causal high-pass designed with MNE."""

@@ -198,6 +198,12 @@ class PluginProcessor(Processor):
         self._model_ids: dict[int, tuple[State, str]] = {}
         self._given: tuple[int, float] = (0, 0.0)  # input's end (index, sfreq)
         self._span = 0  # samples in the last block given
+        self._budget: float | None = None  # a live run's, per block
+
+    def go_live(self, budget: float | None) -> None:
+        """In a live run, each block within ``budget`` seconds, no restart
+        after a timeout (the run passes the strip over; red team M4)."""
+        self._budget = budget
 
     def _within(self, what: str, first: int, n: int, sfreq: float) -> None:
         """Refuse output a plugin was not given the input for (rule 9; red
@@ -469,7 +475,9 @@ class PluginProcessor(Processor):
             header.update(sample_index=block.sample_index, timestamp=block.timestamp)
         if rails_wire is not None:
             header["rails"] = rails_wire
-        reply = self.worker.request(header, arrays, models=models)
+        reply = self.worker.request(header, arrays, models=models,
+                                    timeout=self._budget,
+                                    retry_timeouts=self._budget is None)  # fmt: skip
         if self.manifest.kind == "analysis":
             return self._features(reply, info, block)
         if reply.type != "result" or "data" not in reply.arrays:

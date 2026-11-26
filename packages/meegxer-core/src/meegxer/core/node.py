@@ -64,6 +64,12 @@ def output_blocks(output: Output) -> tuple[Block | FeatureBlock, ...]:
     return output if isinstance(output, tuple) else (output,)
 
 
+class ProcessorTimeout(RuntimeError):
+    """A processor did not answer within its live budget (a plugin's process
+    that hangs: docs/SECURITY.md, M4). A live run passes the strip's input
+    through instead, for the rest of the run."""
+
+
 class Processor(ABC):
     """Base class for every processing node, built-in or plugin adapter.
 
@@ -164,6 +170,12 @@ class Processor(ABC):
         (e.g. the zero-phase filter offline) and raise ``ValueError`` when ``params``
         cannot run in that mode. Default: this processor in every mode."""
         return self
+
+    def go_live(self, budget: float | None) -> None:  # noqa: B027 - optional hook
+        """A live run starts (``budget``: the seconds it may take per block,
+        after which it raises :class:`ProcessorTimeout` rather than retry) or
+        ends (None). Default: nothing to change (in-process code is timed by
+        the run itself)."""
 
     @classmethod  # noqa: B027 - optional hook
     def warm_up(cls) -> None:

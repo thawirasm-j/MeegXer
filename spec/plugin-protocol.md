@@ -143,7 +143,10 @@ is an error naming the plugin:
   characters (tabs, newlines), a `sample_index` within the input given, a
   `duration` ≥ 0, and a `payload` of up to 32 plain values (text up to 256
   characters, finite numbers, true/false, null) by name;
-- each stderr line is kept up to 4 KB.
+- each stderr line is kept up to 4 KB;
+- in a live run, a result within 2 s of the request: a plugin that does not
+  answer is stopped, not restarted, and the run passes the strip's input
+  through for the rest of the run (offline: 10 s, restarted up to 3 times).
 
 **Feature results (0.2.14).** A plugin whose manifest has `type: "analysis"` (a
 Features output) replies without a `data` array. Its `result` carries `features`,

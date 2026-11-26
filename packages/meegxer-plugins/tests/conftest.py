@@ -142,6 +142,8 @@ while True:
         break
     data = msg.arrays["data"]
     reply = {"type": "result", "id": rid, "state": {}, "events": []}
+    if MODE == "hang_later" and int(h["sample_index"]) >= 250:
+        time.sleep(3600)  # answers the first second, then never again
     arrays = {"data": data}
     if MODE == "longer":  # 100 times the samples it was given
         arrays["data"] = np.zeros((data.shape[0], data.shape[1] * 100))

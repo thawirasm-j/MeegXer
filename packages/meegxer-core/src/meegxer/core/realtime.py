@@ -59,6 +59,7 @@ from meegxer.core.graph import Graph, GraphError, GraphNode, positions_message
 from meegxer.core.node import (
     ActionSink,
     Probe,
+    ProcessorTimeout,
     RailInput,
     RailOutput,
     Sink,
@@ -82,6 +83,10 @@ Clock = Callable[[], float]
 EVENTS_KEEP_SECONDS = 60.0  # live Events rail kept beyond open calibrations
 EVENTS_TO_SINKS_SECONDS = 2.0  # how often live writers get the Events rail
 RAIL_HOLD_SECONDS = 30.0  # how long a reader's input waits for a lagging rail
+# what a plugin may take per block in a live run before it is passed over for
+# the rest of the run (decided 2026-11-26, red team M4: a hung plugin froze a
+# live run ~40 s); offline runs keep the plugin's own timeout and retries
+LIVE_BUDGET = 2.0
 FEATURE_FRAMES_PER_FLUSH = 16  # newest feature windows sent per probe and frame
 
 
@@ -223,6 +228,7 @@ class RealtimeScheduler:
         self._finished = threading.Event()
         self._calibration: dict[str, tuple[list[Block | Windows], float]] = {}
         # labelled fits waiting for markers: calibration, due time, rails over it
+        self._failed: dict[str, str] = {}  # stages that timed out: why
         self._fits: dict[
             str, tuple[Block | Windows, float, Mapping[str, RailInput] | None]
         ] = {}
@@ -407,6 +413,8 @@ class RealtimeScheduler:
         for node in self.graph.nodes:
             if isinstance(node.impl, Sink):
                 node.impl.bind(self.graph, node.id)
+            elif isinstance(node.impl, Stage):  # a plugin answers in time, or
+                node.impl.processor.go_live(LIVE_BUDGET)  # is passed over
         try:
             missing = self.graph.missing_positions(source.info)  # LSL: once open
             if missing:
@@ -451,6 +459,9 @@ class RealtimeScheduler:
             self.metrics.errors.append(traceback.format_exc(limit=5))
         finally:
             self._drain_commands()
+            for node in self.graph.nodes:
+                if isinstance(node.impl, Stage):
+                    node.impl.processor.go_live(None)
             try:
                 self._give_events(final=True)
             except Exception:
@@ -828,10 +839,20 @@ class RealtimeScheduler:
             return self._without_model(node, block)
         if stage.status(input_fp) is not StageStatus.READY:
             return self._without_model(node, block)
+        if node.id in self._failed:
+            return self._passed_over(node, block)
         try:
             result = stage.transform(block, input_fp, rails)
         except StaleModelError:
             return self._without_model(node, block)
+        except ProcessorTimeout as exc:  # a hung plugin: the run goes on
+            self._failed[node.id] = str(exc).splitlines()[0]
+            self.metrics.errors.append(
+                f"{node.id}: no answer within {LIVE_BUDGET:g} s "
+                f"({self._failed[node.id]}); its input now passes through it "
+                "unprocessed for the rest of the run"
+            )
+            return self._passed_over(node, block)
         written.update(result.rails)
         self.metrics.events += len(result.events)
         self._add_events(result.events, node.id, _rate(block))
@@ -840,6 +861,15 @@ class RealtimeScheduler:
         if isinstance(result.block, Block) and result.block.n_samples == 0:
             return None  # a delaying node holding back: nothing to hand on yet
         return result.block
+
+    @staticmethod
+    def _passed_over(node: GraphNode, block: Block | Windows) -> Block | None:
+        """A strip that failed in this run (red team M4): its input passes
+        through, marked as bypassed by it (windows have no Signal to pass on)."""
+        if isinstance(block, Windows):
+            return None
+        marked = tuple(dict.fromkeys((*block.bypassed, node.id)))
+        return dataclasses.replace(block, bypassed=marked)
 
     @staticmethod
     def _without_model(node: GraphNode, block: Block | Windows) -> Block | None:
@@ -940,6 +970,8 @@ class RealtimeScheduler:
     # -- status ---------------------------------------------------------------------
 
     def node_status(self, node: GraphNode) -> str:
+        if node.id in self._failed:
+            return "error"  # passed over for the rest of the run (the log says why)
         if isinstance(node.impl, Stage):
             if node.id in self._calibration or node.id in self._fits:
                 return StageStatus.CALIBRATING.value

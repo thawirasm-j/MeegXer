@@ -133,3 +133,37 @@ def test_a_script_folder_cannot_link_out(tmp_path: Path) -> None:
     os.symlink(os.path.relpath(secret, folder), folder / "notes.txt")
     with pytest.raises(ScriptError, match=r"notes\.txt links to a file outside"):
         script_files(folder)
+
+
+def test_a_plugin_that_hangs_live_is_passed_over(
+    plugin: Callable[..., LocalLauncher],
+) -> None:
+    """Live, a plugin that stops answering froze the whole run ~40 s (10 s,
+    retried with restarts). Now it gets ``LIVE_BUDGET`` per block, no
+    restart: its input passes through it, marked bypassed, and the run goes
+    on, saying so."""
+    from meegxer.core.graph import Graph
+    from meegxer.core.probes import MemoryProbe
+    from meegxer.core.realtime import LIVE_BUDGET, RealtimeScheduler
+    from meegxer.core.sources import SyntheticSource
+
+    stage = hostile(plugin, "hang_later")
+    probe = MemoryProbe()
+    source = SyntheticSource({"duration": 4.0, "n_channels": 3, "sfreq": 250.0})
+    graph = Graph.chain([source, stage, probe])
+    scheduler = RealtimeScheduler(graph)
+    started = time.monotonic()
+    try:
+        scheduler.start()
+        assert scheduler.wait(30)
+    finally:
+        stage.processor.close()
+    took = time.monotonic() - started
+    status = scheduler.status()
+    node = graph.nodes[1].id
+    assert any(f"{node}: no answer within {LIVE_BUDGET:g} s" in e
+               for e in status["errors"])  # fmt: skip
+    assert next(n for n in status["nodes"] if n["id"] == node)["status"] == "error"
+    out = probe.signal()
+    assert out.data.shape[1] == 1000  # every sample reached the probe
+    assert took < 4.0 + LIVE_BUDGET + 3.0  # not ~40 s
