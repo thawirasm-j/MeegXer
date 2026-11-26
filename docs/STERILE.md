@@ -108,7 +108,10 @@ The container runs as `docker run --rm -i --network none --read-only
 ## What stays on the host
 
 - Sources (files, BIDS, LSL), probes (what the GUI shows), sinks (file
-  writers, LSL out, the keyboard): trusted I/O.
+  writers, LSL out, the keyboard): trusted I/O. So reading a recording
+  (EDF, BDF, .set, XDF, BIDS) happens on the host, with MNE's readers: Sterile
+  mode isolates the processing, not the reading of a file from someone else
+  (`docs/SECURITY.md`, I3).
 - The review strips (*Review*, *Epoch review*, *Reject segments*): they
   apply a reviewer's own marks and verdicts.
 - Container plugins (EEGLAB ASR, Octave plugins): already in their own
@@ -130,7 +133,12 @@ Sterile run never reuses what a local run computed, so switching *Sterile* on
 always runs the processing in the containers. A script's extra packages (`REQUIRES`) are installed into
 the image by `meegxer sterile build`, at the versions installed here, and
 listed in its `org.meegxer.requires` label: after adding a script that
-declares one, build again (a run says so). After the run the strip is a
+declares one, build again (a run says so). Such a package becomes part of
+the one Sterile image every Sterile run uses, the built-in strips' worker
+included (a package can run code whenever Python starts), and building may
+run its install code with the network: declare only packages you trust as
+much as MeegXer, as you already did by installing them here
+(`docs/SECURITY.md`, I2). After the run the strip is a
 local process again. An Octave/EEGLAB script
 (`docs/OCTAVE.md`) already runs in its own sandboxed container and stays
 there. A local
