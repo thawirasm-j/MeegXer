@@ -167,3 +167,47 @@ def test_a_plugin_that_hangs_live_is_passed_over(
     out = probe.signal()
     assert out.data.shape[1] == 1000  # every sample reached the probe
     assert took < 4.0 + LIVE_BUDGET + 3.0  # not ~40 s
+
+
+def test_live_containers_leave_the_run_a_core(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One script took every core (400%), and the host's live timing
+    suffered. In a live run a plugin's container is pinned to the top
+    ``general.live_cpus`` CPUs (0: all but one), leaving CPU 0 to the run;
+    offline, any CPU."""
+    from meegxer.plugins import worker
+    from meegxer.plugins.adapter import PluginProcessor
+    from meegxer.plugins.octave_script import OctaveScriptLauncher
+    from meegxer.plugins.sterile import SterileScriptLauncher
+    from meegxer.plugins.worker import ContainerLauncher, live_cpus
+
+    monkeypatch.setattr(worker, "find_engine", lambda engine=None: "docker")
+    monkeypatch.setattr(worker, "engine_cpus", lambda engine=None: 4)
+    monkeypatch.delenv("MEEGXER_LIVE_CPUS", raising=False)
+    assert live_cpus() == "1-3"  # all but CPU 0
+    monkeypatch.setenv("MEEGXER_LIVE_CPUS", "1")
+    assert live_cpus() == "3"
+    monkeypatch.setenv("MEEGXER_LIVE_CPUS", "64")
+    assert live_cpus() is None  # all of them: no pinning
+    monkeypatch.setattr(worker, "engine_cpus", lambda engine=None: 1)
+    monkeypatch.delenv("MEEGXER_LIVE_CPUS")
+    assert live_cpus() is None  # one CPU: nothing to leave
+    monkeypatch.setattr(worker, "engine_cpus", lambda engine=None: 4)
+
+    def cpuset(command: list[str]) -> str | None:
+        flag = "--cpuset-cpus"
+        return command[command.index(flag) + 1] if flag in command else None
+
+    for launcher in (ContainerLauncher("some/plugin:1"),
+                     SterileScriptLauncher("x.py", (("x.py", b""),))):  # fmt: skip
+        cls = type("P", (PluginProcessor,), {"launcher": launcher,
+                                              "manifest": None})  # fmt: skip
+        p = cls()
+        assert cpuset(p.worker.launcher.command("n")) is None  # offline
+        p.go_live(2.0)
+        assert cpuset(p.worker.launcher.command("n")) == "1-3"
+        p.go_live(None)
+        assert cpuset(p.worker.launcher.command("n")) is None
+    octave = OctaveScriptLauncher("x.m", image="meegxer-octave:t").with_cpuset("1-3")
+    assert octave._container().cpuset == "1-3"

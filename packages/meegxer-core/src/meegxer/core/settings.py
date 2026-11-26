@@ -41,6 +41,7 @@ DEFAULTS: dict[str, Any] = {
         "confirm_quit_running": True,
         "batch_jobs": 1,  # all-subjects runs: recordings at once (0: one per CPU)
         "sterile": False,  # processing in the Sterile container (docs/STERILE.md)
+        "live_cpus": 0,  # a plugin's container in a live run (0: all CPUs but one)
     },
     "appearance": {"theme": "dark", "scale": 100, "strip_width": 100},
     "visualization": {

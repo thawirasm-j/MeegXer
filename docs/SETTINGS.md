@@ -45,6 +45,7 @@ reported (in the log) and use their defaults. The format is checked against
 | | Engine address (used at the next start) | `general.daemon` | `tcp://127.0.0.1:5555` |
 | | Workers for an all-subjects BIDS run (0: one per CPU; `MEEGXER_BATCH_JOBS` wins) | `general.batch_jobs` | `1` |
 | | Sterile mode: the processing in its container (`docs/STERILE.md`; `MEEGXER_STERILE` and `--sterile`/`--no-sterile` win) | `general.sterile` | `false` |
+| | CPUs a plugin's container may use in a live run, pinned to the last ones so the run keeps the first (0: all but one; offline runs are not capped; `MEEGXER_LIVE_CPUS` wins) | `general.live_cpus` | `0` |
 | Appearance | Theme: `dark`, `light`, `system`, or a theme file | `appearance.theme` | `dark` |
 | | Text size (%) | `appearance.scale` | `100` |
 | | Strip width: fixed, in % of 158 px (50–300), or `"text"` to follow the text size and the font's width | `appearance.strip_width` | `100` |

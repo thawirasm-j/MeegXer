@@ -39,6 +39,7 @@ the first sample).
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import re
 from dataclasses import dataclass
@@ -234,6 +235,7 @@ class OctaveScriptLauncher:
     image: str = ""  # default_image(): MEEGXER_OCTAVE_IMAGE, else the version's
     engine: str | None = None
     memory: str = "4g"
+    cpuset: str | None = None  # a live run's CPUs (red team L1)
 
     sandboxed = True
 
@@ -241,8 +243,12 @@ class OctaveScriptLauncher:
     def tag(self) -> str:
         return self.image or default_image()
 
+    def with_cpuset(self, cpuset: str | None) -> OctaveScriptLauncher:
+        return dataclasses.replace(self, cpuset=cpuset)
+
     def _container(self) -> ContainerLauncher:
-        return ContainerLauncher(self.tag, self.engine, memory=self.memory)
+        return ContainerLauncher(self.tag, self.engine, memory=self.memory,
+                                 cpuset=self.cpuset)  # fmt: skip
 
     def command(self, name: str) -> list[str]:
         # missing, stale, or without a plugin the script declares: say so now

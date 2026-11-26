@@ -37,7 +37,7 @@ from meegxer.core.passband import filters_from_wire, filters_wire
 from meegxer.core.ports import PortType
 from meegxer.core.serialization import State, hash_state
 from meegxer.plugins.wire import tree_from_wire, tree_to_wire
-from meegxer.plugins.worker import Launcher, PluginError, PluginWorker
+from meegxer.plugins.worker import Launcher, PluginError, PluginWorker, live_cpus
 
 RESERVED_PREFIXES = ("meegxer.",)
 # what a plugin's events may hold (rule 9; red team M3): they reach files
@@ -199,11 +199,22 @@ class PluginProcessor(Processor):
         self._given: tuple[int, float] = (0, 0.0)  # input's end (index, sfreq)
         self._span = 0  # samples in the last block given
         self._budget: float | None = None  # a live run's, per block
+        self._run_launcher: Launcher | None = None  # a live run's (CPU cap)
 
     def go_live(self, budget: float | None) -> None:
         """In a live run, each block within ``budget`` seconds, no restart
-        after a timeout (the run passes the strip over; red team M4)."""
+        after a timeout (the run passes the strip over; red team M4), and a
+        container on the CPUs ``live_cpus`` leaves it (red team L1); None:
+        back."""
         self._budget = budget
+        cap = getattr(self.launcher, "with_cpuset", None)
+        launcher = None
+        if budget is not None and callable(cap):
+            engine = getattr(self.launcher, "engine", None)
+            launcher = cap(live_cpus(engine if isinstance(engine, str) else None))
+        if launcher != self._run_launcher:
+            self.close()  # the next request starts it with (or without) the cap
+            self._run_launcher = launcher
 
     def _within(self, what: str, first: int, n: int, sfreq: float) -> None:
         """Refuse output a plugin was not given the input for (rule 9; red
@@ -222,7 +233,9 @@ class PluginProcessor(Processor):
     @property
     def worker(self) -> PluginWorker:
         if self._worker is None:
-            self._worker = PluginWorker(self.launcher, **self.worker_options)
+            self._worker = PluginWorker(
+                self._run_launcher or self.launcher, **self.worker_options
+            )
         return self._worker
 
     def close(self) -> None:
