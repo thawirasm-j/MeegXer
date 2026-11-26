@@ -17,7 +17,9 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   input, or place it at sample 10¹⁵); its events are checked: a text label
   of up to 256 characters without tabs or newlines (which broke
   events.tsv), within the input given, at most one per sample, a payload of
-  a few plain values (the limits are in `spec/plugin-protocol.md`).
+  a few plain values (the limits are in `spec/plugin-protocol.md`). A
+  script folder holding a link to a file outside it is refused (it sent,
+  say, a key from the home folder into the Sterile container).
 - **The Octave image (Octave/EEGLAB scripts, first step).** `meegxer-plugin
   octave build` builds the image Octave/EEGLAB scripts will run in: GNU Octave
   with the signal package and EEGLAB 2026.0.0 (its core, firfilt and ICLabel,

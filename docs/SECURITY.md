@@ -12,9 +12,9 @@ below), and of each finding's fix. The attacks are kept as regression tests
 |---|---|
 | M1 stderr can exhaust host memory | Fixed: lines cut at 4 KB (PR #177) |
 | M2 output length and position unchecked | Fixed: output, rails and windows within the input given (PR #178) |
-| M3 event contents unchecked | Fixed: labels, positions, counts and payloads checked (this PR; `spec/plugin-protocol.md`) |
+| M3 event contents unchecked | Fixed: labels, positions, counts and payloads checked (PR #179; `spec/plugin-protocol.md`) |
 | M4 a hung plugin freezes a live run ~40 s | Open (decided: live, a block budget, no retry, the strip passes through) |
-| M5 symlinks reach into the Sterile container | Open |
+| M5 symlinks reach into the Sterile container | Fixed: a file linking outside its script folder is refused (this PR) |
 | L1 no CPU cap | Open (decided: live runs, cores − 1, a setting) |
 | L2 plugin text as rich text, links of any scheme | Open |
 | L3 keyboard sink maps from a shared pipeline | Open (to decide) |

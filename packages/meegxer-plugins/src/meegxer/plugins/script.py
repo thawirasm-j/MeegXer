@@ -124,15 +124,24 @@ def folder_files(folder: Path) -> list[tuple[str, Path]]:
     """The files of a script folder, by their path in it (``/``-separated, in
     name order): every file but hidden ones (``.git``, ``.venv``...),
     ``__pycache__`` and compiled Python. Refused above ``MAX_FOLDER_BYTES`` or
-    ``MAX_FOLDER_FILES``, saying so (a recording left in it, say)."""
+    ``MAX_FOLDER_FILES``, saying so (a recording left in it, say), and when a
+    file links outside the folder (a shared folder could otherwise pull, say,
+    a key from the user's home into the script's container)."""
     found: list[tuple[str, Path]] = []
     total = 0
+    root = folder.resolve()
     for path in sorted(folder.rglob("*")):
         rel = path.relative_to(folder)
         if any(part.startswith(".") or part in _SKIP_DIRS for part in rel.parts):
             continue
         if not path.is_file() or path.suffix in _SKIP_SUFFIXES:
             continue
+        if not path.resolve().is_relative_to(root):  # a link out (red team M5)
+            raise ScriptError(
+                f"{folder.name}: {rel.as_posix()} links to a file outside the "
+                "script folder; copy the file into the folder instead (a "
+                "script folder sends only its own files into its container)"
+            )
         total += path.stat().st_size
         found.append((rel.as_posix(), path))
         if total > MAX_FOLDER_BYTES or len(found) > MAX_FOLDER_FILES:
