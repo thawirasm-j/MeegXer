@@ -35,6 +35,10 @@ from meegxer.plugins.wire import (
 )
 
 UNSANDBOXED_ENV = "MEEGXER_ALLOW_UNSANDBOXED"
+# a plugin's stderr is untrusted (rule 9): each line is kept up to this many
+# bytes (the rest of it dropped), so a line without end cannot fill memory
+MAX_STDERR_LINE = 4096
+STDERR_CHUNK = 65536
 
 
 class PluginError(RuntimeError):
@@ -258,9 +262,36 @@ class PluginWorker:
                 return
 
     def _read_stderr(self, proc: subprocess.Popen[bytes]) -> None:
+        """Keep the last lines of the plugin's stderr, each cut at
+        ``MAX_STDERR_LINE`` bytes (read in chunks: never a whole line)."""
         assert proc.stderr is not None
-        for line in iter(proc.stderr.readline, b""):
-            self._stderr.append(line.decode(errors="replace").rstrip())
+        line = bytearray()
+        dropping = False  # past the cut, until the line ends
+
+        def keep(cut: bool = False) -> None:
+            text = line.decode(errors="replace").rstrip()
+            self._stderr.append(text + " … (cut)" if cut else text)
+            line.clear()
+
+        while chunk := proc.stderr.read(STDERR_CHUNK):
+            start = 0
+            while True:
+                end = chunk.find(b"\n", start)
+                piece = chunk[start:] if end < 0 else chunk[start:end]
+                if not dropping:
+                    room = MAX_STDERR_LINE - len(line)
+                    line += piece[:room]
+                    if len(piece) > room:
+                        keep(cut=True)
+                        dropping = True
+                if end < 0:
+                    break
+                if not dropping:
+                    keep()
+                dropping = False
+                start = end + 1
+        if line and not dropping:
+            keep()
 
     def _kill(self) -> None:
         proc, self._proc = self._proc, None
