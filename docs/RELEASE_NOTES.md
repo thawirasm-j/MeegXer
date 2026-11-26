@@ -14,7 +14,10 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   stderr lines are cut at 4 KB (a line without end filled memory); its
   output (and its rails and feature windows) must lie within the input it
   was given, by the exact ratio of the rates (it could return 100 times its
-  input, or place it at sample 10¹⁵).
+  input, or place it at sample 10¹⁵); its events are checked: a text label
+  of up to 256 characters without tabs or newlines (which broke
+  events.tsv), within the input given, at most one per sample, a payload of
+  a few plain values (the limits are in `spec/plugin-protocol.md`).
 - **The Octave image (Octave/EEGLAB scripts, first step).** `meegxer-plugin
   octave build` builds the image Octave/EEGLAB scripts will run in: GNU Octave
   with the signal package and EEGLAB 2026.0.0 (its core, firfilt and ICLabel,

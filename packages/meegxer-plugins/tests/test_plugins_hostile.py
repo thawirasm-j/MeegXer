@@ -79,3 +79,32 @@ def test_honest_plugins_still_pass(plugin: Callable[..., LocalLauncher]) -> None
     """The same plugin, answering honestly, a block later in the stream."""
     result = transform(hostile(plugin, ""), block(start=500))
     assert result.block.sample_index == 500  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    [
+        ("event_dict", "label must be text"),
+        ("event_long", "label must be text of 1 to 256"),
+        ("event_tab", "control character"),
+        ("event_future", r"an event at sample 1000000000000, but it was given"),
+        ("event_field", r"unknown fields \['__class__'\]"),
+        ("event_payload", "payload must be up to 32 plain values"),
+        ("event_duration", "duration must be a whole number"),
+        ("event_flood", "300 events for a block of 250 samples"),
+    ],
+)  # fmt: skip
+def test_bad_events_are_refused(
+    plugin: Callable[..., LocalLauncher], mode: str, message: str
+) -> None:
+    """Events reach files (a tab breaks events.tsv), the GUI and the action
+    sinks: anything but a short text label within the input is refused."""
+    with pytest.raises(PluginError, match=r"test\.hostile: .*" + message):
+        transform(hostile(plugin, mode), block())
+
+
+def test_honest_events_pass(plugin: Callable[..., LocalLauncher]) -> None:
+    result = transform(hostile(plugin, "honest_events"), block(start=250))
+    (event,) = result.events  # type: ignore[attr-defined]
+    assert (event.sample_index, event.label, event.duration) == (253, "blink", 25)
+    assert dict(event.payload) == {"amplitude_uv": 120.5, "channel": "Fp1"}
