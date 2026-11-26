@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 import pytest
@@ -527,3 +528,44 @@ def test_the_lsl_input_detects_its_streams(
     menu = unasked.detect()
     assert menu.actions()[0].text() == "Could not ask for the streams (see the log)"
     menu.close()
+
+
+def test_a_plugin_s_text_is_shown_as_written(qapp: QApplication) -> None:
+    """A plugin's description, setting descriptions and references are its
+    own text (red team L2, docs/SECURITY.md): never drawn as HTML, and only
+    web links open (a file: link would be handed to a program)."""
+    from PySide6.QtCore import Qt
+
+    from meegxer.gui.plain import tip, web_link
+
+    registry = Registry.from_entry_points()
+    base = manifest_to_dict(registry.get("meegxer.nodes.iir_filter").manifest)
+    evil = {**base, "name": "evil.plugin",
+            "description": "<img src='file:///etc/passwd'><b>Trusted</b>",
+            "params": [{**base["params"][0], "description": "<a href='x'>y</a>"}],
+            "references": [
+                {"citation": "<i>Me</i>", "url": "file:///C:/Downloads/run.exe"},
+                {"citation": "Real", "url": "https://example.org/p"}]}  # fmt: skip
+    d = PipelineDoc([*(manifest_to_dict(registry.get(n).manifest)
+                       for n in registry.names()), evil])  # fmt: skip
+    d.set_source("meegxer.core.synthetic")
+    strip = d.insert(1, "evil.plugin")
+    ins = Inspector()
+    ins.show_strip(d, strip, advanced=True, running=False, node_status={})
+    ins.show()
+    qapp.processEvents()
+    labels = ins.findChildren(QLabel)
+    desc = next(lb for lb in labels if "Trusted" in lb.text())
+    assert desc.textFormat() == Qt.TextFormat.PlainText
+    links = [re.findall(r'href="([^"]*)"', lb.text()) for lb in labels]
+    refs = next(lb for lb, found in zip(labels, links, strict=True) if found)
+    # the one web link opens; the file: URL is shown as text, not linked
+    assert re.findall(r'href="([^"]*)"', refs.text()) == ["https://example.org/p"]
+    assert "&lt;i&gt;Me" in refs.text()
+    tips = [w.toolTip() for w in ins.findChildren(QWidget) if "y</a>" in w.toolTip()
+            or "&lt;a" in w.toolTip()]  # fmt: skip
+    assert tips and all(t.startswith("<qt>") and "&lt;a" in t for t in tips)
+    dispose(qapp, ins)
+    assert tip("f < 1 Hz") == "f < 1 Hz"  # plain text stays as it was
+    assert not web_link("file:///x") and not web_link("ms-settings:") and web_link(
+        "HTTPS://doi.org/1")  # fmt: skip

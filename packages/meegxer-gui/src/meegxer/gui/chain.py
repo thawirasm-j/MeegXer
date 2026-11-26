@@ -53,6 +53,7 @@ from PySide6.QtWidgets import (
 from meegxer.gui.labels import param_label
 from meegxer.gui.names import badge, title
 from meegxer.gui.pipeline_doc import PipelineDoc, Rail, StripNode
+from meegxer.gui.plain import tip as plain_tip
 from meegxer.gui.theme import Theme
 
 MIME = "application/x-meegxer-strip"
@@ -138,6 +139,7 @@ class WrapLabel(QLabel):
 
     def __init__(self, text: str, width: int, name: str = "", lines: int = 2) -> None:
         super().__init__(text)
+        self.setTextFormat(Qt.TextFormat.PlainText)  # values from files: as written
         self.setObjectName(name)  # before measuring: "title" is bold
         self.full_text, self.lines = text, lines
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -214,7 +216,7 @@ class StripWidget(QFrame):
         )
         close_room = 30 if manifest["role"] != "source" else 0  # LED, ✕, spacing
         name = WrapLabel(full, self.strip_width - 24 - 22 - close_room, "title")
-        name.setToolTip(full)
+        name.setToolTip(plain_tip(full))
         head.addWidget(name, 1)
         if manifest["role"] != "source":
             close = QToolButton()
@@ -278,8 +280,8 @@ class StripWidget(QFrame):
                 value.setAlignment(Qt.AlignmentFlag.AlignRight)
                 lay.addWidget(key)
                 lay.addWidget(value)
-            key.setToolTip(f"{pretty}: {text}")
-            value.setToolTip(f"{pretty}: {text}")
+            key.setToolTip(plain_tip(f"{pretty}: {text}"))
+            value.setToolTip(plain_tip(f"{pretty}: {text}"))
         lay.addStretch(1)
         if manifest.get("requires_fit") and doc.mode == "live":
             calib = QPushButton("Calibrate")
@@ -964,7 +966,7 @@ class ChainView(QScrollArea):
                         tip += "\n✎ added by you: runs on this computer, unsandboxed"
                     elif doc.mark(name):
                         tip += "\n⬡ plugin: runs in an isolated container"
-                    action.setToolTip(tip.strip())
+                    action.setToolTip(plain_tip(tip.strip()))
                     action.setEnabled(problem is None)
                     action.triggered.connect(
                         lambda _=False, n=name: self.insert_requested.emit(index, n)

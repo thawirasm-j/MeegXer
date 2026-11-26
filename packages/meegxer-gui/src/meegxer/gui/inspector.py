@@ -53,6 +53,8 @@ from meegxer.gui.pipeline_doc import (
     PipelineDoc,
     StripNode,
 )
+from meegxer.gui.plain import tip as plain_tip
+from meegxer.gui.plain import web_link
 from meegxer.gui.theme import DEFAULT_GROUPS, Theme
 
 # greyed text in an empty field: what leaving it empty means
@@ -705,6 +707,7 @@ class Inspector(QScrollArea):
         lay.addWidget(kind)
         if manifest.get("description"):
             desc = QLabel(manifest["description"])
+            desc.setTextFormat(Qt.TextFormat.PlainText)  # a plugin's: as written
             desc.setObjectName("muted")
             desc.setWordWrap(True)
             lay.addWidget(desc)
@@ -766,7 +769,7 @@ class Inspector(QScrollArea):
                 t for t in (spec.get("description") or "", restart_note(name),
                             str(editor.property("tip") or "")) if t
             )  # fmt: skip
-            editor.setToolTip(tip)
+            editor.setToolTip(plain_tip(tip))
             if spec["type"] == "bool":
                 switches.append(editor)
                 continue
@@ -781,7 +784,7 @@ class Inspector(QScrollArea):
             else:
                 editor.setFixedWidth(180)
             label = QLabel(param_label(name, spec))
-            label.setToolTip(tip)
+            label.setToolTip(plain_tip(tip))
             if key in USED_WHEN:
                 other, needed = USED_WHEN[key]
                 other_spec = next(p for p in specs_all(self._doc, strip)
@@ -792,7 +795,7 @@ class Inspector(QScrollArea):
                 editor.setEnabled(used)
                 label.setEnabled(used)
                 if not used:
-                    editor.setToolTip(f"{why}\n{tip}" if tip else why)
+                    editor.setToolTip(plain_tip(f"{why}\n{tip}") if tip else why)
                     label.setToolTip(why)
             form.addRow(label, editor)
         if form.rowCount():
@@ -959,8 +962,11 @@ class Inspector(QScrollArea):
                 text = html.escape(ref["citation"])
                 if ref.get("doi"):
                     link, shown = f"https://doi.org/{ref['doi']}", f"doi:{ref['doi']}"
-                elif ref.get("url"):
+                elif ref.get("url") and web_link(ref["url"]):
                     link = shown = ref["url"]
+                elif ref.get("url"):  # not a web link: shown, not opened
+                    text += " " + html.escape(ref["url"])
+                    link = shown = ""
                 else:
                     link = shown = ""
                 if link:
