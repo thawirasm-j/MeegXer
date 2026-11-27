@@ -54,7 +54,10 @@ M11's BCI work (LDA, the keyboard sink, the SSVEP BCI template: M10.9), the
 inputs (BIDS folders, epoch files, a recording shown at once) and the UX
 review's fixes (§L to §V), and *Detect…* for the LSL input's streams (§W).
 0.5.0b2 ("Sterile") adds Sterile mode (M11.1, checked in §X on Linux and on
-Windows): with it, M11's exit criterion is met.
+Windows): with it, M11's exit criterion is met. 0.5.0b3 ("Scripts",
+proposed; its notes in `docs/RELEASE_NOTES.md`) adds custom scripting and
+the Octave/EEGLAB tier (M11.5, §Y to §AF), the red team's fixes
+(`docs/SECURITY.md`) and the export of a pipeline as a script (M11.7, §AG).
 
 | Item | State | Where |
 |---|---|---|
