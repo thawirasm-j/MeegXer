@@ -4,13 +4,12 @@ called as MeegXer calls it.
 
 ``process(raw, ...)``, ``process_epochs(epochs, ...)`` and ``features(data,
 ...)`` (on MeegXer's windows) are called as the script runner calls them
-(``meegxer.plugins.script``); a live script,
-``transform(data, state, ...)`` without ``fit``, once on the whole recording
-(the same as block by block: acceptance test 1). A script folder (helpers,
-data files), a calibrated script (``fit``) and a live one taking ``info`` or
-``model`` have no standalone code yet. MeegXer sends a plugin its
-data in single precision; the standalone script keeps double, so the two
-agree to single precision.
+(``meegxer.plugins.script``); a live script, ``transform(data, state, ...)``,
+once on the whole recording (the same as block by block: acceptance test 1),
+its ``fit(raw, ...)`` fitted again first as MeegXer fits it offline. A script
+folder (helpers, data files) has no standalone code yet. MeegXer sends a
+plugin its data in single precision; the standalone script keeps double, so
+the two agree to single precision.
 """
 
 from __future__ import annotations
@@ -46,11 +45,13 @@ def script_export_code(path: Path, params: dict[str, Any]) -> ExportCode | None:
     if len(found) != 1 or found[0] not in _SUPPORTED:
         return None
     kind = found[0]
-    if kind == "transform" and (
-        "fit" in functions
-        or {"info", "model"} & set(_arguments(functions["transform"]))
-    ):
-        return None
+    fitted = kind == "transform" and "fit" in functions
+    fit_events = any(  # FIT_EVENTS = True: fit(raw) gets the events
+        isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+        and node.value.value is True
+        and any(getattr(target, "id", "") == "FIT_EVENTS" for target in node.targets)
+        for node in ast.parse(source).body
+    )  # fmt: skip
     module = "script_" + re.sub(r"\W", "_", path.stem)
     sha = hashlib.sha256(path.read_bytes()).hexdigest()
     safe = "'''" not in source and not source.endswith("\\")
@@ -69,7 +70,9 @@ def script_export_code(path: Path, params: dict[str, Any]) -> ExportCode | None:
     call = {
         "features": windows,
         "process": f"raw = run_process(raw, picks, {module}.process{settings})",
-        "transform": f"raw = run_transform(raw, picks, {module}.transform{settings})",
+        "transform": f"raw = run_transform(raw, picks, {module}.transform"
+        + (f", fit={module}.fit, fit_events={fit_events!r}" if fitted else "")
+        + f"{settings})",
         "process_epochs": "epochs = run_process_epochs(epochs, "
         f"{module}.process_epochs{settings})",
     }[kind]
@@ -78,11 +81,14 @@ def script_export_code(path: Path, params: dict[str, Any]) -> ExportCode | None:
 
     return ExportCode(
         packages=tuple(str(r) for r in declared(path)),  # its REQUIRES
-        comment=f"custom script {path.name}: {kind}({shown})",
+        comment=f"custom script {path.name}: {kind}({shown})"
+        + (", fitted on the recording" if fitted else ""),
         lines=(call,),
         imports=("import types",),
         helpers=("windowed", "run_features")
         if kind == "features"
+        else ("run_transform", "events_of")
+        if fitted
         else (f"run_{kind}",),
         definitions=(definition,),
     )

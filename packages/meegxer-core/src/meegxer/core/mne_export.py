@@ -154,11 +154,37 @@ def spline_copy(raw, idx, bads):
                                a["description"])
     return raw
 ''',
-    "run_transform": '''def run_transform(raw, picks, transform, **params):
+    "run_transform": '''\
+def run_transform(raw, picks, transform, fit=None, fit_events=False, **params):
     """A live custom script's transform(data, state, ...) on the whole
     recording at once (what MeegXer's block by block run gives: the script
-    passed acceptance test 1)."""
-    got = transform(raw.get_data(picks=picks), None, **params)
+    passed acceptance test 1), with info and the model if it takes them.
+    With fit(raw, ...), the model is fitted first, as MeegXer fits it
+    offline: on the strip's whole input, its channels typed EEG, bad
+    channels marked (and its events when it learns from labelled trials)."""
+    names = [raw.ch_names[i] for i in picks]
+    sfreq = raw.info["sfreq"]
+    bads = [b for b in raw.info["bads"] if b in names]
+    model = None
+    if fit is not None:
+        info = mne.create_info(names, sfreq, "eeg")
+        info["bads"] = bads
+        sub = mne.io.RawArray(raw.get_data(picks=picks), info, verbose="error")
+        if fit_events:  # labelled trials, timed from the data's start
+            found = events_of(raw)
+            sub.set_annotations(mne.Annotations([s / sfreq for s, _, _ in found],
+                                                [n / sfreq for _, _, n in found],
+                                                [label for _, label, _ in found]))
+        taken = inspect.signature(fit).parameters
+        model = fit(sub, **{k: v for k, v in params.items() if k in taken})
+        if not isinstance(model, dict):
+            raise SystemExit(f"{fit.__module__}: fit must return a dict")
+    taken = inspect.signature(transform).parameters
+    extra = {k: v for k, v in {
+        "info": {"ch_labels": names, "sfreq": sfreq, "stream_id": "", "bads": bads,
+                 "sample_index": 0, "timestamp": 0.0},
+        "model": model}.items() if k in taken}
+    got = transform(raw.get_data(picks=picks), None, **params, **extra)
     data = np.asarray(got[0] if isinstance(got, tuple) else got, dtype=np.float64)
     raw.apply_function(lambda x: data, picks=picks, channel_wise=False)
     return raw
@@ -816,7 +842,7 @@ HELPER_IMPORTS = {
     "resampled": ("from fractions import Fraction", "from scipy import signal"),
     "spline_channels": ("import numpy as np",),
     "run_process": ("import numpy as np",),
-    "run_transform": ("import numpy as np",),
+    "run_transform": ("import inspect", "import numpy as np"),
     "fit_ica": ("import numpy as np", "import warnings"),
     "add_ica_to_set": ("import numpy as np",),
     "detectors": ("import re",),

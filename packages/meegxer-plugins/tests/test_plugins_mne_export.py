@@ -40,14 +40,27 @@ EPOCHS = '''def process_epochs(epochs, keep: str = "go"):
     kept.apply_function(lambda x: x - x.mean(), picks="all")
     return kept
 '''
-CALIBRATED = '''def fit(raw):
-    """Learn a mean."""
-    return {"mean": float(raw.get_data().mean())}
+CALIBRATED = '''"""Remove each channel's mean over the go trials."""
+
+import numpy as np
+
+FIT_EVENTS = True
 
 
-def transform(data, state, model):
-    """Remove it."""
-    return data - model["mean"], state
+def fit(raw, gain: float = 1.0):
+    """Learn each channel's mean over the go events' first second."""
+    sfreq, x = raw.info["sfreq"], raw.get_data()
+    starts = [round(a["onset"] * sfreq) for a in raw.annotations
+              if a["description"] == "go"]
+    assert len(starts) == 2 and "Oz" in raw.info["bads"]
+    mean = np.mean([x[:, s : s + int(sfreq)].mean(axis=1) for s in starts], axis=0)
+    return {"mean": mean}
+
+
+def transform(data, state, model, info, gain: float = 1.0):
+    """Subtract it."""
+    assert len(info["ch_labels"]) == len(model["mean"]) and info["sfreq"] == 250.0
+    return data - gain * np.asarray(model["mean"])[:, None], state
 '''
 
 
@@ -130,7 +143,7 @@ def test_a_script_without_standalone_code_is_named(
     folder.mkdir()
     (folder / "mnex_folder.py").write_text(TRANSFORM)
     index.add_local(index.script_command(folder), accept_risk=True, script=folder)
-    for node in (add(tmp_path, "mnex_calib", CALIBRATED), "script.mnex_folder"):
+    for node in ("script.mnex_folder",):
         with pytest.raises(NotExportable, match=rf"s1 \({node}\)"):
             export_mne(pipeline({"id": "s1", "node": node}))
 
@@ -175,3 +188,18 @@ def test_a_feature_script_runs_inlined_on_meegxer_s_windows(
     np.testing.assert_allclose(b, a, rtol=1e-5, atol=1e-16)
     sidecars = [p.with_suffix(".json").read_text() for p in (ours, theirs)]
     assert sidecars[0] == sidecars[1] and '"V^2"' in sidecars[0]
+
+
+def test_a_calibrated_script_is_fitted_again(recording: Path, tmp_path: Path) -> None:
+    """fit(raw, ...) with FIT_EVENTS (the recording's events), then
+    transform(data, state, model, info, ...): MeegXer's signal, to single
+    precision."""
+    pipe = pipeline({"id": "c1", "node": add(tmp_path, "mnex_calib", CALIBRATED),
+                     "params": {"gain": 0.5}})  # fmt: skip
+    text = export_mne(pipe)
+    assert "fit=script_mnex_calib.fit, fit_events=True" in text
+    assert "fitted again on the recording" in text
+    scope: dict[str, Any] = {"__name__": "exported"}
+    exec(compile(text, "run_mne.py", "exec"), scope)
+    got, _, _ = scope["pipeline"](str(recording))
+    close(got, run(pipe, recording))
