@@ -114,16 +114,20 @@ less the removed components, as MeegXer's does), the detectors (jumps and
 flat signal, muscle, blinks: MNE's, their events added to the recording's
 annotations, a channel proposed as bad printed and marked `bad_channel`, not
 applied), the spectral feature strips (PSD, band power, Morlet power,
-specparam; Welch or multitaper; specparam's *fit unfiltered* not yet), the
+specparam; Welch or multitaper; specparam's *fit unfiltered* not yet),
+connectivity (mne-connectivity), complexity (antropy), SSVEP CCA and
+filter-bank CCA (with its detection events), CSP and LDA (fitted again on the
+recording's trials, as MeegXer fits them; LDA's class events), the
 Hilbert envelope (the analytic signal, offline; its FIR method not yet),
 Epochs, the `.set`, `.edf`, feature TSV
 and epochs writers, and custom Python scripts: a script's source is
 inlined (as a module of its own, with its SHA-256) and called as MeegXer
-calls it, `process(raw, ...)` and `process_epochs(epochs, ...)`, and a live
-`transform(data, state, ...)` once on the whole recording (MeegXer sends a
+calls it, `process(raw, ...)`, `process_epochs(epochs, ...)`,
+`features(data, ...)` on MeegXer's windows (its `UNITS` in the sidecar), and
+a live `transform(data, state, ...)` once on the whole recording (MeegXer sends a
 plugin single precision; the script keeps double, so the two agree to single
 precision). More come strip by strip (`docs/ROADMAP.md`, M11.7). Any other
-strip (a script folder, a calibrated or feature script, an Octave script, a
+strip (a script folder, a calibrated script, an Octave script, a
 plugin image, a strip reading the ICs rail) is named and the script is not
 written:
 `export_script` runs any pipeline. Not carried yet: the ICA a `.set` input

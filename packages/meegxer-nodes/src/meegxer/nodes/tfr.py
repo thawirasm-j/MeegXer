@@ -90,7 +90,7 @@ class MorletPower(WindowedFeatures):
             params,
             f"morlet_window(x, sfreq, names, {fmin!r}, {fmax!r}, {fstep!r}, "
             f"{n_cycles!r}, {db!r})",
-            "dB" if db else "V^2",
+            repr("dB" if db else "V^2"),
             f"Morlet wavelet power {fmin:g}-{fmax:g} Hz, {n_cycles:g} cycles"
             f"{' in dB' if db else ''} (MNE wavelets)",
             "morlet_window",

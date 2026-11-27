@@ -194,7 +194,7 @@ class SpecParam(WindowedFeatures):
             params,
             f"specparam_window(x, sfreq, names, {fmin!r}, {fmax!r}, {aperiodic!r}, "
             f"{bands!r}, {model!r}, **{spectrum_kwargs(params)!r})",
-            ("measure", units),
+            repr(("measure", units)),
             f"spectral parameters ({aperiodic} aperiodic, {fmin:g}-{fmax:g} Hz; "
             f"specparam), {spectrum_text(params)}",
             "specparam_window",

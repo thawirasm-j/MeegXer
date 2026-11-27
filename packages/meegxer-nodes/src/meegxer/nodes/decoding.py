@@ -22,7 +22,7 @@ writer). The ``min_probability`` and ``event_prefix`` settings are MeegXer's.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 
@@ -30,8 +30,11 @@ from meegxer.core.block import Block, Event, FeatureBlock, SignalInfo, Windows
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, Processor, TransformResult
 from meegxer.core.serialization import State, StateValue
-from meegxer.nodes.features import WindowedFeatures, analysis_manifest
+from meegxer.nodes.features import WindowedFeatures, analysis_manifest, windowed_code
 from meegxer.nodes.references import credits
+
+if TYPE_CHECKING:
+    from meegxer.core.mne_export import ExportCode
 
 
 def parse_classes(text: str) -> list[str]:
@@ -142,6 +145,24 @@ class CSP(WindowedFeatures):
         self, params: Params, coords: dict[str, tuple[Any, ...]]
     ) -> str | tuple[str, tuple[str, ...]]:
         return "log(V^2)"  # natural log of the filtered signal's variance
+
+    def export_code(self, params: Params) -> ExportCode:
+        classes = parse_classes(str(params["classes"]))
+        tmin, tmax = float(params["tmin"]), float(params["tmax"])
+        n = int(params["n_components"])
+        reg = None if params["reg"] == "none" else str(params["reg"])
+        return windowed_code(
+            params,
+            "csp_window(x, sfreq, names, filters)",
+            repr("log(V^2)"),
+            f"CSP log power, {n} components fitted on the recording's "
+            f"{', '.join(classes)} trials ({tmin:g}-{tmax:g} s; MNE)",
+            "csp",
+            ("scikit-learn",),
+            before=(f"filters = fit_csp(raw, picks, {classes!r}, {tmin!r}, "
+                    f"{tmax!r}, {n}, {reg!r})",),
+            helpers=("events_of",),
+        )  # fmt: skip
 
 
 def labelled_windows(
@@ -255,6 +276,24 @@ class LDA(Processor):
             "classes": names,
             "windows": [int((y == i).sum()) for i in range(len(classes))],
         }
+
+    def export_code(self, params: Params) -> ExportCode:
+        from meegxer.core.mne_export import ExportCode
+
+        classes = parse_classes(str(params["classes"]))
+        tmin, tmax = float(params["tmin"]), float(params["tmax"])
+        shrinkage = bool(params["shrinkage"])
+        return ExportCode(
+            comment=f"LDA{' (Ledoit-Wolf shrinkage)' if shrinkage else ''} fitted "
+                    f"on the recording's {', '.join(classes)} windows "
+                    f"({tmin:g}-{tmax:g} s; scikit-learn), class probabilities and "
+                    "events",
+            lines=(f"feats = lda_windows(raw, feats, {classes!r}, {tmin!r}, "
+                   f"{tmax!r}, {shrinkage!r}, {float(params['min_probability'])!r}, "
+                   f"{str(params['event_prefix'])!r})",),
+            helpers=("events_of", "lda"),
+            packages=("scikit-learn",),
+        )  # fmt: skip
 
     def transform_features(
         self, windows: Windows, model: State, state: State | None, params: Params

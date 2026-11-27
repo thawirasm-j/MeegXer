@@ -280,6 +280,13 @@ FEATURES = {
     "morlet": strip("f1", "meegxer.nodes.morlet", fmin=8.0, fmax=20.0, fstep=2.0,
                     db=True),
     "specparam": strip("f1", "meegxer.nodes.specparam", fmax=30.0),
+    "connectivity": strip("f1", "meegxer.nodes.connectivity", method="coh"),
+    "imaginary coherence": strip("f1", "meegxer.nodes.connectivity",
+                                 method="imcoh", window=3.0, segment=0.75),
+    "complexity": strip("f1", "meegxer.nodes.complexity", window=4.0, step=2.0),
+    "ssvep fbcca": strip("f1", "meegxer.nodes.ssvep_cca", detections=True),
+    "ssvep cca": strip("f1", "meegxer.nodes.ssvep_cca", method="cca",
+                       detections=True, min_score=0.3, event_prefix="hit_"),
 }  # fmt: skip
 
 
@@ -309,7 +316,9 @@ def test_each_feature_strip_writes_meegxer_s_tsv(
     feats = features["f1"]
     rows = ours.read_text().splitlines()
     assert len(feats["windows"]) == len(rows) - 1 > 3
-    assert feats["values"].shape[1] == 6  # the EEG channels, bad Oz kept
+    if feats["dims"][0] == "channel":
+        assert feats["values"].shape[1] == 6  # the EEG channels, bad Oz kept
+    assert events(got) == events(want)  # detection events too
     np.testing.assert_allclose(got.get_data(), want.get_data(), rtol=1e-9,
                                atol=1e-16)  # fmt: skip
 
@@ -321,3 +330,57 @@ def test_strips_with_settings_not_exported_yet_are_named() -> None:
     ):
         with pytest.raises(NotExportable, match=r"s1 \(" + node.replace(".", r"\.")):
             export_mne(pipeline(strip("s1", node, **params)))
+
+
+@pytest.fixture
+def motor(tmp_path: Path) -> Path:
+    """60 s at 250 Hz: "left" and "right" trials (every 4 s, alternating),
+    each with 10 Hz power on the opposite side, and noise."""
+    rng = np.random.default_rng(31)
+    sfreq, n = 250.0, 15000
+    names = ["C3", "C4", "Cz", "Fz", "Pz", "Oz"]
+    x = rng.standard_normal((6, n)) * 2e-6
+    onsets, labels = [], []
+    for k, start in enumerate(range(500, n - 1000, 1000)):
+        label = "left" if k % 2 == 0 else "right"
+        t = np.arange(500) / sfreq
+        x[1 if label == "left" else 0, start + 125 : start + 625] += 8e-6 * np.sin(
+            2 * np.pi * 10 * t
+        )
+        onsets.append(start / sfreq)
+        labels.append(label)
+    raw = mne.io.RawArray(x, mne.create_info(names, sfreq, "eeg"), verbose="error")
+    raw.set_annotations(mne.Annotations(onsets, [0.0] * len(onsets), labels))
+    path = tmp_path / "motor_raw.fif"
+    raw.save(path, verbose="error")
+    return path
+
+
+def test_csp_and_lda_are_fitted_again_as_meegxer_fits_them(
+    motor: Path, tmp_path: Path
+) -> None:
+    """CSP (fitted on the trials) and LDA (on the CSP windows in the trials):
+    the windows, the class probabilities and the pred_ events are MeegXer's."""
+
+    def pipe(out: Path) -> dict[str, Any]:
+        return pipeline(
+            strip("bp", "meegxer.nodes.iir_filter", low=8.0, high=30.0),
+            strip("csp1", "meegxer.nodes.csp", window=1.0, step=0.25,
+                  n_components=2),
+            {"id": "lda1", "node": "meegxer.nodes.lda", "input": "csp1",
+             "params": {"tmin": 0.5, "tmax": 2.5}},
+            strip("tsv", "meegxer.core.feature_tsv", path=str(out)),
+        )  # fmt: skip
+
+    ours, theirs = tmp_path / "meegxer.tsv", tmp_path / "exported.tsv"
+    want = run(pipe(ours), motor)
+    text = export_mne(pipe(theirs))
+    assert "scikit-learn" in text and "fitted again on the recording" in text
+    got, _, features = exported_all(pipe(theirs), motor)
+    assert features["csp1"]["values"].shape[1:] == (2,)
+    a, b = (np.loadtxt(p, delimiter="\t", skiprows=1) for p in (ours, theirs))
+    np.testing.assert_allclose(b, a, rtol=1e-9, atol=1e-12)
+    assert theirs.read_text().splitlines()[0] == ours.read_text().splitlines()[0]
+    preds = [e for e in events(got) if e[2].startswith("pred_")]
+    assert len(preds) > 100 and preds == [e for e in events(want)
+                                          if e[2].startswith("pred_")]  # fmt: skip

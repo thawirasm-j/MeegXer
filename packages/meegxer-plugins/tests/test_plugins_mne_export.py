@@ -40,9 +40,14 @@ EPOCHS = '''def process_epochs(epochs, keep: str = "go"):
     kept.apply_function(lambda x: x - x.mean(), picks="all")
     return kept
 '''
-FEATURES = '''def features(data, info):
-    """Variance."""
-    return {"var": data.var(axis=1)}
+CALIBRATED = '''def fit(raw):
+    """Learn a mean."""
+    return {"mean": float(raw.get_data().mean())}
+
+
+def transform(data, state, model):
+    """Remove it."""
+    return data - model["mean"], state
 '''
 
 
@@ -125,6 +130,48 @@ def test_a_script_without_standalone_code_is_named(
     folder.mkdir()
     (folder / "mnex_folder.py").write_text(TRANSFORM)
     index.add_local(index.script_command(folder), accept_risk=True, script=folder)
-    for node in (add(tmp_path, "mnex_var", FEATURES), "script.mnex_folder"):
+    for node in (add(tmp_path, "mnex_calib", CALIBRATED), "script.mnex_folder"):
         with pytest.raises(NotExportable, match=rf"s1 \({node}\)"):
             export_mne(pipeline({"id": "s1", "node": node}))
+
+
+RANGES = '''"""Variance and range per channel."""
+
+import numpy as np
+
+UNITS = {"var": "V^2", "range": "V"}
+
+
+def features(data, info, window: float = 1.0, step: float = 0.5, scale: float = 1.0):
+    assert info["sfreq"] == 250.0 and "Oz" in info["bads"]
+    return {"var": data.var(axis=1) * scale, "range": np.ptp(data, axis=1)}
+'''
+
+
+def test_a_feature_script_runs_inlined_on_meegxer_s_windows(
+    recording: Path, tmp_path: Path
+) -> None:
+    """features(data, info, ...) on MeegXer's windows (its own window and
+    step), its UNITS in the sidecar: the TSV is MeegXer's, to single
+    precision (MeegXer sends plugins float32)."""
+
+    def pipe(out: Path) -> dict[str, Any]:
+        return pipeline(
+            {"id": "f1", "node": add(tmp_path, "mnex_range", RANGES),
+             "params": {"scale": 2.0}},
+            {"id": "tsv", "node": "meegxer.core.feature_tsv",
+             "params": {"path": str(out)}},
+        )  # fmt: skip
+
+    ours, theirs = tmp_path / "meegxer.tsv", tmp_path / "exported.tsv"
+    run(pipe(ours), recording)
+    scope: dict[str, Any] = {"__name__": "exported"}
+    exec(compile(export_mne(pipe(theirs)), "run_mne.py", "exec"), scope)
+    scope["pipeline"](str(recording))
+    head = [p.read_text().splitlines()[0] for p in (ours, theirs)]
+    assert head[0] == head[1] and "Fz|var" in head[0] and "Fz|range" in head[0]
+    a, b = (np.loadtxt(p, delimiter="\t", skiprows=1) for p in (ours, theirs))
+    assert a.shape == b.shape and a.shape[0] == 39  # 1 s windows every 0.5 s
+    np.testing.assert_allclose(b, a, rtol=1e-5, atol=1e-16)
+    sidecars = [p.with_suffix(".json").read_text() for p in (ours, theirs)]
+    assert sidecars[0] == sidecars[1] and '"V^2"' in sidecars[0]
