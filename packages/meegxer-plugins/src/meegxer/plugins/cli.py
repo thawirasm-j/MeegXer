@@ -77,10 +77,15 @@ def _accepted(args: argparse.Namespace, what: str = "add this plugin") -> bool:
     print(LOCAL_CODE_NOTICE, file=sys.stderr)
     if args.accept_risk:
         return True
+    again = "\nRead the notice, then run again with --accept-risk."
     if not sys.stdin.isatty():
-        print("\nRead the notice, then run again with --accept-risk.", file=sys.stderr)
+        print(again, file=sys.stderr)
         return False
-    answer = input(f"\nType yes to {what}: ")
+    try:
+        answer = input(f"\nType yes to {what}: ")
+    except EOFError:  # no one to answer: Windows' NUL device says it is a terminal
+        print(again, file=sys.stderr)
+        return False
     return answer.strip().lower() == "yes"
 
 

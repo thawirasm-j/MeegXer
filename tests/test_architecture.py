@@ -41,6 +41,8 @@ def _lint_imports(
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",  # its output, whatever the code page and PYTHONIOENCODING
+        errors="replace",
         check=False,
     )
 

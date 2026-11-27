@@ -241,3 +241,8 @@ def test_trying_a_python_script_asks_once_per_version(
     script.write_text(script.read_text() + "# edited\n")
     assert main(run) == 1 and marker.read_text() == "xx"  # asks again
     assert main(["check", "--script", str(script)]) == 1  # check asks too
+    # stdin from NUL on Windows: isatty() is True, but input() meets the end of
+    # the stream; a refusal that says what to do, no EOFError traceback
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _="": (_ for _ in ()).throw(EOFError))
+    assert main(run) == 1 and marker.read_text() == "xx"
