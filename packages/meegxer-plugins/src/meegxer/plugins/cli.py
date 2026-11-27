@@ -103,6 +103,9 @@ def _may_run(args: argparse.Namespace, script: Path) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from meegxer.core.console import never_fail_to_print
+
+    never_fail_to_print()
     parser = argparse.ArgumentParser(prog="meegxer-plugin", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 

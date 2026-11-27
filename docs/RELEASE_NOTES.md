@@ -194,6 +194,10 @@ no network. Its findings are fixed, each in its own PR; the limits are in
 
 ### Fixed
 
+- `meegxer sterile build > build.log` (output redirected or piped, as in a
+  log or CI) crashed on Windows with `UnicodeEncodeError` at pip's progress
+  bar: Windows writes such output in its code page. `meegxer` and
+  `meegxer-plugin` now write a character the code page lacks as `?`.
 - **Octave scripts failed on recordings of a few seconds and more** ("protocol
   error: array 'data': nbytes must be a whole number >= 0, got 1075200.0"):
   Octave writes a number of 10⁶ or more as `1000000.0`, which MeegXer refuses

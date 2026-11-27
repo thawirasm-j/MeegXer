@@ -860,3 +860,6 @@ def shutdown(control: ControlOpt = _DEFAULT_CONTROL) -> None:
 @app.callback()
 def main() -> None:
     """MeegXer command-line interface."""
+    from meegxer.core.console import never_fail_to_print
+
+    never_fail_to_print()
