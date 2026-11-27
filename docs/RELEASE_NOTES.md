@@ -194,6 +194,10 @@ no network. Its findings are fixed, each in its own PR; the limits are in
 
 ### Fixed
 
+- `meegxer-plugin run|check --script X.py` with stdin from `NUL` (Windows: a
+  scheduled task, `< NUL`, some IDE runners) ended in an `EOFError`
+  traceback at the local-code notice; it now says to run again with
+  `--accept-risk`, as without a terminal.
 - A `.set` writer after a re-reference (or another spatial strip) said
   "skipped: … ICA decomposition not stored: … transforms the channels
   after it" for a recording without any ICA, which read as if the file was
