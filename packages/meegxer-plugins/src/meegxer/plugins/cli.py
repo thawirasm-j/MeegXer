@@ -49,16 +49,36 @@ def _missing(script: Path) -> str:
 
 def _add_octave(script: Path) -> int:
     """Add an Octave script: its settings read from its help block, then the
-    conformance suite in the Octave image."""
+    conformance suite in the Octave image. A script whose declared EEGLAB
+    plugins the image lacks is added unchecked, saying to build (which
+    fetches them, as it does for added scripts) and check (decided
+    2026-11-27; Windows check AE)."""
+    from meegxer.plugins import octave_image
     from meegxer.plugins.octave_image import default_image
+    from meegxer.plugins.octave_plugins import declared
     from meegxer.plugins.octave_script import OctaveScriptLauncher, script_manifest
     from meegxer.plugins.script import ScriptError
 
     try:
         script_manifest(script)
+        wanted = declared(script)
     except ScriptError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    try:
+        has = octave_image.image_plugins(default_image()) if wanted else {}
+    except FileNotFoundError:  # no Docker or Podman: the suite says so
+        has = {p.name: p.commit for p in wanted}
+    lacking = [p.name for p in wanted if has.get(p.name) != p.commit]
+    if lacking:
+        entry = index.add_octave_script(script)
+        print(f"installed {entry['manifest']['name']} "
+              f"{entry['manifest']['version']} (Octave, sandboxed in "
+              f"{default_image()}) into {index.index_path()}, not checked yet: "
+              f"the image lacks the EEGLAB plugin {', '.join(lacking)} it "
+              "declares.\nRun `meegxer-plugin octave build` (it fetches them), "
+              f"then `meegxer-plugin check --script {script}`.")  # fmt: skip
+        return 0
     checks = run_conformance(OctaveScriptLauncher(str(script.resolve())))
     if not all(c.passed for c in checks):
         print(format_report(checks), file=sys.stderr)

@@ -170,8 +170,10 @@ end
 - **Fetched when the image is built, never while a script runs.**
   `meegxer-plugin octave build` fetches every plugin the added scripts
   declare (and any `--with NAME`), each at its pinned commit, and lists them
-  in the image's label; `octave check` says which it holds. A script whose
-  plugins the image lacks is refused, saying to build again. The base image
+  in the image's label; `octave check` says which it holds. Adding a script
+  whose plugins the image lacks records it, not checked yet, and says to run
+  `octave build`, then `meegxer-plugin check --script`; running it is
+  refused, saying to build again, until the image has them. The base image
   and its code hash do not change.
 - **Each script gets only its own plugins** on its path, so two scripts'
   plugins never clash. This keeps them apart, it is not a boundary: a
