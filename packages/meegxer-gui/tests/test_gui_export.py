@@ -46,9 +46,10 @@ def test_the_chain_exports_as_standalone_mne_code(
         win.export_script(str(tmp_path / "mine"), mne=True)
         text = (tmp_path / "mine.py").read_text()
         assert "signal.butter(" in text and "from meegxer" not in text
-        win.doc.insert(1, "meegxer.nodes.ica")
-        win.export_script(str(tmp_path / "ica"), mne=True)
-        assert not (tmp_path / "ica.py").exists()
-        assert "no standalone MNE code yet: ica1" in win.logbox.toPlainText()
+        win.doc.insert(1, "meegxer.nodes.detect_blinks")
+        win.export_script(str(tmp_path / "blinks"), mne=True)
+        assert not (tmp_path / "blinks.py").exists()
+        log = win.logbox.toPlainText()
+        assert "no standalone MNE code yet:" in log and "detect_blinks)" in log
     finally:
         win.close()

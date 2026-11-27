@@ -137,7 +137,8 @@ def test_export_standalone_writes_mne_code(tmp_path: Path) -> None:
     ica = tmp_path / "ica.json"
     ica.write_text(json.dumps({"spec_version": "0.2.23", "nodes": [
         {"id": "input", "node": "meegxer.core.file"},
-        {"id": "ica1", "node": "meegxer.nodes.ica"},
+        {"id": "b1", "node": "meegxer.nodes.detect_blinks"},
     ]}))  # fmt: skip
     refused = runner.invoke(app, ["export", str(ica), "--standalone"])
-    assert refused.exit_code == 1 and "ica1 (meegxer.nodes.ica)" in refused.output
+    assert refused.exit_code == 1
+    assert "b1 (meegxer.nodes.detect_blinks)" in refused.output
