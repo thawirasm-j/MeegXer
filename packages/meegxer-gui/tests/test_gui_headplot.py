@@ -14,6 +14,7 @@ from meegxer.gui.headplot import (
     PeakHold,
     Smoother,
     aperiodic_fit,
+    band_mean,
     band_power,
     contour_segments,
     electrode_xy,
@@ -378,6 +379,21 @@ def test_flattening_leaves_the_peak_above_zero() -> None:
     both = np.vstack([psd, np.full_like(psd, np.nan)])
     _, exponent = aperiodic_fit(f, both)
     assert np.isfinite(exponent[0]) and np.isnan(exponent[1])
+
+
+def test_a_flat_channel_has_no_band_value_and_no_warning() -> None:
+    """A flat (all-zero) channel has no aperiodic fit: its flattened row is
+    NaN, its band value too, and averaging it warns of nothing (the 1/f
+    removed head plot printed "Mean of empty slice")."""
+    import warnings
+
+    f, psd = one_over_f(alpha=0.6)
+    flat = flatten(f, np.vstack([psd, np.zeros_like(psd)]))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        value = band_mean(f, flat, 8.0, 13.0)
+    assert np.isfinite(value[0]) and np.isnan(value[1])
+    assert value[0] == pytest.approx(np.nanmean(flat[0, (f >= 8) & (f <= 13)]))
 
 
 def test_heat_above_the_aperiodic_fit_starts_at_0_db() -> None:

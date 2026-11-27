@@ -181,12 +181,18 @@ def flatten(
 
 def band_mean(f: FloatArray, values: FloatArray, lo: float, hi: float) -> FloatArray:
     """Mean of each row over the bins in ``[lo, hi]`` Hz (the nearest bin for a
-    band narrower than the resolution)."""
+    band narrower than the resolution), NaN values left out; NaN for a row with
+    none (a flat channel: no aperiodic fit), without numpy's empty-slice
+    warning."""
     keep = (f >= lo) & (f <= hi)
     if not keep.any():
         keep = np.arange(f.size) == int(np.argmin(np.abs(f - (lo + hi) / 2)))
-    with np.errstate(invalid="ignore"):
-        return np.asarray(np.nanmean(values[:, keep], axis=1), dtype=float)
+    band = values[:, keep]
+    present = ~np.isnan(band)  # as nanmean: only NaN is left out
+    count = present.sum(axis=1)
+    total = np.where(present, band, 0.0).sum(axis=1)
+    return np.asarray(np.where(count > 0, total / np.maximum(count, 1), np.nan),
+                      dtype=float)  # fmt: skip
 
 
 class Smoother:
