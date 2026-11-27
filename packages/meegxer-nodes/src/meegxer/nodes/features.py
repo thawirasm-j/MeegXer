@@ -148,6 +148,10 @@ def windowed_code(
     comment: str,
     helper: str,
     packages: tuple[str, ...] = (),
+    *,
+    before: tuple[str, ...] = (),
+    after: tuple[str, ...] = (),
+    helpers: tuple[str, ...] = (),
 ) -> ExportCode:
     """A feature strip's exported code: its windows (``windowed``), each
     computed by ``call`` (an expression of ``x``, ``sfreq`` and ``names``)."""
@@ -156,10 +160,11 @@ def windowed_code(
     window, step = float(params["window"]), float(params["step"])
     return ExportCode(
         comment=f"{comment}, {window:g} s windows every {step:g} s",
-        lines=(f"feats = windowed(raw, picks, {window!r}, {step!r},",
+        lines=(*before,
+               f"feats = windowed(raw, picks, {window!r}, {step!r},",
                f"                 lambda x, sfreq, names: {call},",
-               f"                 {unit!r})"),
-        helpers=("windowed", helper),
+               f"                 {unit})", *after),
+        helpers=("windowed", helper, *helpers),
         packages=packages,
     )  # fmt: skip
 
@@ -276,7 +281,7 @@ class PSD(WindowedFeatures):
             params,
             f"psd_window(x, sfreq, names, {fmin!r}, {fmax!r}, {db!r}, "
             f"**{spectrum_kwargs(params)!r})",
-            "dB" if db else "V^2/Hz",
+            repr("dB" if db else "V^2/Hz"),
             f"PSD {fmin:g}-{fmax:g} Hz{' in dB' if db else ''}, "
             f"{spectrum_text(params)}",
             "psd_window",
@@ -357,7 +362,7 @@ class BandPower(WindowedFeatures):
             params,
             f"band_power_window(x, sfreq, names, {bands!r}, {relative!r}, "
             f"{db!r}, **{spectrum_kwargs(params)!r})",
-            unit,
+            repr(unit),
             f"{'relative ' if relative else ''}band power ({names})"
             f"{' in dB' if db else ''}, {spectrum_text(params)}",
             "band_power_window",
@@ -424,6 +429,21 @@ class Connectivity(WindowedFeatures):
     ) -> str | tuple[str, tuple[str, ...]]:
         return "1"
 
+    def export_code(self, params: Params) -> ExportCode:
+        method = str(params["method"])
+        fmin, fmax = float(params["fmin"]), float(params["fmax"])
+        segment = float(params["segment"])
+        return windowed_code(
+            params,
+            f"connectivity_window(x, sfreq, names, {method!r}, {fmin!r}, "
+            f"{fmax!r}, {segment!r})",
+            repr("1"),
+            f"{method} connectivity {fmin:g}-{fmax:g} Hz ({segment:g} s pieces; "
+            "mne-connectivity)",
+            "connectivity_window",
+            ("mne-connectivity",),
+        )
+
 
 COMPLEXITY = ("perm_entropy", "sample_entropy", "spectral_entropy",
               "hjorth_mobility", "hjorth_complexity", "lziv")  # fmt: skip
@@ -464,6 +484,21 @@ class Complexity(WindowedFeatures):
     ) -> str | tuple[str, tuple[str, ...]]:
         per = {"hjorth_mobility": "1/sample"}  # antropy: per sample, not per second
         return "measure", tuple(per.get(m, "1") for m in coords["measure"])
+
+    def export_code(self, params: Params) -> ExportCode:
+        chosen = [m for m in COMPLEXITY if params[m]]
+        if not chosen:
+            raise ValueError("choose at least one complexity measure")
+        per = {"hjorth_mobility": "1/sample"}
+        unit = ("measure", tuple(per.get(m, "1") for m in chosen))
+        return windowed_code(
+            params,
+            f"complexity_window(x, sfreq, names, {chosen!r})",
+            repr(unit),
+            f"complexity ({', '.join(chosen)}; antropy)",
+            "complexity_window",
+            ("antropy",),
+        )
 
 
 def _measure(ant: Any, name: str, x: np.ndarray, sfreq: float) -> float:

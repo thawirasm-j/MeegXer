@@ -143,14 +143,16 @@ CI runs the Octave scripts in the Octave image.
   give what the strip gives. So far for the File input, the filters, notch,
   re-reference, pick channels, resample, interpolate bad channels, CSD, ICA
   with ICLabel (fitted again; a `.set` after it stores the decomposition),
-  the detectors (jumps, flat signal, muscle, blinks), the spectral features
-  (PSD, band power, Morlet, specparam: the feature TSV as MeegXer's, byte for
-  byte), the Hilbert envelope, Epochs and the file writers, and your custom Python scripts: a script's
-  source is copied in (with its SHA-256) and called as MeegXer calls it
-  (`process`, `process_epochs`, and a live `transform` without `fit` once on
-  the whole recording; the same to single precision, as MeegXer sends
-  plugins). A pipeline with another strip (a script folder, a calibrated or
-  feature script, connectivity, CSP, …) is named and left to the plain export.
+  the detectors (jumps, flat signal, muscle, blinks), the feature strips
+  (PSD, band power, Morlet, specparam, connectivity, complexity, SSVEP CCA,
+  CSP and LDA fitted again: the feature TSV as MeegXer's), the Hilbert
+  envelope, Epochs and the file writers, and your custom Python scripts: a
+  script's source is copied in (with its SHA-256) and called as MeegXer
+  calls it (`process`, `process_epochs`, `features`, and a live `transform`
+  without `fit` once on the whole recording; the same to single precision,
+  as MeegXer sends plugins). A pipeline with another strip (a script folder,
+  a calibrated script, a review strip, …) is named and left to the plain
+  export.
 
 ### Security
 

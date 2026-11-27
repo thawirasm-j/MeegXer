@@ -14,7 +14,7 @@ detection only from that score) and ``event_prefix`` are MeegXer's settings.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 from scipy import signal as sps
@@ -23,7 +23,10 @@ from meegxer.core.block import Block, Event, FeatureBlock, SignalInfo
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, TransformResult
 from meegxer.core.serialization import State
-from meegxer.nodes.features import WindowedFeatures, analysis_manifest
+from meegxer.nodes.features import WindowedFeatures, analysis_manifest, windowed_code
+
+if TYPE_CHECKING:
+    from meegxer.core.mne_export import ExportCode
 
 FBCCA_A, FBCCA_B = 1.25, 0.25  # sub-band weights m^-a + b (Chen et al. 2015)
 
@@ -175,3 +178,27 @@ class SSVEPCCA(WindowedFeatures):
         self, params: Params, coords: dict[str, tuple[Any, ...]]
     ) -> str | tuple[str, tuple[str, ...]]:
         return "1"  # canonical correlations (filter bank: their weighted sum)
+
+    def export_code(self, params: Params) -> ExportCode:
+        freqs = parse_frequencies(str(params["frequencies"]))
+        method = str(params["method"])
+        args = (f"{freqs!r}, {method!r}, {int(params['harmonics'])}, "
+                f"{int(params['subbands'])}, {float(params['subband_low'])!r}, "
+                f"{float(params['subband_high'])!r}")  # fmt: skip
+        after: tuple[str, ...] = ()
+        if params["detections"]:
+            prefix = str(params["event_prefix"])
+            labels = [f"{prefix}{round(f, 6):g}" for f in freqs]
+            after = (f"window_events(raw, feats, {labels!r}, "
+                     f"{float(params['min_score'])!r})",)  # fmt: skip
+        return windowed_code(
+            params,
+            f"ssvep_window(x, sfreq, names, raw.info['bads'], {args})",
+            repr("1"),
+            f"SSVEP {'filter-bank CCA' if method == 'fbcca' else 'CCA'} scores at "
+            f"{', '.join(f'{f:g}' for f in freqs)} Hz"
+            + (" with detection events" if after else ""),
+            "ssvep_window",
+            after=after,
+            helpers=("events_of",),
+        )

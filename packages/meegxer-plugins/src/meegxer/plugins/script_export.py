@@ -2,12 +2,13 @@
 ``meegxer.core.mne_export``): its source inlined, as a module of its own, and
 called as MeegXer calls it.
 
-``process(raw, ...)`` and ``process_epochs(epochs, ...)`` are called as the
-script runner calls them (``meegxer.plugins.script``); a live script,
+``process(raw, ...)``, ``process_epochs(epochs, ...)`` and ``features(data,
+...)`` (on MeegXer's windows) are called as the script runner calls them
+(``meegxer.plugins.script``); a live script,
 ``transform(data, state, ...)`` without ``fit``, once on the whole recording
 (the same as block by block: acceptance test 1). A script folder (helpers,
-data files), a calibrated script (``fit``), a feature script and one taking
-``info`` or ``model`` have no standalone code yet. MeegXer sends a plugin its
+data files), a calibrated script (``fit``) and a live one taking ``info`` or
+``model`` have no standalone code yet. MeegXer sends a plugin its
 data in single precision; the standalone script keeps double, so the two
 agree to single precision.
 """
@@ -22,7 +23,7 @@ from typing import Any
 
 from meegxer.core.mne_export import ExportCode
 
-_SUPPORTED = ("process", "process_epochs", "transform")
+_SUPPORTED = ("process", "process_epochs", "transform", "features")
 
 
 def _functions(tree: ast.Module) -> dict[str, ast.FunctionDef]:
@@ -60,7 +61,13 @@ def script_export_code(path: Path, params: dict[str, Any]) -> ExportCode | None:
         f"exec(compile({text}, {path.name!r}, 'exec'), {module}.__dict__)"
     )
     settings = "".join(f", {k}={v!r}" for k, v in params.items())
+    window, step = params.get("window", 2.0), params.get("step", 0.5)
+    windows = (f"feats = windowed(raw, picks, {window!r}, {step!r}, "
+               "lambda x, sfreq, names: run_features(x, sfreq, names, "
+               f"raw.info['bads'], {module}.features{settings}), "
+               f"script_unit({module}))")  # fmt: skip
     call = {
+        "features": windows,
         "process": f"raw = run_process(raw, picks, {module}.process{settings})",
         "transform": f"raw = run_transform(raw, picks, {module}.transform{settings})",
         "process_epochs": "epochs = run_process_epochs(epochs, "
@@ -74,6 +81,8 @@ def script_export_code(path: Path, params: dict[str, Any]) -> ExportCode | None:
         comment=f"custom script {path.name}: {kind}({shown})",
         lines=(call,),
         imports=("import types",),
-        helpers=(f"run_{kind}",),
+        helpers=("windowed", "run_features")
+        if kind == "features"
+        else (f"run_{kind}",),
         definitions=(definition,),
     )
