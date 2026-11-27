@@ -187,7 +187,9 @@ def test_ica_is_fitted_again_and_stored_in_the_set(tmp_path: Path) -> None:
 
     want = run(pipe(ours), rec)
     text = export_mne(pipe(theirs))
-    assert "pip install mne numpy scipy python-picard mne-icalabel onnxruntime" in text
+    needs = next(line for line in text.splitlines() if "pip install" in line)
+    for package in ("mne", "scipy", "python-picard", "mne-icalabel", "onnxruntime"):
+        assert f" {package}" in needs
     scope: dict[str, Any] = {"__name__": "exported"}
     exec(compile(text, "run_mne.py", "exec"), scope)
     got, _, _ = scope["pipeline"](str(rec))
@@ -384,3 +386,49 @@ def test_csp_and_lda_are_fitted_again_as_meegxer_fits_them(
     preds = [e for e in events(got) if e[2].startswith("pred_")]
     assert len(preds) > 100 and preds == [e for e in events(want)
                                           if e[2].startswith("pred_")]  # fmt: skip
+
+
+def test_a_set_input_s_own_ica_is_stored_again(tmp_path: Path) -> None:
+    """A .set recording carrying an ICA (no classes: ICLabel runs), a filter,
+    a .set writer: the decomposition and its classes stored as MeegXer's."""
+    from scipy.io import loadmat
+
+    from meegxer.core.eeglab_ica import Decomposition, write_decomposition
+
+    names = ["Fp1", "Fp2", "F3", "F4", "F7", "F8", "C3", "C4", "Cz", "Fz",
+             "P3", "P4", "Pz", "O1", "O2", "T7"]  # fmt: skip
+    rng = np.random.default_rng(41)
+    info = mne.create_info(names, 250.0, "eeg")
+    raw = mne.io.RawArray(rng.standard_normal((16, 5000)) * 1e-5, info, verbose="error")
+    raw.set_montage("standard_1020", verbose="error")
+    rec = tmp_path / "rec.set"
+    raw.export(rec, fmt="eeglab", verbose="error")
+    w = np.linalg.qr(rng.standard_normal((16, 16)))[0] * 1e5
+    write_decomposition(rec, Decomposition(tuple(names), w, np.linalg.inv(w)),
+                        tuple(names))  # fmt: skip
+    ours, theirs = tmp_path / "meegxer.set", tmp_path / "exported.set"
+
+    def pipe(out: Path) -> dict[str, Any]:
+        return pipeline(
+            strip("f", "meegxer.nodes.iir_filter", low=1.0),
+            strip("set", "meegxer.core.set_writer", path=str(out)),
+        )
+
+    run(pipe(ours), rec)
+    scope: dict[str, Any] = {"__name__": "exported"}
+    exec(compile(export_mne(pipe(theirs)), "run_mne.py", "exec"), scope)
+    scope["pipeline"](str(rec))
+    a, b = (
+        mne.preprocessing.read_ica_eeglab(p, verbose="error") for p in (ours, theirs)
+    )
+    np.testing.assert_allclose(b.get_components(), a.get_components(), rtol=1e-6)
+
+    def classes(p: Path) -> Any:
+        eeg = loadmat(str(p), squeeze_me=True, struct_as_record=False)
+        return eeg["etc"].ic_classification.ICLabel.classification
+
+    np.testing.assert_allclose(classes(theirs), classes(ours), rtol=1e-6)
+    # without a .set writer, nothing reads it
+    assert "input_ica" not in export_mne(
+        pipeline(strip("f", "meegxer.nodes.iir_filter"))
+    )

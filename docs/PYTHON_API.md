@@ -130,10 +130,11 @@ precision). More come strip by strip (`docs/ROADMAP.md`, M11.7). Any other
 strip (a script folder, a calibrated script, an Octave script, a
 plugin image, a strip reading the ICs rail) is named and the script is not
 written:
-`export_script` runs any pipeline. Not carried yet: the ICA a `.set` input
-already holds (MeegXer's `.set` writer stores it again; the standalone
-script's does not). Also `meegxer export PIPELINE --standalone`, and *Save →
-Export as standalone MNE script…* in the GUI.
+`export_script` runs any pipeline. The ICA a `.set` recording already holds
+is read as MeegXer reads it (with the file's ICLabel classes, or ICLabel's)
+when a `.set` writer is there to store it again. Also `meegxer export
+PIPELINE --standalone`, and *Save → Export as standalone MNE script…* in the
+GUI.
 
 ## MNE ICA files
 
