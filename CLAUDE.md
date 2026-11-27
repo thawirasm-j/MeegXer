@@ -107,7 +107,9 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
 - `uv run meegxer nodes`; `uv run meegxer run pipeline.json -i rec.set -o out.set`.
 - Python API (`docs/PYTHON_API.md`): `from meegxer.api import run`;
   `run(pipeline, raw)` -> `mne.io.Raw`, `run(..., output="ep1")` -> `mne.Epochs`
-  (the batch scheduler, rule 4).
+  (the batch scheduler, rule 4); `export_script(pipeline, "run.py")` or
+  `meegxer export PIPELINE [-o run.py]`: the pipeline (or session) as a
+  Python script that calls `run` (needs MeegXer).
 - Sessions (`spec/session.md`): `meegxer run … --session out.meegxer.json`,
   `meegxer run out.meegxer.json`, `meegxer session check FILE`,
   `meegxer session save FILE` (from the daemon, with calibrated models),

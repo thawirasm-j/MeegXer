@@ -60,6 +60,29 @@ with the feature writer (`.tsv`) in the pipeline.
 - A Review strip not yet reviewed stops the run (`meegxer.core.review.ReviewNeeded`).
 - What the run noted goes to the `meegxer` logger (`logging`). Saves it skipped, and models it could not reuse, are Python warnings.
 
+## `export_script(pipeline, path=None)`: the pipeline as a script
+
+```python
+from meegxer.api import export_script
+
+export_script("erp.json", "erp.py")  # or a session, with its fitted models
+```
+
+```bash
+python erp.py sub-01.set -o clean.set              # the chain's end
+python erp.py sub-01.set --output ep1 -o ep-epo.fif  # an Epochs strip's epochs
+```
+
+The script embeds the pipeline (a session with its fitted models), runs it
+with `run`, and writes the result (`.fif`, `.set`, `.edf`; `-epo.fif` or
+`.set` for epochs): exactly what MeegXer computes (decided 2026-11-27).
+Its docstring lists the strips and the plugins or custom scripts it needs,
+which must be added on the computer that runs it (`meegxer-plugin add …`); it
+needs MeegXer (the version that exported it). Also `meegxer export PIPELINE
+[-o SCRIPT]`, and *Save → Export as Python script…* in the GUI (with the
+models the last offline run fitted, or calibrated live). A standalone
+MNE/SciPy script, without MeegXer, is planned (`docs/ROADMAP.md`).
+
 ## MNE ICA files
 
 An MNE ICA (`-ica.fif`) goes both ways (`meegxer.core.mne_ica`, `docs/RAILS.md`):

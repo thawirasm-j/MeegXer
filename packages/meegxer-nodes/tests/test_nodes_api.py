@@ -126,3 +126,58 @@ def test_a_bids_template_on_a_raw_leaves_its_bids_writer_out() -> None:
     with pytest.warns(UserWarning, match="erp left out: BIDS output needs subject"):
         epochs = run(bids, recording(), output="ep1")
     assert len(epochs) == len(ONSETS)
+
+
+def test_an_exported_script_runs_as_meegxer_does(tmp_path: Path) -> None:
+    """``export_script``: the pipeline as a Python script; run as its own
+    process on a recording, it gives what ``run`` gives (the signal at the
+    chain's end, or an Epochs strip's epochs)."""
+    import subprocess
+    import sys
+
+    from meegxer.api import export_script
+
+    rec = tmp_path / "rec_raw.fif"
+    recording().save(rec, verbose="error")
+    spec = tmp_path / "erp.json"
+    spec.write_text(json.dumps(pipeline()))
+    script = tmp_path / "erp.py"
+    text = export_script(spec, script)
+    assert "bp1          meegxer.nodes.iir_filter  low=1.0, high=30.0" in text
+    assert "plugins" not in text  # built-in strips only
+    for out, extra in (("clean_raw.fif", []), ("ep-epo.fif", ["--output", "ep1"])):
+        done = subprocess.run([sys.executable, str(script), str(rec), "-o",
+                               str(tmp_path / out), *extra],
+                              capture_output=True, text=True, check=False)  # fmt: skip
+        assert done.returncode == 0, done.stderr
+    clean = mne.io.read_raw_fif(tmp_path / "clean_raw.fif", verbose="error")
+    np.testing.assert_allclose(clean.get_data(), run(spec, rec).get_data())
+    epochs = mne.read_epochs(tmp_path / "ep-epo.fif", verbose="error")
+    np.testing.assert_allclose(
+        epochs.get_data(), run(spec, rec, output="ep1").get_data()
+    )
+
+
+def test_an_exported_script_keeps_every_value_and_names_its_plugins() -> None:
+    """Values the script must carry as they are (backslashes, quotes, three
+    quotes), a session's models, and the custom scripts it needs, named."""
+    from meegxer.api import export_script
+
+    params: dict[str, Any] = {"path": 'C:\\data\\it\'s "x".set'}
+    nodes = [{"id": "input", "node": "meegxer.core.file"},
+             {"id": "lab", "node": "script.lab_x", "params": params}]  # fmt: skip
+    spec = {"spec_version": SPEC_VERSION, "nodes": nodes}
+    for value in ("plain", "three ''' quotes"):
+        params["note"] = value
+        text = export_script(spec)
+        scope: dict[str, Any] = {"__name__": "exported"}
+        exec(compile(text, "run.py", "exec"), scope)
+        assert scope["PIPELINE"] == spec
+        assert "custom scripts, which must be added" in text and "script.lab_x" in text
+    session = {"meegxer_session": "1.0", "pipeline": spec,
+               "models": {"lab": {"mean": [1.0, 2.0]}}}  # fmt: skip
+    text = export_script(session)
+    scope = {"__name__": "exported"}
+    exec(compile(text, "run.py", "exec"), scope)
+    assert scope["PIPELINE"] == session
+    assert "and the models this session fitted" in text
