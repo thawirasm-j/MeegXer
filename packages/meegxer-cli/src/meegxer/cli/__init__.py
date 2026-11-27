@@ -772,12 +772,31 @@ def arm(
     on: Annotated[
         bool, typer.Option("--on/--off", help="Arm (default) or disarm it.")
     ] = True,
+    confirm: Annotated[
+        bool,
+        typer.Option(
+            "--confirm",
+            help="Confirm a risk it names (a key map that "
+            "can type text) without being asked.",
+        ),
+    ] = False,
     control: ControlOpt = _DEFAULT_CONTROL,
 ) -> None:
     """Arm an action sink (e.g. the keyboard) for the running live run: it acts
     on its events until --off, Esc, or the run's end. MeegXer is not a medical
     device."""
-    result = _call(control, "arm", node=node, on=on)
+    if on:
+        check = _call(control, "arm_check", node=node)
+        assert isinstance(check, dict)
+        if check.get("summary"):
+            typer.echo(f"{node}: {check['summary']}")
+        if check.get("warning"):
+            typer.echo(f"warning: {check['warning']}", err=True)
+            if not confirm and not typer.confirm("Arm it?", default=False):
+                typer.echo(f"{node}: not armed")
+                raise typer.Exit(1)
+            confirm = True
+    result = _call(control, "arm", node=node, on=on, confirm=confirm)
     assert isinstance(result, dict)
     nodes: list[dict[str, Any]] = result.get("nodes", [])
     state = next((n for n in nodes if n.get("id") == node), {})

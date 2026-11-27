@@ -34,7 +34,7 @@ from meegxer.core.epoch_review import EpochReview
 from meegxer.core.graph import Graph
 from meegxer.core.import_review import open_import_review, save_import_review
 from meegxer.core.manifest import SPEC_VERSION, Manifest
-from meegxer.core.node import Source
+from meegxer.core.node import ActionSink, Source
 from meegxer.core.offline import OfflineJob
 from meegxer.core.ports import Port
 from meegxer.core.realtime import RealtimeScheduler
@@ -179,6 +179,7 @@ class Daemon:
             "clear_calibration": self.clear_calibration,
             "set_pass_uncalibrated": self.set_pass_uncalibrated,
             "arm": self.arm,
+            "arm_check": self.arm_check,
             "set_strip_params": self.set_strip_params,
             "describe_source": self.describe_source,
             "list_bids": self.list_bids,
@@ -421,15 +422,33 @@ class Daemon:
         scheduler.set_pass_uncalibrated(node, bool(enabled))
         return self.status()
 
-    def arm(self, node: str, on: bool = True) -> dict[str, Any]:
-        """Arm (or disarm) an action sink for the running live run (rule 9:
-        only by hand; the run's end disarms it)."""
+    def _action_sink(self, node: str) -> ActionSink | None:
         if self._graph is None:
             raise RuntimeError("no pipeline loaded")
         if node not in self._graph:
             raise KeyError(f"no node {node!r}")
+        impl = self._graph[node].impl
+        return impl if isinstance(impl, ActionSink) else None
+
+    def arm_check(self, node: str) -> dict[str, Any]:
+        """What arming ``node`` would do (``summary``) and the risk to confirm
+        first (``warning``, or null; red team L3)."""
+        sink = self._action_sink(node)
+        if sink is None:
+            return {"summary": "", "warning": None}
+        return {"summary": sink.arm_summary(), "warning": sink.arm_warning()}
+
+    def arm(self, node: str, on: bool = True, confirm: bool = False) -> dict[str, Any]:
+        """Arm (or disarm) an action sink for the running live run (rule 9:
+        only by hand; the run's end disarms it). One with a risk to confirm
+        (``arm_check``) is armed only with ``confirm``."""
+        sink = self._action_sink(node)
         if self._scheduler is None:
             raise RuntimeError("start the live run first: arming lasts one run")
+        if on and sink is not None and not confirm:
+            warning = sink.arm_warning()
+            if warning:
+                raise PermissionError(f"{warning} Not armed: confirm to arm it.")
         self._scheduler.arm(node, bool(on))
         return self.status()
 

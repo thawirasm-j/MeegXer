@@ -33,7 +33,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   `--cpus`, did not help). `meegxer-plugin run|check --script` now show the
   local-code notice before a Python script's first run, once per version of
   it (`--accept-risk` accepts it; `add` remembers it): they started a
-  downloaded script with your permissions without asking.
+  downloaded script with your permissions without asking. Arming the
+  keyboard says which keys it presses; a map that can type text (enter or
+  tab with three or more letters or digits, so any strip before it could
+  type a command and send it) asks first (`meegxer arm NODE --confirm`
+  from the command line).
 - **The Octave image (Octave/EEGLAB scripts, first step).** `meegxer-plugin
   octave build` builds the image Octave/EEGLAB scripts will run in: GNU Octave
   with the signal package and EEGLAB 2026.0.0 (its core, firfilt and ICLabel,

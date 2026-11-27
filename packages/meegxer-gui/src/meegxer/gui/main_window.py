@@ -1254,8 +1254,25 @@ class MainWindow(QMainWindow):
         if on and not self.running:
             self.log("Start the live run before arming.")
             return
-        if self.call("arm", node=strip_id, on=on) is None:  # e.g. no keyboard
-            return  # the failure is in the log
+        confirm = False
+        if on:  # say what it will do; a map that can type text asks first
+            check = self.call("arm_check", node=strip_id)
+            if check is None:
+                return
+            summary, warning = check.get("summary", ""), check.get("warning")
+            if summary:
+                self.log(f"{self._name(strip_id)}: {summary}.")
+            if warning:
+                answer = QMessageBox.question(
+                    self, "Arm it?", f"{warning}\n\nIt {summary}."
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    self.log(f"{self._name(strip_id)}: not armed.")
+                    self.refresh_chain()
+                    return
+                confirm = True
+        if self.call("arm", node=strip_id, on=on, confirm=confirm) is None:
+            return  # the failure (e.g. no keyboard) is in the log
         self.log(f"{self._name(strip_id)}: {'ARMED' if on else 'disarmed'}.")
         self.refresh_chain()
 
