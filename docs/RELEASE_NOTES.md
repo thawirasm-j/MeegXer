@@ -7,48 +7,94 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
-- **A pipeline as a Python script.** `meegxer export PIPELINE -o run.py`
-  (or `meegxer.api.export_script`, or *Save → Export as Python script…*)
-  writes a script that runs the pipeline exactly as MeegXer does:
-  `python run.py RECORDING -o OUT`. It embeds the pipeline, or a session
-  with its fitted models, lists its strips and the plugins or custom scripts
-  it needs, and needs MeegXer. `meegxer export --standalone` (or
-  `export_mne`, or *Export as standalone MNE script…*) writes MNE, NumPy and
-  SciPy code instead, no MeegXer needed: each strip's own code, tested to
-  give what the strip gives. So far for the File input, the filters, notch,
-  re-reference, pick channels, resample, Epochs and the file writers; a
-  pipeline with another strip is named and left to the plain export.
-- **Security: the red team's findings (`docs/SECURITY.md`).** Sterile mode
-  and custom scripts (Python/MNE, Octave) were attacked from a hostile
-  script's side: no container escape and no network. What the host accepts
-  back from a plugin is being tightened, one fix at a time: a plugin's
-  stderr lines are cut at 4 KB (a line without end filled memory); its
-  output (and its rails and feature windows) must lie within the input it
-  was given, by the exact ratio of the rates (it could return 100 times its
-  input, or place it at sample 10¹⁵); its events are checked: a text label
-  of up to 256 characters without tabs or newlines (which broke
-  events.tsv), within the input given, at most one per sample, a payload of
-  a few plain values (the limits are in `spec/plugin-protocol.md`). A
-  script folder holding a link to a file outside it is refused (it sent,
-  say, a key from the home folder into the Sterile container). The GUI
-  shows a plugin's text (its description, settings, references) and the
-  values from a shared pipeline as written, never as HTML, and opens only
-  web links from them (a `file:` link would have been handed to a program).
-  In a live run, a plugin or script that does not answer within 2 s is no
-  longer restarted (which froze the whole run for ~40 s): its input passes
-  through it for the rest of the run, its strip shows an error and the log
-  says why; the other strips go on. In a live run a plugin's or script's
-  container is pinned to all CPUs but the first (setting *Plugin CPUs
-  (live)*, `general.live_cpus`): a script spinning on every core made the
-  host's timing late by up to 4 ms; pinned, by 0.3 ms (a time quota,
-  `--cpus`, did not help). `meegxer-plugin run|check --script` now show the
-  local-code notice before a Python script's first run, once per version of
-  it (`--accept-risk` accepts it; `add` remembers it): they started a
-  downloaded script with your permissions without asking. Arming the
-  keyboard says which keys it presses; a map that can type text (enter or
-  tab with three or more letters or digits, so any strip before it could
-  type a command and send it) asks first (`meegxer arm NODE --confirm`
-  from the command line).
+## 0.5.0b3 (2026-11-27): Scripts
+
+Your own code as strips. Python scripts (MNE, NumPy, SciPy) get templates,
+a porting guide and a try-run, work on epochs, come as folders with helpers
+and data files, and declare the packages they need; they run in Sterile
+mode too. Octave/EEGLAB scripts paste EEGLAB code in, offline or block by
+block live, in a pinned, sandboxed Octave image that fetches the EEGLAB
+plugins they declare. A pipeline can be exported as a Python script, with
+MeegXer or (for the strips done so far) as plain MNE code. A red team
+attacked Sterile mode and scripting from a hostile script's side
+(`docs/SECURITY.md`): no container escape and no network; what the host
+accepts back from a plugin is now checked.
+
+Checked in `docs/TESTING.md`: §Y to §AG by Claude on Linux with Docker (the
+real window offscreen, the CLI, the daemon live, the Sterile and Octave
+images); on Windows by the maintainer: pending (the tag waits for them).
+CI runs the Octave scripts in the Octave image.
+
+### Upgrading from 0.5.0b2
+
+- Pipelines, sessions and settings from 0.5.0b2 load unchanged; node
+  versions and the pipeline spec (0.2.23) are unchanged. No new
+  dependencies.
+- Rebuild the Sterile image after upgrading: `meegxer sterile build` (a run
+  refuses an image built from other code and says so).
+- Octave/EEGLAB scripts need Docker or Podman and their image: `meegxer-plugin
+  octave build` (a few minutes, the network once; again when a script
+  declares a new EEGLAB plugin).
+- Control API 0.2.28 (`arm_check`; `arm` takes `confirm`): stop an old
+  daemon first (`meegxer shutdown`).
+- New setting `general.live_cpus` (`docs/SETTINGS.md`): the CPUs a plugin's
+  container may use in a live run (default: all but the first).
+- Sessions record more of a script: an Octave script's SHA-256, image,
+  EEGLAB version and plugins; a Python script's folder hash and `REQUIRES`
+  versions. A saved session's model of a calibrated custom script is
+  refitted once (its code is now part of the check that a model still
+  fits).
+- `meegxer-plugin run|check --script` now ask for the local-code notice
+  before a Python script's first run (once per version of it;
+  `--accept-risk` accepts it).
+
+### What's new: custom scripts (Python, MNE)
+
+- **Porting your code (custom scripts).** A guide, `docs/PORTING.md`: which
+  entry point fits what your code works on (a Raw, blocks, a fitted model,
+  windows), before/after recipes for each (CI runs them as written), and
+  what changes when you port. `meegxer-plugin new NAME --kind
+  process|transform|calibrated|features` writes a working, commented
+  template to paste your code into; `meegxer-plugin run --script FILE -i
+  REC [-o OUT] [--param k=v]` tries a script on a recording before adding
+  it and says what came out (channels, rate, length, events, or feature
+  windows).
+- **Epochs scripts.** A custom script with `process_epochs(epochs, ...)` works
+  on the epochs an Epochs strip cut, as `mne.Epochs` (rejection, baseline,
+  relabelling, your own measures that keep epochs), and the strips after it
+  get the epochs it returns. `meegxer-plugin new NAME --kind epochs` writes a
+  template; `meegxer-plugin run` cuts the epochs first and says how many were
+  kept, per label (`-o kept-epo.fif` writes them). It runs in Sterile mode too.
+  `meegxer-plugin check` now gives a strip that reads the epochs rail test
+  epochs to work on.
+- **Script folders.** A method made of several files (helper modules,
+  trained weights, a lookup table) is added as its folder: `meegxer-plugin
+  add --script lab_method/` or *+ Add strip → ✎ Add a script folder…*. The
+  `.py` file that defines the entry function is found; helpers import as
+  usual and data files are read next to it. Sessions record one SHA-256 over
+  every file of the folder (hidden files and caches left out; at most 100 MB),
+  so a changed helper or data file is noticed; Sterile mode sends the whole
+  folder into the container.
+- **Extra packages for scripts (`REQUIRES`).** A script names the packages
+  it imports that MeegXer does not ship: `REQUIRES = ["pyriemann"]`.
+  `meegxer-plugin add|check|run` refuse it while one is missing, naming the
+  command that installs it; sessions record the versions used (a different
+  version warns); `meegxer sterile build` installs them into the Sterile image,
+  and a run whose scripts need one the image lacks asks to build again.
+- **Custom scripts in Sterile mode.** With Sterile mode on, a custom script
+  runs in a container of the Sterile image (no network, read-only, no
+  capabilities), like the built-in strips, with the same output. Nothing is
+  mounted: its code is sent in when the run starts (checked by its SHA-256),
+  so editing a script needs no image rebuild. A local plugin that is a
+  program of its own is still refused in Sterile mode, saying so. The local
+  code notice now says scripts can run isolated (its wording only: no need
+  to accept it again).
+- **Sterile runs compute in their container.** A Sterile run no longer reuses
+  an output a local run cached (the same output, but it would not have run in
+  the container); each mode keeps its own.
+
+### What's new: Octave/EEGLAB scripts (M11.5)
+
 - **The Octave image (Octave/EEGLAB scripts, first step).** `meegxer-plugin
   octave build` builds the image Octave/EEGLAB scripts will run in: GNU Octave
   with the signal package and EEGLAB 2026.0.0 (its core, firfilt and ICLabel,
@@ -79,45 +125,66 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   full commit); `meegxer-plugin octave build` fetches them into the image at
   their pinned commits (`--with NAME` for more), `octave check` lists them, a
   script whose plugins the image lacks is refused with what to do, and each
-  script sees only its own. Known: clean_rawdata, dipfit, EEG-BIDS, at the
+  script sees only its own (to keep scripts from clashing; every script is
+  sandboxed alike, so this is no security boundary). Known: clean_rawdata, dipfit, EEG-BIDS, at the
   commits EEGLAB 2026.0.0 pins. ASR runs at any rate (MeegXer's `yulewalk`
   port is in the image).
 
-- **Porting your code (custom scripts).** A guide, `docs/PORTING.md`: which
-  entry point fits what your code works on (a Raw, blocks, a fitted model,
-  windows), before/after recipes for each (CI runs them as written), and
-  what changes when you port. `meegxer-plugin new NAME --kind
-  process|transform|calibrated|features` writes a working, commented
-  template to paste your code into; `meegxer-plugin run --script FILE -i
-  REC [-o OUT] [--param k=v]` tries a script on a recording before adding
-  it and says what came out (channels, rate, length, events, or feature
-  windows).
+### What's new: a pipeline as a script (M11.7)
 
-- **Extra packages for scripts (`REQUIRES`).** A script names the packages
-  it imports that MeegXer does not ship: `REQUIRES = ["pyriemann"]`.
-  `meegxer-plugin add|check|run` refuse it while one is missing, naming the
-  command that installs it; sessions record the versions used (a different
-  version warns); `meegxer sterile build` installs them into the Sterile image,
-  and a run whose scripts need one the image lacks asks to build again.
+- **A pipeline as a Python script.** `meegxer export PIPELINE -o run.py`
+  (or `meegxer.api.export_script`, or *Save → Export as Python script…*)
+  writes a script that runs the pipeline exactly as MeegXer does:
+  `python run.py RECORDING -o OUT`. It embeds the pipeline, or a session
+  with its fitted models, lists its strips and the plugins or custom scripts
+  it needs, and needs MeegXer. `meegxer export --standalone` (or
+  `export_mne`, or *Export as standalone MNE script…*) writes MNE, NumPy and
+  SciPy code instead, no MeegXer needed: each strip's own code, tested to
+  give what the strip gives. So far for the File input, the filters, notch,
+  re-reference, pick channels, resample, Epochs and the file writers; a
+  pipeline with another strip is named and left to the plain export.
 
-- **Script folders.** A method made of several files (helper modules,
-  trained weights, a lookup table) is added as its folder: `meegxer-plugin
-  add --script lab_method/` or *+ Add strip → ✎ Add a script folder…*. The
-  `.py` file that defines the entry function is found; helpers import as
-  usual and data files are read next to it. Sessions record one SHA-256 over
-  every file of the folder (hidden files and caches left out; at most 100 MB),
-  so a changed helper or data file is noticed; Sterile mode sends the whole
-  folder into the container.
+### Security
 
-- **Epochs scripts.** A custom script with `process_epochs(epochs, ...)` works
-  on the epochs an Epochs strip cut, as `mne.Epochs` (rejection, baseline,
-  relabelling, your own measures that keep epochs), and the strips after it
-  get the epochs it returns. `meegxer-plugin new NAME --kind epochs` writes a
-  template; `meegxer-plugin run` cuts the epochs first and says how many were
-  kept, per label (`-o kept-epo.fif` writes them). It runs in Sterile mode too.
-  `meegxer-plugin check` now gives a strip that reads the epochs rail test
-  epochs to work on.
-- **Fixed: an edited custom script could keep giving its old output.** The
+The red team (`docs/SECURITY.md`) attacked Sterile mode and custom scripts
+(Python/MNE, Octave) from a hostile script's side: no container escape and
+no network. Its findings are fixed, each in its own PR; the limits are in
+`spec/plugin-protocol.md`:
+
+- A plugin's stderr lines are cut at 4 KB (a line without end filled
+  memory).
+- Its output (and its rails and feature windows) must lie within the input
+  it was given, by the exact ratio of the rates (it could return 100 times
+  its input, or place it at sample 10¹⁵).
+- Its events are checked: a text label of up to 256 characters without
+  tabs or newlines (which broke events.tsv), within the input given, at
+  most one per sample, a payload of a few plain values.
+- A script folder holding a link to a file outside it is refused (it sent,
+  say, a key from the home folder into the Sterile container).
+- The GUI shows a plugin's text (its description, settings, references) and
+  the values from a shared pipeline as written, never as HTML, and opens
+  only web links from them (a `file:` link would have been handed to a
+  program).
+- In a live run, a plugin or script that does not answer within 2 s is no
+  longer restarted (which froze the whole run for ~40 s): its input passes
+  through it for the rest of the run, its strip shows an error and the log
+  says why; the other strips go on.
+- In a live run a plugin's or script's container is pinned to all CPUs but
+  the first (setting *Plugin CPUs (live)*, `general.live_cpus`): a script
+  spinning on every core made the host's timing late by up to 4 ms; pinned,
+  by 0.3 ms (a time quota, `--cpus`, did not help).
+- `meegxer-plugin run|check --script` show the local-code notice before a
+  Python script's first run, once per version of it (`--accept-risk`
+  accepts it; `add` remembers it): they started a downloaded script with
+  your permissions without asking.
+- Arming the keyboard says which keys it presses; a map that can type text
+  (enter or tab with three or more letters or digits, so any strip before
+  it could type a command and send it) asks first (`meegxer arm NODE
+  --confirm` from the command line).
+
+### Fixed
+
+- **An edited custom script could keep giving its old output.** The
   offline output cache, and the check that a fitted model still fits, knew a
   strip by its name, version and settings: editing a script changed none of
   them, so the next run reused the old output (and a calibrated script its old
@@ -127,23 +194,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   from its source each time, never from a `.pyc` Python may still trust after
   an edit made within a second. Built-in strips keep their cached outputs; a
   saved session's model of a calibrated custom script is refitted once.
-- **Fixed:** the ERP view of an epochs rail was headed by its internal id
+- The ERP view of an epochs rail was headed by its internal id
   (`labreject1:epochs`); it now has the rail's name in the chain (*Epochs*,
   *Epochs·2*).
-- **Sterile runs compute in their container.** A Sterile run no longer reuses
-  an output a local run cached (the same output, but it would not have run in
-  the container); each mode keeps its own.
-- **Fixed:** `meegxer-plugin run` on a script already added (to try a change)
+- `meegxer-plugin run` on a script already added (to try a change)
   stopped with "two node classes registered"; it now runs the file as it is.
-
-- **Custom scripts in Sterile mode.** With Sterile mode on, a custom script
-  runs in a container of the Sterile image (no network, read-only, no
-  capabilities), like the built-in strips, with the same output. Nothing is
-  mounted: its code is sent in when the run starts (checked by its SHA-256),
-  so editing a script needs no image rebuild. A local plugin that is a
-  program of its own is still refused in Sterile mode, saying so. The local
-  code notice now says scripts can run isolated (its wording only: no need
-  to accept it again).
 
 ## 0.5.0b2 (2026-11-05): Sterile
 
