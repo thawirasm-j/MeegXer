@@ -36,6 +36,7 @@ from mne.baseline import rescale
 
 from meegxer.core.block import CHANNEL_TYPES, Block, Event, FeatureBlock, concat_blocks
 from meegxer.core.manifest import Manifest
+from meegxer.core.mne_export import ExportCode
 from meegxer.core.node import Mode, Params, Processor, RailInput, TransformResult
 from meegxer.core.serialization import State
 from meegxer.nodes.references import credits
@@ -97,6 +98,37 @@ class Epochs(Processor):
             **credits("meegxer.nodes.epochs"),
         }
     )  # fmt: skip
+
+    def export_code(self, params: Params) -> ExportCode | None:
+        """mne.Epochs on the recording's events. MNE leaves out epochs over
+        marks whose label starts with "bad" (any case): the same as the
+        default reject (BAD) but for lower-case labels; other words have no
+        MNE equivalent yet (None: the export names the strip)."""
+        reject = _words(params["reject"])
+        if reject not in ((), ("BAD",)):
+            return None
+        tmin, tmax = float(params["tmin"]), float(params["tmax"])
+        kind = params["baseline"]
+        baseline = (None if kind == "none" else (None, 0) if kind == "pre-stimulus"
+                    else (float(params["baseline_start"]),
+                          float(params["baseline_end"])))  # fmt: skip
+        wanted = _words(params["events"])
+        keep = "k != 'boundary' and not k.startswith('BAD')" if reject else (
+            "k != 'boundary'")  # fmt: skip
+        if wanted:
+            keep += f" and k in {wanted!r}"
+        return ExportCode(
+            comment=f"epochs {tmin:g} to {tmax:g} s around "
+                    + (", ".join(wanted) if wanted else "every event")
+                    + f", baseline {baseline} (mne.Epochs)",
+            lines=("events, event_id = mne.events_from_annotations(raw, "
+                   "verbose='error')",
+                   f"event_id = {{k: v for k, v in event_id.items() if {keep}}}",
+                   f"epochs = mne.Epochs(raw, events, event_id, tmin={tmin!r}, "
+                   f"tmax={tmax!r}, baseline={baseline!r}, picks='all', "
+                   f"reject_by_annotation={bool(reject)}, preload=True, "
+                   "verbose='error')"),
+        )  # fmt: skip
 
     def for_mode(self, params: Params, mode: Mode) -> Processor:
         """Refuse a wrong span or baseline before a run or a live change (in

@@ -423,6 +423,9 @@ class MainWindow(QMainWindow):
         save_menu.addAction("Save session…", lambda: self.save_session())
         save_menu.addAction("Share session…", self.share_session)
         save_menu.addAction("Export as Python script…", self.export_script)
+        save_menu.addAction(
+            "Export as standalone MNE script…", lambda: self.export_script(mne=True)
+        )
         self.save_btn.setMenu(save_menu)
         self.tools.addWidget(self.save_btn)
         self.tools.addSeparator()
@@ -1628,16 +1631,21 @@ class MainWindow(QMainWindow):
         self.log(f"Saved session {path} (fitted models: {models}; "
                  f"output files: {outputs}{shared}).")  # fmt: skip
 
-    def export_script(self, path: str | None = None) -> None:
+    def export_script(self, path: str | None = None, *, mne: bool = False) -> None:
         """Write what is shown as a Python script that runs it exactly as
         MeegXer does (``meegxer.api.export_script``), with the models the last
-        offline run fitted (offline mode) or calibrated live."""
-        from meegxer.api import export_script
+        offline run fitted (offline mode) or calibrated live; with ``mne``, as
+        standalone MNE/SciPy code (``meegxer.api.export_mne``: no MeegXer
+        needed, models fitted again; a strip without such code yet is named)."""
+        from meegxer.api import export_mne, export_script
+        from meegxer.core.mne_export import NotExportable
 
+        title = "Export as standalone MNE script" if mne else "Export as Python script"
+        default = "pipeline_mne.py" if mne else "pipeline.py"
         if path is None:
             path, _ = QFileDialog.getSaveFileName(
-                self, "Export as Python script",
-                str(Path(self._start_dir()) / "pipeline.py"), "Python script (*.py)",
+                self, title, str(Path(self._start_dir()) / default),
+                "Python script (*.py)",
             )  # fmt: skip
         if not path:
             return
@@ -1652,7 +1660,10 @@ class MainWindow(QMainWindow):
                 return
             document = session
         try:
-            export_script(document, path)
+            (export_mne if mne else export_script)(document, path)
+        except NotExportable as exc:
+            self.log(f"Not exported: {exc}.")
+            return
         except (OSError, ValueError) as exc:
             self.log(f"Could not export {path}: {exc}")
             return

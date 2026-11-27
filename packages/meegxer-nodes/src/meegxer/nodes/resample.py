@@ -25,6 +25,7 @@ from scipy import signal
 
 from meegxer.core.block import CHANNEL_TYPES, Block, SignalInfo
 from meegxer.core.manifest import Manifest
+from meegxer.core.mne_export import ExportCode
 from meegxer.core.node import Params, Processor, TransformResult
 from meegxer.core.serialization import State
 from meegxer.nodes._manifest import stream_manifest
@@ -75,6 +76,14 @@ class Resample(Processor):
         description="Change the sampling rate (polyphase FIR, no delay).",
         channel_types=list(CHANNEL_TYPES),  # every channel goes to the new rate
     )  # fmt: skip
+
+    def export_code(self, params: Params) -> ExportCode:
+        sfreq = float(params["sfreq"])
+        return ExportCode(
+            comment=f"resample to {sfreq:g} Hz (scipy.signal.resample_poly, "
+                    "exact ratio, Kaiser window)",
+            lines=(f"raw = resampled(raw, {sfreq!r})",), helpers=("resampled",),
+        )  # fmt: skip
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params

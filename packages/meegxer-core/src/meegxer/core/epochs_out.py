@@ -19,6 +19,7 @@ import numpy as np
 
 from meegxer.core.block import FeatureBlock
 from meegxer.core.manifest import Manifest
+from meegxer.core.mne_export import ExportCode
 from meegxer.core.node import AnyBlock, Sink
 from meegxer.core.ports import PortTypeError
 from meegxer.core.references import credits
@@ -171,6 +172,28 @@ class EpochsWriter(Sink):
     @property
     def path(self) -> Path:
         return Path(str(self.params["path"]))
+
+    def export_code(self) -> ExportCode:
+        path, erp = str(self.path), bool(self.params["erp"])
+        if path.endswith(".set"):
+            save = (f"mne.export.export_epochs({path!r}, epochs, fmt='eeglab', "
+                    "overwrite=True, verbose='error')")  # fmt: skip
+        else:
+            save = f"epochs.save({path!r}, overwrite=True, verbose='error')"
+        lines = [save]
+        if erp:
+            lines.append(f"mne.write_evokeds({str(erp_path_for(self.path))!r}, "
+                         "[epochs[label].average() for label in epochs.event_id], "
+                         "overwrite=True, verbose='error')")  # fmt: skip
+        if not self.params["overwrite"]:
+            lines = [f"if not os.path.exists({path!r}):",
+                     *(f"    {line}" for line in lines)]  # fmt: skip
+        return ExportCode(
+            comment=f"write the epochs to {path}"
+            + (", their ERPs (each label's average) beside it" if erp else ""),
+            lines=tuple(lines),
+            imports=() if self.params["overwrite"] else ("import os",),
+        )  # fmt: skip
 
     def bind(self, graph: Any, node_id: str) -> None:
         self._graph = graph

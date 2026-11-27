@@ -25,3 +25,30 @@ def test_the_chain_exports_as_a_script(
         assert "Exported" in win.logbox.toPlainText()
     finally:
         win.close()
+
+
+def test_the_chain_exports_as_standalone_mne_code(
+    qapp: QApplication, daemon: tuple[str, subprocess.Popen[bytes]], tmp_path: Path
+) -> None:
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    control, _ = daemon
+    win = MainWindow(DaemonLink(control))
+    try:
+        win.change_source("meegxer.core.file")
+        source = win.doc.source
+        assert source is not None
+        for strip in list(win.doc.strips):
+            if strip.id != source.id:
+                win.doc.remove(strip.id)
+        win.doc.insert(0, "meegxer.nodes.iir_filter")
+        win.export_script(str(tmp_path / "mine"), mne=True)
+        text = (tmp_path / "mine.py").read_text()
+        assert "signal.butter(" in text and "from meegxer" not in text
+        win.doc.insert(1, "meegxer.nodes.ica")
+        win.export_script(str(tmp_path / "ica"), mne=True)
+        assert not (tmp_path / "ica.py").exists()
+        assert "no standalone MNE code yet: ica1" in win.logbox.toPlainText()
+    finally:
+        win.close()

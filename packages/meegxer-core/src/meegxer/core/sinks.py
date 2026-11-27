@@ -28,6 +28,7 @@ import numpy as np
 
 from meegxer.core.block import Block, Event, FeatureBlock
 from meegxer.core.manifest import Manifest
+from meegxer.core.mne_export import ExportCode
 from meegxer.core.node import AnyBlock, Sink
 from meegxer.core.ports import PortTypeError
 from meegxer.core.references import credits
@@ -309,6 +310,18 @@ def free_name(path: Path, tag: str) -> Path:
 
 class _RawFileSink(Sink):
     fmt: ClassVar[Literal["eeglab", "edf"]]
+
+    def export_code(self) -> ExportCode:
+        path, overwrite = str(self.params["path"]), bool(self.params["overwrite"])
+        write = (f"raw.export({path!r}, fmt={self.fmt!r}, overwrite=True, "
+                 "verbose='error')")  # fmt: skip
+        return ExportCode(
+            comment=f"write the signal to {path} (mne.export, {self.fmt})"
+            + ("" if overwrite else "; an existing file is kept"),
+            lines=(write,) if overwrite else (
+                f"if not os.path.exists({path!r}):", f"    {write}"),
+            imports=() if overwrite else ("import os",),
+        )  # fmt: skip
 
     def __init__(self, params: Mapping[str, object] | None = None) -> None:
         super().__init__(params)

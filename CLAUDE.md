@@ -109,7 +109,9 @@ Canonical code name is lowercase `meegxer` everywhere (imports, repo, image pref
   `run(pipeline, raw)` -> `mne.io.Raw`, `run(..., output="ep1")` -> `mne.Epochs`
   (the batch scheduler, rule 4); `export_script(pipeline, "run.py")` or
   `meegxer export PIPELINE [-o run.py]`: the pipeline (or session) as a
-  Python script that calls `run` (needs MeegXer).
+  Python script that calls `run` (needs MeegXer); `export_mne` or `meegxer
+  export --standalone`: as MNE/SciPy code, no MeegXer (each strip's
+  `export_code` hook, `meegxer.core.mne_export`; models fitted again).
 - Sessions (`spec/session.md`): `meegxer run … --session out.meegxer.json`,
   `meegxer run out.meegxer.json`, `meegxer session check FILE`,
   `meegxer session save FILE` (from the daemon, with calibrated models),

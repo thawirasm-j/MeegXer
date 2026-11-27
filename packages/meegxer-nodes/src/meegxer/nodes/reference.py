@@ -9,6 +9,7 @@ import numpy as np
 
 from meegxer.core.block import CHANNEL_TYPES, Block, SignalInfo, match_channels
 from meegxer.core.manifest import Manifest
+from meegxer.core.mne_export import ExportCode
 from meegxer.core.node import Params, Processor, TransformResult
 from meegxer.core.serialization import State
 from meegxer.nodes._manifest import stream_manifest
@@ -68,6 +69,25 @@ class Rereference(Processor):
             raise ValueError(f"reference channels are marked bad: {bad_refs}")
         return chosen
 
+    def export_code(self, params: Params) -> ExportCode:
+        bads = "raw.info['bads']" if params["exclude_bads"] else "[]"
+        if params["mode"] == "average":
+            excluded = _labels(params["exclude"])
+            what = "common average" + (f" (without {', '.join(excluded)})"
+                                       if excluded else "")  # fmt: skip
+            pick = (f"ref = [k for k, c in enumerate(labels) if c not in "
+                    f"{excluded!r} and c not in {bads}]")  # fmt: skip
+        else:
+            chosen = _labels(params["channels"])
+            what = f"reference {', '.join(chosen)}"
+            pick = f"ref = [labels.index(c) for c in {chosen!r}]"
+        return ExportCode(
+            comment=f"re-reference to the {what} (its mean subtracted)",
+            lines=("labels = [raw.ch_names[i] for i in picks]", pick,
+                   "raw.apply_function(lambda x: x - x[ref].mean(axis=0, "
+                   "keepdims=True), picks=picks, channel_wise=False)"),
+        )  # fmt: skip
+
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
@@ -126,6 +146,21 @@ class PickChannels(Processor):
         if not chosen:
             raise ValueError("no channel is kept")
         return chosen
+
+    def export_code(self, params: Params) -> ExportCode:
+        types = tuple(t for t in CHANNEL_TYPES if params[f"keep_{t}"])
+        named = _labels(params["keep_labels"])
+        lines = [f"kept = [raw.ch_names[i] for i in channels_of(raw, {types!r})]"]
+        if named:
+            lines.append(f"kept = [c for c in kept if c in {named!r}]")
+        if params["drop_bads"]:
+            lines.append("kept = [c for c in kept if c not in raw.info['bads']]")
+        lines.append("raw.pick(kept)")
+        return ExportCode(
+            comment="keep " + (", ".join(named) if named else ", ".join(types))
+            + (" channels, without bad ones" if params["drop_bads"] else " channels"),
+            lines=tuple(lines), helpers=("channels_of",),
+        )  # fmt: skip
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
