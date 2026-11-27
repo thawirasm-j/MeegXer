@@ -194,6 +194,10 @@ no network. Its findings are fixed, each in its own PR; the limits are in
 
 ### Fixed
 
+- The Spectrum view's head plot of power above the 1/f fit printed
+  "RuntimeWarning: Mean of empty slice" for a flat channel (one with no
+  aperiodic fit). That channel is left out of the map, as before, without
+  the warning.
 - **An edited custom script could keep giving its old output.** The
   offline output cache, and the check that a fitted model still fits, knew a
   strip by its name, version and settings: editing a script changed none of
