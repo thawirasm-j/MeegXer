@@ -13,7 +13,7 @@ import math
 import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 
@@ -38,6 +38,9 @@ from meegxer.core.ports import PortType
 from meegxer.core.serialization import State, hash_state
 from meegxer.plugins.wire import tree_from_wire, tree_to_wire
 from meegxer.plugins.worker import Launcher, PluginError, PluginWorker, live_cpus
+
+if TYPE_CHECKING:
+    from meegxer.core.mne_export import ExportCode
 
 RESERVED_PREFIXES = ("meegxer.",)
 # what a plugin's events may hold (rule 9; red team M3): they reach files
@@ -192,6 +195,16 @@ class PluginProcessor(Processor):
             with contextlib.suppress(OSError):  # gone: the recorded one
                 origin["sha256"] = hashlib.sha256(Path(script).read_bytes()).hexdigest()
         return origin
+
+    def export_code(self, params: Params) -> ExportCode | None:
+        """A custom Python script's standalone MNE code (its source inlined,
+        ``meegxer.plugins.script_export``); None for other plugins (an image,
+        an Octave script, a local program)."""
+        from meegxer.plugins.script_export import script_export_code
+        from meegxer.plugins.sterile import script_path
+
+        path = script_path(self)
+        return None if path is None else script_export_code(path, dict(params))
 
     def __init__(self) -> None:
         self._worker: PluginWorker | None = None

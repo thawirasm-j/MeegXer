@@ -100,9 +100,15 @@ test per strip checks that it gives the strip's offline output; fitted models
 are fitted again on the recording the script reads. Its `pipeline(path)`
 returns `(raw, epochs)`. Strips with such code so far: the File input, the
 IIR and FIR filters (causal and zero-phase), notch, re-reference, pick
-channels, resample, Epochs, and the `.set`, `.edf` and epochs writers; more
-come strip by strip (`docs/ROADMAP.md`, M11.7). Any other strip (an Octave
-script, a plugin image) is named and the script is not written:
+channels, resample, interpolate bad channels, CSD, Epochs, the `.set`,
+`.edf` and epochs writers, and custom Python scripts: a script's source is
+inlined (as a module of its own, with its SHA-256) and called as MeegXer
+calls it, `process(raw, ...)` and `process_epochs(epochs, ...)`, and a live
+`transform(data, state, ...)` once on the whole recording (MeegXer sends a
+plugin single precision; the script keeps double, so the two agree to single
+precision). More come strip by strip (`docs/ROADMAP.md`, M11.7). Any other
+strip (a script folder, a calibrated or feature script, an Octave script, a
+plugin image) is named and the script is not written:
 `export_script` runs any pipeline. Also `meegxer export PIPELINE
 --standalone`, and *Save → Export as standalone MNE script…* in the GUI.
 
