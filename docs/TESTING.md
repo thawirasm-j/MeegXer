@@ -1149,3 +1149,20 @@ against scipy's Butterworth filter, live and in a batch run in 37-sample blocks.
 | AF2 runs live in the GUI | | |
 | AF3 a setting changed live reaches it | | |
 | AF4 load and late blocks steady | | |
+
+## AG. A pipeline as a Python script
+
+Already run by Claude on Linux: `meegxer export erp.json` wrote `erp.py`;
+`python erp.py rec_raw.fif -o clean_raw.fif` and `--output ep1 -o
+ep-epo.fif` gave exactly what `meegxer.api.run` gives (CI checks it); in the
+GUI (offscreen) *Save → Export as Python script…* wrote the chain shown.
+
+1. Pull, `uv sync --all-packages`. Open a pipeline in the GUI (e.g. *New… →*
+   an ERP template), *Save* arrow → *Export as Python script…*, save `erp.py`.
+2. In a terminal: `uv run python erp.py YOUR_RECORDING.set -o clean.set`:
+   it says `wrote clean.set`; open it in EEGLAB or MNE.
+
+| Item | Value / result | Notes |
+|---|---|---|
+| AG1 the GUI writes the script | | |
+| AG2 the script runs on Windows and writes the file | | |

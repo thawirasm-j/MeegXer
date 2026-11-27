@@ -107,3 +107,18 @@ def test_recover_writes_a_crashed_runs_recording(tmp_path: Path) -> None:
     assert FileSource({"path": str(tmp_path / "saved.set")}).info.n_channels == 2
     again = runner.invoke(app, ["recover", str(path)])
     assert again.exit_code == 1 and "no spool" in again.output
+
+
+def test_export_writes_the_pipeline_as_a_script(tmp_path: Path) -> None:
+    pipe = tmp_path / "clean.json"
+    pipe.write_text(json.dumps({"spec_version": "0.2.23", "nodes": [
+        {"id": "input", "node": "meegxer.core.file"},
+        {"id": "hp", "node": "meegxer.nodes.iir_filter", "params": {"low": 1.0}},
+    ]}))  # fmt: skip
+    first = runner.invoke(app, ["export", str(pipe)])
+    assert first.exit_code == 0, first.output
+    assert "python clean.py RECORDING -o OUT" in first.output
+    assert "from meegxer.api import run" in (tmp_path / "clean.py").read_text()
+    again = runner.invoke(app, ["export", str(pipe)])
+    assert again.exit_code == 1 and "--overwrite" in again.output
+    assert runner.invoke(app, ["export", str(pipe), "--overwrite"]).exit_code == 0

@@ -422,6 +422,7 @@ class MainWindow(QMainWindow):
         save_menu.addAction("Save pipeline…\tCtrl+S", self.save_pipeline)
         save_menu.addAction("Save session…", lambda: self.save_session())
         save_menu.addAction("Share session…", self.share_session)
+        save_menu.addAction("Export as Python script…", self.export_script)
         self.save_btn.setMenu(save_menu)
         self.tools.addWidget(self.save_btn)
         self.tools.addSeparator()
@@ -1626,6 +1627,38 @@ class MainWindow(QMainWindow):
         shared = "; no file or folder names" if share else ""
         self.log(f"Saved session {path} (fitted models: {models}; "
                  f"output files: {outputs}{shared}).")  # fmt: skip
+
+    def export_script(self, path: str | None = None) -> None:
+        """Write what is shown as a Python script that runs it exactly as
+        MeegXer does (``meegxer.api.export_script``), with the models the last
+        offline run fitted (offline mode) or calibrated live."""
+        from meegxer.api import export_script
+
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Export as Python script",
+                str(Path(self._start_dir()) / "pipeline.py"), "Python script (*.py)",
+            )  # fmt: skip
+        if not path:
+            return
+        if not path.endswith(".py"):
+            path += ".py"
+        document: dict[str, Any] = self.doc.to_pipeline(taps=False)
+        offline = self.doc.mode == "offline" and self.offline_state == "done"
+        if offline or self.running:  # models may be fitted: the session's
+            session = self.call("get_session", name=Path(path).stem,
+                                pipeline=document, offline=offline)  # fmt: skip
+            if session is None:
+                return
+            document = session
+        try:
+            export_script(document, path)
+        except (OSError, ValueError) as exc:
+            self.log(f"Could not export {path}: {exc}")
+            return
+        models = ", ".join(document.get("models", {})) or "none"
+        self.log(f"Exported {path} (fitted models: {models}): "
+                 f"python {Path(path).name} RECORDING -o OUT.")  # fmt: skip
 
     def save_pipeline(self) -> bool:
         """Save the chain as a pipeline file; False if no file was chosen."""

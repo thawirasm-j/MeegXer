@@ -3,6 +3,7 @@
 >>> from meegxer.api import run
 >>> clean = run("pipeline.json", raw)                 # mne Raw in, Raw out
 >>> epochs = run("erp.json", "sub-01.set", output="ep1")  # an Epochs strip's
+>>> text = export_script("erp.json", "erp.py")  # the pipeline as a script
 
 ``run`` is a thin layer over the batch scheduler (rule 4: the same node code
 as the GUI and ``meegxer run``): the pipeline's input becomes ``raw``, an
@@ -13,6 +14,7 @@ calibrated models are used, the pipeline's own writers write their files).
 
 from __future__ import annotations
 
+import json
 import logging
 import warnings
 from collections.abc import Mapping
@@ -20,7 +22,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any
 
-__all__ = ["run"]
+__all__ = ["export_script", "run"]
 
 logger = logging.getLogger("meegxer")
 
@@ -183,3 +185,108 @@ def _output(graph: Any, output: str | None) -> tuple[str, str]:
         return where, "epochs"
     raise GraphError(f"{output!r} gives features, not a signal or epochs "
                      "(write them with a feature writer)")  # fmt: skip
+
+
+SCRIPT = '''#!/usr/bin/env python3
+"""MeegXer pipeline {name!r} as a script (`meegxer export`, MeegXer {version}).
+
+It runs the pipeline exactly as MeegXer does: the same strips and settings{models}.
+
+    python {file} RECORDING [-o OUT] [--output STRIP]
+
+RECORDING: a file MeegXer's File input reads (.set, .edf, .bdf, .vhdr, .fif,
+.xdf, ...). OUT: where to write the result: .fif, .set or .edf for the
+signal; -epo.fif or .set for the epochs of an Epochs strip (--output STRIP).
+The pipeline's own writers write their files too.
+
+Needs MeegXer {version}: pip install "meegxer=={version}".{plugins}
+
+Strips:
+{strips}
+"""
+
+import argparse
+import json
+
+from meegxer.api import run
+
+# the pipeline{as_session}, as MeegXer saved it
+PIPELINE = json.loads({document})
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("recording", help="the recording to process")
+    parser.add_argument("-o", "--out", help="write the result to this file")
+    parser.add_argument("--output", help="the strip whose result is read "
+                        "(default: the end of the chain)")
+    args = parser.parse_args()
+    result = run(PIPELINE, args.recording, output=args.output)
+    if result is None:
+        raise SystemExit("no epochs: no event was cut")
+    if not args.out:
+        print(result)
+    elif args.out.endswith(".fif"):
+        result.save(args.out, overwrite=True, verbose="error")
+    else:
+        result.export(args.out, overwrite=True, verbose="error")
+    if args.out:
+        print(f"wrote {{args.out}}")
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+def export_script(
+    pipeline: str | PathLike[str] | Mapping[str, Any],
+    path: str | PathLike[str] | None = None,
+) -> str:
+    """The pipeline (or session, with its fitted models) as a Python script
+    that runs it exactly as MeegXer does, with ``meegxer.api.run``
+    (``docs/PYTHON_API.md``); written to ``path`` too when given. Its
+    docstring lists the strips and the plugins or custom scripts it needs on
+    the computer that runs it. A standalone MNE script, without MeegXer, is
+    planned (``docs/ROADMAP.md``)."""
+    from meegxer.core import __version__
+
+    document = _document(pipeline)
+    nodes = list(document.get("pipeline", {}).get("nodes", []))
+    name = str(document.get("name") or (Path(pipeline).name.removesuffix(".json")
+               .removesuffix(".meegxer") if not isinstance(pipeline, Mapping)
+               else "pipeline"))  # fmt: skip
+    lines = []
+    for node in nodes:
+        params = ", ".join(f"{k}={v!r}" for k, v in (node.get("params") or {}).items())
+        if len(params) > 60:
+            params = params[:57] + "..."
+        lines.append(f"  {node.get('id', '?'):<12} {node.get('node', '?')}"
+                     + (f"  {params}" if params else ""))  # fmt: skip
+    extra = sorted({str(n.get("node")) for n in nodes
+                    if not str(n.get("node", "")).startswith("meegxer.")})  # fmt: skip
+    plugins = (
+        "\nIt uses plugins or custom scripts, which must be added on the\n"
+        "computer that runs it (meegxer-plugin add ...): " + ", ".join(extra) + "."
+        if extra else ""
+    )  # fmt: skip
+    plain = set(document) <= {"meegxer_session", "pipeline"}  # nothing fitted
+    text = json.dumps(document["pipeline"] if plain else document, indent=1)
+    quotes = "'" * 3
+    # readable as written (JSON never writes \', so a raw string keeps it
+    # whole); repr only when a value holds three quotes
+    literal = f"r{quotes}\n{text}\n{quotes}" if quotes not in text else repr(text)
+    fitted = bool(document.get("models"))
+    script = SCRIPT.format(
+        name=name,
+        version=__version__,
+        file=Path(path).name if path else "run.py",
+        models=", and the models this session fitted" if fitted else "",
+        plugins=plugins,
+        strips="\n".join(lines) or "  (none)",
+        as_session=" (a session)" if fitted else "",
+        document=literal,
+    )
+    if path is not None:
+        Path(path).write_text(script, encoding="utf-8")
+    return script

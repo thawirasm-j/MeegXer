@@ -497,6 +497,42 @@ def session_save(
 
 
 @app.command()
+def export(
+    pipeline: Annotated[
+        Path, typer.Argument(help="Pipeline or session (.meegxer.json) file.")
+    ],
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="The script to write (default: PIPELINE's name, .py).",
+        ),
+    ] = None,
+    overwrite: Annotated[
+        bool, typer.Option(help="Replace an existing script.")
+    ] = False,
+) -> None:
+    """Write the pipeline (or session, with its fitted models) as a Python
+    script that runs it exactly as MeegXer does (meegxer.api.run): `python
+    SCRIPT RECORDING -o OUT`. It needs MeegXer; its docstring lists the
+    strips and any plugins or custom scripts to add."""
+    from meegxer.api import export_script
+
+    stem = pipeline.name.removesuffix(".json").removesuffix(".meegxer")
+    target = out or pipeline.with_name(f"{stem}.py")
+    if target.exists() and not overwrite:
+        typer.echo(f"error: {target} exists (--overwrite to replace it)", err=True)
+        raise typer.Exit(code=1)
+    try:
+        export_script(pipeline, target)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"wrote {target}: python {target.name} RECORDING -o OUT")
+
+
+@app.command()
 def recover(
     file: Annotated[
         Path, typer.Argument(help="The file a crashed run was writing, or its .part.")

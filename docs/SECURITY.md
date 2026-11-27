@@ -17,7 +17,7 @@ below), and of each finding's fix. The attacks are kept as regression tests
 | M5 symlinks reach into the Sterile container | Fixed: a file linking outside its script folder is refused (PR #180) |
 | L1 no CPU cap | Fixed: live, plugin containers pinned to all CPUs but the first (`general.live_cpus`; PR #184) |
 | L2 plugin text as rich text, links of any scheme | Fixed: shown as written; only https/http links open (PR #181) |
-| L3 keyboard sink maps from a shared pipeline | Fixed: arming shows the map; one that can type text is confirmed first, by any client (decided 2026-11-26; this PR) |
+| L3 keyboard sink maps from a shared pipeline | Fixed: arming shows the map; one that can type text is confirmed first, by any client (decided 2026-11-26; PR #186) |
 | L4 per-script EEGLAB plugins read as a boundary | Fixed: `docs/OCTAVE.md` says it is not one (PR #182) |
 | I1 `run`/`check --script` without the notice | Fixed: the notice once per script version (PR #185) |
 | I2 declared packages join the shared Sterile image | Documented in `docs/STERILE.md` (PR #182) |
