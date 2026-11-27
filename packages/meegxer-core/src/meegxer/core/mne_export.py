@@ -303,10 +303,11 @@ def ica_rejected(ica, threshold, classes):
         "icachansind": np.array([[labels.index(c) + 1 for c in ica["channels"]]],
                                 dtype=np.float64),
         "icaact": np.zeros((0, 0)),
-        "etc": {"ic_classification": {"ICLabel": {
-            "classes": names, "classification": ica["probabilities"][keep],
-            "version": "default"}}},
     }
+    if ica["probabilities"] is not None:  # ICLabel's classes, as EEGLAB keeps them
+        fields["etc"] = {"ic_classification": {"ICLabel": {
+            "classes": names, "classification": ica["probabilities"][keep],
+            "version": "default"}}}
     mat = {k: v for k, v in loadmat(path).items() if not k.startswith("__")}
     if "EEG" in mat:  # saved as one struct
         eeg = mat["EEG"]
@@ -746,6 +747,67 @@ def script_unit(module):
                                                 for n in coords["feature"]))
     return ""
 ''',
+    "input_ica": '''\
+def input_ica(raw, path):
+    """The ICA a .set recording carries, as MeegXer reads it (MNE's
+    read_ica_eeglab), with the file's ICLabel classes, or ICLabel's when it
+    has none; None without one."""
+    from scipy.io import loadmat
+
+    if not str(path).lower().endswith(".set"):
+        return None
+    try:  # a quick look first: most files carry no decomposition
+        mat = loadmat(path, squeeze_me=True, struct_as_record=False,
+                      variable_names=["EEG", "icaweights"])
+        eeg = mat.get("EEG", mat)
+        weights = eeg.get("icaweights") if isinstance(eeg, dict) else getattr(
+            eeg, "icaweights", None)
+        if weights is None or np.size(weights) == 0:
+            return None
+    except (NotImplementedError, ValueError, OSError):
+        pass  # MATLAB v7.3: let MNE try
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            read = mne.preprocessing.read_ica_eeglab(path, verbose="error")
+    except Exception:  # no decomposition, or one MNE cannot read
+        return None
+    unmixing = np.asarray(read.unmixing_matrix_ @ read.pca_components_, dtype=float)
+    ica = {"channels": list(read.ch_names), "weights": unmixing,
+           "winv": np.linalg.pinv(unmixing), "removed": [],
+           "probabilities": file_classes(path, unmixing.shape[0])}
+    if ica["probabilities"] is None:
+        try:
+            idx = [raw.ch_names.index(c) for c in ica["channels"]]
+            ica["probabilities"] = iclabel(raw, idx, unmixing)
+        except (SystemExit, ValueError) as exc:  # e.g. no electrode positions
+            print(f"ICLabel not run on the recording's ICA: {exc}")
+    return ica
+
+
+def file_classes(path, n):
+    """The .set's ICLabel probabilities (n x 7, ICLABEL_CLASSES' order), or
+    None."""
+    from scipy.io import loadmat
+
+    def field(obj, name):
+        return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+
+    try:
+        mat = loadmat(path, squeeze_me=True, struct_as_record=False)
+    except (NotImplementedError, ValueError, OSError):
+        return None
+    label = field(field(field(mat.get("EEG", mat), "etc"), "ic_classification"),
+                  "ICLabel")
+    table, names = field(label, "classification"), field(label, "classes")
+    if table is None or names is None or np.size(table) == 0:
+        return None
+    table = np.atleast_2d(np.asarray(table, dtype=np.float64))
+    names = [str(c).strip().lower().replace(" ", "_") for c in np.atleast_1d(names)]
+    if table.shape != (n, len(names)) or sorted(names) != sorted(ICLABEL_CLASSES):
+        return None
+    return table[:, [names.index(c) for c in ICLABEL_CLASSES]]
+''',
 }
 HELPER_IMPORTS = {
     "causal_sos": ("from scipy import signal",),
@@ -763,6 +825,7 @@ HELPER_IMPORTS = {
     "specparam_window": ("import warnings",),
     "write_features_tsv": ("import csv", "import json", "import os"),
     "events_of": (),
+    "input_ica": ("import numpy as np", "import warnings"),
     "ssvep_window": ("from scipy import signal",),
     "run_features": ("import inspect",),
 }
@@ -904,6 +967,21 @@ def standalone_script(
     definitions: list[str] = []
     packages = ["mne", "numpy", "scipy"]
     # an ICA strip's decomposition, which a .set writer after it stores
+    stores_ica = any(code.with_ica is not None for _, _, code, _ in parts)
+    if stores_ica and parts and parts[0][1] == "meegxer.core.file":
+        # a .set recording's own ICA, which a .set writer stores again
+        node_id, name_, code, types = parts[0]
+        parts[0] = (
+            node_id,
+            name_,
+            replace(
+                code,
+                lines=(*code.lines, "ica = input_ica(raw, path)"),
+                helpers=(*code.helpers, "fit_ica", "input_ica"),
+                packages=(*code.packages, "mne-icalabel", "onnxruntime"),
+            ),
+            types,
+        )
     uses_ica = any(line.startswith("ica = ") for _, _, code, _ in parts
                    for line in code.lines)  # fmt: skip
     body: list[str] = ["    ica = None"] if uses_ica else []
