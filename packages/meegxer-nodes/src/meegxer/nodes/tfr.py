@@ -8,7 +8,7 @@ the estimate. A wavelet longer than the window is refused with a hint.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 from scipy import signal as sps
@@ -16,7 +16,10 @@ from scipy import signal as sps
 from meegxer.core.block import SignalInfo
 from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params
-from meegxer.nodes.features import WindowedFeatures, analysis_manifest
+from meegxer.nodes.features import WindowedFeatures, analysis_manifest, windowed_code
+
+if TYPE_CHECKING:
+    from meegxer.core.mne_export import ExportCode
 
 
 def frequencies(params: Params) -> np.ndarray:
@@ -78,3 +81,17 @@ class MorletPower(WindowedFeatures):
         self, params: Params, coords: dict[str, tuple[Any, ...]]
     ) -> str | tuple[str, tuple[str, ...]]:
         return "dB" if params["db"] else "V^2"
+
+    def export_code(self, params: Params) -> ExportCode:
+        fmin, fmax, fstep = (float(params[k]) for k in ("fmin", "fmax", "fstep"))
+        n_cycles, db = float(params["n_cycles"]), bool(params["db"])
+        frequencies(params)  # refused as MeegXer refuses it
+        return windowed_code(
+            params,
+            f"morlet_window(x, sfreq, names, {fmin!r}, {fmax!r}, {fstep!r}, "
+            f"{n_cycles!r}, {db!r})",
+            "dB" if db else "V^2",
+            f"Morlet wavelet power {fmin:g}-{fmax:g} Hz, {n_cycles:g} cycles"
+            f"{' in dB' if db else ''} (MNE wavelets)",
+            "morlet_window",
+        )

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Sequence
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 
@@ -25,7 +25,13 @@ from meegxer.nodes.features import (
     analysis_manifest,
     parse_bands,
     spectrum,
+    spectrum_kwargs,
+    spectrum_text,
+    windowed_code,
 )
+
+if TYPE_CHECKING:
+    from meegxer.core.mne_export import ExportCode
 
 
 def measures(aperiodic: str, bands: list[tuple[str, float, float]]) -> tuple[str, ...]:
@@ -171,6 +177,29 @@ class SpecParam(WindowedFeatures):
         self, params: Params, coords: dict[str, tuple[Any, ...]]
     ) -> str | tuple[str, tuple[str, ...]]:
         return "measure", tuple(measure_unit(m) for m in coords["measure"])
+
+    def export_code(self, params: Params) -> ExportCode | None:
+        if params["fit_unfiltered"]:
+            return None  # it reads the upstream filters' passbands (not yet)
+        aperiodic = str(params["aperiodic"])
+        bands = parse_bands(str(params["bands"]))
+        fmin, fmax = float(params["fmin"]), float(params["fmax"])
+        model = {"peak_width_limits": (float(params["peak_width_min"]),
+                                       float(params["peak_width_max"])),
+                 "max_n_peaks": int(params["max_n_peaks"]),
+                 "min_peak_height": float(params["min_peak_height"]),
+                 "peak_threshold": float(params["peak_threshold"])}  # fmt: skip
+        units = tuple(measure_unit(m) for m in measures(aperiodic, bands))
+        return windowed_code(
+            params,
+            f"specparam_window(x, sfreq, names, {fmin!r}, {fmax!r}, {aperiodic!r}, "
+            f"{bands!r}, {model!r}, **{spectrum_kwargs(params)!r})",
+            ("measure", units),
+            f"spectral parameters ({aperiodic} aperiodic, {fmin:g}-{fmax:g} Hz; "
+            f"specparam), {spectrum_text(params)}",
+            "specparam_window",
+            ("specparam",),
+        )
 
 
 def _row(

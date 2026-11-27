@@ -16,10 +16,11 @@ Epochs strip sets ``epochs``; a writer writes what is there at its place.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from meegxer.core.block import CHANNEL_TYPES
+from meegxer.core.ports import PortType
 
 
 @dataclass(frozen=True)
@@ -357,6 +358,167 @@ def eog_channels(raw, picks, eog):
         raise SystemExit("no EOG channel found: name one in the eog setting")
     return found
 ''',
+    "windowed": '''def windowed(raw, picks, window, step, compute, unit):
+    """A feature strip's windows, as MeegXer cuts them: window seconds every
+    step seconds from the first sample, bad channels kept. compute(x, sfreq,
+    names) gives one window's (values, dims, coords); unit is every value's
+    unit, or (dim, units) when each entry of dim has its own."""
+    sfreq = raw.info["sfreq"]
+    n, hop = max(1, round(window * sfreq)), max(1, round(step * sfreq))
+    x, names = raw.get_data(picks=picks), tuple(raw.ch_names[i] for i in picks)
+    out = {"windows": [], "timestamps": [], "values": [], "dims": (),
+           "coords": {}, "unit": unit}
+    for start in range(0, x.shape[1] - n + 1, hop):
+        values, out["dims"], out["coords"] = compute(x[:, start : start + n],
+                                                     sfreq, names)
+        out["windows"].append((start, start + n))
+        out["timestamps"].append(0.0 + start / sfreq)  # seconds from the start
+        out["values"].append(values)
+    out["values"] = np.array(out["values"])  # windows x the window's dims
+    return out
+
+
+def spectrum(x, sfreq, method, segment, overlap, taper, bandwidth):
+    """(freqs, one-sided PSD in V^2/Hz) of each row: Welch as MATLAB's pwelch
+    computes it (symmetric taper, no detrending), or MNE's multitaper."""
+    if method == "multitaper":
+        from mne.time_frequency import psd_array_multitaper
+
+        psd, freqs = psd_array_multitaper(x, sfreq, bandwidth=bandwidth or None,
+                                          normalization="full", verbose="error")
+        return freqs, psd
+    nper = min(x.shape[-1], max(2, round(segment * sfreq)))
+    noverlap = min(nper - 1, round(overlap * nper))
+    window = signal.get_window(taper, nper, fftbins=False)
+    return signal.welch(x, sfreq, window=window, nperseg=nper, noverlap=noverlap,
+                        detrend=False, scaling="density", axis=-1)
+
+
+def decibels(values):
+    return 10 * np.log10(np.maximum(values, np.finfo(float).tiny))
+''',
+    "psd_window": '''def psd_window(x, sfreq, names, fmin, fmax, db, **spec):
+    """One window's PSD per channel, fmin to fmax."""
+    freqs, psd = spectrum(x, sfreq, **spec)
+    keep = (freqs >= fmin) & (freqs <= fmax)
+    values = decibels(psd[:, keep]) if db else psd[:, keep]
+    rounded = tuple(round(float(f), 6) for f in freqs[keep])
+    coords = {"channel": names, "frequency": rounded}
+    return values, ("channel", "frequency"), coords
+''',
+    "band_power_window": '''\
+def band_power_window(x, sfreq, names, bands, relative, db, **spec):
+    """One window's power per channel and band: the PSD summed over the
+    band's bins [low, high) times the bin width; relative to the power over
+    all the bands' span, or in dB."""
+    freqs, psd = spectrum(x, sfreq, **spec)
+    df = freqs[1] - freqs[0]
+    values = np.stack([psd[:, (freqs >= lo) & (freqs < hi)].sum(axis=1) * df
+                       for _, lo, hi in bands], axis=1)
+    if relative:
+        lo, hi = min(b[1] for b in bands), max(b[2] for b in bands)
+        total = psd[:, (freqs >= lo) & (freqs < hi)].sum(axis=1) * df
+        values = values / np.maximum(total, np.finfo(float).tiny)[:, None]
+    if db:
+        values = decibels(values)
+    labels = tuple(b[0] for b in bands)
+    coords = {"channel": names, "band": labels}
+    return values, ("channel", "band"), coords
+''',
+    "morlet_window": '''\
+def morlet_window(x, sfreq, names, fmin, fmax, fstep, n_cycles, db):
+    """One window's Morlet wavelet power per channel and frequency (MNE's
+    zero-mean wavelets), averaged where the whole wavelet lies in the window."""
+    from mne.time_frequency import morlet
+
+    freqs = np.arange(fmin, fmax + fstep / 2, fstep)
+    wavelets = morlet(sfreq, freqs, n_cycles=n_cycles, zero_mean=True)
+    if max(len(w) for w in wavelets) > x.shape[1]:
+        raise SystemExit(f"the {freqs[0]:g} Hz wavelet is longer than the window: "
+                         "lengthen the window, raise fmin or lower the cycles")
+    power = np.empty((x.shape[0], len(freqs)))
+    for j, w in enumerate(wavelets):
+        conv = signal.fftconvolve(x, w[None, :], mode="valid", axes=1)
+        power[:, j] = np.mean(np.abs(conv) ** 2, axis=1)
+    if db:
+        power = decibels(power)
+    rounded = tuple(round(float(f), 6) for f in freqs)
+    coords = {"channel": names, "frequency": rounded}
+    return power, ("channel", "frequency"), coords
+''',
+    "specparam_window": '''\
+def specparam_window(x, sfreq, names, fmin, fmax, aperiodic, bands, model,
+                     **spec):
+    """One window's spectral parameters per channel (specparam): the
+    aperiodic fit, the strongest peak in each band (NaN without one), R² and
+    the error; a failed fit leaves NaNs."""
+    from specparam import SpectralModel
+
+    freqs, psd = spectrum(x, sfreq, **spec)
+    keep = (freqs >= fmin) & (freqs <= fmax) & (freqs > 0)
+    if keep.sum() < 4:
+        raise SystemExit("specparam needs at least 4 frequencies in its range")
+    head = ["offset", "knee", "exponent"] if aperiodic == "knee" else ["offset",
+                                                                      "exponent"]
+    measures = (*head, *(f"{b}_{f}" for b, _, _ in bands
+                         for f in ("frequency", "power", "bandwidth")),
+                "r_squared", "error")
+    rows = np.full((x.shape[0], len(measures)), np.nan)
+    psd = np.maximum(psd, np.finfo(float).tiny)
+    for i, power in enumerate(psd[:, keep]):
+        fm = SpectralModel(aperiodic_mode=aperiodic, verbose=False, **model)
+        with warnings.catch_warnings(), np.errstate(all="ignore"):
+            warnings.simplefilter("ignore")
+            try:
+                fm.fit(freqs[keep], power)
+            except Exception:  # a failed fit leaves NaNs
+                continue
+        if not fm.results.has_model:
+            continue
+        row = [float(v) for v in np.atleast_1d(fm.get_params("aperiodic"))]
+        peaks = np.asarray(fm.get_params("periodic"), dtype=float).reshape(-1, 3)
+        for _, lo, hi in bands:
+            inside = peaks[(peaks[:, 0] >= lo) & (peaks[:, 0] < hi)]
+            row.extend([float(v) for v in inside[np.argmax(inside[:, 1])]]
+                       if len(inside) else [np.nan] * 3)
+        rows[i] = [*row, float(fm.get_metrics("gof")), float(fm.get_metrics("error"))]
+    return rows, ("channel", "measure"), {"channel": names, "measure": measures}
+''',
+    "write_features_tsv": '''def write_features_tsv(path, feats):
+    """The windows as MeegXer's feature TSV: window_start, window_stop,
+    timestamp, then one column per value named by its coordinates
+    (Fz|10.0); the values' units in a JSON sidecar (BIDS style) when stated."""
+    if not feats["windows"]:
+        print(f"no windows: {path} not written")
+        return
+    shape = feats["values"].shape[1:]
+    axes = [[str(v) for v in feats["coords"].get(dim, range(size))]
+            for dim, size in zip(feats["dims"], shape)]
+    grid = np.array(np.meshgrid(*axes, indexing="ij")).reshape(len(axes), -1)
+    columns = ["|".join(col) for col in grid.T]
+    unit = feats["unit"]
+    if isinstance(unit, str):
+        units = [unit] * len(columns)
+    else:
+        axis = feats["dims"].index(unit[0])
+        units = [unit[1][i] for i in np.indices(shape)[axis].ravel()]
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    if any(units):
+        sidecar = {"window_start": {"Units": "sample"},
+                   "window_stop": {"Units": "sample"}, "timestamp": {"Units": "s"},
+                   **{c: {"Units": u} for c, u in zip(columns, units) if u}}
+        with open(os.path.splitext(path)[0] + ".json", "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(sidecar, indent=2) + "\\n")
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        out = csv.writer(fh, delimiter="\\t", lineterminator="\\n")
+        out.writerow(["window_start", "window_stop", "timestamp", *columns])
+        for (start, stop), ts, values in zip(feats["windows"], feats["timestamps"],
+                                             feats["values"]):
+            out.writerow([str(start), str(stop), repr(ts),
+                          *("n/a" if np.isnan(v) else repr(float(v))
+                            for v in values.ravel())])
+    print(f"wrote {path}")
+''',
 }
 HELPER_IMPORTS = {
     "causal_sos": ("from scipy import signal",),
@@ -369,6 +531,10 @@ HELPER_IMPORTS = {
     "fit_ica": ("import numpy as np", "import warnings"),
     "add_ica_to_set": ("import numpy as np",),
     "detectors": ("import re",),
+    "windowed": ("import numpy as np", "from scipy import signal"),
+    "morlet_window": ("from scipy import signal",),
+    "specparam_window": ("import warnings",),
+    "write_features_tsv": ("import csv", "import json", "import os"),
 }
 
 SCRIPT = '''#!/usr/bin/env python3
@@ -391,10 +557,11 @@ Strips:
 
 {helpers}
 def pipeline(path):
-    """The pipeline on the recording at path: (raw, epochs or None)."""
-    epochs = None
+    """The pipeline on the recording at path: (raw, epochs or None, features:
+    each feature strip's windows by its id)."""
+    epochs, features = None, {{}}
 {body}
-    return raw, epochs
+    return raw, epochs, features
 
 
 def main():
@@ -403,7 +570,7 @@ def main():
     parser.add_argument("-o", "--out", help="write the signal here")
     parser.add_argument("--epochs", help="write the epochs here")
     args = parser.parse_args()
-    raw, epochs = pipeline(args.recording)
+    raw, epochs, _ = pipeline(args.recording)
     if args.out:
         save(raw, args.out)
     if args.epochs:
@@ -454,11 +621,16 @@ def standalone_script(
     parts: list[tuple[str, str, ExportCode, tuple[str, ...] | None]] = []
     last_signal = None  # the node the chain's signal comes from
     epochs_from = None  # the Epochs strip whose epochs `epochs` holds
+    feature_strips: set[str] = set()  # their windows: features[id]
     for node in graph.nodes:
         impl = node.impl
         if isinstance(impl, Probe):
             continue  # what the GUI shows
-        reads_chain = node.input in (last_signal, f"{epochs_from}:epochs")
+        reads_chain = node.input in (last_signal, f"{epochs_from}:epochs",
+                                     *feature_strips)  # fmt: skip
+        gives_features = bool(node.manifest.outputs) and (
+            node.manifest.outputs[0].type == PortType.FEATURES
+        )
         if node.input is not None and not reads_chain:
             missing.append(f"{node.id} (reads {node.input}, not the chain)")
             continue
@@ -470,7 +642,10 @@ def standalone_script(
             stage = impl.for_mode("offline")
             code = stage.processor.export_code(stage.params)
             types = stage.channel_types
-            last_signal = node.id
+            if gives_features:  # a side branch: the signal goes on unchanged
+                feature_strips.add(node.id)
+            else:
+                last_signal = node.id
         else:
             code = impl.export_code()
             if node.input is None:
@@ -480,6 +655,11 @@ def standalone_script(
             continue
         if any(line.startswith("epochs = ") for line in code.lines):
             epochs_from = node.id  # its epochs are what `epochs` holds now
+        if gives_features:  # its windows, for the writers reading them
+            code = replace(code, lines=(*code.lines, f"features[{node.id!r}] = feats"))
+        elif node.input in feature_strips:  # a feature writer
+            code = replace(code, lines=(f"feats = features[{node.input!r}]",
+                                        *code.lines))  # fmt: skip
         parts.append((node.id, node.manifest.name, code, types))
     if missing:
         raise NotExportable(
