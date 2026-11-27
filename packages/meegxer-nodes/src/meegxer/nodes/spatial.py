@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import warnings
 from functools import lru_cache
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 import numpy.typing as npt
@@ -26,6 +26,9 @@ from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, Processor, TransformResult
 from meegxer.core.serialization import State
 from meegxer.nodes._manifest import stream_manifest
+
+if TYPE_CHECKING:
+    from meegxer.core.mne_export import ExportCode
 
 Matrix = npt.NDArray[np.float64]
 _NOT_EEG = {"eog", "ecg", "emg", "misc", "stim", "resp", "bio", "gsr", "temperature"}
@@ -132,6 +135,30 @@ class InterpolateBads(Processor):
         input_space="sensor",  # electrodes only (spec 0.2.22)
     )
 
+    def export_code(self, params: Params) -> ExportCode:
+        from meegxer.core.mne_export import ExportCode
+
+        return ExportCode(
+            comment="interpolate the bad channels by spherical splines (MNE)",
+            lines=(
+                "idx = spline_channels(raw, picks)",
+                "bads = [raw.ch_names[i] for i in idx "
+                "if raw.ch_names[i] in raw.info['bads']]",
+                "if bads:",
+                "    good = [i for i in idx if raw.ch_names[i] not in bads]",
+                "    if len(good) < 3:",
+                "        raise SystemExit('interpolation needs at least three good "
+                "channels with positions')",
+                "    sub = spline_copy(raw, idx, bads)",
+                "    centre, _ = fit_sphere(raw, good)",
+                "    sub.interpolate_bads(reset_bads=False, origin=tuple(centre), "
+                "verbose='error')",
+                "    raw.apply_function(lambda x: sub.get_data(), picks=idx, "
+                "channel_wise=False)",
+            ),
+            helpers=("spline_channels",),
+        )
+
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
@@ -167,6 +194,31 @@ class CSD(Processor):
         requires_positions=True,
         input_space="sensor",  # electrodes only (spec 0.2.22)
     )  # fmt: skip
+
+    def export_code(self, params: Params) -> ExportCode:
+        from meegxer.core.mne_export import ExportCode
+
+        lambda2, stiffness = float(params["lambda2"]), float(params["stiffness"])
+        terms = int(params["n_legendre_terms"])
+        return ExportCode(
+            comment="surface Laplacian (current source density) by spherical "
+                    "splines (MNE), in V/m²",
+            lines=(
+                "idx = spline_channels(raw, picks)",
+                "good = [i for i in idx if raw.ch_names[i] not in raw.info['bads']]",
+                "if len(good) < 4:",
+                "    raise SystemExit('CSD needs at least four good channels with "
+                "positions')",
+                "centre, radius = fit_sphere(raw, good)",
+                "sub = mne.preprocessing.compute_current_source_density(",
+                "    spline_copy(raw, good, []), sphere=(*centre, radius),",
+                f"    lambda2={lambda2!r}, stiffness={stiffness!r}, "
+                f"n_legendre_terms={terms}, verbose='error')",
+                "raw.apply_function(lambda x: sub.get_data(), picks=good, "
+                "channel_wise=False)",
+            ),
+            helpers=("spline_channels",),
+        )  # fmt: skip
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params

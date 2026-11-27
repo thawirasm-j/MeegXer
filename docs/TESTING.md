@@ -1169,10 +1169,16 @@ GUI (offscreen) *Save → Export as Python script…* wrote the chain shown.
    environment, with only MNE installed (`pip install mne`):
    `python erp_mne.py YOUR_RECORDING.set -o clean.fif --epochs ep-epo.fif`.
    Already run by Claude: the standalone script run with `python -I` gave
-   MeegXer's signal and epochs exactly (CI checks every strip).
+   MeegXer's signal and epochs exactly (CI checks every strip), and with
+   custom Python scripts inlined (`process`, `transform`, `process_epochs`)
+   to single precision.
+4. Optional, with a custom script of yours in the chain (`process(raw,
+   ...)`): export it standalone as in 3 and run it the same way; the
+   script's code is in the file (search for its name).
 
 | Item | Value / result | Notes |
 |---|---|---|
 | AG1 the GUI writes the script | | |
 | AG2 the script runs on Windows and writes the file | | |
 | AG3 the standalone script runs with only MNE installed | | |
+| AG4 (optional) with your custom script inlined | | |

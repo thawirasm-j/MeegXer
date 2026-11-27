@@ -363,3 +363,14 @@ ships (MNE, SciPy, scikit-learn, …) and those it declares in `REQUIRES`, which
 `meegxer sterile build` installs into the image. A local plugin that is a program of its
 own (`meegxer-plugin add --local`) cannot run in the image and is refused in
 Sterile mode.
+
+## In an exported pipeline
+
+`meegxer export PIPELINE` (a script that needs MeegXer) runs a pipeline with
+its custom scripts as they are added here. `meegxer export --standalone` (MNE
+code, no MeegXer; `docs/PYTHON_API.md`) inlines a script's source, with its
+SHA-256, and calls it as MeegXer does: `process(raw, ...)`,
+`process_epochs(epochs, ...)`, and a live `transform(data, state, ...)`
+(without `fit`) once on the whole recording. Script folders, calibrated
+scripts (`fit`) and feature scripts are named instead, for now. The exported
+file holds your code: share it as you would the script.

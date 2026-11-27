@@ -21,11 +21,11 @@ from meegxer.core.mne_export import NotExportable
 
 @pytest.fixture
 def recording(tmp_path: Path) -> Path:
-    """20 s: four EEG channels (Oz bad) and an EOG, events and a BAD mark."""
+    """20 s: six EEG channels (Oz bad) and an EOG, events and a BAD mark."""
     rng = np.random.default_rng(3)
-    info = mne.create_info(["Fz", "Cz", "Pz", "Oz", "EOG1"], 250.0,
-                           ["eeg"] * 4 + ["eog"])  # fmt: skip
-    raw = mne.io.RawArray(rng.standard_normal((5, 5000)) * 1e-5, info,
+    info = mne.create_info(["Fz", "Cz", "Pz", "Oz", "C3", "C4", "EOG1"], 250.0,
+                           ["eeg"] * 6 + ["eog"])  # fmt: skip
+    raw = mne.io.RawArray(rng.standard_normal((7, 5000)) * 1e-5, info,
                           verbose="error")  # fmt: skip
     raw.set_montage("standard_1020", on_missing="ignore", verbose="error")
     raw.info["bads"] = ["Oz"]
@@ -71,6 +71,10 @@ CASES = {
     "pick channels": [strip("p", "meegxer.nodes.pick_channels", keep_eog=True,
                             drop_bads=True)],
     "resample": [strip("rs", "meegxer.nodes.resample", sfreq=100.0)],
+    "interpolate bads": [strip("i", "meegxer.nodes.interpolate_bads")],
+    "csd": [strip("c", "meegxer.nodes.csd", stiffness=3.0)],
+    "csd after interpolation": [strip("i", "meegxer.nodes.interpolate_bads"),
+                                strip("c", "meegxer.nodes.csd")],
 }  # fmt: skip
 
 
