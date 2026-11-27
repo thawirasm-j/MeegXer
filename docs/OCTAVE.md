@@ -196,3 +196,28 @@ The image also holds `yulewalk.m`, MeegXer's tested port (the one the EEGLAB
 ASR plugin uses): `asr_calibrate` designs its filter with it at rates
 EEGLAB has no precomputed filter for (anything but 100, 128, 200, 256, 300,
 500 and 512 Hz), as Octave's signal package has no `yulewalk`.
+
+## Mixing MNE and EEGLAB
+
+One language per script, mixed by chaining strips (decided 2026-11-27): an
+MNE strip (a Python custom script, or a built-in) and an Octave/EEGLAB
+script are strips of one pipeline, in any order. MeegXer passes the data
+between them (MNE sees an `mne.io.Raw` in volts, EEGLAB an `EEG` in µV;
+events both ways). From Python, the whole chain is one script:
+
+```python
+from meegxer.api import run
+
+PIPELINE = {"spec_version": "0.2.23", "nodes": [
+    {"id": "input", "node": "meegxer.core.file"},
+    {"id": "mne", "node": "script.my_mne"},     # my_mne.py, added
+    {"id": "asr", "node": "script.lab_asr"},    # lab_asr.m, added
+    {"id": "ref", "node": "meegxer.nodes.rereference"},
+]}
+clean = run(PIPELINE, "sub-01.set")
+```
+
+`meegxer export` (or *Save → Export as Python script…*) writes such a script
+for a pipeline built in the GUI (`docs/PYTHON_API.md`). Calling Octave from
+inside a Python script (e.g. `oct2py`) is not supported: it would run your
+own Octave and EEGLAB, outside the image and its sandbox.
