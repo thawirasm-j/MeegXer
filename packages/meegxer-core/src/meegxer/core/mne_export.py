@@ -90,7 +90,7 @@ HELPER_IMPORTS = {
 }
 
 SCRIPT = '''#!/usr/bin/env python3
-"""MeegXer pipeline {name!r} as a standalone MNE script (MeegXer {version}).
+"""MeegXer pipeline {name} as a standalone MNE script (MeegXer {version}).
 
 It does what MeegXer's offline run of the pipeline does, with MNE, NumPy and
 SciPy only: no MeegXer needed.{fitted}
@@ -141,6 +141,13 @@ def save(data, path):
 if __name__ == "__main__":
     main()
 '''
+
+
+def in_docstring(text: str) -> str:
+    """Text as written in the script's docstring: a backslash (a Windows path
+    in a writer's setting, ``C:\\Users``) escaped, so it is no escape
+    sequence, and three quotes escaped, so they do not end it."""
+    return text.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
 
 
 def picks_line(types: tuple[str, ...]) -> str:
@@ -222,9 +229,9 @@ def standalone_script(
                                    if i not in std and i != "import mne")]  # fmt: skip
     fitted = any("fit" in code.comment.lower() for _, code, _ in parts)
     return SCRIPT.format(
-        name=name, version=version, file=file,
+        name=in_docstring(repr(name)), version=version, file=in_docstring(file),
         fitted=(" Models are fitted on the recording it reads." if fitted else ""),
-        strips="\n".join(strips) or "  (none)",
+        strips=in_docstring("\n".join(strips)) or "  (none)",
         imports="\n".join(std) + "\n\n" + "\n".join(third),
         helpers="".join(f"\n{HELPERS[h]}\n" for h in helpers),
         body="\n".join(body),

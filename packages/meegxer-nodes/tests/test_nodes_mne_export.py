@@ -135,3 +135,14 @@ def test_a_strip_without_code_is_named(recording: Path) -> None:
     # an Epochs strip rejecting other words than BAD has no MNE equivalent yet
     with pytest.raises(NotExportable, match=r"ep1 \(meegxer\.nodes\.epochs\)"):
         export_mne(pipeline(strip("ep1", "meegxer.nodes.epochs", reject="BLINK")))
+
+
+def test_windows_paths_and_quotes_stay_as_written() -> None:
+    """A writer's Windows path (``C:\\Users`` would be an escape) and three
+    quotes in the strips' list: the script compiles and its docstring shows
+    them as written."""
+    path = r'C:\Users\me\data\x"""y.set'
+    text = export_mne(pipeline(strip("set", "meegxer.core.set_writer", path=path)))
+    scope: dict[str, Any] = {"__name__": "exported"}
+    exec(compile(text, "run_mne.py", "exec"), scope)
+    assert path in scope["__doc__"]
