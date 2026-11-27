@@ -246,6 +246,22 @@ def test_eeg_is_the_recording_in_microvolts(tmp_path: Path) -> None:
 
 
 @needs_image
+def test_a_long_recording_and_late_events_come_back(tmp_path: Path) -> None:
+    """Over 1 MB of output, 1.1 million samples and an event past sample 10⁶:
+    Octave's jsonencode writes a double of 10⁶ or more as 1000000.0, which the
+    host refuses as a count or an index (Windows check AD1: "nbytes must be a
+    whole number >= 0, got 1075200.0"), so the SDK writes them as integers."""
+    late = write(tmp_path, "late", "function EEG = late (EEG)\n% Mark the end.\n"
+                 "  EEG.data = EEG.data * 2;\n"
+                 "  EEG.event(end + 1) = struct ('type', 'end', 'latency', "
+                 "EEG.pnts, 'duration', 1000000);\nend\n")  # fmt: skip
+    x, y, events = run(late, duration=1100.0, n_channels=2, sfreq=1000.0)
+    assert y.shape == (2, 1_100_000)  # 8.8 MB of float32 back
+    np.testing.assert_array_equal(y, (x.astype(np.float32) * 2).astype(np.float64))
+    assert events == [(1_099_999, "end")]
+
+
+@needs_image
 def test_settings_go_in_by_name_and_events_come_out(tmp_path: Path) -> None:
     path = write(tmp_path, "lab_bandpass", BANDPASS)
     _, unfiltered, events = run(path, {"method": "none", "label": "here"})

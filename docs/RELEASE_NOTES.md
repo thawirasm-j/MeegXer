@@ -194,6 +194,13 @@ no network. Its findings are fixed, each in its own PR; the limits are in
 
 ### Fixed
 
+- **Octave scripts failed on recordings of a few seconds and more** ("protocol
+  error: array 'data': nbytes must be a whole number >= 0, got 1075200.0"):
+  Octave writes a number of 10⁶ or more as `1000000.0`, which MeegXer refuses
+  where it needs a count or a sample index; any output of 1 MB or more (64
+  channels at 1 kHz for 4 s), and live, any event past sample 10⁶. The Octave
+  SDK now writes them as integers. Rebuild the Octave image (`meegxer-plugin
+  octave build`); EEGLAB plugin images built on the Octave SDK too.
 - The Spectrum view's head plot of power above the 1/f fit printed
   "RuntimeWarning: Mean of empty slice" for a flat channel (one with no
   aperiodic fit). That channel is left out of the map, as before, without
