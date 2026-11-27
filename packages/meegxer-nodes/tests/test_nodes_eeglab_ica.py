@@ -182,6 +182,18 @@ def test_a_spatial_strip_after_it_leaves_the_decomposition_out(tmp_path: Path) -
             "after it") in result.skipped  # fmt: skip
 
 
+def test_without_a_decomposition_a_spatial_strip_says_nothing(tmp_path: Path) -> None:
+    """A file without ICA, a re-reference, a .set (Windows check, error 4):
+    nothing to store, so no "ICA decomposition not stored" note (it read as if
+    the file was not written)."""
+    _, result, out = write_through(
+        tmp_path, export(tmp_path / "rec.set"),
+        {"id": "reref1", "node": "meegxer.nodes.rereference"},
+    )  # fmt: skip
+    assert out.exists() and read_decomposition(out) is None
+    assert not any("ICA" in note for note in [*result.skipped, *result.notes])
+
+
 @pytest.mark.parametrize("node", ["meegxer.nodes.rereference", "meegxer.nodes.ica",
                                   "meegxer.nodes.csd", "meegxer.nodes.interpolate_bads",
                                   "meegxer.nodes.eog_regression",

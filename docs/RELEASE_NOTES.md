@@ -194,6 +194,11 @@ no network. Its findings are fixed, each in its own PR; the limits are in
 
 ### Fixed
 
+- A `.set` writer after a re-reference (or another spatial strip) said
+  "skipped: … ICA decomposition not stored: … transforms the channels
+  after it" for a recording without any ICA, which read as if the file was
+  not written. It now says so only when there is a decomposition to leave
+  out.
 - `meegxer sterile build > build.log` (output redirected or piped, as in a
   log or CI) crashed on Windows with `UnicodeEncodeError` at pip's progress
   bar: Windows writes such output in its code page. `meegxer` and
