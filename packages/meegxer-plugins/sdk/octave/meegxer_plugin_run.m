@@ -125,7 +125,8 @@ function mx_result (rid, data, state, events, first)
   endif
   [tree, out] = mx_to_wire (state, out, "s");
   mx_write_frame (struct ("type", "result", "id", rid, "state", {tree},
-                          "events", {mx_events(events)}, "sample_index", first), out);
+                          "events", {mx_events(events)},
+                          "sample_index", mx_int (first)), out);
 endfunction
 
 function key = mx_key (model_id)
@@ -150,6 +151,8 @@ function evs = mx_events (events)
     e = events{i};
     if (! isfield (e, "duration")) e.duration = 0; endif
     if (! isfield (e, "payload")) e.payload = struct (); endif
+    e.sample_index = mx_int (e.sample_index);
+    e.duration = mx_int (e.duration);
     evs{i} = e;
   endfor
 endfunction
@@ -220,18 +223,30 @@ function [dtype, raw] = mx_encode_array (arr)
   raw = typecast (flat(:)', "uint8");
 endfunction
 
+## A whole number to be written as a JSON integer. Octave's jsonencode writes a
+## double of 1e6 or more as 1000000.0, a float the host refuses where it needs
+## a count or an index, and takes no integer types; so the number goes in as a
+## marker that mx_write_frame turns into the plain integer after encoding.
+## Anything else is kept as it is (the host refuses a fraction itself).
+function v = mx_int (v)
+  if (isnumeric (v) && isreal (v) && isscalar (v) && v == fix (v) && isfinite (v))
+    v = sprintf ("@@mxint:%d@@", v);
+  endif
+endfunction
+
 function mx_write_frame (header, arrays)
   descs = {}; payload = uint8 ([]); offset = 0;
   for i = 1:2:numel (arrays)
     [dtype, raw] = mx_encode_array (arrays{i + 1});
     descs{end + 1} = struct ("name", arrays{i}, "dtype", dtype,
-                             "shape", {num2cell(size(arrays{i + 1}))},
-                             "offset", offset, "nbytes", numel (raw));
+                             "shape", {cellfun(@mx_int, num2cell (size (arrays{i + 1})),
+                                               "UniformOutput", false)},
+                             "offset", mx_int (offset), "nbytes", mx_int (numel (raw)));
     payload = [payload, raw];
     offset += numel (raw);
   endfor
   header.arrays = descs;
-  head = uint8 (jsonencode (header));
+  head = uint8 (regexprep (jsonencode (header), '"@@mxint:(-?\d+)@@"', "$1"));
   hlen = typecast (uint32 (numel (head)), "uint8");
   plen = typecast (uint64 (numel (payload)), "uint8");
   global MX_OUT;
