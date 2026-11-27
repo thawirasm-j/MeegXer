@@ -124,10 +124,11 @@ and epochs writers, and custom Python scripts: a script's source is
 inlined (as a module of its own, with its SHA-256) and called as MeegXer
 calls it, `process(raw, ...)`, `process_epochs(epochs, ...)`,
 `features(data, ...)` on MeegXer's windows (its `UNITS` in the sidecar), and
-a live `transform(data, state, ...)` once on the whole recording (MeegXer sends a
+a live `transform(data, state, ...)` once on the whole recording, its
+`fit(raw, ...)` fitted again first as MeegXer fits it offline (MeegXer sends a
 plugin single precision; the script keeps double, so the two agree to single
 precision). More come strip by strip (`docs/ROADMAP.md`, M11.7). Any other
-strip (a script folder, a calibrated script, an Octave script, a
+strip (a script folder, an Octave script, a
 plugin image, a strip reading the ICs rail) is named and the script is not
 written:
 `export_script` runs any pipeline. The ICA a `.set` recording already holds

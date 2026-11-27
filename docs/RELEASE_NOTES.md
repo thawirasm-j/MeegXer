@@ -149,10 +149,10 @@ CI runs the Octave scripts in the Octave image.
   envelope, Epochs and the file writers, and your custom Python scripts: a
   script's source is copied in (with its SHA-256) and called as MeegXer
   calls it (`process`, `process_epochs`, `features`, and a live `transform`
-  without `fit` once on the whole recording; the same to single precision,
-  as MeegXer sends plugins). A pipeline with another strip (a script folder,
-  a calibrated script, a review strip, …) is named and left to the plain
-  export.
+  once on the whole recording, its `fit` fitted again first; the same to
+  single precision, as MeegXer sends plugins). A pipeline with another strip
+  (a script folder, an Octave script, a review strip, …) is named and left
+  to the plain export.
 
 ### Security
 

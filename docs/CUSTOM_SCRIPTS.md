@@ -371,7 +371,8 @@ its custom scripts as they are added here. `meegxer export --standalone` (MNE
 code, no MeegXer; `docs/PYTHON_API.md`) inlines a script's source, with its
 SHA-256, and calls it as MeegXer does: `process(raw, ...)`,
 `process_epochs(epochs, ...)`, `features(data, ...)` on MeegXer's windows,
-and a live `transform(data, state, ...)` (without `fit`) once on the whole
-recording. Script folders and calibrated scripts (`fit`) are named instead,
-for now. The exported
+and a live `transform(data, state, ...)` once on the whole recording, its
+`fit(raw, ...)` fitted again first on the recording it reads (with the
+events, for `FIT_EVENTS`). Script folders are named instead, for now. The
+exported
 file holds your code: share it as you would the script.
