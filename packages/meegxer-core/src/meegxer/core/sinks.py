@@ -15,6 +15,7 @@ its pipeline (``unfinished_recordings``; the GUI offers to recover it at start).
 from __future__ import annotations
 
 import csv
+import dataclasses
 import hashlib
 import json
 import os
@@ -315,13 +316,28 @@ class _RawFileSink(Sink):
         path, overwrite = str(self.params["path"]), bool(self.params["overwrite"])
         write = (f"raw.export({path!r}, fmt={self.fmt!r}, overwrite=True, "
                  "verbose='error')")  # fmt: skip
-        return ExportCode(
-            comment=f"write the signal to {path} (mne.export, {self.fmt})"
-            + ("" if overwrite else "; an existing file is kept"),
-            lines=(write,) if overwrite else (
-                f"if not os.path.exists({path!r}):", f"    {write}"),
-            imports=() if overwrite else ("import os",),
-        )  # fmt: skip
+        comment = f"write the signal to {path} (mne.export, {self.fmt})" + (
+            "" if overwrite else "; an existing file is kept"
+        )
+        writes = [write] + (["if ica is not None:",
+                             f"    add_ica_to_set({path!r}, raw, ica)"]
+                            if self.fmt == "eeglab" else [])  # fmt: skip
+
+        def code(lines: list[str], helpers: tuple[str, ...] = ()) -> ExportCode:
+            return ExportCode(
+                comment=comment,
+                lines=tuple(lines) if overwrite else (
+                    f"if not os.path.exists({path!r}):",
+                    *(f"    {line}" for line in lines)),
+                imports=() if overwrite else ("import os",),
+                helpers=helpers,
+            )  # fmt: skip
+
+        plain = code([write])
+        if self.fmt != "eeglab":
+            return plain
+        # after an ICA strip, the .set also stores its decomposition
+        return dataclasses.replace(plain, with_ica=code(writes, ("add_ica_to_set",)))
 
     def __init__(self, params: Mapping[str, object] | None = None) -> None:
         super().__init__(params)

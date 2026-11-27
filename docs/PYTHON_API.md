@@ -94,23 +94,31 @@ export_mne("erp.json", "erp_mne.py")
 python erp_mne.py sub-01.set -o clean.fif --epochs erp-epo.fif
 ```
 
-A standalone script: MNE, NumPy and SciPy only (decided 2026-11-27). Each
+A standalone script: MNE, NumPy, SciPy and the libraries its strips call
+(its docstring says what to `pip install`: mne-icalabel, onnxruntime and
+python-picard for ICA, a script's `REQUIRES`), no MeegXer (decided
+2026-11-27). Each
 strip writes its own code, next to the code it reproduces in MeegXer, and a
 test per strip checks that it gives the strip's offline output; fitted models
 are fitted again on the recording the script reads. Its `pipeline(path)`
 returns `(raw, epochs)`. Strips with such code so far: the File input, the
 IIR and FIR filters (causal and zero-phase), notch, re-reference, pick
-channels, resample, interpolate bad channels, CSD, Epochs, the `.set`,
-`.edf` and epochs writers, and custom Python scripts: a script's source is
+channels, resample, interpolate bad channels, CSD, ICA with ICLabel (fitted
+again on the recording; a `.set` writer after it stores the decomposition,
+less the removed components, as MeegXer's does), Epochs, the `.set`, `.edf`
+and epochs writers, and custom Python scripts: a script's source is
 inlined (as a module of its own, with its SHA-256) and called as MeegXer
 calls it, `process(raw, ...)` and `process_epochs(epochs, ...)`, and a live
 `transform(data, state, ...)` once on the whole recording (MeegXer sends a
 plugin single precision; the script keeps double, so the two agree to single
 precision). More come strip by strip (`docs/ROADMAP.md`, M11.7). Any other
 strip (a script folder, a calibrated or feature script, an Octave script, a
-plugin image) is named and the script is not written:
-`export_script` runs any pipeline. Also `meegxer export PIPELINE
---standalone`, and *Save → Export as standalone MNE script…* in the GUI.
+plugin image, a strip reading the ICs rail) is named and the script is not
+written:
+`export_script` runs any pipeline. Not carried yet: the ICA a `.set` input
+already holds (MeegXer's `.set` writer stores it again; the standalone
+script's does not). Also `meegxer export PIPELINE --standalone`, and *Save →
+Export as standalone MNE script…* in the GUI.
 
 ## MNE ICA files
 

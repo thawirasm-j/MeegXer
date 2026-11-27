@@ -25,7 +25,7 @@ unchanged.
 from __future__ import annotations
 
 import warnings
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 
@@ -34,6 +34,9 @@ from meegxer.core.manifest import Manifest
 from meegxer.core.node import Params, Processor, TransformResult
 from meegxer.core.serialization import State
 from meegxer.nodes._manifest import stream_manifest
+
+if TYPE_CHECKING:
+    from meegxer.core.mne_export import ExportCode
 
 # ICLabel's classes, in the order of its output columns
 CLASSES = ("brain", "muscle", "eye", "heart", "line_noise", "channel_noise", "other")
@@ -206,6 +209,36 @@ class ICAClean(Processor):
                        "space": "component"}],
         input_space="sensor",  # electrodes only (spec 0.2.22)
     )  # fmt: skip
+
+    def export_code(self, params: Params) -> ExportCode:
+        from meegxer.core.mne_export import ExportCode
+
+        method = str(params["method"])
+        classes = [c for c in REJECTABLE if params[f"reject_{c}"]]
+        threshold = float(params["threshold"])
+        named = {"picard": "extended Picard", "infomax": "extended Infomax"}
+        removes = (f"remove {', '.join(c.replace('_', ' ') for c in classes)} "
+                   f"components (ICLabel ≥ {threshold:g})" if classes
+                   else "remove none")  # fmt: skip
+        return ExportCode(
+            comment=f"ICA ({named.get(method, method)}, MNE) fitted on the "
+                    f"recording, ICLabel (mne-icalabel); {removes}",
+            lines=(
+                f"ica = fit_ica(raw, picks, {method!r}, "
+                f"{int(params['n_components'])}, {int(params['max_iter'])}, "
+                f"{int(params['seed'])})",
+                f"ica['removed'] = ica_rejected(ica, {threshold!r}, {classes!r})",
+                "if ica['removed']:",
+                "    idx = [raw.ch_names.index(c) for c in ica['channels']]",
+                "    w, a = ica['weights'][ica['removed']], "
+                "ica['winv'][:, ica['removed']]",
+                "    raw.apply_function(lambda x: x - a @ (w @ x), picks=idx, "
+                "channel_wise=False)",
+            ),
+            helpers=("fit_ica",),
+            packages=(("python-picard",) if method == "picard" else ())
+            + ("mne-icalabel", "onnxruntime"),
+        )  # fmt: skip
 
     def fit(self, calibration: Block, params: Params) -> State:
         info = calibration.info

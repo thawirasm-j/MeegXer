@@ -33,6 +33,11 @@ class ExportCode:
     # module-level code of its own (a custom script's source, inlined), each
     # written once even when several strips give the same
     definitions: tuple[str, ...] = ()
+    # what the script needs besides MNE, NumPy and SciPy (pip names)
+    packages: tuple[str, ...] = ()
+    # the code instead, when an ICA strip before it may hold a decomposition
+    # (`ica`): a .set writer stores it, as MeegXer's does
+    with_ica: ExportCode | None = None
 
 
 class NotExportable(ValueError):
@@ -182,6 +187,133 @@ def spline_copy(raw, idx, bads):
         out.set_montage(montage, on_missing="ignore", verbose="error")
     return out
 ''',
+    "fit_ica": '''ICLABEL_CLASSES = ("brain", "muscle", "eye", "heart", "line_noise",
+                   "channel_noise", "other")  # ICLabel's output columns
+
+
+def fit_ica(raw, picks, method, n_components, max_iter, seed):
+    """ICA of the strip's good channels, as MeegXer fits it: MNE's ICA
+    (extended Picard, or extended Infomax) on the data in microvolts, the
+    components scaled to RMS microvolts as EEGLAB does, then classified by
+    ICLabel (mne-icalabel): channels, weights, winv and probabilities."""
+    good = [i for i in picks if raw.ch_names[i] not in raw.info["bads"]]
+    if len(good) < 2:
+        raise SystemExit("ICA needs at least two good channels")
+    x = raw.get_data(picks=good)
+    s = np.linalg.svd(x - x.mean(axis=1, keepdims=True), compute_uv=False)
+    rank = int((s > s[0] * 1e-6).sum())
+    n = n_components or rank
+    if n > rank:
+        raise SystemExit(f"n_components={n} exceeds the data rank {rank}")
+    work = mne.io.RawArray(x * 1e6, mne.create_info(len(good), raw.info["sfreq"],
+                                                    "eeg"), verbose="error")
+    fit_params = {"extended": True}
+    if method == "picard":
+        fit_params["ortho"] = False  # extended Picard = Extended Infomax's model
+    ica = mne.preprocessing.ICA(n_components=n, method=method,
+                                fit_params=fit_params, max_iter=max_iter,
+                                random_state=seed, verbose="error")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # convergence notes
+        ica.fit(work, verbose="error")
+    weights = ica.unmixing_matrix_ @ ica.pca_components_[: ica.n_components_]
+    weights = weights / ica.pre_whitener_.T
+    scaling = np.sqrt(np.mean(np.linalg.pinv(weights) ** 2, axis=0))
+    weights = weights * scaling[:, None]  # EEGLAB's option_scaleicarms
+    return {"channels": [raw.ch_names[i] for i in good], "weights": weights,
+            "winv": np.linalg.pinv(weights),
+            "probabilities": iclabel(raw, good, weights)}
+
+
+def iclabel(raw, good, weights):
+    """ICLabel's probabilities (components x 7 classes, mne-icalabel) for
+    weights in EEGLAB's convention, given to it as
+    mne.preprocessing.read_ica_eeglab builds an ICA."""
+    from mne_icalabel.iclabel import iclabel_label_components
+
+    names = [raw.ch_names[i] for i in good]
+    positions = {}
+    for i in good:
+        xyz = np.asarray(raw.info["chs"][i]["loc"][:3], dtype=float)
+        if np.all(np.isfinite(xyz)) and np.any(xyz):
+            positions[raw.ch_names[i]] = xyz
+    missing = [c for c in names if c not in positions]
+    if missing:
+        raise SystemExit("ICLabel needs electrode positions; set a montage or "
+                         f"positions for {', '.join(missing)}")
+    sub = mne.io.RawArray(raw.get_data(picks=good),
+                          mne.create_info(names, raw.info["sfreq"], "eeg"),
+                          verbose="error")
+    sub.set_montage(mne.channels.make_dig_montage(positions, coord_frame="head"),
+                    verbose="error")
+    n_comp, n_ch = weights.shape
+    ica = mne.preprocessing.ICA(method="picard",
+                                fit_params={"extended": True, "ortho": False})
+    ica.current_fit = "raw"
+    ica.ch_names = names
+    ica.n_pca_components = None
+    ica.n_components_ = n_comp
+    ica.pre_whitener_ = np.ones((n_ch, 1))
+    ica.pca_mean_ = np.zeros(n_ch)
+    u, s, v = np.linalg.svd(weights, full_matrices=False)
+    ica.unmixing_matrix_ = u * s
+    ica.pca_components_ = v
+    ica.pca_explained_variance_ = s * s
+    ica.info = sub.info
+    ica._update_mixing_matrix()
+    ica._update_ica_names()
+    ica.reject_ = None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # reference and filter advice
+        proba = iclabel_label_components(sub, ica, inplace=False, backend="onnx")
+    return np.asarray(proba, dtype=np.float64)
+
+
+def ica_rejected(ica, threshold, classes):
+    """The components whose probability for any of these classes reaches the
+    threshold."""
+    cols = [ICLABEL_CLASSES.index(c) for c in classes]
+    if not cols:
+        return []
+    hit = (ica["probabilities"][:, cols] >= threshold).any(axis=1)
+    return [int(i) for i in np.flatnonzero(hit)]
+''',
+    "add_ica_to_set": '''def add_ica_to_set(path, raw, ica):
+    """Store the ICA in the .set just written (mne.export leaves its fields
+    empty), as MeegXer's .set writer does: icaweights (an identity
+    icasphere), icawinv, icachansind and ICLabel's classes, the components
+    removed from the data left out (as EEGLAB's pop_subcomp)."""
+    from scipy.io import loadmat, savemat
+
+    labels = list(raw.ch_names)
+    missing = [c for c in ica["channels"] if c not in labels]
+    if missing:
+        print(f"ICA decomposition not stored in {path}: the file has no "
+              f"channels {', '.join(missing)}")
+        return
+    keep = [k for k in range(len(ica["weights"])) if k not in ica["removed"]]
+    names = np.empty((1, 7), dtype=object)
+    names[0, :] = ["Brain", "Muscle", "Eye", "Heart", "Line Noise",
+                   "Channel Noise", "Other"]
+    fields = {
+        "icaweights": ica["weights"][keep],
+        "icasphere": np.eye(len(ica["channels"])),
+        "icawinv": ica["winv"][:, keep],
+        "icachansind": np.array([[labels.index(c) + 1 for c in ica["channels"]]],
+                                dtype=np.float64),
+        "icaact": np.zeros((0, 0)),
+        "etc": {"ic_classification": {"ICLabel": {
+            "classes": names, "classification": ica["probabilities"][keep],
+            "version": "default"}}},
+    }
+    mat = {k: v for k, v in loadmat(path).items() if not k.startswith("__")}
+    if "EEG" in mat:  # saved as one struct
+        eeg = mat["EEG"]
+        mat["EEG"] = {**{n: eeg[n][0, 0] for n in eeg.dtype.names}, **fields}
+    else:  # top-level fields (as mne.export writes them)
+        mat.update(fields)
+    savemat(path, mat, oned_as="row")
+''',
 }
 HELPER_IMPORTS = {
     "causal_sos": ("from scipy import signal",),
@@ -191,13 +323,15 @@ HELPER_IMPORTS = {
     "spline_channels": ("import numpy as np",),
     "run_process": ("import numpy as np",),
     "run_transform": ("import numpy as np",),
+    "fit_ica": ("import numpy as np", "import warnings"),
+    "add_ica_to_set": ("import numpy as np",),
 }
 
 SCRIPT = '''#!/usr/bin/env python3
 """MeegXer pipeline {name} as a standalone MNE script (MeegXer {version}).
 
-It does what MeegXer's offline run of the pipeline does, with MNE, NumPy and
-SciPy only: no MeegXer needed.{fitted}
+It does what MeegXer's offline run of the pipeline does, without MeegXer
+(it needs: pip install {packages}).{fitted}
 
     python {file} RECORDING [-o OUT] [--epochs EPOCHS_OUT]
 
@@ -273,7 +407,7 @@ def standalone_script(
 
     graph = load_session(document, Registry.from_entry_points()).graph
     missing: list[str] = []
-    parts: list[tuple[str, ExportCode, tuple[str, ...] | None]] = []
+    parts: list[tuple[str, str, ExportCode, tuple[str, ...] | None]] = []
     last_signal = None  # the node the chain's signal comes from
     epochs_from = None  # the Epochs strip whose epochs `epochs` holds
     for node in graph.nodes:
@@ -302,19 +436,28 @@ def standalone_script(
             continue
         if any(line.startswith("epochs = ") for line in code.lines):
             epochs_from = node.id  # its epochs are what `epochs` holds now
-        parts.append((node.id, code, types))
+        parts.append((node.id, node.manifest.name, code, types))
     if missing:
         raise NotExportable(
             "these strips have no standalone MNE code yet: "
             + ", ".join(missing)
             + "; `meegxer export` (needs MeegXer) runs any pipeline"
         )
+    from meegxer.core.eeglab_ica import SPATIAL
+
     imports = {"import argparse", "import mne"}
     helpers: list[str] = []
     definitions: list[str] = []
-    body: list[str] = []
+    packages = ["mne", "numpy", "scipy"]
+    # an ICA strip's decomposition, which a .set writer after it stores
+    uses_ica = any(line.startswith("ica = ") for _, _, code, _ in parts
+                   for line in code.lines)  # fmt: skip
+    body: list[str] = ["    ica = None"] if uses_ica else []
     strips: list[str] = []
-    for node_id, code, types in parts:
+    for node_id, name_, code, types in parts:
+        if uses_ica and code.with_ica is not None:
+            code = code.with_ica
+        packages += [p for p in code.packages if p not in packages]
         imports.update(code.imports)
         wanted = [*code.helpers, *(["channels_of"] if types is not None else [])]
         for helper in wanted:
@@ -327,6 +470,10 @@ def standalone_script(
         if types is not None:
             body.append(f"    {picks_line(types)}")
         body.extend(f"    {line}" for line in code.lines)
+        if uses_ica and name_ in SPATIAL:
+            body.append(
+                "    ica = None  # the channels changed: it unmixes them no more"
+            )
     if "channels_of" in helpers and not any(
         "channels_of(" in line for line in body
     ):  # every strip took every channel
@@ -335,10 +482,12 @@ def standalone_script(
     std += sorted(i for i in imports if i.startswith("from fractions"))
     third = ["import mne", *sorted(i for i in imports
                                    if i not in std and i != "import mne")]  # fmt: skip
-    fitted = any("fit" in code.comment.lower() for _, code, _ in parts)
+    fitted = any("fit" in code.comment.lower() for _, _, code, _ in parts)
     return SCRIPT.format(
         name=in_docstring(repr(name)), version=version, file=in_docstring(file),
-        fitted=(" Models are fitted on the recording it reads." if fitted else ""),
+        packages=" ".join(packages),
+        fitted=("\nModels are fitted again on the recording it reads." if fitted
+                else ""),
         strips=in_docstring("\n".join(strips)) or "  (none)",
         imports="\n".join(std) + "\n\n" + "\n".join(third),
         helpers="".join(f"\n{HELPERS[h]}\n" for h in helpers)

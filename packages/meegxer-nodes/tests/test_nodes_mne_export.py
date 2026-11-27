@@ -133,9 +133,9 @@ def test_a_chain_with_epochs_runs_as_its_own_program(
 
 
 def test_a_strip_without_code_is_named(recording: Path) -> None:
-    with pytest.raises(NotExportable, match=r"ica1 \(meegxer\.nodes\.ica\).*"
-                                            r"meegxer export"):  # fmt: skip
-        export_mne(pipeline(strip("ica1", "meegxer.nodes.ica")))
+    with pytest.raises(NotExportable, match=r"b1 \(meegxer\.nodes\.detect_blinks\)"
+                                            r".*meegxer export"):  # fmt: skip
+        export_mne(pipeline(strip("b1", "meegxer.nodes.detect_blinks")))
     # an Epochs strip rejecting other words than BAD has no MNE equivalent yet
     with pytest.raises(NotExportable, match=r"ep1 \(meegxer\.nodes\.epochs\)"):
         export_mne(pipeline(strip("ep1", "meegxer.nodes.epochs", reject="BLINK")))
@@ -150,3 +150,62 @@ def test_windows_paths_and_quotes_stay_as_written() -> None:
     scope: dict[str, Any] = {"__name__": "exported"}
     exec(compile(text, "run_mne.py", "exec"), scope)
     assert path in scope["__doc__"]
+
+
+def test_ica_is_fitted_again_and_stored_in_the_set(tmp_path: Path) -> None:
+    """ICA (fitted again in the script), ICLabel and the removal give
+    MeegXer's signal; a .set writer after it stores the decomposition, less
+    the removed components, as MeegXer's writer does."""
+    names = ["Fp1", "Fp2", "F3", "F4", "F7", "F8", "C3", "C4", "Cz", "Fz",
+             "P3", "P4", "Pz", "O1", "O2", "T7"]  # fmt: skip
+    rng = np.random.default_rng(11)
+    n, sfreq = 7500, 250.0
+    t = np.arange(n) / sfreq
+    sources = rng.laplace(size=(len(names), n))
+    sources[0] = (np.sin(2 * np.pi * 0.3 * t) > 0.95) * 8.0  # blinks
+    mixing = rng.standard_normal((len(names), len(names)))
+    mixing[:, 0] = [6, 6, 3, 3, 2, 2, 0.5, 0.5, 1, 3, 0.2, 0.2, 0.2, 0.1, 0.1, 0.5]
+    info = mne.create_info(names, sfreq, "eeg")
+    raw = mne.io.RawArray(mixing @ sources * 5e-6, info, verbose="error")
+    raw.set_montage("standard_1020", verbose="error")
+    rec = tmp_path / "ica_raw.fif"
+    raw.save(rec, verbose="error")
+    ours, theirs = tmp_path / "meegxer.set", tmp_path / "exported.set"
+
+    def pipe(path: Path) -> dict[str, Any]:
+        return pipeline(
+            strip("ica1", "meegxer.nodes.ica", threshold=0.3, max_iter=500),
+            strip("set", "meegxer.core.set_writer", path=str(path)),
+        )
+
+    want = run(pipe(ours), rec)
+    text = export_mne(pipe(theirs))
+    assert "pip install mne numpy scipy python-picard mne-icalabel onnxruntime" in text
+    scope: dict[str, Any] = {"__name__": "exported"}
+    exec(compile(text, "run_mne.py", "exec"), scope)
+    got, _ = scope["pipeline"](str(rec))
+    np.testing.assert_allclose(got.get_data(), want.get_data(), rtol=1e-9,
+                               atol=1e-16)  # fmt: skip
+    assert not np.allclose(got.get_data(), raw.get_data())  # components removed
+    a, b = (
+        mne.preprocessing.read_ica_eeglab(p, verbose="error") for p in (ours, theirs)
+    )
+    assert a.n_components_ == b.n_components_ < len(names)  # removed ones left out
+    np.testing.assert_allclose(b.get_components(), a.get_components(), rtol=1e-6)
+    # a re-reference between them: the decomposition unmixes the channels no
+    # more, so neither writer stores it
+    from scipy.io import loadmat
+
+    def rereferenced(path: Path) -> dict[str, Any]:
+        doc = pipe(path)
+        doc["nodes"].insert(2, strip("r", "meegxer.nodes.rereference"))
+        return doc
+
+    ours, theirs = tmp_path / "meegxer_ref.set", tmp_path / "exported_ref.set"
+    run(rereferenced(ours), rec)
+    scope = {"__name__": "exported"}
+    exec(compile(export_mne(rereferenced(theirs)), "run_mne.py", "exec"), scope)
+    scope["pipeline"](str(rec))
+    for p in (ours, theirs):
+        assert p.exists()
+        assert np.size(loadmat(str(p)).get("icaweights", [])) == 0

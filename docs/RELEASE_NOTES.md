@@ -141,13 +141,14 @@ CI runs the Octave scripts in the Octave image.
   `export_mne`, or *Export as standalone MNE script…*) writes MNE, NumPy and
   SciPy code instead, no MeegXer needed: each strip's own code, tested to
   give what the strip gives. So far for the File input, the filters, notch,
-  re-reference, pick channels, resample, interpolate bad channels, CSD,
+  re-reference, pick channels, resample, interpolate bad channels, CSD, ICA
+  with ICLabel (fitted again; a `.set` after it stores the decomposition),
   Epochs and the file writers, and your custom Python scripts: a script's
   source is copied in (with its SHA-256) and called as MeegXer calls it
   (`process`, `process_epochs`, and a live `transform` without `fit` once on
   the whole recording; the same to single precision, as MeegXer sends
   plugins). A pipeline with another strip (a script folder, a calibrated or
-  feature script, ICA, …) is named and left to the plain export.
+  feature script, a detector, …) is named and left to the plain export.
 
 ### Security
 

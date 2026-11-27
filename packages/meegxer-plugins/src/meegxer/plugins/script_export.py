@@ -67,7 +67,10 @@ def script_export_code(path: Path, params: dict[str, Any]) -> ExportCode | None:
         f"{module}.process_epochs{settings})",
     }[kind]
     shown = ", ".join(f"{k}={v!r}" for k, v in params.items())
+    from meegxer.plugins.requires import declared
+
     return ExportCode(
+        packages=tuple(str(r) for r in declared(path)),  # its REQUIRES
         comment=f"custom script {path.name}: {kind}({shown})",
         lines=(call,),
         imports=("import types",),

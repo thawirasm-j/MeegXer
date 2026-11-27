@@ -297,8 +297,9 @@ def export_mne(
     pipeline: str | PathLike[str] | Mapping[str, Any],
     path: str | PathLike[str] | None = None,
 ) -> str:
-    """The pipeline as a standalone MNE script: MNE, NumPy and SciPy only, no
-    MeegXer (decided 2026-11-27, ``meegxer.core.mne_export``). Each strip
+    """The pipeline as a standalone MNE script: MNE, NumPy, SciPy and the
+    libraries its strips call (its docstring names them), no MeegXer (decided
+    2026-11-27, ``meegxer.core.mne_export``). Each strip
     writes its own code, tested to give the strip's offline output; fitted
     models are fitted again on the recording the script reads. Raises
     ``meegxer.core.mne_export.NotExportable`` naming the strips without code
