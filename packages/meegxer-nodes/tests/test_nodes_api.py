@@ -163,7 +163,7 @@ def test_an_exported_script_keeps_every_value_and_names_its_plugins() -> None:
     quotes), a session's models, and the custom scripts it needs, named."""
     from meegxer.api import export_script
 
-    params: dict[str, Any] = {"path": "C:\\data\\it's \"x\".set"}
+    params: dict[str, Any] = {"path": 'C:\\data\\it\'s "x".set'}
     nodes = [{"id": "input", "node": "meegxer.core.file"},
              {"id": "lab", "node": "script.lab_x", "params": params}]  # fmt: skip
     spec = {"spec_version": SPEC_VERSION, "nodes": nodes}
