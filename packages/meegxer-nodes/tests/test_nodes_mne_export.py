@@ -133,9 +133,9 @@ def test_a_chain_with_epochs_runs_as_its_own_program(
 
 
 def test_a_strip_without_code_is_named(recording: Path) -> None:
-    with pytest.raises(NotExportable, match=r"b1 \(meegxer\.nodes\.detect_blinks\)"
+    with pytest.raises(NotExportable, match=r"e1 \(meegxer\.nodes\.eog_regression\)"
                                             r".*meegxer export"):  # fmt: skip
-        export_mne(pipeline(strip("b1", "meegxer.nodes.detect_blinks")))
+        export_mne(pipeline(strip("e1", "meegxer.nodes.eog_regression")))
     # an Epochs strip rejecting other words than BAD has no MNE equivalent yet
     with pytest.raises(NotExportable, match=r"ep1 \(meegxer\.nodes\.epochs\)"):
         export_mne(pipeline(strip("ep1", "meegxer.nodes.epochs", reject="BLINK")))
@@ -209,3 +209,56 @@ def test_ica_is_fitted_again_and_stored_in_the_set(tmp_path: Path) -> None:
     for p in (ours, theirs):
         assert p.exists()
         assert np.size(loadmat(str(p)).get("icaweights", [])) == 0
+
+
+@pytest.fixture
+def artefacts(tmp_path: Path) -> Path:
+    """30 s at 500 Hz: jumps, a flat stretch, muscle bursts and blinks on an
+    EOG channel, "go" events."""
+    rng = np.random.default_rng(21)
+    sfreq, n = 500.0, 15000
+    names = ["Fz", "Cz", "Pz", "C3", "C4", "EOG1"]
+    x = rng.standard_normal((6, n)) * 5e-6
+    x[1, 4000] += 400e-6  # a jump
+    x[2, 9000:9600] = 0.0  # flat
+    for start in (6000, 21 * 500):  # muscle: 120 Hz bursts
+        t = np.arange(400) / sfreq
+        x[:5, start : start + 400] += 60e-6 * np.sin(2 * np.pi * 120 * t)
+    for peak in (1500, 4500, 7500, 10500, 13500):  # blinks
+        x[5, peak - 100 : peak + 100] += 300e-6 * np.hanning(200)
+    info = mne.create_info(names, sfreq, ["eeg"] * 5 + ["eog"])
+    raw = mne.io.RawArray(x, info, verbose="error")
+    raw.set_annotations(mne.Annotations([3, 8, 13, 18, 23], [0] * 5, ["go"] * 5))
+    path = tmp_path / "art_raw.fif"
+    raw.save(path, verbose="error")
+    return path
+
+
+def events(raw: Any) -> list[tuple[float, float, str]]:
+    return sorted((round(a["onset"], 6), round(a["duration"], 6), a["description"])
+                  for a in raw.annotations)  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "detector",
+    [strip("d", "meegxer.nodes.detect_amplitude", peak=150.0, bad_percent=1.0),
+     strip("d", "meegxer.nodes.detect_amplitude", peak=0.0, flat=0.5),
+     strip("d", "meegxer.nodes.detect_muscle", zscore=3.0),
+     strip("d", "meegxer.nodes.detect_blinks", mark_label="BAD_blink")],
+    ids=["jumps", "flat", "muscle", "blinks"],
+)  # fmt: skip
+def test_each_detector_s_events_are_meegxer_s(
+    artefacts: Path, detector: dict[str, Any]
+) -> None:
+    """The events a detector adds, and the epochs a BAD-rejecting Epochs
+    strip keeps after it, as MeegXer's run gives them."""
+    epochs = strip("ep1", "meegxer.nodes.epochs", events="go", tmin=-0.2,
+                   tmax=0.8, reject="BAD")  # fmt: skip
+    pipe = pipeline(detector, epochs)
+    want = run(pipe, artefacts)
+    got, got_epochs = exported(pipe, artefacts)
+    assert len(events(got)) > 5  # it found something
+    assert events(got) == events(want)
+    np.testing.assert_array_equal(got.get_data(), want.get_data())  # unchanged
+    want_epochs = run(pipe, artefacts, output="ep1")
+    assert len(got_epochs) == len(want_epochs)

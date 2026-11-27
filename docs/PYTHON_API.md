@@ -105,7 +105,10 @@ returns `(raw, epochs)`. Strips with such code so far: the File input, the
 IIR and FIR filters (causal and zero-phase), notch, re-reference, pick
 channels, resample, interpolate bad channels, CSD, ICA with ICLabel (fitted
 again on the recording; a `.set` writer after it stores the decomposition,
-less the removed components, as MeegXer's does), Epochs, the `.set`, `.edf`
+less the removed components, as MeegXer's does), the detectors (jumps and
+flat signal, muscle, blinks: MNE's, their events added to the recording's
+annotations, a channel proposed as bad printed and marked `bad_channel`, not
+applied), Epochs, the `.set`, `.edf`
 and epochs writers, and custom Python scripts: a script's source is
 inlined (as a module of its own, with its SHA-256) and called as MeegXer
 calls it, `process(raw, ...)` and `process_epochs(epochs, ...)`, and a live

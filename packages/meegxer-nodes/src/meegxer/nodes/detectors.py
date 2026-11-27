@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 
@@ -35,6 +35,9 @@ from meegxer.core.node import Params, Processor, TransformResult
 from meegxer.core.review import BAD_CHANNEL  # a channel proposed as bad
 from meegxer.core.serialization import State
 from meegxer.nodes._manifest import stream_manifest
+
+if TYPE_CHECKING:
+    from meegxer.core.mne_export import ExportCode
 
 UV = 1e-6  # thresholds are set in µV; signals are in volts
 BLINK_MIN_SECONDS = 10.0  # MNE's EOG filter is 10 s long: shorter pieces skipped
@@ -108,6 +111,43 @@ class AmplitudeDetector(Processor):
         availability="offline",
     )  # fmt: skip
 
+    def export_code(self, params: Params) -> ExportCode:
+        from meegxer.core.mne_export import ExportCode
+
+        limits = [(reason, float(params[reason]) * UV, float(params[duration]))
+                  for reason, duration in (("peak", "min_duration"),
+                                           ("flat", "flat_duration"))
+                  if float(params[reason])]  # fmt: skip
+        if not limits:
+            lines: tuple[str, ...] = (
+                "raise SystemExit('set a peak or a flat limit (both are 0)')",
+            )
+        else:
+            lines = (
+                "names = good_channels(raw, picks)",
+                "if names and raw.n_times >= 2:",
+                "    sub, proposed = detector_raw(raw, names, 'eeg'), {}",
+                f"    for reason, value, duration in {limits!r}:",
+                "        found, bads = annotate_amplitude(",
+                "            sub, **{reason: value}, "
+                f"bad_percent={float(params['bad_percent'])!r},",
+                "            min_duration=min(duration, sub.times[-1]), "
+                "picks='all', verbose='error')",
+                "        add_spans(raw, found)",
+                "        for ch in bads:",
+                "            proposed.setdefault(ch, reason)",
+                "    for ch in sorted(proposed, key=names.index):  # not applied",
+                "        raw.annotations.append(raw.first_time, 0.0, 'bad_channel')",
+                "        print(f'bad channel proposed: {ch} ({proposed[ch]})')",
+            )  # fmt: skip
+        what = " and ".join(f"{r} {v / UV:g} µV" for r, v, _ in limits) or "none"
+        return ExportCode(
+            comment=f"mark jumps and flat signal ({what}; MNE annotate_amplitude)",
+            lines=lines,
+            imports=("from mne.preprocessing import annotate_amplitude",),
+            helpers=("detectors",),
+        )
+
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
@@ -174,6 +214,30 @@ class MuscleDetector(Processor):
         "annotate_muscle_zscore).",
         availability="offline",
     )  # fmt: skip
+
+    def export_code(self, params: Params) -> ExportCode:
+        from meegxer.core.mne_export import ExportCode
+
+        low, high = float(params["low"]), float(params["high"])
+        return ExportCode(
+            comment=f"mark muscle activity (z-score {float(params['zscore']):g}, "
+                    f"{low:g}-{high:g} Hz; MNE annotate_muscle_zscore)",
+            lines=(
+                f"if not 0 < {low!r} < {high!r} < raw.info['sfreq'] / 2:",
+                "    raise SystemExit('the muscle band must lie below half the "
+                "sampling rate')",
+                "names = good_channels(raw, picks)",
+                "if names and raw.n_times >= 2:",
+                "    found, _ = annotate_muscle_zscore(",
+                "        detector_raw(raw, names, 'eeg'), "
+                f"threshold={float(params['zscore'])!r}, ch_type='eeg',",
+                f"        min_length_good={float(params['min_length_good'])!r}, "
+                f"filter_freq=({low!r}, {high!r}), verbose='error')",
+                "    add_spans(raw, found)",
+            ),
+            imports=("from mne.preprocessing import annotate_muscle_zscore",),
+            helpers=("detectors",),
+        )  # fmt: skip
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
@@ -253,6 +317,35 @@ class BlinkDetector(Processor):
         availability="offline",
         channel_types=["eeg", "eog"],  # it needs to see the EOG channels
     )  # fmt: skip
+
+    def export_code(self, params: Params) -> ExportCode:
+        from meegxer.core.mne_export import ExportCode
+
+        label = str(params["mark_label"]).strip()
+        threshold = float(params["blink_threshold"]) * UV or None
+        half = float(params["half_width"])
+        lines = (
+            f"eog = eog_channels(raw, picks, {str(params['eog'])!r})",
+            f"if raw.n_times >= {BLINK_MIN_SECONDS!r} * raw.info['sfreq']:",
+            "    found = find_eog_events(",
+            f"        detector_raw(raw, eog, 'eog'), l_freq={float(params['low'])!r}, "
+            f"h_freq={float(params['high'])!r},",
+            f"        ch_name=eog, thresh={threshold!r}, verbose='error')",
+            f"    half, sfreq = round({half!r} * raw.info['sfreq']), raw.info['sfreq']",
+            "    for peak in sorted(int(s) for s in found[:, 0]):",
+            "        start = max(peak - half, 0)",
+            "        stop = min(peak + half + 1, raw.n_times)",
+            "        if stop > start:",
+            "            raw.annotations.append(start / sfreq + raw.first_time, "
+            f"(stop - start) / sfreq, {label!r})",
+        ) if label else ("raise SystemExit('the blink label is empty')",)  # fmt: skip
+        return ExportCode(
+            comment=f"mark blinks as {label!r} spans of ±{half:g} s around each "
+                    "peak (MNE find_eog_events)",
+            lines=lines,
+            imports=("from mne.preprocessing import find_eog_events",),
+            helpers=("detectors",),
+        )  # fmt: skip
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params

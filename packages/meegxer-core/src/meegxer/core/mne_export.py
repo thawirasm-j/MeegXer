@@ -314,6 +314,49 @@ def ica_rejected(ica, threshold, classes):
         mat.update(fields)
     savemat(path, mat, oned_as="row")
 ''',
+    "detectors": '''def detector_raw(raw, names, kind):
+    """These channels as a Raw of their own, typed kind and timed from 0:
+    what MeegXer gives MNE's detectors."""
+    return mne.io.RawArray(raw.get_data(picks=names),
+                           mne.create_info(names, raw.info["sfreq"], kind),
+                           verbose="error")
+
+
+def add_spans(raw, found):
+    """A detector's annotations (seconds from the data's start) added to
+    raw as events, at whole samples and clipped to the data, as MeegXer's."""
+    sfreq, n = raw.info["sfreq"], raw.n_times
+    for onset, duration, label in zip(found.onset, found.duration,
+                                      found.description):
+        start = min(max(round(onset * sfreq), 0), n)
+        stop = min(max(round((onset + duration) * sfreq), start), n)
+        if stop > start:
+            raw.annotations.append(start / sfreq + raw.first_time,
+                                   (stop - start) / sfreq, str(label))
+
+
+def good_channels(raw, picks):
+    return [raw.ch_names[i] for i in picks if raw.ch_names[i] not in raw.info["bads"]]
+
+
+def eog_channels(raw, picks, eog):
+    """The EOG channels: auto (good channels typed or named EOG) or labels."""
+    if eog.strip().lower() == "auto":
+        kinds = raw.get_channel_types()
+        found = [raw.ch_names[i] for i in picks
+                 if raw.ch_names[i] not in raw.info["bads"]
+                 and (kinds[i] == "eog"
+                      or re.match(r"^(V|H)?EOG", raw.ch_names[i], re.IGNORECASE))]
+    else:
+        found = [c.strip() for c in eog.split(",") if c.strip()]
+        names = [raw.ch_names[i] for i in picks]
+        missing = [c for c in found if c not in names]
+        if missing:
+            raise SystemExit(f"no channel named {', '.join(missing)}")
+    if not found:
+        raise SystemExit("no EOG channel found: name one in the eog setting")
+    return found
+''',
 }
 HELPER_IMPORTS = {
     "causal_sos": ("from scipy import signal",),
@@ -325,6 +368,7 @@ HELPER_IMPORTS = {
     "run_transform": ("import numpy as np",),
     "fit_ica": ("import numpy as np", "import warnings"),
     "add_ica_to_set": ("import numpy as np",),
+    "detectors": ("import re",),
 }
 
 SCRIPT = '''#!/usr/bin/env python3
