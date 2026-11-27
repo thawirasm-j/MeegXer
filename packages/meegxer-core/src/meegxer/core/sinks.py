@@ -498,6 +498,18 @@ class FeatureTsvSink(Sink):
         "meegxer.core.feature_tsv", "features", ".tsv"
     )
 
+    def export_code(self) -> ExportCode:
+        path, overwrite = str(self.params["path"]), bool(self.params["overwrite"])
+        write = f"write_features_tsv({path!r}, feats)"
+        return ExportCode(
+            comment=f"write the feature windows to {path} (MeegXer's feature TSV)"
+            + ("" if overwrite else "; an existing file is kept"),
+            lines=(write,) if overwrite else (
+                f"if not os.path.exists({path!r}):", f"    {write}"),
+            imports=() if overwrite else ("import os",),
+            helpers=("write_features_tsv",),
+        )  # fmt: skip
+
     def __init__(self, params: Mapping[str, object] | None = None) -> None:
         super().__init__(params)
         if not str(self.params["path"]):

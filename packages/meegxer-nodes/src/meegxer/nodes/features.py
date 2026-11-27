@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import functools
 from abc import abstractmethod
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 from scipy import signal as sps
@@ -28,6 +28,9 @@ from meegxer.core.manifest import Manifest
 from meegxer.core.node import Mode, Params, Processor, TransformResult
 from meegxer.core.serialization import State
 from meegxer.nodes.references import credits
+
+if TYPE_CHECKING:
+    from meegxer.core.mne_export import ExportCode
 
 WINDOW_PARAMS: list[dict[str, object]] = [
     {"name": "window", "type": "float", "default": 2.0, "min": 0.05, "unit": "s",
@@ -118,6 +121,47 @@ def spectrum(
     if params.get("method", "welch") == "multitaper":
         return multitaper(x, sfreq, params)
     return welch(x, sfreq, params)
+
+
+def spectrum_kwargs(params: Params) -> dict[str, object]:
+    """The spectrum settings, as the exported script's ``spectrum`` takes them."""
+    return {"method": str(params.get("method", "welch")),
+            "segment": float(params["segment"]), "overlap": float(params["overlap"]),
+            "taper": str(params["taper"]),
+            "bandwidth": float(params.get("bandwidth", 0.0))}  # fmt: skip
+
+
+def spectrum_text(params: Params) -> str:
+    """The spectrum method in words, for the exported script's comments."""
+    if params.get("method", "welch") == "multitaper":
+        return "multitaper (MNE)"
+    return (
+        f"Welch, {params['taper']} {float(params['segment']):g} s segments, "
+        f"{float(params['overlap']):.0%} overlap (scipy.signal)"
+    )
+
+
+def windowed_code(
+    params: Params,
+    call: str,
+    unit: object,
+    comment: str,
+    helper: str,
+    packages: tuple[str, ...] = (),
+) -> ExportCode:
+    """A feature strip's exported code: its windows (``windowed``), each
+    computed by ``call`` (an expression of ``x``, ``sfreq`` and ``names``)."""
+    from meegxer.core.mne_export import ExportCode
+
+    window, step = float(params["window"]), float(params["step"])
+    return ExportCode(
+        comment=f"{comment}, {window:g} s windows every {step:g} s",
+        lines=(f"feats = windowed(raw, picks, {window!r}, {step!r},",
+               f"                 lambda x, sfreq, names: {call},",
+               f"                 {unit!r})"),
+        helpers=("windowed", helper),
+        packages=packages,
+    )  # fmt: skip
 
 
 class WindowedFeatures(Processor):
@@ -222,6 +266,22 @@ class PSD(WindowedFeatures):
     ) -> str | tuple[str, tuple[str, ...]]:
         return "dB" if params["db"] else "V^2/Hz"
 
+    def export_code(self, params: Params) -> ExportCode:
+        fmin, fmax, db = (
+            float(params["fmin"]),
+            float(params["fmax"]),
+            bool(params["db"]),
+        )
+        return windowed_code(
+            params,
+            f"psd_window(x, sfreq, names, {fmin!r}, {fmax!r}, {db!r}, "
+            f"**{spectrum_kwargs(params)!r})",
+            "dB" if db else "V^2/Hz",
+            f"PSD {fmin:g}-{fmax:g} Hz{' in dB' if db else ''}, "
+            f"{spectrum_text(params)}",
+            "psd_window",
+        )
+
 
 DEFAULT_BANDS = "delta:1-4, theta:4-8, alpha:8-13, beta:13-30, gamma:30-45"
 
@@ -287,6 +347,21 @@ class BandPower(WindowedFeatures):
         if params["db"]:
             return "dB"
         return "1" if params["relative"] else "V^2"
+
+    def export_code(self, params: Params) -> ExportCode:
+        bands = parse_bands(str(params["bands"]))
+        relative, db = bool(params["relative"]), bool(params["db"])
+        unit = "dB" if db else ("1" if relative else "V^2")
+        names = ", ".join(f"{n} {lo:g}-{hi:g} Hz" for n, lo, hi in bands)
+        return windowed_code(
+            params,
+            f"band_power_window(x, sfreq, names, {bands!r}, {relative!r}, "
+            f"{db!r}, **{spectrum_kwargs(params)!r})",
+            unit,
+            f"{'relative ' if relative else ''}band power ({names})"
+            f"{' in dB' if db else ''}, {spectrum_text(params)}",
+            "band_power_window",
+        )
 
 
 class Connectivity(WindowedFeatures):
@@ -554,6 +629,17 @@ class HilbertEnvelopeAnalytic(Processor):
             **credits("meegxer.nodes.hilbert_envelope_analytic"),
         }
     )  # fmt: skip
+
+    def export_code(self, params: Params) -> ExportCode:
+        from meegxer.core.mne_export import ExportCode
+
+        return ExportCode(
+            comment="amplitude envelope of the whole recording's analytic signal "
+                    "(scipy.signal.hilbert)",
+            lines=("raw.apply_function(lambda x: np.abs(signal.hilbert(x, axis=1)), "
+                   "picks=picks, channel_wise=False)",),
+            imports=("import numpy as np", "from scipy import signal"),
+        )  # fmt: skip
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params

@@ -46,11 +46,17 @@ def pipeline(*strips: dict[str, Any]) -> dict[str, Any]:
     return {"spec_version": SPEC_VERSION, "nodes": [source, *strips]}
 
 
-def exported(pipe: dict[str, Any], path: Path) -> tuple[Any, Any]:
-    """The exported script's pipeline(path): (raw, epochs)."""
+def exported_all(pipe: dict[str, Any], path: Path) -> tuple[Any, Any, Any]:
+    """The exported script's pipeline(path): (raw, epochs, features)."""
     scope: dict[str, Any] = {"__name__": "exported"}
     exec(compile(export_mne(pipe), "run_mne.py", "exec"), scope)
     return scope["pipeline"](str(path))  # type: ignore[no-any-return]
+
+
+def exported(pipe: dict[str, Any], path: Path) -> tuple[Any, Any]:
+    """The exported script's signal and epochs."""
+    raw, epochs, _ = exported_all(pipe, path)
+    return raw, epochs
 
 
 CASES = {
@@ -73,6 +79,7 @@ CASES = {
     "resample": [strip("rs", "meegxer.nodes.resample", sfreq=100.0)],
     "interpolate bads": [strip("i", "meegxer.nodes.interpolate_bads")],
     "csd": [strip("c", "meegxer.nodes.csd", stiffness=3.0)],
+    "hilbert envelope": [strip("h", "meegxer.nodes.hilbert_envelope")],
     "csd after interpolation": [strip("i", "meegxer.nodes.interpolate_bads"),
                                 strip("c", "meegxer.nodes.csd")],
 }  # fmt: skip
@@ -183,7 +190,7 @@ def test_ica_is_fitted_again_and_stored_in_the_set(tmp_path: Path) -> None:
     assert "pip install mne numpy scipy python-picard mne-icalabel onnxruntime" in text
     scope: dict[str, Any] = {"__name__": "exported"}
     exec(compile(text, "run_mne.py", "exec"), scope)
-    got, _ = scope["pipeline"](str(rec))
+    got, _, _ = scope["pipeline"](str(rec))
     np.testing.assert_allclose(got.get_data(), want.get_data(), rtol=1e-9,
                                atol=1e-16)  # fmt: skip
     assert not np.allclose(got.get_data(), raw.get_data())  # components removed
@@ -262,3 +269,55 @@ def test_each_detector_s_events_are_meegxer_s(
     np.testing.assert_array_equal(got.get_data(), want.get_data())  # unchanged
     want_epochs = run(pipe, artefacts, output="ep1")
     assert len(got_epochs) == len(want_epochs)
+
+
+FEATURES = {
+    "psd welch": strip("f1", "meegxer.nodes.psd"),
+    "psd multitaper in dB": strip("f1", "meegxer.nodes.psd", method="multitaper",
+                                  db=True, fmax=30.0, window=4.0, step=2.0),
+    "relative band power": strip("f1", "meegxer.nodes.band_power", relative=True,
+                                 taper="hann", segment=0.5),
+    "morlet": strip("f1", "meegxer.nodes.morlet", fmin=8.0, fmax=20.0, fstep=2.0,
+                    db=True),
+    "specparam": strip("f1", "meegxer.nodes.specparam", fmax=30.0),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("name", sorted(FEATURES))
+def test_each_feature_strip_writes_meegxer_s_tsv(
+    recording: Path, tmp_path: Path, name: str
+) -> None:
+    """A feature strip and a feature TSV writer: the exported script's file
+    (and its units sidecar) is MeegXer's, byte for byte; pipeline(path) gives
+    the windows as arrays."""
+
+    def pipe(out: Path) -> dict[str, Any]:
+        return pipeline(
+            strip("hp", "meegxer.nodes.iir_filter", low=1.0, high=40.0),
+            FEATURES[name],
+            strip("tsv", "meegxer.core.feature_tsv", path=str(out)),
+            strip("r", "meegxer.nodes.rereference"),  # the chain goes on
+        )
+
+    ours, theirs = tmp_path / "meegxer.tsv", tmp_path / "exported.tsv"
+    want = run(pipe(ours), recording)
+    got, _, features = exported_all(pipe(theirs), recording)
+    assert theirs.read_text() == ours.read_text()
+    assert (
+        theirs.with_suffix(".json").read_text() == ours.with_suffix(".json").read_text()
+    )
+    feats = features["f1"]
+    rows = ours.read_text().splitlines()
+    assert len(feats["windows"]) == len(rows) - 1 > 3
+    assert feats["values"].shape[1] == 6  # the EEG channels, bad Oz kept
+    np.testing.assert_allclose(got.get_data(), want.get_data(), rtol=1e-9,
+                               atol=1e-16)  # fmt: skip
+
+
+def test_strips_with_settings_not_exported_yet_are_named() -> None:
+    for node, params in (
+        ("meegxer.nodes.specparam", {"fit_unfiltered": True}),
+        ("meegxer.nodes.hilbert_envelope", {"method": "fir"}),
+    ):
+        with pytest.raises(NotExportable, match=r"s1 \(" + node.replace(".", r"\.")):
+            export_mne(pipeline(strip("s1", node, **params)))

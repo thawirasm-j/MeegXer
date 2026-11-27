@@ -101,14 +101,22 @@ python-picard for ICA, a script's `REQUIRES`), no MeegXer (decided
 strip writes its own code, next to the code it reproduces in MeegXer, and a
 test per strip checks that it gives the strip's offline output; fitted models
 are fitted again on the recording the script reads. Its `pipeline(path)`
-returns `(raw, epochs)`. Strips with such code so far: the File input, the
+returns `(raw, epochs, features)`: the signal at the chain's end, the
+epochs (or None), and each feature strip's windows by its id (decided
+2026-11-27: NumPy arrays): `windows` (start and stop samples), `timestamps`,
+`values` (windows x channels x features), `dims`, `coords` and `unit`; a
+feature TSV writer writes them as MeegXer's, byte for byte. Strips with such
+code so far: the File input, the
 IIR and FIR filters (causal and zero-phase), notch, re-reference, pick
 channels, resample, interpolate bad channels, CSD, ICA with ICLabel (fitted
 again on the recording; a `.set` writer after it stores the decomposition,
 less the removed components, as MeegXer's does), the detectors (jumps and
 flat signal, muscle, blinks: MNE's, their events added to the recording's
 annotations, a channel proposed as bad printed and marked `bad_channel`, not
-applied), Epochs, the `.set`, `.edf`
+applied), the spectral feature strips (PSD, band power, Morlet power,
+specparam; Welch or multitaper; specparam's *fit unfiltered* not yet), the
+Hilbert envelope (the analytic signal, offline; its FIR method not yet),
+Epochs, the `.set`, `.edf`, feature TSV
 and epochs writers, and custom Python scripts: a script's source is
 inlined (as a module of its own, with its SHA-256) and called as MeegXer
 calls it, `process(raw, ...)` and `process_epochs(epochs, ...)`, and a live
