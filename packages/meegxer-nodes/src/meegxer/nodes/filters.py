@@ -30,6 +30,7 @@ from scipy import signal
 
 from meegxer.core.block import Block, Filter
 from meegxer.core.manifest import Manifest
+from meegxer.core.mne_export import ExportCode
 from meegxer.core.node import Mode, Params, Processor, TransformResult
 from meegxer.core.serialization import State
 from meegxer.nodes._manifest import stream_manifest
@@ -53,6 +54,77 @@ def notch_filters(freq: float, harmonics: int, sfreq: float) -> tuple[Filter, ..
     """The notches a notch cascade cuts (its harmonics below Nyquist)."""
     return tuple(("notch", freq * k, 0.0) for k in range(1, harmonics + 1)
                  if freq * k < sfreq / 2)  # fmt: skip
+
+
+def _cutoff(kind: str, low: float, high: float) -> str:
+    """The cut-off as scipy.signal.butter takes it, written out."""
+    if kind == "highpass":
+        return repr(low)
+    if kind == "lowpass":
+        return repr(high)
+    return f"[{low!r}, {high!r}]"
+
+
+def _band(kind: str, low: float, high: float) -> str:
+    return {"highpass": f"high-pass {low:g} Hz", "lowpass": f"low-pass {high:g} Hz",
+            "bandpass": f"band-pass {low:g}-{high:g} Hz",
+            "bandstop": f"band-stop {low:g}-{high:g} Hz"}[kind]  # fmt: skip
+
+
+def _butter_code(params: Params, apply: str, phase: str) -> ExportCode:
+    kind, low, high = str(params["kind"]), float(params["low"]), float(params["high"])
+    order = int(params["order"])
+    return ExportCode(
+        comment=f"Butterworth {_band(kind, low, high)}, order {order}, {phase} "
+                "(scipy.signal)",
+        lines=(f"sos = signal.butter({order}, {_cutoff(kind, low, high)}, "
+               f"btype={kind!r}, fs=raw.info['sfreq'], output='sos')",
+               f"raw.apply_function(lambda x: {apply}, picks=picks, "
+               "channel_wise=False)"),
+        imports=("from scipy import signal",),
+        helpers=("causal_sos",) if "causal_sos" in apply else (),
+    )  # fmt: skip
+
+
+def _notch_code(params: Params, apply: str, phase: str) -> ExportCode:
+    freq, quality = float(params["freq"]), float(params["quality"])
+    harmonics = int(params["harmonics"])
+    return ExportCode(
+        comment=f"IIR notch at {freq:g} Hz (Q {quality:g}, {harmonics} "
+                f"harmonic{'s' if harmonics > 1 else ''}), {phase} (scipy.signal)",
+        lines=(f"sos = notch_sos({freq!r}, {quality!r}, {harmonics}, "
+               "raw.info['sfreq'])",
+               f"raw.apply_function(lambda x: {apply}, picks=picks, "
+               "channel_wise=False)"),
+        imports=("from scipy import signal",),
+        helpers=("notch_sos", *(("causal_sos",) if "causal_sos" in apply else ())),
+    )  # fmt: skip
+
+
+def _fir_code(params: Params, phase: str) -> ExportCode:
+    kind, low, high = str(params["kind"]), float(params["low"]), float(params["high"])
+    edges = {"highpass": (low, None), "lowpass": (None, high),
+             "bandpass": (low, high), "bandstop": (high, low)}  # fmt: skip
+    l_freq, h_freq = edges[kind]
+    if phase == "zero":
+        return ExportCode(
+            comment=f"FIR {_band(kind, low, high)}, windowed sinc, zero-phase "
+                    "(mne.filter.filter_data)",
+            lines=("raw.apply_function(lambda x: mne.filter.filter_data("
+                   f"x, raw.info['sfreq'], {l_freq!r}, {h_freq!r}, method='fir', "
+                   "phase='zero', fir_design='firwin', verbose='error'), "
+                   "picks=picks, channel_wise=False)",),
+        )  # fmt: skip
+    return ExportCode(
+        comment=f"FIR {_band(kind, low, high)}, windowed sinc, minimum-phase, "
+                "causal (mne.filter.create_filter)",
+        lines=(f"h = mne.filter.create_filter(None, raw.info['sfreq'], {l_freq!r}, "
+               f"{h_freq!r}, method='fir', phase='minimum', fir_design='firwin', "
+               "verbose='error')",
+               "raw.apply_function(lambda x: causal_fir(h, x), picks=picks, "
+               "channel_wise=False)"),
+        helpers=("causal_fir",),
+    )  # fmt: skip
 
 
 def _tagged(block: Block, filters: tuple[Filter, ...]) -> Block:
@@ -172,6 +244,9 @@ class IIRFilter(Processor):
         )
         return sos.copy()  # callers may not mutate the memoised design
 
+    def export_code(self, params: Params) -> ExportCode:
+        return _butter_code(params, "causal_sos(sos, x)", "causal")
+
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
@@ -211,6 +286,9 @@ class NotchFilter(Processor):
             int(params["harmonics"]),
             sfreq,
         )
+
+    def export_code(self, params: Params) -> ExportCode:
+        return _notch_code(params, "causal_sos(sos, x)", "causal")
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
@@ -278,6 +356,10 @@ class IIRFilterZeroPhase(Processor):
         "Zero-phase (forward-backward) Butterworth IIR filter; offline only.",
     )
 
+    def export_code(self, params: Params) -> ExportCode:
+        return _butter_code(params, "signal.sosfiltfilt(sos, x, axis=-1)",
+                            "zero-phase")  # fmt: skip
+
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
@@ -293,6 +375,10 @@ class NotchFilterZeroPhase(Processor):
         "meegxer.nodes.notch_zerophase",
         "Zero-phase (forward-backward) IIR notch; offline only.",
     )
+
+    def export_code(self, params: Params) -> ExportCode:
+        return _notch_code(params, "signal.sosfiltfilt(sos, x, axis=-1)",
+                           "zero-phase")  # fmt: skip
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
@@ -366,6 +452,9 @@ class FIRFilter(Processor):
             return self
         return self if phase == "causal" else FIRFilterZeroPhase()
 
+    def export_code(self, params: Params) -> ExportCode:
+        return _fir_code(params, "causal")
+
     def transform(
         self, block: Block, model: State, state: State | None, params: Params
     ) -> TransformResult:
@@ -395,6 +484,9 @@ class FIRFilterZeroPhase(Processor):
         "Zero-phase FIR filter designed by MNE (linear phase, delay removed); "
         "offline only.",
     )
+
+    def export_code(self, params: Params) -> ExportCode:
+        return _fir_code(params, "zero")
 
     def transform(
         self, block: Block, model: State, state: State | None, params: Params

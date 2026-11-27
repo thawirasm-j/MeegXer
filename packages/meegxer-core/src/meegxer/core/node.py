@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, ClassVar, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple
 
 from meegxer.core.block import (
     Block,
@@ -25,6 +25,9 @@ from meegxer.core.block import (
 )
 from meegxer.core.manifest import Manifest, ParamValue
 from meegxer.core.serialization import State
+
+if TYPE_CHECKING:
+    from meegxer.core.mne_export import ExportCode
 
 Mode = Literal["online", "offline"]
 
@@ -171,6 +174,12 @@ class Processor(ABC):
         cannot run in that mode. Default: this processor in every mode."""
         return self
 
+    def export_code(self, params: Params) -> ExportCode | None:
+        """This processor's offline computation as MNE/SciPy code for a
+        standalone script (``meegxer.core.mne_export``; ``picks``: the
+        channels it processes), or None: it has none yet."""
+        return None
+
     def go_live(self, budget: float | None) -> None:  # noqa: B027 - optional hook
         """A live run starts (``budget``: the seconds it may take per block,
         after which it raises :class:`ProcessorTimeout` rather than retry) or
@@ -208,6 +217,11 @@ class _ConfiguredNode(ABC):
 
     def __init__(self, params: Mapping[str, object] | None = None) -> None:
         self.params: dict[str, ParamValue] = self.manifest.resolve_params(params)
+
+    def export_code(self) -> ExportCode | None:
+        """What this source or sink does, as MNE code for a standalone script
+        (``meegxer.core.mne_export``), or None: it has none yet."""
+        return None
 
 
 class Source(_ConfiguredNode):

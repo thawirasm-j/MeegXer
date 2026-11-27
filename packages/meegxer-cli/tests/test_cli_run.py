@@ -122,3 +122,22 @@ def test_export_writes_the_pipeline_as_a_script(tmp_path: Path) -> None:
     again = runner.invoke(app, ["export", str(pipe)])
     assert again.exit_code == 1 and "--overwrite" in again.output
     assert runner.invoke(app, ["export", str(pipe), "--overwrite"]).exit_code == 0
+
+
+def test_export_standalone_writes_mne_code(tmp_path: Path) -> None:
+    pipe = tmp_path / "clean.json"
+    pipe.write_text(json.dumps({"spec_version": "0.2.23", "nodes": [
+        {"id": "input", "node": "meegxer.core.file"},
+        {"id": "hp", "node": "meegxer.nodes.iir_filter", "params": {"low": 1.0}},
+    ]}))  # fmt: skip
+    done = runner.invoke(app, ["export", str(pipe), "--standalone"])
+    assert done.exit_code == 0, done.output
+    text = (tmp_path / "clean_mne.py").read_text()
+    assert "signal.butter(" in text and "from meegxer" not in text
+    ica = tmp_path / "ica.json"
+    ica.write_text(json.dumps({"spec_version": "0.2.23", "nodes": [
+        {"id": "input", "node": "meegxer.core.file"},
+        {"id": "ica1", "node": "meegxer.nodes.ica"},
+    ]}))  # fmt: skip
+    refused = runner.invoke(app, ["export", str(ica), "--standalone"])
+    assert refused.exit_code == 1 and "ica1 (meegxer.nodes.ica)" in refused.output

@@ -1164,5 +1164,15 @@ GUI (offscreen) *Save → Export as Python script…* wrote the chain shown.
 
 | Item | Value / result | Notes |
 |---|---|---|
+3. *Save* arrow → *Export as standalone MNE script…* (a chain of filters,
+   re-reference, resample, Epochs), then in a terminal outside MeegXer's
+   environment, with only MNE installed (`pip install mne`):
+   `python erp_mne.py YOUR_RECORDING.set -o clean.fif --epochs ep-epo.fif`.
+   Already run by Claude: the standalone script run with `python -I` gave
+   MeegXer's signal and epochs exactly (CI checks every strip).
+
+| Item | Value / result | Notes |
+|---|---|---|
 | AG1 the GUI writes the script | | |
 | AG2 the script runs on Windows and writes the file | | |
+| AG3 the standalone script runs with only MNE installed | | |

@@ -80,8 +80,31 @@ Its docstring lists the strips and the plugins or custom scripts it needs,
 which must be added on the computer that runs it (`meegxer-plugin add …`); it
 needs MeegXer (the version that exported it). Also `meegxer export PIPELINE
 [-o SCRIPT]`, and *Save → Export as Python script…* in the GUI (with the
-models the last offline run fitted, or calibrated live). A standalone
-MNE/SciPy script, without MeegXer, is planned (`docs/ROADMAP.md`).
+models the last offline run fitted, or calibrated live).
+
+## `export_mne(pipeline, path=None)`: as MNE code, no MeegXer
+
+```python
+from meegxer.api import export_mne
+
+export_mne("erp.json", "erp_mne.py")
+```
+
+```bash
+python erp_mne.py sub-01.set -o clean.fif --epochs erp-epo.fif
+```
+
+A standalone script: MNE, NumPy and SciPy only (decided 2026-11-27). Each
+strip writes its own code, next to the code it reproduces in MeegXer, and a
+test per strip checks that it gives the strip's offline output; fitted models
+are fitted again on the recording the script reads. Its `pipeline(path)`
+returns `(raw, epochs)`. Strips with such code so far: the File input, the
+IIR and FIR filters (causal and zero-phase), notch, re-reference, pick
+channels, resample, Epochs, and the `.set`, `.edf` and epochs writers; more
+come strip by strip (`docs/ROADMAP.md`, M11.7). Any other strip (an Octave
+script, a plugin image) is named and the script is not written:
+`export_script` runs any pipeline. Also `meegxer export PIPELINE
+--standalone`, and *Save → Export as standalone MNE script…* in the GUI.
 
 ## MNE ICA files
 

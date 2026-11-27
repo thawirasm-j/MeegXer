@@ -12,7 +12,12 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   writes a script that runs the pipeline exactly as MeegXer does:
   `python run.py RECORDING -o OUT`. It embeds the pipeline, or a session
   with its fitted models, lists its strips and the plugins or custom scripts
-  it needs, and needs MeegXer. A standalone MNE script comes later.
+  it needs, and needs MeegXer. `meegxer export --standalone` (or
+  `export_mne`, or *Export as standalone MNE script…*) writes MNE, NumPy and
+  SciPy code instead, no MeegXer needed: each strip's own code, tested to
+  give what the strip gives. So far for the File input, the filters, notch,
+  re-reference, pick channels, resample, Epochs and the file writers; a
+  pipeline with another strip is named and left to the plain export.
 - **Security: the red team's findings (`docs/SECURITY.md`).** Sterile mode
   and custom scripts (Python/MNE, Octave) were attacked from a hostile
   script's side: no container escape and no network. What the host accepts

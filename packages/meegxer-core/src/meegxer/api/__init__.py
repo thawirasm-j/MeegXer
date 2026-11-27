@@ -4,6 +4,7 @@
 >>> clean = run("pipeline.json", raw)                 # mne Raw in, Raw out
 >>> epochs = run("erp.json", "sub-01.set", output="ep1")  # an Epochs strip's
 >>> text = export_script("erp.json", "erp.py")  # the pipeline as a script
+>>> text = export_mne("erp.json", "erp_mne.py")  # as MNE code, no MeegXer
 
 ``run`` is a thin layer over the batch scheduler (rule 4: the same node code
 as the GUI and ``meegxer run``): the pipeline's input becomes ``raw``, an
@@ -22,7 +23,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any
 
-__all__ = ["export_script", "run"]
+__all__ = ["export_mne", "export_script", "run"]
 
 logger = logging.getLogger("meegxer")
 
@@ -287,6 +288,31 @@ def export_script(
         as_session=" (a session)" if fitted else "",
         document=literal,
     )
+    if path is not None:
+        Path(path).write_text(script, encoding="utf-8")
+    return script
+
+
+def export_mne(
+    pipeline: str | PathLike[str] | Mapping[str, Any],
+    path: str | PathLike[str] | None = None,
+) -> str:
+    """The pipeline as a standalone MNE script: MNE, NumPy and SciPy only, no
+    MeegXer (decided 2026-11-27, ``meegxer.core.mne_export``). Each strip
+    writes its own code, tested to give the strip's offline output; fitted
+    models are fitted again on the recording the script reads. Raises
+    ``meegxer.core.mne_export.NotExportable`` naming the strips without code
+    yet (``export_script`` runs any pipeline); written to ``path`` too when
+    given."""
+    from meegxer.core import __version__
+    from meegxer.core.mne_export import standalone_script
+
+    document = _document(pipeline)
+    name = str(document.get("name") or (Path(pipeline).name.removesuffix(".json")
+               .removesuffix(".meegxer") if not isinstance(pipeline, Mapping)
+               else "pipeline"))  # fmt: skip
+    script = standalone_script(document, name, __version__,
+                               Path(path).name if path else "run_mne.py")  # fmt: skip
     if path is not None:
         Path(path).write_text(script, encoding="utf-8")
     return script

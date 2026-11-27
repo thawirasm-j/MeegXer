@@ -24,6 +24,7 @@ from meegxer.core.eeglab_ica import (
 )
 from meegxer.core.import_review import crop_events, find_import_review, review_files
 from meegxer.core.manifest import Manifest
+from meegxer.core.mne_export import ExportCode
 from meegxer.core.node import RailOutput, Source
 from meegxer.core.references import credits
 from meegxer.core.samples import ensure_recording
@@ -724,6 +725,19 @@ class FileSource(_RawSource):
         ".set": (".fdt",),
         ".vhdr": (".eeg", ".vmrk"),
     }
+
+    def export_code(self) -> ExportCode | None:
+        """mne.io.read_raw on the script's RECORDING (not XDF; a review made
+        at import is not applied). An ICA file has no standalone code yet."""
+        if str(self.params.get("ica") or ""):
+            return None
+        return ExportCode(
+            comment="read the recording (mne.io.read_raw, in volts; a review "
+                    "made at import is not applied)",
+            lines=("if path.endswith('.xdf'):",
+                   "    raise SystemExit('XDF needs MeegXer (meegxer export)')",
+                   "raw = mne.io.read_raw(path, preload=True, verbose='error')"),
+        )  # fmt: skip
 
     def _path(self) -> Path:
         path = Path(str(self.params["path"]))

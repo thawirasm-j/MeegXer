@@ -512,20 +512,28 @@ def export(
     overwrite: Annotated[
         bool, typer.Option(help="Replace an existing script.")
     ] = False,
+    standalone: Annotated[
+        bool,
+        typer.Option(
+            help="MNE, NumPy and SciPy code only: no MeegXer needed (for the "
+            "strips that have such code yet)."
+        ),
+    ] = False,
 ) -> None:
     """Write the pipeline (or session, with its fitted models) as a Python
     script that runs it exactly as MeegXer does (meegxer.api.run): `python
     SCRIPT RECORDING -o OUT`. It needs MeegXer; its docstring lists the
-    strips and any plugins or custom scripts to add."""
-    from meegxer.api import export_script
+    strips and any plugins or custom scripts to add. With --standalone, each
+    strip as MNE/SciPy code instead (models fitted again on the recording)."""
+    from meegxer.api import export_mne, export_script
 
     stem = pipeline.name.removesuffix(".json").removesuffix(".meegxer")
-    target = out or pipeline.with_name(f"{stem}.py")
+    target = out or pipeline.with_name(f"{stem}{'_mne' if standalone else ''}.py")
     if target.exists() and not overwrite:
         typer.echo(f"error: {target} exists (--overwrite to replace it)", err=True)
         raise typer.Exit(code=1)
     try:
-        export_script(pipeline, target)
+        (export_mne if standalone else export_script)(pipeline, target)
     except (OSError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc

@@ -37,7 +37,7 @@ def test_the_window_fits_a_laptop_screen(
         assert menu is not None
         assert [a.text().split("\t")[0] for a in menu.actions()] == [
             "Save pipeline…", "Save session…", "Share session…",
-            "Export as Python script…"]  # fmt: skip
+            "Export as Python script…", "Export as standalone MNE script…"]  # fmt: skip
         win.start()
         pump(qapp, 3.0)
         win.resize(1024, 700)
