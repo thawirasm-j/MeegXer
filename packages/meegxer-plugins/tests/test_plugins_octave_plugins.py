@@ -134,6 +134,33 @@ def test_added_scripts_bring_their_plugins_and_runs_check_them(
         index.remove("script.lab_clean")
 
 
+def test_add_registers_a_script_the_image_lacks_plugins_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Windows check AE: `add --script lab_clean.m` was refused (its conformance
+    run needs clean_rawdata), so `octave build` never knew to fetch it. Now it
+    is added unchecked and says to build, then check (decided 2026-11-27)."""
+    from meegxer.plugins import cli
+
+    path = write(tmp_path, "lab_clean", "% Requires: clean_rawdata")
+    monkeypatch.setattr(octave_image, "image_plugins", lambda *a, **k: {})
+
+    def no_suite(*a: object, **k: object) -> None:
+        raise AssertionError("the suite needs the plugin: not run yet")
+
+    monkeypatch.setattr(cli, "run_conformance", no_suite)
+    try:
+        assert cli.main(["add", "--script", str(path)]) == 0
+        said = capsys.readouterr().out
+        assert "not checked yet" in said and "clean_rawdata" in said
+        assert "meegxer-plugin octave build" in said and "check --script" in said
+        assert octave_image.scripts_plugins() == [
+            CATALOG["clean_rawdata"]
+        ]  # built next
+    finally:
+        index.remove("script.lab_clean")
+
+
 def test_two_scripts_asking_one_plugin_differently_are_refused(
     tmp_path: Path,
 ) -> None:

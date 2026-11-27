@@ -194,6 +194,12 @@ no network. Its findings are fixed, each in its own PR; the limits are in
 
 ### Fixed
 
+- `meegxer-plugin add --script lab_clean.m` (declaring `% Requires:
+  clean_rawdata`) was refused before `octave build` could fetch the plugin,
+  since `add` checks a script in the image first; the documented flow (add,
+  build, check) could not work. Now `add` records such a script, not checked
+  yet, and says to run `meegxer-plugin octave build` (which fetches its
+  plugins), then `meegxer-plugin check --script`.
 - `meegxer-plugin run|check --script X.py` with stdin from `NUL` (Windows: a
   scheduled task, `< NUL`, some IDE runners) ended in an `EOFError`
   traceback at the local-code notice; it now says to run again with
