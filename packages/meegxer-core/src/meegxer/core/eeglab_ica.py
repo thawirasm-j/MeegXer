@@ -248,15 +248,19 @@ def decomposition_for(
                     None)  # fmt: skip
     if producer is None:
         return None, ""
+    impl = producer.impl
+    found = None
+    if isinstance(impl, Source):  # a file with a decomposition, or without one
+        found = getattr(impl, "decomposition", lambda: None)()
+        if not isinstance(found, Decomposition):
+            return None, ""  # nothing to store: nothing to say either
     between = nodes[[n.id for n in nodes].index(producer.id) + 1 : here]
     spatial = [n.id for n in between if n.manifest.name in SPATIAL]
     if spatial:
         return None, (f"ICA decomposition not stored: {', '.join(spatial)} "
                       "transforms the channels after it")  # fmt: skip
-    impl = producer.impl
     if isinstance(impl, Source):
-        found = getattr(impl, "decomposition", lambda: None)()
-        return (found, "") if isinstance(found, Decomposition) else (None, "")
+        return found, ""
     if not isinstance(impl, Stage) or impl.model is None:
         return None, ""
     describe = getattr(impl.processor, "decomposition", None)
