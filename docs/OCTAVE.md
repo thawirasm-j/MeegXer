@@ -208,12 +208,15 @@ events both ways). From Python, the whole chain is one script:
 ```python
 from meegxer.api import run
 
-PIPELINE = {"spec_version": "0.2.23", "nodes": [
-    {"id": "input", "node": "meegxer.core.file"},
-    {"id": "mne", "node": "script.my_mne"},     # my_mne.py, added
-    {"id": "asr", "node": "script.lab_asr"},    # lab_asr.m, added
-    {"id": "ref", "node": "meegxer.nodes.rereference"},
-]}
+PIPELINE = {
+    "spec_version": "0.2.23",
+    "nodes": [
+        {"id": "input", "node": "meegxer.core.file"},
+        {"id": "mne", "node": "script.my_mne"},  # my_mne.py, added
+        {"id": "asr", "node": "script.lab_asr"},  # lab_asr.m, added
+        {"id": "ref", "node": "meegxer.nodes.rereference"},
+    ],
+}
 clean = run(PIPELINE, "sub-01.set")
 ```
 
