@@ -1034,14 +1034,15 @@ run's output.
    script…*): it is refused, naming the install command.
 2. Run that command (your MeegXer is a uv tool install), add the script again,
    run it.
-3. *Sterile* on, run: it asks to build the image; build (*Sterile* offers
-   it, or `meegxer sterile build`), run again: the same output.
+3. Switch *Sterile* on: it asks at once to build the image (it lacks the
+   package); *Yes* builds it (or `meegxer sterile build`), then *Start*:
+   the same output.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| AB1 refused, with the install command | passed | Windows agent |
-| AB2 installed, added, runs | passed | Windows agent: the session records `pyriemann: 0.12` |
-| AB3 Sterile: asks to build, then the same output | passed | Windows agent, from the CLI; the GUI's offer to build not driven |
+| AB1 refused, with the install command | passed | Windows agent; real window (Windows 11, th-TH format, 2026-11-28): the notice first, then a box naming `uv tool install --prerelease allow --with pyriemann meegxer` (it said "error:" and showed backticks; plain words since #205) |
+| AB2 installed, added, runs | passed | Windows agent: the session records `pyriemann: 0.12`; real window (Windows 11, th-TH format, 2026-11-28): added and run offline (3.9 s) |
+| AB3 Sterile: asks to build, then the same output | passed | Windows agent, from the CLI; real window (Windows 11, th-TH format, 2026-11-28): "Build the Sterile image?" names `meegxer-sterile:0.0.0 lacks pyriemann==0.12` as *Sterile* is switched on; *Yes* (a mouse click) built it in about 1.5 min with its lines in the log; the run "(Sterile)" done in 3.3 s |
 
 ## AC. The Octave image
 
@@ -1088,8 +1089,8 @@ doubling `EEG.data` doubles the signal; `EEG.data + 1` adds 1 µV.
 | Item | Value / result | Notes |
 |---|---|---|
 | AD1 `run` on your recording | passed | Windows agent: failed at first on any output of 1 MB or more ("nbytes must be a whole number >= 0, got 1075200.0", fixed in #198); retest on the full 240 s `mi.edf` (7 ch, 160 Hz): exit 0, 50–70 Hz power 3.2e-13 → 1.4e-18, 10–20 Hz unchanged; 1.1 million samples also ran |
-| AD2 the GUI adds it with no notice and runs it | not run | needs a real window (the maintainer) |
-| AD3 a setting changed in the GUI reaches the script | passed | Windows agent: high=10: 15–35 Hz / 5–9 Hz power 0.97 → 5e-6 |
+| AD2 the GUI adds it with no notice and runs it | passed | real window (Windows 11, th-TH format, 2026-11-28): *Add a custom script* took `lab_bandpass.m` with no notice ("(Octave, sandboxed)"); offline on the full `mi.edf` (240 s): the spectrum flat to 40 Hz, −90 dB above |
+| AD3 a setting changed in the GUI reaches the script | passed | Windows agent: high=10: 15–35 Hz / 5–9 Hz power 0.97 → 5e-6; real window (Windows 11, th-TH format, 2026-11-28): *High cut-off* 10 Hz on the strip, run again: the spectrum falls right after 10 Hz, the alpha peak kept |
 
 ## AE. An EEGLAB plugin a script declares (`% Requires:`)
 
@@ -1146,9 +1147,9 @@ against scipy's Butterworth filter, live and in a batch run in 37-sample blocks.
 | Item | Value / result | Notes |
 |---|---|---|
 | AF1 `check --script`: conformant | passed | Windows agent: block-wise max deviation 0, restart exact |
-| AF2 runs live in the GUI | passed (daemon/CLI) | Windows agent: synthetic 16 ch / 500 Hz, 30000 of 30000 samples in 60 s; not seen in a real window |
-| AF3 a setting changed live reaches it | passed | Windows agent: `meegxer set hp cutoff=5` applied |
-| AF4 load and late blocks steady | passed | Windows agent: about 3 ms per block; overruns only in the first 30 s, none after |
+| AF2 runs live in the GUI | passed | Windows agent (daemon/CLI): synthetic 16 ch / 500 Hz, 30000 of 30000 samples in 60 s; real window (Windows 11, th-TH format, 2026-11-28): `lab_highpass.m` added with no notice, *Synthetic EEG*, *LIVE*, *Start* (Sterile on): the tap shows the signal, the spectrum cut below the cutoff |
+| AF3 a setting changed live reaches it | passed | Windows agent: `meegxer set hp cutoff=5` applied; real window (Windows 11, th-TH format, 2026-11-28): *Cutoff* 5 Hz while running: the card and the field show it within a second, the run goes on |
+| AF4 load and late blocks steady | passed | Windows agent: about 3 ms per block; overruns only in the first 30 s, none after; real window (Windows 11, th-TH format, 2026-11-28): `running (Sterile) · processing load` 37 % at 5 s, then 29–31 %; `late blocks 1` throughout (none after the start), no display frames skipped |
 
 ## AG. A pipeline as a Python script
 
