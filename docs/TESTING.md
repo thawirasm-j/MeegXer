@@ -959,10 +959,10 @@ started), and an edited script gave its old output (the cache and Python's
 
 | Item | Value / result | Notes |
 |---|---|---|
-| Y1 the image rebuilt | | |
-| Y2 a custom script in a chain | | |
-| Y3 it runs in the container, same output | | |
-| Y4 an edited script, no rebuild | | |
+| Y1 the image rebuilt | passed | Windows agent (Windows 11, Docker Desktop 29.6.2, Python 3.14); at first only with `PYTHONUTF8=1` (a redirected build crashed, fixed in #199); retest: an uncached build redirected to a log, no `PYTHONUTF8`, exit 0 |
+| Y2 a custom script in a chain | passed | Windows agent: CLI and the GUI offscreen |
+| Y3 it runs in the container, same output | passed | Windows agent: `meegxer-sterile` containers seen; local and Sterile `.set` max difference 0.0 |
+| Y4 an edited script, no rebuild | passed | Windows agent: the edit (×0.5) took effect in Sterile mode, equal to local |
 
 ## Z. An epochs script (`process_epochs`)
 
@@ -990,9 +990,9 @@ epochs are the local run's.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| Z1 `run` counts the epochs kept | | |
-| Z2 the GUI: Epochs·2 with fewer epochs | | |
-| Z3 the same in Sterile mode | | |
+| Z1 `run` counts the epochs kept | passed | Windows agent: "kept 40 of 40 epochs (left 22, right 18)"; stdin from `NUL` gave an `EOFError` traceback at the notice (fixed in #201; retest: refuses, says `--accept-risk`) |
+| Z2 the GUI: Epochs·2 with fewer epochs | passed | Windows agent, GUI offscreen: the script after Epochs reads its rail; 25 µV keeps 14 of 40, 20 µV none |
+| Z3 the same in Sterile mode | passed | Windows agent: 25 µV keeps 14 (6 + 8), as local |
 
 ## AA. A script folder
 
@@ -1014,9 +1014,9 @@ GUI (offscreen), *+ Add strip → ✎ Add a script folder…* adds it as one str
 
 | Item | Value / result | Notes |
 |---|---|---|
-| AA1 the folder added as one strip | | |
-| AA2 it runs, helpers and data found | | |
-| AA3 the same in Sterile mode | | |
+| AA1 the folder added as one strip | passed | Windows agent, GUI offscreen: `script.lab_method` |
+| AA2 it runs, helpers and data found | passed | Windows agent: the gain from `data/gain.npy` applied (×2.000) |
+| AA3 the same in Sterile mode | passed | Windows agent: max difference 0.0 |
 
 ## AB. A script's extra packages (`REQUIRES`)
 
@@ -1039,9 +1039,9 @@ run's output.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| AB1 refused, with the install command | | |
-| AB2 installed, added, runs | | |
-| AB3 Sterile: asks to build, then the same output | | |
+| AB1 refused, with the install command | passed | Windows agent |
+| AB2 installed, added, runs | passed | Windows agent: the session records `pyriemann: 0.12` |
+| AB3 Sterile: asks to build, then the same output | passed | Windows agent, from the CLI; the GUI's offer to build not driven |
 
 ## AC. The Octave image
 
@@ -1058,8 +1058,8 @@ container job builds and checks it on every change.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| AC1 the image builds on Windows | | |
-| AC2 check: versions, pop_eegfiltnew works | | |
+| AC1 the image builds on Windows | passed | Windows agent: 3 min 56 s; retest: built again, without and then with clean_rawdata |
+| AC2 check: versions, pop_eegfiltnew works | passed | Windows agent: GNU Octave 8.4.0, signal 1.4.5, EEGLAB 2026.0.0, pop_eegfiltnew works |
 
 ## AD. An Octave/EEGLAB script
 
@@ -1087,9 +1087,9 @@ doubling `EEG.data` doubles the signal; `EEG.data + 1` adds 1 µV.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| AD1 `run` on your recording | | |
-| AD2 the GUI adds it with no notice and runs it | | |
-| AD3 a setting changed in the GUI reaches the script | | |
+| AD1 `run` on your recording | passed | Windows agent: failed at first on any output of 1 MB or more ("nbytes must be a whole number >= 0, got 1075200.0", fixed in #198); retest on the full 240 s `mi.edf` (7 ch, 160 Hz): exit 0, 50–70 Hz power 3.2e-13 → 1.4e-18, 10–20 Hz unchanged; 1.1 million samples also ran |
+| AD2 the GUI adds it with no notice and runs it | not run | needs a real window (the maintainer) |
+| AD3 a setting changed in the GUI reaches the script | passed | Windows agent: high=10: 15–35 Hz / 5–9 Hz power 0.97 → 5e-6 |
 
 ## AE. An EEGLAB plugin a script declares (`% Requires:`)
 
@@ -1114,9 +1114,9 @@ runs both.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| AE1 check notes the missing plugin | | |
-| AE2 build fetches it; check lists it | | |
-| AE3 the script runs on your recording | | |
+| AE1 check notes the missing plugin | passed | Windows agent: at first `add` was refused before the build could fetch the plugin (fixed in #202); retest: `add` records the script "not checked yet" and says to build; `octave check` notes clean_rawdata; a run before the build is refused |
+| AE2 build fetches it; check lists it | passed | Windows agent: `octave build` (no `--with`) fetched clean_rawdata; `check` lists it; `check --script` conformant |
+| AE3 the script runs on your recording | passed | Windows agent: injected bursts' RMS ÷3.8–3.9, clean parts unchanged (ratio 1.003) |
 
 ## AF. A live Octave script
 
@@ -1145,10 +1145,10 @@ against scipy's Butterworth filter, live and in a batch run in 37-sample blocks.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| AF1 `check --script`: conformant | | |
-| AF2 runs live in the GUI | | |
-| AF3 a setting changed live reaches it | | |
-| AF4 load and late blocks steady | | |
+| AF1 `check --script`: conformant | passed | Windows agent: block-wise max deviation 0, restart exact |
+| AF2 runs live in the GUI | passed (daemon/CLI) | Windows agent: synthetic 16 ch / 500 Hz, 30000 of 30000 samples in 60 s; not seen in a real window |
+| AF3 a setting changed live reaches it | passed | Windows agent: `meegxer set hp cutoff=5` applied |
+| AF4 load and late blocks steady | passed | Windows agent: about 3 ms per block; overruns only in the first 30 s, none after |
 
 ## AG. A pipeline as a Python script
 
@@ -1161,9 +1161,6 @@ GUI (offscreen) *Save → Export as Python script…* wrote the chain shown.
    an ERP template), *Save* arrow → *Export as Python script…*, save `erp.py`.
 2. In a terminal: `uv run python erp.py YOUR_RECORDING.set -o clean.set`:
    it says `wrote clean.set`; open it in EEGLAB or MNE.
-
-| Item | Value / result | Notes |
-|---|---|---|
 3. *Save* arrow → *Export as standalone MNE script…* (a chain of filters,
    re-reference, resample, Epochs), then in a terminal outside MeegXer's
    environment, with only MNE installed (`pip install mne`):
@@ -1178,7 +1175,7 @@ GUI (offscreen) *Save → Export as Python script…* wrote the chain shown.
 
 | Item | Value / result | Notes |
 |---|---|---|
-| AG1 the GUI writes the script | | |
-| AG2 the script runs on Windows and writes the file | | |
-| AG3 the standalone script runs with only MNE installed | | |
-| AG4 (optional) with your custom script inlined | | |
+| AG1 the GUI writes the script | passed | Windows agent, GUI offscreen; a chain with a script folder has no standalone code (by design: named) |
+| AG2 the script runs on Windows and writes the file | passed | Windows agent: `python erp.py mi.edf -o clean.set` |
+| AG3 the standalone script runs with only MNE installed | passed | Windows agent: `python -I` in a venv with only mne; the signal and 40 epochs equal MeegXer's to 1e-12 V |
+| AG4 (optional) with your custom script inlined | passed | Windows agent: a `process` script inlined; max difference 1.3e-12 V |
