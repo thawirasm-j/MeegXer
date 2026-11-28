@@ -965,7 +965,10 @@ class MainWindow(QMainWindow):
         if result.returncode != 0:
             reason = (result.stderr.strip().splitlines() or ["unknown error"])[-1]
             self.log(f"Could not add {Path(path).name}: {reason}")
-            QMessageBox.warning(self, "Custom script", f"Could not add it:\n{reason}")
+            # the dialog in plain words: without the command line's "error: "
+            # and its backticks around a command to run
+            plain = reason.removeprefix("error: ").replace("`", "")
+            QMessageBox.warning(self, "Custom script", f"Could not add it:\n{plain}")
             return
         nodes = self.call("rescan_nodes")
         if nodes is None:
