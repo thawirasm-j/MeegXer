@@ -7,7 +7,7 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
-## 0.5.0b3 (2026-11-27): Scripts
+## 0.5.0b3 (2026-11-28): Scripts
 
 Your own code as strips. Python scripts (MNE, NumPy, SciPy) get templates,
 a porting guide and a try-run, work on epochs, come as folders with helpers
@@ -22,8 +22,15 @@ accepts back from a plugin is now checked.
 
 Checked in `docs/TESTING.md`: §Y to §AG by Claude on Linux with Docker (the
 real window offscreen, the CLI, the daemon live, the Sterile and Octave
-images); on Windows by the maintainer: pending (the tag waits for them).
-CI runs the Octave scripts in the Octave image.
+images), and on Windows 11 with Docker Desktop by an agent on the
+maintainer's machine (the full test suite, the CLI, the daemon live, the GUI
+offscreen, the Sterile and Octave images; 2026-11-27 and 2026-11-28). The
+first Windows run found five errors, fixed before this beta (*Fixed*, below:
+Octave output of 1 MB or more, a redirected build's output, `add` before
+`octave build`, an ICA note without an ICA, stdin from `NUL`); the retest
+passed all of them. Not seen in a real window yet: adding an Octave script in
+the GUI (AD2), a live Octave script in the GUI (AF2). CI runs the Octave
+scripts in the Octave image.
 
 ### Upgrading from 0.5.0b2
 
