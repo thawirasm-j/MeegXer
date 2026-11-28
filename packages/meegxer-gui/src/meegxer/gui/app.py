@@ -15,6 +15,19 @@ from meegxer.core.control import DEFAULT_DISPLAY
 from meegxer.gui.connection import DaemonLink, daemon_running, spawn_daemon
 
 
+def plain_numbers() -> None:
+    """Numbers in Latin digits with a decimal point, whatever the system's
+    regional format, as pipelines and the strips' own fields write them:
+    Qt's number fields (QSpinBox, QDoubleSpinBox) format with the default
+    QLocale, so on a Windows set to Thai with native digits they showed 2
+    in Thai digits (an Arabic or Persian format the same; a German one
+    ``8,0``), beside strip fields showing ``2``. Called before any widget
+    exists (each takes the default locale when made)."""
+    from PySide6.QtCore import QLocale
+
+    QLocale.setDefault(QLocale.c())  # C: Latin digits, ".", no group separators
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="meegxer-gui", description=__doc__)
     parser.add_argument(
@@ -60,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     connect = args.connect or settings["general"]["daemon"]
     app = QApplication(sys.argv[:1])
     app.setApplicationName("MeegXer")
+    plain_numbers()
     owns = False
     if not daemon_running(connect):
         print(f"meegxer-gui: starting a daemon on {connect}", flush=True)

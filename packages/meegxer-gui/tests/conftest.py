@@ -32,7 +32,10 @@ def own_config(tmp_path, monkeypatch):
 def qapp():
     from PySide6.QtWidgets import QApplication
 
+    from meegxer.gui.app import plain_numbers
+
     app = QApplication.instance() or QApplication([])
+    plain_numbers()  # as meegxer-gui does
     yield app
 
 
