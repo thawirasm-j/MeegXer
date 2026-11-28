@@ -593,7 +593,11 @@ def test_an_eeglab_files_ics_from_the_input(
         assert "reads ICs (Recording file)." in win.logbox.toPlainText()
         win.change_input(psd.id, "")
         win.doc.remove(psd.id)
+        # the file's preview first: Run offline while it runs is refused, and
+        # its "done" (without the ICs tap) is not the run's (slow Windows CI)
+        wait_for(qapp, lambda: win.offline_state in ("done", "error"), 120)
         win.start()
+        assert "Offline run started" in win.logbox.toPlainText()
         wait_for(qapp, lambda: win.offline_state in ("done", "error"), 120)
         assert win.offline_state == "done", win.logbox.toPlainText()
         win.click_tap("input:ics", False)

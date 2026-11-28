@@ -15,6 +15,11 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
   `8,0` and others `8.0`. Every number field now writes Latin digits with a
   decimal point, as pipelines do.
 
+- **Fixed: a refused script in plain words.** *Add a custom script…* that
+  cannot be added (a package it needs is not installed) said "Could not add it: error: …" with the command to run in
+  backticks; the box now says it in plain words (the log keeps the line as
+  the command line gave it).
+
 ## 0.5.0b3 (2026-11-28): Scripts
 
 Your own code as strips. Python scripts (MNE, NumPy, SciPy) get templates,

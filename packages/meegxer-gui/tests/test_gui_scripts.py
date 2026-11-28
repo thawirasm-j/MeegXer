@@ -124,3 +124,38 @@ def test_a_script_folder_is_added_from_the_chain_menu(
             w.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         qapp.processEvents()
+
+
+def test_a_refused_script_is_explained_in_plain_words(
+    qapp: QApplication,
+    isolated_daemon: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A script needing a package not installed: the box says what to run,
+    without the command line's "error: " and backticks (Windows check in a
+    real window, AB1); the log keeps the line as it came."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from meegxer.gui.connection import DaemonLink
+    from meegxer.gui.main_window import MainWindow
+
+    script = tmp_path / "lab_needs.py"
+    script.write_text('REQUIRES = ["mnex-not-a-package"]\n\n'
+                      + textwrap.dedent(SCRIPT))  # fmt: skip
+    shown: list[str] = []
+    monkeypatch.setattr(QMessageBox, "warning",
+                        lambda parent, title, text: shown.append(text))  # fmt: skip
+    win = MainWindow(DaemonLink(isolated_daemon))
+    try:
+        win._accept_local_code = lambda what: True  # type: ignore[method-assign]
+        win.add_script(1, str(script))
+        assert len(shown) == 1 and "mnex-not-a-package" in shown[0]
+        assert "error:" not in shown[0] and "`" not in shown[0]
+        assert "Could not add lab_needs.py: error:" in win.logbox.toPlainText()
+    finally:
+        win.close()
+        for w in (win.stacked, win.recording_window, win):
+            w.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
