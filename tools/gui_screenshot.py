@@ -115,6 +115,9 @@ def main() -> int:
     display = f"tcp://127.0.0.1:{free_port()}"
     proc = spawn_daemon(control, display)
     app = QApplication(sys.argv[:1])
+    from meegxer.gui.app import plain_numbers
+
+    plain_numbers()
     from meegxer.gui.main_window import MainWindow
 
     win = MainWindow(DaemonLink(control), load_theme("dark"), owns_daemon=True)

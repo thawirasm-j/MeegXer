@@ -7,6 +7,14 @@ Every package (`meegxer`, `meegxer-core`, `meegxer-nodes`, `meegxer-plugins`,
 
 ## Next (not released yet)
 
+- **Fixed: number fields in the system's digits.** On a Windows set to a
+  format with other digits (Thai with native digits, Arabic, Persian), the
+  GUI's number fields (a strip's whole-number settings, the Settings
+  window, the review windows) showed them in those digits, beside strip
+  fields in Latin ones; with a decimal comma (German, French) some showed
+  `8,0` and others `8.0`. Every number field now writes Latin digits with a
+  decimal point, as pipelines do.
+
 ## 0.5.0b3 (2026-11-28): Scripts
 
 Your own code as strips. Python scripts (MNE, NumPy, SciPy) get templates,
